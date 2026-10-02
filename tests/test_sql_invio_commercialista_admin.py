@@ -84,21 +84,23 @@ def _base(cliente=U1):
 
 
 def _collega(app):
-    r = app.post(_base(), json={"piva": PIVA, "company_id": AZIENDA})
+    r = app.post(_base(), json={"piva": PIVA})
     assert r.status_code == 200, r.text
     return r.json()["id"]
 
 
 def _completa(app, cid, email=EMAIL):
-    for corpo in ({"email_destinatario": email, "data_partenza": (_oggi() - timedelta(days=40)).isoformat()},
-                  {"consenso_data": (_oggi() - timedelta(days=1)).isoformat()},
-                  {"attivo": True}):
-        r = app.patch(f"{_base()}/{cid}", json=corpo)
-        assert r.status_code == 200, r.text
-    return r.json()
+    """Come lo attiva il cliente dalle Impostazioni (l'admin non puo')."""
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET email_destinatario = %s, data_partenza = %s, "
+                 "frequenza = 'mensile' WHERE id = %s", email, _oggi() - timedelta(days=40), cid)
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET consenso_ricevuto = true, consenso_data = %s, "
+                 "consenso_email = %s, consenso_at = now(), consenso_da = 'a1@ic.test', consenso_testo = 'Autorizzo' "
+                 "WHERE id = %s", _oggi() - timedelta(days=1), email, cid)
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET attivo = true WHERE id = %s", cid)
 
 
 def _invio_inviato(app, cid, dal, al):
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s", dal, cid)
     iid = str(_cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
                            "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin') "
                            "RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, dal, al)[0][0])
@@ -132,24 +134,24 @@ def test_lo_stato_propone_le_piva_del_cliente(app):
     assert dati["oggi"] == _oggi().isoformat()
 
 
-def test_si_cerca_l_azienda_e_si_collega(app):
-    r = app.get(f"{_base()}/azienda", params={"piva": PIVA})
-    assert r.json() == {"company_id": AZIENDA, "nome": "OFFSIDE SRL", "vat": f"IT{PIVA}", "gia_viste": [],
-                        "senza_company": 0}
+def test_la_prova_collega_la_piva_a_invoicetronic(app):
+    """Prima che il cliente attivi, l'admin puo' fare la prova a vuoto: la P.IVA
+    si collega (spenta, senza email ne' consenso) col company_id trovato."""
     cid = _collega(app)
     config = app.get(_base()).json()["configurazioni"]
     assert [c["id"] for c in config] == [cid] and config[0]["invoicetronic_company_id"] == AZIENDA
-    assert config[0]["attivo"] is False and app.get(_base()).json()["piva_disponibili"] == []
+    assert (config[0]["attivo"], config[0]["email_destinatario"], config[0]["consenso_ricevuto"]) == (False, None, False)
+    assert app.get(_base()).json()["piva_disponibili"] == []
 
 
-def test_la_piva_di_un_altro_cliente_non_si_cerca(app):
-    r = app.get(f"{_base()}/azienda", params={"piva": ALTRA})
+def test_la_piva_di_un_altro_cliente_non_si_collega(app):
+    r = app.post(_base(), json={"piva": ALTRA})
     assert r.status_code == 400 and app.finto.chiamate == []
 
 
 def test_una_piva_che_non_e_su_invoicetronic(app):
     app.finto.aziende.clear()
-    r = app.get(f"{_base()}/azienda", params={"piva": PIVA})
+    r = app.post(_base(), json={"piva": PIVA})
     assert r.status_code == 404 and "prima fattura" in r.json()["detail"]
 
 
@@ -157,85 +159,61 @@ def test_un_azienda_diversa_da_quella_delle_fatture_arrivate_non_si_collega(app)
     _cur(app.db, "INSERT INTO public.fatture_queue (id, event_id, piva_raw, status, user_id, ristorante_id, source, payload_meta) "
                  "VALUES (1, 'evt-a', %s, 'done', %s, %s, 'invoicetronic', %s::jsonb)",
          PIVA, U1, SEDE_1, json.dumps({"invoicetronic_company_id": 999}))
-    assert app.get(f"{_base()}/azienda", params={"piva": PIVA}).status_code == 409
-    assert app.post(_base(), json={"piva": PIVA, "company_id": AZIENDA}).status_code == 409
+    assert app.post(_base(), json={"piva": PIVA}).status_code == 409
+    assert _cur(app.db, "SELECT count(*) FROM public.invio_commercialista_config")[0][0] == 0
 
 
-def test_lo_storico_che_coincide_si_mostra(app):
+def test_lo_storico_che_coincide_si_collega(app):
     _cur(app.db, "INSERT INTO public.fatture_queue (id, event_id, piva_raw, status, user_id, ristorante_id, source, payload_meta) "
                  "VALUES (1, 'evt-a', %s, 'done', %s, %s, 'invoicetronic', %s::jsonb)",
          PIVA, U1, SEDE_1, json.dumps({"invoicetronic_company_id": AZIENDA}))
-    assert app.get(f"{_base()}/azienda", params={"piva": PIVA}).json()["gia_viste"] == [AZIENDA]
-
-
-def test_il_company_id_lo_decide_invoicetronic_non_il_body(app):
-    r = app.post(_base(), json={"piva": PIVA, "company_id": 5})
-    assert r.status_code == 409
-    assert _cur(app.db, "SELECT count(*) FROM public.invio_commercialista_config")[0][0] == 0
+    _collega(app)
 
 
 def test_una_seconda_configurazione_per_la_stessa_piva(app):
     _collega(app)
-    r = app.post(_base(), json={"piva": PIVA, "company_id": AZIENDA})
+    r = app.post(_base(), json={"piva": PIVA})
     assert r.status_code == 409 and "gia' una configurazione" in r.json()["detail"]
 
 
-# ─── Configurare ─────────────────────────────────────────────────────────────
+# ─── L'admin spegne, non accende ─────────────────────────────────────────────
 
-def test_una_configurazione_completa_si_accende_e_l_email_si_normalizza(app):
+def test_l_admin_non_accende(app):
+    """Il consenso e' del cliente: anche una configurazione con tutto al suo posto
+    la riaccende solo lui."""
     cid = _collega(app)
-    config = _completa(app, cid, email="  Studio@Commercialista.TEST ")
-    assert config["attivo"] is True and config["email_destinatario"] == EMAIL and config["consenso_email"] == EMAIL
-
-
-def test_accendere_senza_consenso_dice_cosa_manca(app):
-    cid = _collega(app)
-    app.patch(f"{_base()}/{cid}", json={"email_destinatario": EMAIL, "data_partenza": "2026-07-15"})
+    _completa(app, cid)
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET attivo = false WHERE id = %s", cid)
     r = app.patch(f"{_base()}/{cid}", json={"attivo": True})
-    assert r.status_code == 400 and "consenso" in r.json()["detail"]
+    assert r.status_code == 400 and "cliente" in r.json()["detail"]
+    assert _cur(app.db, "SELECT attivo FROM public.invio_commercialista_config")[0][0] is False
 
 
-def test_email_e_consenso_insieme_valgono_per_l_email_nuova(app):
+def test_l_admin_spegne(app):
     cid = _collega(app)
     _completa(app, cid)
-    r = app.patch(f"{_base()}/{cid}", json={"email_destinatario": "nuovo@studio.test",
-                                            "consenso_data": _oggi().isoformat()})
-    config = r.json()
-    assert config["consenso_email"] == "nuovo@studio.test" and config["consenso_ricevuto"] is True
-    assert config["attivo"] is False, "cambiare email spegne: va riacceso"
+    assert app.patch(f"{_base()}/{cid}", json={"attivo": False}).json()["attivo"] is False
 
 
-def test_consenso_senza_email_rifiutato(app):
-    cid = _collega(app)
-    r = app.patch(f"{_base()}/{cid}", json={"consenso_data": _oggi().isoformat()})
-    assert r.status_code == 400 and "Prima scrivi l'email" in r.json()["detail"]
-
-
-def test_consenso_con_una_data_futura_rifiutato(app):
-    cid = _collega(app)
-    app.patch(f"{_base()}/{cid}", json={"email_destinatario": EMAIL})
-    r = app.patch(f"{_base()}/{cid}", json={"consenso_data": (_oggi() + timedelta(days=1)).isoformat()})
-    assert r.status_code == 400 and "futura" in r.json()["detail"]
-
-
-def test_revocare_il_consenso_spegne(app):
+@pytest.mark.parametrize("corpo", [
+    {"email_destinatario": "altro@studio.test"}, {"frequenza": "settimanale"}, {"data_partenza": "2026-07-15"},
+    {"consenso_data": "2026-09-30"}, {"revoca_consenso": True}, {},
+])
+def test_email_consenso_e_partenza_non_li_tocca_l_admin(app, corpo):
     cid = _collega(app)
     _completa(app, cid)
-    config = app.patch(f"{_base()}/{cid}", json={"revoca_consenso": True}).json()
-    assert (config["attivo"], config["consenso_ricevuto"], config["consenso_email"]) == (False, False, None)
-
-
-@pytest.mark.parametrize("giorni", [3 * 365, 0, -5])
-def test_data_di_partenza_fuori_dai_limiti(app, giorni):
-    cid = _collega(app)
-    r = app.patch(f"{_base()}/{cid}", json={"data_partenza": (_oggi() - timedelta(days=giorni)).isoformat()})
+    r = app.patch(f"{_base()}/{cid}", json=corpo)
     assert r.status_code == 400
+    assert _cur(app.db, "SELECT email_destinatario, frequenza, consenso_ricevuto, attivo "
+                        "FROM public.invio_commercialista_config")[0] == (EMAIL, "mensile", True, True)
 
 
 def test_la_configurazione_di_un_altro_cliente_non_si_tocca(app):
     cid = _collega(app)
-    assert app.patch(f"{_base(U2)}/{cid}", json={"frequenza": "settimanale"}).status_code == 404
-    assert app.post(f"{_base(U2)}/{cid}/invii", json={"tipo": "invia_ora"}).status_code == 404
+    assert app.patch(f"{_base(U2)}/{cid}", json={"attivo": False}).status_code == 404
+    assert app.post(f"{_base(U2)}/{cid}/invii", json={
+        "tipo": "prova", "dal": (_oggi() - timedelta(days=30)).isoformat(),
+        "al": (_oggi() - timedelta(days=1)).isoformat()}).status_code == 404
 
 
 def test_riprendere_toglie_la_sospensione(app):
@@ -253,39 +231,14 @@ def _invii(app):
                         "FROM public.invio_commercialista_invii ORDER BY creata_at")
 
 
-def test_il_primo_invio_parte_dalla_data_di_partenza(app):
+@pytest.mark.parametrize("tipo", ["invia_ora", "primo", "ordinario"])
+def test_l_admin_non_lancia_primo_ne_ordinario(app, tipo):
+    """Il primo invio e i successivi li crea il pianificatore notturno."""
     cid = _collega(app)
     _completa(app, cid)
-    r = app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"})
-    assert r.status_code == 200, r.text
-    assert _invii(app) == [("primo", _oggi() - timedelta(days=40), _oggi() - timedelta(days=1), "richiesto", "admin", EMAIL)]
-
-
-def test_dopo_il_primo_invia_ora_manda_il_periodo_maturato(app):
-    cid = _collega(app)
-    _completa(app, cid)
-    _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))
-    assert app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"}).status_code == 200
-    assert _invii(app)[-1][:3] == ("ordinario", _oggi() - timedelta(days=9), _oggi() - timedelta(days=1))
-
-
-def test_il_primo_invio_non_va_oltre_i_due_anni(app):
-    """La data di partenza era valida quando e' stata scritta; il tempo passa."""
-    cid = _collega(app)
-    _completa(app, cid)
-    _cur(app.db, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s",
-         _oggi() - timedelta(days=3 * 365), cid)
-    assert app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"}).status_code == 200
-    from services.invio_commercialista_service import limite_due_anni
-    assert _invii(app)[0][1] == limite_due_anni(_oggi())
-
-
-def test_niente_da_inviare(app):
-    cid = _collega(app)
-    _completa(app, cid)
-    _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=1))
-    r = app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"})
-    assert r.status_code == 400 and "Niente da inviare" in r.json()["detail"]
+    r = app.post(f"{_base()}/{cid}/invii", json={
+        "tipo": tipo, "dal": (_oggi() - timedelta(days=30)).isoformat(), "al": (_oggi() - timedelta(days=1)).isoformat()})
+    assert r.status_code == 422 and _invii(app) == []
 
 
 @pytest.mark.parametrize("dal,al,messaggio", [
@@ -316,18 +269,23 @@ def test_un_secondo_invio_mentre_il_primo_e_in_coda(app):
     assert r.status_code == 409 and "in corso o da chiarire" in r.json()["detail"]
 
 
-def test_a_configurazione_spenta_invia_ora_e_rifiutato_dal_db(app):
+def test_a_configurazione_spenta_il_reinvio_e_rifiutato_dal_db(app):
     cid = _collega(app)
-    app.patch(f"{_base()}/{cid}", json={"email_destinatario": EMAIL, "data_partenza": "2026-07-15"})
-    r = app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"})
+    _completa(app, cid)
+    _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))
+    app.patch(f"{_base()}/{cid}", json={"attivo": False})
+    r = app.post(f"{_base()}/{cid}/invii", json={
+        "tipo": "reinvio", "dal": (_oggi() - timedelta(days=20)).isoformat(), "al": (_oggi() - timedelta(days=10)).isoformat()})
     assert r.status_code == 400 and "configurazione spenta" in r.json()["detail"]
 
 
-def test_senza_sede_sdi_niente_invio_ma_la_prova_si(app):
+def test_senza_sede_sdi_niente_reinvio_ma_la_prova_si(app):
     cid = _collega(app)
     _completa(app, cid)
+    _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))
     _cur(app.db, "UPDATE public.ristoranti SET sdi_attivo = false WHERE id = %s", SEDE_1)
-    r = app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"})
+    r = app.post(f"{_base()}/{cid}/invii", json={
+        "tipo": "reinvio", "dal": (_oggi() - timedelta(days=20)).isoformat(), "al": (_oggi() - timedelta(days=10)).isoformat()})
     assert r.status_code == 400 and "SDI" in r.json()["detail"]
     assert app.post(f"{_base()}/{cid}/invii", json={
         "tipo": "prova", "dal": (_oggi() - timedelta(days=30)).isoformat(),
@@ -349,6 +307,8 @@ def test_il_reinvio_resta_nel_gia_inviato(app):
 # ─── Chiarire e annullare ────────────────────────────────────────────────────
 
 def _incerto(app, cid):
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s",
+         _oggi() - timedelta(days=40), cid)
     iid = str(_cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
                            "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin') "
                            "RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))[0][0])
@@ -372,8 +332,8 @@ def test_esito_incerto_non_arrivato_libera_il_periodo(app):
     iid = _incerto(app, cid)
     r = app.post(f"{_base()}/{cid}/invii/{iid}/chiarisci", json={"esito": "non_arrivata"})
     assert r.json()["stato"] == "errore" and r.json()["chiarito_non_partito_at"] is not None
-    assert app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"}).status_code == 200
-    assert _invii(app)[-1][0] == "primo", "il periodo si rispedisce"
+    assert app.get(_base()).json()["configurazioni"][0]["ultimo_giorno_inviato"] is None, \
+        "il periodo si rispedisce: il pianificatore rifa' il primo"
 
 
 def test_si_chiarisce_solo_un_esito_incerto(app):
@@ -385,8 +345,9 @@ def test_si_chiarisce_solo_un_esito_incerto(app):
 
 def test_si_annulla_solo_una_richiesta_non_presa(app):
     cid = _collega(app)
-    _completa(app, cid)
-    assert app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"}).status_code == 200
+    assert app.post(f"{_base()}/{cid}/invii", json={
+        "tipo": "prova", "dal": (_oggi() - timedelta(days=30)).isoformat(),
+        "al": (_oggi() - timedelta(days=1)).isoformat()}).status_code == 200
     iid = str(_cur(app.db, "SELECT id FROM public.invio_commercialista_invii")[0][0])
     r = app.post(f"{_base()}/{cid}/invii/{iid}/annulla")
     assert r.json()["stato"] == "errore" and r.json()["motivo"] == "annullato dall'admin"
@@ -403,7 +364,7 @@ def test_un_invio_di_un_altra_configurazione_non_si_tocca(app):
     cid = _collega(app)
     _completa(app, cid)
     iid = _incerto(app, cid)
-    altra = app.post(_base(), json={"piva": terza, "company_id": 3000}).json()["id"]
+    altra = app.post(_base(), json={"piva": terza}).json()["id"]
     assert app.post(f"{_base()}/{altra}/invii/{iid}/chiarisci", json={"esito": "arrivata"}).status_code == 404
     assert app.post(f"{_base()}/{altra}/invii/{iid}/annulla").status_code == 404
 
@@ -414,24 +375,12 @@ def test_invoicetronic_in_errore(app):
     def rotto(piva):
         raise ErroreInvoicetronic("HTTP 401", status=401, configurazione=True)
     app.finto.azienda_per_piva = rotto
-    r = app.get(f"{_base()}/azienda", params={"piva": PIVA})
+    r = app.post(_base(), json={"piva": PIVA})
     assert r.status_code == 503 and "HTTP 401" in r.json()["detail"]
 
 
 
 # ─── Storia orfana e cancellazione dell'account ──────────────────────────────
-
-def test_la_storia_di_una_configurazione_cancellata_si_vede(app):
-    """Chi ricollega la P.IVA deve sapere fin dove e' gia' stato spedito."""
-    cid = _collega(app)
-    _completa(app, cid)
-    _invio_inviato(app, cid, _oggi() - timedelta(days=40), _oggi() - timedelta(days=10))
-    assert app.get(_base()).json()["storico_orfano"] == {}, "la configurazione e' viva: non e' storia orfana"
-    _cur(app.db, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
-    dati = app.get(_base()).json()
-    assert dati["piva_disponibili"] == [PIVA]
-    assert dati["storico_orfano"] == {PIVA: (_oggi() - timedelta(days=10)).isoformat()}
-
 
 class _ArchivioFinto:
     rimossi = []
@@ -474,70 +423,12 @@ def test_il_cliente_che_si_cancella_toglie_subito_gli_zip(app, monkeypatch):
 
 
 
-def test_le_fatture_arrivate_senza_azienda_si_contano(app):
-    """Con quelle il confronto non si puo' fare: la scheda non deve dire «nessuna
-    fattura arrivata»."""
-    for i, meta in enumerate(({"resource_id": 5}, {"invoicetronic_company_id": AZIENDA}, {})):
-        _cur(app.db, "INSERT INTO public.fatture_queue (id, event_id, piva_raw, status, user_id, ristorante_id, source, payload_meta) "
-                     "VALUES (%s, %s, %s, 'done', %s, %s, 'invoicetronic', %s::jsonb)",
-             i + 1, f"evt-s{i}", PIVA, U1, SEDE_1, json.dumps(meta))
-    r = app.get(f"{_base()}/azienda", params={"piva": PIVA}).json()
-    assert (r["gia_viste"], r["senza_company"]) == ([AZIENDA], 2)
-
-
-def test_invia_ora_con_un_invio_da_chiarire_lo_dice(app):
-    """L'esito incerto copre fino a ieri: senza il controllo la risposta era
-    «Niente da inviare», che nasconde l'invio da chiarire."""
-    cid = _collega(app)
-    _completa(app, cid)
-    iid = str(_cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
-                           "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin') "
-                           "RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, _oggi() - timedelta(days=40), _oggi() - timedelta(days=1))[0][0])
-    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
-    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'esito_incerto' WHERE id = %s", iid)
-    r = app.post(f"{_base()}/{cid}/invii", json={"tipo": "invia_ora"})
-    assert r.status_code == 409 and "da chiarire" in r.json()["detail"]
-
-
-def test_il_primo_invio_non_si_sovrappone_alla_storia_di_una_configurazione_cancellata(app):
-    cid = _collega(app)
-    _completa(app, cid)
-    _invio_inviato(app, cid, _oggi() - timedelta(days=60), _oggi() - timedelta(days=30))
-    _cur(app.db, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
-    nuova = _collega(app)
-    _completa(app, nuova)
-    r = app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"})
-    assert r.status_code == 400 and "configurazione cancellata" in r.json()["detail"]
-    # Partenza proprio sull'ultimo giorno gia' inviato: quel giorno si rispedirebbe.
-    app.patch(f"{_base()}/{nuova}", json={"data_partenza": (_oggi() - timedelta(days=30)).isoformat()})
-    assert app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"}).status_code == 400
-    app.patch(f"{_base()}/{nuova}", json={"data_partenza": (_oggi() - timedelta(days=29)).isoformat()})
-    assert app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"}).status_code == 200
-
-
-def test_anche_uno_storico_orfano_incerto_conta_come_gia_inviato(app):
-    """Un esito incerto puo' essere arrivato: vale come spedito finche' nessuno lo chiarisce."""
-    cid = _collega(app)
-    _completa(app, cid)
-    iid = str(_cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
-                           "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin') "
-                           "RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, _oggi() - timedelta(days=60), _oggi() - timedelta(days=30))[0][0])
-    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
-    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'esito_incerto' WHERE id = %s", iid)
-    _cur(app.db, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
-    nuova = _collega(app)
-    _completa(app, nuova)
-    r = app.post(f"{_base()}/{nuova}/invii", json={"tipo": "invia_ora"})
-    assert r.status_code == 400 and "configurazione cancellata" in r.json()["detail"]
-
-
-
 def test_un_id_che_non_e_un_uuid_e_un_404_non_un_500(app):
     """Il proxy li ferma prima; chiamando il worker direttamente arrivavano al DB
     come cast fallito."""
     assert app.get("/api/admin/clienti/non-un-uuid/invio-commercialista").status_code == 404
     cid = _collega(app)
-    assert app.patch(f"{_base()}/non-un-uuid", json={"frequenza": "mensile"}).status_code == 404
+    assert app.patch(f"{_base()}/non-un-uuid", json={"attivo": False}).status_code == 404
     assert app.post(f"{_base()}/{cid}/invii/non-un-uuid/annulla").status_code == 404
 
 

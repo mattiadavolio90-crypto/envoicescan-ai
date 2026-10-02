@@ -21,6 +21,7 @@ SEDE_2 = "1c0c0000-0000-4000-8000-0000000000a2"
 PIVA = "07863990961"
 EMAIL = "studio@commercialista.test"
 ORA = "2026-09-25 10:00:00+00"
+TESTO = "Autorizzo OneFlux a inviare a questo indirizzo una copia delle fatture."
 
 
 @pytest.fixture
@@ -55,16 +56,22 @@ def _config(db_sql, attiva=True, email=EMAIL, consenso_email=None, company=1756,
     righe = _esegui(
         db_sql,
         "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, email_destinatario, "
-        "frequenza, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email) "
-        "VALUES (%s, %s, %s, %s, 'mensile', '2026-07-01', %s, %s, %s, %s) RETURNING id",
+        "frequenza, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email, "
+        "consenso_at, consenso_da, consenso_testo) "
+        "VALUES (%s, %s, %s, %s, 'mensile', '2026-07-01', %s, %s, %s, %s, %s, %s, %s) RETURNING id",
         user, piva, company, email, attiva, attiva, '2026-09-20' if attiva else None,
         (consenso_email if consenso_email is not None else email) if attiva else None,
+        *((ORA, "u1@ic.test", TESTO) if attiva else (None, None, None)),
     )
     return righe[0][0]
 
 
 def _invio(db_sql, cid, tipo, dal, al, stato="richiesto", da="admin", creata=ORA, destinatario=EMAIL,
-           user=U1, piva=PIVA, company=1756, **extra):
+           user=U1, piva=PIVA, company=1756, allinea=True, **extra):
+    # Il primo parte esattamente dalla data di partenza (trigger): chi scrive un
+    # primo con un periodo qualunque sposta prima la partenza li'.
+    if tipo == "primo" and allinea and cid is not None:
+        _esegui(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s", dal, cid)
     colonne = ["config_id", "user_id", "piva", "invoicetronic_company_id", "destinatario", "tipo",
                "periodo_dal", "periodo_al", "stato", "richiesto_da", "creata_at", *extra]
     valori = [cid, user, piva, company, destinatario, tipo, dal, al, stato, da, creata, *extra.values()]
@@ -355,12 +362,20 @@ def test_prova_ok_solo_per_le_prove(db_sql, psycopg):
         _stato(db_sql, iid, "prova_ok")
 
 
-@pytest.mark.parametrize("tipo", ["primo", "reinvio", "prova"])
-def test_il_notturno_fa_solo_ordinari(db_sql, psycopg, tipo):
+@pytest.mark.parametrize("tipo", ["reinvio", "prova"])
+def test_il_notturno_fa_solo_primo_e_ordinari(db_sql, psycopg, tipo):
     _semina(db_sql)
     cid = _config(db_sql)
     with pytest.raises(psycopg.errors.CheckViolation):
         _invio(db_sql, cid, tipo, "2026-07-01", "2026-07-31", da="notturno")
+
+
+def test_il_notturno_crea_il_primo(db_sql, scalare):
+    """Il primo invio lo fa partire il pianificatore: nessun admin lo lancia."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31", da="notturno")
+    assert scalare("SELECT richiesto_da FROM public.invio_commercialista_invii WHERE tipo = 'primo'") == "notturno"
 
 
 @pytest.mark.parametrize("campo,valore", [("periodo_dal", "'2026-06-30'"), ("destinatario", "'altro@x.test'"),
@@ -700,7 +715,8 @@ def test_attivare_ricontrolla_la_piva(db_sql, psycopg):
     _esegui(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) VALUES (%s, %s, 'B', %s, TRUE)", SEDE_2, U2, PIVA)
     with pytest.raises(psycopg.errors.CheckViolation):
         _esegui(db_sql, "UPDATE public.invio_commercialista_config SET email_destinatario = %s, consenso_ricevuto = true, "
-                        "consenso_data = '2026-09-20', consenso_email = %s, data_partenza = '2026-07-01', attivo = true "
+                        "consenso_data = '2026-09-20', consenso_email = %s, data_partenza = '2026-07-01', attivo = true, "
+                        "consenso_at = now(), consenso_da = 'u1@ic.test', consenso_testo = 'Autorizzo' "
                         "WHERE id = %s", EMAIL, EMAIL, cid)
 
 
@@ -820,8 +836,10 @@ def test_la_pulizia_risparmia_le_configurazioni_attive(db_sql, scalare):
     cid = _esegui(
         db_sql,
         "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, email_destinatario, "
-        "data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email, aggiornata_at) "
-        "VALUES (%s, %s, 1756, %s, '2026-07-01', true, true, '2026-06-01', %s, now() - interval '91 days') RETURNING id",
+        "data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email, aggiornata_at, "
+        "consenso_at, consenso_da, consenso_testo) "
+        "VALUES (%s, %s, 1756, %s, '2026-07-01', true, true, '2026-06-01', %s, now() - interval '91 days', "
+        "now(), 'u1@ic.test', 'Autorizzo') RETURNING id",
         U1, PIVA, EMAIL, EMAIL,
     )[0][0]
     assert scalare("SELECT public.purge_invio_commercialista(365, 90)") == 0
@@ -910,3 +928,104 @@ def test_all_email_serve_ancora_una_sede_del_cliente(db_sql, psycopg):
     _esegui(db_sql, "UPDATE public.ristoranti SET partita_iva = '11111111111' WHERE id = %s", SEDE_1)
     with pytest.raises(psycopg.errors.CheckViolation):
         _esegui(db_sql, "UPDATE public.invio_commercialista_invii SET email_tentata_at = now() WHERE id = %s", iid)
+
+
+# ─── Attivazione dal cliente (02/10/2026) ────────────────────────────────────
+
+@pytest.mark.parametrize("campo", ["consenso_at", "consenso_da", "consenso_testo"])
+def test_il_consenso_porta_con_se_la_prova(db_sql, psycopg, campo):
+    """Quando, chi e con quale testo: senza uno dei tre non c'e' consenso."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, f"UPDATE public.invio_commercialista_config SET {campo} = NULL WHERE id = %s", cid)
+
+
+@pytest.mark.parametrize("campo", ["consenso_da", "consenso_testo"])
+def test_la_prova_del_consenso_non_e_una_stringa_vuota(db_sql, psycopg, campo):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _esegui(db_sql, f"UPDATE public.invio_commercialista_config SET {campo} = '  ' WHERE id = %s", cid)
+
+
+def test_cambiare_email_toglie_anche_la_prova_del_consenso(db_sql):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET email_destinatario = 'nuovo@studio.test' WHERE id = %s", cid)
+    assert _esegui(db_sql, "SELECT consenso_at, consenso_da, consenso_testo FROM public.invio_commercialista_config "
+                           "WHERE id = %s", cid)[0] == (None, None, None)
+
+
+def test_la_pulizia_toglie_anche_la_prova_del_consenso(db_sql, scalare):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET attivo = false, "
+                    "disattivata_at = now() - interval '91 days' WHERE id = %s", cid)
+    assert scalare("SELECT public.purge_invio_commercialista(365, 90)") == 1
+    assert _esegui(db_sql, "SELECT consenso_at, consenso_da, consenso_testo FROM public.invio_commercialista_config "
+                           "WHERE id = %s", cid)[0] == (None, None, None)
+
+
+def test_il_primo_parte_esattamente_dalla_partenza(db_sql, psycopg):
+    """Il cliente ha scelto «solo le nuove» da una data: il primo non va prima,
+    e nemmeno dopo (resterebbe un buco mai spedito)."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = '2026-07-10' WHERE id = %s", cid)
+    for dal in ("2026-07-09", "2026-07-11"):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            _invio(db_sql, cid, "primo", dal, "2026-07-31", allinea=False)
+    _invio(db_sql, cid, "primo", "2026-07-10", "2026-07-31", allinea=False)
+
+
+def test_il_primo_con_partenza_oltre_i_due_anni_parte_dal_limite(db_sql, psycopg):
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = '2024-01-01' WHERE id = %s", cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "primo", "2024-01-01", "2024-12-31", allinea=False)
+    _invio(db_sql, cid, "primo", "2024-09-25", "2024-12-31", allinea=False)
+
+
+def test_il_primo_parte_dopo_lo_storico_di_una_configurazione_cancellata(db_sql, psycopg):
+    """Cancellata e ricreata per la stessa P.IVA: il commercialista ha gia' i file
+    fino al 31/07, il nuovo primo non li rispedisce."""
+    _semina(db_sql)
+    vecchia = _config(db_sql)
+    _inviato(db_sql, vecchia, "primo", "2026-07-01", "2026-07-31")
+    _esegui(db_sql, "DELETE FROM public.invio_commercialista_config WHERE id = %s", vecchia)
+    nuova = _config(db_sql)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, nuova, "primo", "2026-07-31", "2026-08-31")
+    _invio(db_sql, nuova, "primo", "2026-08-01", "2026-08-31")
+
+
+def test_lo_storico_di_un_altra_piva_non_conta(db_sql):
+    _semina(db_sql)
+    altra = "12345678903"
+    _esegui(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) "
+                    "VALUES (%s, %s, 'C', %s, TRUE)", SEDE_2, U1, altra)
+    vecchia = _config(db_sql, piva=altra, company=3000)
+    _inviato_su(db_sql, vecchia, altra, 3000)
+    _esegui(db_sql, "DELETE FROM public.invio_commercialista_config WHERE id = %s", vecchia)
+    nuova = _config(db_sql)
+    _invio(db_sql, nuova, "primo", "2026-07-01", "2026-07-31")
+
+
+def _inviato_su(db_sql, cid, piva, company):
+    iid = _invio(db_sql, cid, "primo", "2026-07-01", "2026-07-31", piva=piva, company=company)
+    _stato(db_sql, iid, "in_corso", email_tentata_at=TENTATA)
+    _stato(db_sql, iid, "inviato")
+
+
+def test_l_ordinario_non_va_prima_della_partenza(db_sql, psycopg):
+    """Riattivato «solo le nuove» dal 01/09: il giorno dopo l'ultimo invio non basta."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _inviato(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = '2026-09-01' WHERE id = %s", cid)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "ordinario", "2026-08-01", "2026-09-20", da="notturno")
+    _invio(db_sql, cid, "ordinario", "2026-09-01", "2026-09-20", da="notturno")
+

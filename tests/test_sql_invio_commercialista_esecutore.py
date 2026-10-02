@@ -63,14 +63,19 @@ def _config(db_sql, frequenza="mensile", attiva=True):
     return str(_uno(
         db_sql,
         "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, invoicetronic_nome, "
-        "email_destinatario, frequenza, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email) "
-        "VALUES (%s, %s, %s, 'OFFSIDE SRL', %s, %s, '2026-07-01', %s, %s, %s, %s) RETURNING id",
+        "email_destinatario, frequenza, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email, "
+        "consenso_at, consenso_da, consenso_testo) "
+        "VALUES (%s, %s, %s, 'OFFSIDE SRL', %s, %s, '2026-07-01', %s, %s, %s, %s, %s, %s, %s) RETURNING id",
         U1, PIVA, AZIENDA, EMAIL, frequenza, attiva, attiva, date(2026, 9, 20) if attiva else None,
         EMAIL if attiva else None,
+        *((datetime(2026, 9, 20, 10, tzinfo=UTC), "e1@ic.test", "Autorizzo") if attiva else (None, None, None)),
     ))
 
 
 def _invio(db_sql, cid, tipo, dal, al, da="admin", creata=None):
+    # Il primo parte esattamente dalla data di partenza (trigger).
+    if tipo == "primo":
+        _cur(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s", dal, cid)
     colonne = "config_id, user_id, piva, invoicetronic_company_id, destinatario, tipo, periodo_dal, periodo_al, richiesto_da"
     valori = [cid, U1, PIVA, AZIENDA, EMAIL, tipo, dal, al, da]
     if creata is not None:
@@ -586,11 +591,44 @@ def test_il_pianificatore_crea_l_ordinario_dovuto(db_sql):
     assert _pianifica(db_sql, adesso) == 0, "una volta sola"
 
 
-def test_nessun_ordinario_senza_un_primo_riuscito(db_sql):
+def test_senza_un_primo_riuscito_il_notturno_crea_il_primo_dalla_partenza(db_sql):
+    """Il cliente ha attivato: nessun admin lancia il primo invio."""
     _semina(db_sql)
     cid = _config(db_sql)
-    assert _pianifica(db_sql, _scenario()[0]) == 0
+    adesso, fine_mese_prima, ultimo = _scenario()
+    partenza = ultimo - timedelta(days=9)
+    _cur(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s", partenza, cid)
+    assert _pianifica(db_sql, adesso) == 1
     assert _ordinari(db_sql, cid) == []
+    assert _cur(db_sql, "SELECT periodo_dal, periodo_al, richiesto_da FROM public.invio_commercialista_invii "
+                        "WHERE config_id = %s AND tipo = 'primo'", cid) == [(partenza, fine_mese_prima, "notturno")]
+    assert _pianifica(db_sql, adesso) == 0, "una volta sola"
+
+
+def test_il_primo_aspetta_la_scadenza_dopo_la_partenza(db_sql):
+    """Attivato ieri «solo le nuove»: niente primo fino alla prossima scadenza."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    adesso, fine_mese_prima, _ = _scenario()
+    _cur(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s",
+         fine_mese_prima + timedelta(days=1), cid)
+    assert _pianifica(db_sql, adesso) == 0
+
+
+def test_riattivato_solo_le_nuove_l_ordinario_salta_il_buco(db_sql):
+    """Spento per mesi e riattivato «solo le nuove»: l'ordinario parte dalla nuova
+    partenza, non dal giorno dopo l'ultimo invio."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    adesso, fine_mese_prima, ultimo = _scenario()
+    vecchio = ultimo - timedelta(days=100)
+    _inviato(db_sql, cid, "primo", vecchio - timedelta(days=9), vecchio, creata=_alle(vecchio + timedelta(days=1)))
+    nuova = fine_mese_prima.replace(day=1)
+    _cur(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s", nuova, cid)
+    avvisi = []
+    assert _pianifica(db_sql, adesso, avvisi) == 1
+    assert _ordinari(db_sql, cid) == [(nuova, fine_mese_prima, "notturno", "richiesto")]
+    assert avvisi == [], "il buco l'ha scelto il cliente: non e' l'allarme dei 2 anni"
 
 
 def test_nessun_ordinario_prima_della_scadenza(db_sql):
@@ -796,8 +834,10 @@ def test_anti_loop_per_configurazione(db_sql, acceso):
     _cur(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) "
                  "VALUES ('3e0e0000-0000-4000-8000-0000000000a3', %s, 'B', %s, TRUE)", U1, seconda)
     _cur(db_sql, "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, "
-                 "email_destinatario, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email) "
-                 "VALUES (%s, %s, 3000, %s, '2026-07-01', true, true, '2026-09-20', %s)", U1, seconda, EMAIL, EMAIL)
+                 "email_destinatario, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email, "
+                 "consenso_at, consenso_da, consenso_testo) "
+                 "VALUES (%s, %s, 3000, %s, '2026-07-01', true, true, '2026-09-20', %s, now(), 'e1@ic.test', 'Autorizzo')",
+                 U1, seconda, EMAIL, EMAIL)
     for _ in range(5):
         _cur(db_sql, "INSERT INTO public.email_rate_log (destinatario, created_at) VALUES (%s, now() - interval '1 hour')", EMAIL)
     _invio(db_sql, cid, "primo", _oggi() - timedelta(days=5), _oggi() - timedelta(days=1))
@@ -834,11 +874,15 @@ def test_una_configurazione_che_fallisce_non_ferma_le_altre(db_sql, monkeypatch)
     _cur(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo, sdi_attivo) "
                  "VALUES ('3e0e0000-0000-4000-8000-0000000000a3', %s, 'B', %s, TRUE, TRUE)", U1, seconda_piva)
     seconda = str(_uno(db_sql, "INSERT INTO public.invio_commercialista_config (user_id, piva, invoicetronic_company_id, "
-                               "email_destinatario, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email) "
-                               "VALUES (%s, %s, 3000, %s, '2026-07-01', true, true, '2026-09-20', %s) RETURNING id",
+                               "email_destinatario, data_partenza, attivo, consenso_ricevuto, consenso_data, consenso_email, "
+                               "consenso_at, consenso_da, consenso_testo) "
+                               "VALUES (%s, %s, 3000, %s, '2026-07-01', true, true, '2026-09-20', %s, "
+                               "now(), 'e1@ic.test', 'Autorizzo') RETURNING id",
                                U1, seconda_piva, EMAIL, EMAIL))
     adesso, fine_mese_prima, ultimo = _scenario()
     for cid, piva, azienda in ((prima, PIVA, AZIENDA), (seconda, seconda_piva, 3000)):
+        _cur(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s",
+             ultimo - timedelta(days=9), cid)
         iid = str(_uno(db_sql, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
                                "destinatario, tipo, periodo_dal, periodo_al, richiesto_da, creata_at) "
                                "VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, 'admin', %s) RETURNING id",

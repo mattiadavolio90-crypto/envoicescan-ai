@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
+import { mostraFattureCommercialista, type StatoFattureCommercialista } from "@/lib/fatture-commercialista";
+import { FattureCommercialistaCard } from "./fatture-commercialista-card";
 import { erroreLocalePassword, PASSWORD_HINT } from "@/lib/password-policy";
 import { etichettaPiano, prezzoPiano } from "@/lib/piani";
 import {
@@ -670,11 +672,13 @@ export function AccountClient({
   chain = false,
   nomeGruppo = null,
   sedi = [],
+  commercialista = null,
 }: {
   data: AccountData;
   chain?: boolean;
   nomeGruppo?: string | null;
   sedi?: Sede[];
+  commercialista?: StatoFattureCommercialista | null;
 }) {
   const pianoLabel = etichettaPiano(data.piano);
   const pianoPrezzo = prezzoPiano(data.piano);
@@ -690,6 +694,9 @@ export function AccountClient({
         <AspettoCard temaSalvato={data.tema ?? "dark"} />
         {mostraEmailSettimanale(data) && (
           <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />
+        )}
+        {mostraFattureCommercialista(commercialista, data) && (
+          <FattureCommercialistaCard statoIniziale={commercialista!} />
         )}
         <CambioPasswordForm />
       </div>
@@ -794,6 +801,11 @@ export function AccountClient({
       {/* Email settimanale dell'assistente */}
       {mostraEmailSettimanale(data) && (
         <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />
+      )}
+
+      {/* Invio delle fatture al commercialista: lo attiva il titolare */}
+      {mostraFattureCommercialista(commercialista, data) && (
+        <FattureCommercialistaCard statoIniziale={commercialista!} />
       )}
 
       {/* Cambio password */}

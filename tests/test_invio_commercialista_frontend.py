@@ -20,7 +20,7 @@ BASE = f"/api/admin/clienti/{CLIENTE}/invio-commercialista"
 def _percorsi(casi):
     return esegui_ts(
         MODULO,
-        "emit(input.map(([id, seg, q]) => m.percorsoProxy(id, seg, new URLSearchParams(q))));",
+        "emit(input.map(([id, seg]) => m.percorsoProxy(id, seg)));",
         argomento=casi, richiede=["percorsoProxy"],
     )
 
@@ -28,7 +28,6 @@ def _percorsi(casi):
 def test_il_proxy_inoltra_i_percorsi_della_scheda():
     casi = [
         [CLIENTE, [], ""],
-        [CLIENTE, ["azienda"], "piva=07863990961"],
         [CLIENTE, [CONFIG], ""],
         [CLIENTE, [CONFIG, "invii"], ""],
         [CLIENTE, [CONFIG, "invii", INVIO, "chiarisci"], ""],
@@ -36,7 +35,6 @@ def test_il_proxy_inoltra_i_percorsi_della_scheda():
     ]
     assert _percorsi(casi) == [
         BASE,
-        f"{BASE}/azienda?piva=07863990961",
         f"{BASE}/{CONFIG}",
         f"{BASE}/{CONFIG}/invii",
         f"{BASE}/{CONFIG}/invii/{INVIO}/chiarisci",
@@ -50,9 +48,7 @@ def test_il_proxy_non_inoltra_nient_altro():
         ["../" + CLIENTE, [], ""],
         [f"{CLIENTE}/..", [], ""],
         [CLIENTE, ["..", "..", "flags"], ""],
-        [CLIENTE, ["azienda"], ""],
-        [CLIENTE, ["azienda"], "piva=0786399096"],
-        [CLIENTE, ["azienda"], "piva=IT07863990961"],
+        [CLIENTE, ["azienda"], "piva=07863990961"],
         [CLIENTE, ["azienda", "x"], "piva=07863990961"],
         [CLIENTE, ["nonuuid"], ""],
         [CLIENTE, [CONFIG, "altro"], ""],
@@ -62,12 +58,6 @@ def test_il_proxy_non_inoltra_nient_altro():
         [CLIENTE, [CONFIG, "invii", INVIO, "annulla", "x"], ""],
     ]
     assert _percorsi(casi) == [None] * len(casi)
-
-
-def test_della_query_passa_solo_la_piva():
-    assert _percorsi([[CLIENTE, ["azienda"], "piva=07863990961&x=1&worker_key=abc"]]) == [
-        f"{BASE}/azienda?piva=07863990961"
-    ]
 
 
 def test_i_motivi_diventano_frasi():
@@ -103,6 +93,7 @@ def _config(**campi):
         "id": CONFIG, "piva": "07863990961", "invoicetronic_company_id": 1756, "invoicetronic_nome": "OFFSIDE SRL",
         "email_destinatario": "studio@x.test", "frequenza": "mensile", "data_partenza": "2026-07-15",
         "attivo": True, "consenso_ricevuto": True, "consenso_data": "2026-09-20", "consenso_email": "studio@x.test",
+        "consenso_at": "2026-09-20T08:05:00Z", "consenso_da": "titolare@x.test",
         "sospesa_at": None, "sospesa_motivo": None, "aggiornata_at": "2026-09-25T10:00:00Z",
         "sede_sdi_attiva": True, "ultimo_giorno_inviato": "2026-08-31", "invii": [],
     }
@@ -115,19 +106,16 @@ def _stato(config):
 
 
 @pytest.mark.parametrize("campi,testo,tono", [
-    ({}, "Attiva — inviato fino al 31/08/2026", "positivo"),
-    ({"ultimo_giorno_inviato": None}, "Attiva — il primo invio si lancia a mano", "incerto"),
+    ({}, "Attivo — inviato fino al 31/08/2026", "positivo"),
+    ({"ultimo_giorno_inviato": None}, "Attivo — il primo invio parte da solo alla prossima scadenza", "positivo"),
     ({"sede_sdi_attiva": False}, "In pausa: nessuna sede con SDI attivo", "incerto"),
     ({"sospesa_at": "2026-09-25T02:10:00Z", "sospesa_motivo": "piva_non_solo_del_cliente"},
      "Sospesa dalla guardia: La P.IVA risulta anche su un altro account.", "negativo"),
     ({"invii": [{"stato": "esito_incerto"}]},
      "Esito incerto da chiarire: nessun altro invio finché non lo chiudi", "incerto"),
-    ({"attivo": False}, "Spenta", "neutro"),
-    ({"attivo": False, "consenso_email": "vecchio@x.test", "data_partenza": None},
-     "Spenta — manca: consenso per questa email, data di partenza", "neutro"),
-    ({"attivo": False, "invoicetronic_company_id": None, "email_destinatario": None, "consenso_ricevuto": False,
-      "consenso_email": None},
-     "Spenta — manca: collegamento a Invoicetronic, email del commercialista, consenso per questa email", "neutro"),
+    ({"attivo": False}, "Disattivato", "neutro"),
+    ({"attivo": False, "consenso_ricevuto": False, "email_destinatario": None, "consenso_email": None},
+     "Il cliente non l'ha attivato dalle sue Impostazioni", "neutro"),
 ])
 def test_lo_stato_della_configurazione(campi, testo, tono):
     assert _stato(_config(**campi)) == {"testo": testo, "tono": tono}
@@ -156,19 +144,19 @@ def test_il_periodo_scelto_dall_admin():
     assert risultati[5] == "Indica il periodo."
 
 
-@pytest.mark.parametrize("config,atteso", [
-    ({"data_partenza": "2026-07-15", "ultimo_giorno_inviato": None},
-     {"tipo": "primo", "dal": "2026-07-15", "al": "2026-09-24"}),
-    ({"data_partenza": "2026-07-15", "ultimo_giorno_inviato": "2026-08-31"},
-     {"tipo": "ordinario", "dal": "2026-09-01", "al": "2026-09-24"}),
-    ({"data_partenza": "2024-01-01", "ultimo_giorno_inviato": None},
-     {"tipo": "primo", "dal": "2024-09-25", "al": "2026-09-24"}),
-    ({"data_partenza": "2026-07-15", "ultimo_giorno_inviato": "2026-09-24"}, None),
-    ({"data_partenza": None, "ultimo_giorno_inviato": None}, None),
+@pytest.mark.parametrize("campi,atteso", [
+    ({}, "Attivato dal cliente il 20/09/2026 alle 10:05 (titolare@x.test) → studio@x.test, il 1° di ogni mese"),
+    ({"consenso_da": None, "frequenza": "settimanale"},
+     "Attivato dal cliente il 20/09/2026 alle 10:05 → studio@x.test, ogni lunedì"),
+    # a mezzanotte e mezza di Roma in UTC e' ancora il giorno prima
+    ({"consenso_at": "2026-12-31T23:30:00Z"},
+     "Attivato dal cliente il 01/01/2027 alle 00:30 (titolare@x.test) → studio@x.test, il 1° di ogni mese"),
+    ({"consenso_ricevuto": False}, None),
+    ({"consenso_at": None}, None),
 ])
-def test_il_periodo_di_invia_ora_e_quello_del_worker(config, atteso):
-    assert esegui_ts(MODULO, "emit(m.periodoInviaOra(input, '2026-09-25'));", argomento=config,
-                     richiede=["periodoInviaOra"]) == atteso
+def test_chi_ha_attivato_quando_e_per_chi(campi, atteso):
+    assert esegui_ts(MODULO, "emit(m.rigaConsenso(input));", argomento=_config(**campi),
+                     richiede=["rigaConsenso"]) == atteso
 
 
 def test_date_e_byte_in_italiano():
@@ -179,18 +167,3 @@ def test_date_e_byte_in_italiano():
         " m.spostaGiorni('2026-03-01', -1), m.spostaGiorni('2026-12-31', 1)]);",
         richiede=["formattaData", "formattaByte", "spostaGiorni"],
     ) == ["05/09/2026", "05/09/2026", "—", "512 byte", "20 KB", "3,2 MB", "—", "2026-02-28", "2027-01-01"]
-
-
-
-def test_l_avviso_sulla_storia_di_una_configurazione_cancellata():
-    assert esegui_ts(
-        MODULO,
-        "emit([m.avvisoStoricoOrfano({'07863990961': '2026-08-31'}, '07863990961'),"
-        " m.avvisoStoricoOrfano({'07863990961': '2026-08-31'}, '12345678903'), m.avvisoStoricoOrfano(undefined, 'x')]);",
-        richiede=["avvisoStoricoOrfano"],
-    ) == [
-        "Una configurazione cancellata ha già inviato le fatture di questa P.IVA fino al 31/08/2026: "
-        "scegli la partenza dopo, o il commercialista le riceve due volte.",
-        None,
-        None,
-    ]

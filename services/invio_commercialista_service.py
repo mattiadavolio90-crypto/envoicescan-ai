@@ -8,12 +8,13 @@ a 4 processi, partirebbe 4 volte). Ogni minuto:
      email tentata → `esito_incerto`. Mai ritentate da sole, e ogni esito incerto
      si segnala una volta.
   2. pianificatore: solo fra le 02:00 e le 04:59 di Roma e con
-     INVIO_COMMERCIALISTA_ATTIVO=1. Una riga `ordinario` per ogni configurazione
-     attiva, non sospesa, gia' partita (il primo invio lo lancia l'admin), con una
-     sede SDI attiva e oltre la sua scadenza. Periodo: dal giorno dopo l'ultimo
-     inviato (mai oltre 2 anni) a ieri, sul giorno di ARRIVO su Invoicetronic. Un
-     tentativo per notte: se fallisce si riprova la notte dopo, col periodo che si
-     allarga da solo.
+     INVIO_COMMERCIALISTA_ATTIVO=1. Una riga per ogni configurazione attiva (la
+     attiva il cliente dalle Impostazioni), non sospesa, con una sede SDI attiva
+     e oltre la sua scadenza: `primo` dalla data di partenza se non ce n'e' ancora
+     uno riuscito, poi `ordinario` dal giorno dopo l'ultimo inviato (mai prima
+     della partenza, mai oltre 2 anni), fino a ieri, sul giorno di ARRIVO su
+     Invoicetronic. Un tentativo per notte: se fallisce si riprova la notte dopo,
+     col periodo che si allarga da solo.
   3. esecutore: prende le righe `richiesto` con un UPDATE condizionato ed esegue
      guardia → saldo → download → ZIP → Storage → email. Senza l'interruttore
      esegue solo le prove a vuoto.
@@ -120,19 +121,24 @@ def limite_due_anni(oggi: date) -> date:
         return oggi.replace(year=oggi.year - 2, day=28)
 
 
-def periodo_dovuto(frequenza: str, ultimo: Optional[date], oggi: date) -> Optional[Tuple[date, date]]:
-    """Il periodo da spedire oggi, o None. Senza un primo invio riuscito non si
-    parte: il primo lo lancia l'admin. Lo stesso calcolo del trigger del
-    registro (GREATEST(ultimo + 1, limite)), che rifiuta ogni altro inizio."""
-    if ultimo is None:
+def periodo_dovuto(frequenza: str, ultimo: Optional[date], oggi: date,
+                   partenza: Optional[date]) -> Optional[Tuple[str, date, date]]:
+    """(tipo, dal, al) da spedire oggi, o None. Lo stesso calcolo del trigger del
+    registro, che rifiuta ogni altro inizio: il primo parte da
+    GREATEST(partenza, limite), l'ordinario da GREATEST(ultimo + 1, limite,
+    partenza). La partenza fa da pavimento: chi riattiva «solo le nuove» non
+    riceve il buco di quando era spento."""
+    if partenza is None:
         return None
-    if ultimo + timedelta(days=1) >= ultima_scadenza(frequenza, oggi):
+    tipo = "primo" if ultimo is None else "ordinario"
+    cursore = partenza - timedelta(days=1) if ultimo is None else max(ultimo, partenza - timedelta(days=1))
+    if cursore + timedelta(days=1) >= ultima_scadenza(frequenza, oggi):
         return None
-    dal = max(ultimo + timedelta(days=1), limite_due_anni(oggi))
+    dal = max(cursore + timedelta(days=1), limite_due_anni(oggi))
     al = oggi - timedelta(days=1)
     if dal > al:
         return None
-    return dal, al
+    return tipo, dal, al
 
 
 def inizio_giorno_utc(giorno: date) -> datetime:
@@ -197,7 +203,7 @@ def _esiste(query) -> bool:
 # ── Pianificatore ───────────────────────────────────────────────────────────
 
 def pianifica(sb, adesso: datetime, avvisa: Callable[[str], bool]) -> int:
-    """Crea le righe `ordinario` dovute oggi. Ritorna quante. Il DB rifiuta i
+    """Crea le righe (`primo` o `ordinario`) dovute oggi. Ritorna quante. Il DB rifiuta i
     doppioni: qui si evita solo di provarci."""
     from utils.supabase_paging import fetch_all
 
@@ -205,13 +211,13 @@ def pianifica(sb, adesso: datetime, avvisa: Callable[[str], bool]) -> int:
     da_oggi = _iso(inizio_giorno_utc(oggi))
     configurazioni = fetch_all(
         sb.table(CONFIG)
-        .select("id,user_id,piva,invoicetronic_company_id,email_destinatario,frequenza")
+        .select("id,user_id,piva,invoicetronic_company_id,email_destinatario,frequenza,data_partenza")
         .eq("attivo", True).is_("sospesa_at", "null").order("id")
     )
     creati = 0
     for config in configurazioni:
         try:
-            if _crea_ordinario(sb, config, oggi, da_oggi, avvisa):
+            if _crea_dovuto(sb, config, oggi, da_oggi, avvisa):
                 creati += 1
         except Exception as exc:
             logger.warning("Invio commercialista: configurazione %s non pianificata (%s)",
@@ -219,12 +225,13 @@ def pianifica(sb, adesso: datetime, avvisa: Callable[[str], bool]) -> int:
     return creati
 
 
-def _crea_ordinario(sb, config: Dict[str, Any], oggi: date, da_oggi: str,
-                    avvisa: Callable[[str], bool]) -> bool:
+def _crea_dovuto(sb, config: Dict[str, Any], oggi: date, da_oggi: str,
+                 avvisa: Callable[[str], bool]) -> bool:
     cid = config["id"]
     ultimo = ultimo_giorno_inviato(sb, cid)
-    periodo = periodo_dovuto(config["frequenza"], ultimo, oggi)
-    if periodo is None:
+    partenza = _data(config.get("data_partenza"))
+    dovuto = periodo_dovuto(config["frequenza"], ultimo, oggi, partenza)
+    if dovuto is None:
         return False
     if _esiste(sb.table(INVII).select("id").eq("config_id", cid)
                .eq("richiesto_da", "notturno").gte("creata_at", da_oggi)):
@@ -232,7 +239,7 @@ def _crea_ordinario(sb, config: Dict[str, Any], oggi: date, da_oggi: str,
     if not sede_sdi_attiva(sb, config["user_id"], config["piva"]):
         logger.info("Invio commercialista %s sospeso: nessuna sede con SDI attivo", _breve(cid))
         return False
-    dal, al = periodo
+    tipo, dal, al = dovuto
     try:
         sb.table(INVII).insert({
             "config_id": cid,
@@ -240,7 +247,7 @@ def _crea_ordinario(sb, config: Dict[str, Any], oggi: date, da_oggi: str,
             "piva": config["piva"],
             "invoicetronic_company_id": config["invoicetronic_company_id"],
             "destinatario": config["email_destinatario"],
-            "tipo": "ordinario",
+            "tipo": tipo,
             "periodo_dal": dal.isoformat(),
             "periodo_al": al.isoformat(),
             "stato": "richiesto",
@@ -248,16 +255,150 @@ def _crea_ordinario(sb, config: Dict[str, Any], oggi: date, da_oggi: str,
         }).execute()
     except Exception as exc:
         # Il caso normale e' un invio ancora in volo o da chiarire (ici_uno_in_volo):
-        # e' il DB a dire di no, qui non si ricontrolla.
-        logger.info("Invio commercialista %s: riga non creata (%s)", _breve(cid), getattr(exc, "code", type(exc).__name__))
+        # e' il DB a dire di no, qui non si ricontrolla. Un vincolo violato invece
+        # non si risolve da solo la notte dopo: si vede nel log come avviso.
+        codice = getattr(exc, "code", type(exc).__name__)
+        livello = logger.warning if codice == RIFIUTO_DEL_DB else logger.info
+        livello("Invio commercialista %s: riga non creata (%s)", _breve(cid), codice)
         return False
-    if ultimo is not None and ultimo + timedelta(days=1) < dal:
+    if ultimo is not None and max(ultimo, partenza - timedelta(days=1)) + timedelta(days=1) < dal:
         avvisa(
             f"⚠️ Invio al commercialista (configurazione {_breve(cid)}): l'ultimo invio riuscito "
             f"risale a oltre 2 anni fa. Si riparte dal {_it(dal)}: il periodo precedente non e' piu' "
             "su Invoicetronic, va recuperato dal Cassetto fiscale."
         )
     return True
+
+
+# ── Attivazione dal cliente ─────────────────────────────────────────────────
+
+FREQUENZE = {
+    "settimanale": "ogni lunedì",
+    "quindicinale": "il 1° e il 16 di ogni mese",
+    "mensile": "il 1° di ogni mese",
+}
+# Il testo che il cliente autorizza premendo «Attiva». Si salva cosi' com'e',
+# compilato, in consenso_testo: e' la prova del consenso. Il frontend lo riceve
+# dal worker e lo mostra; non lo manda indietro, quindi il testo salvato non lo
+# decide il client.
+TESTO_AUTORIZZAZIONE = (
+    "Autorizzo OneFlux a inviare a {email}, {frequenza}, una copia dei file originali "
+    "(XML o P7M) delle fatture passive ricevute tramite OneFlux per la P.IVA {piva}, "
+    "con un link per scaricarle valido 30 giorni. È una copia di comodo: non sostituisce "
+    "il Cassetto fiscale dell'Agenzia delle Entrate né la conservazione a norma. Posso "
+    "disattivare l'invio in qualsiasi momento dalle Impostazioni."
+)
+
+
+def testo_autorizzazione(email: str, frequenza: str, piva: str) -> str:
+    return TESTO_AUTORIZZAZIONE.format(email=email, frequenza=FREQUENZE[frequenza], piva=piva)
+
+
+def prossimo_invio(frequenza: str, ultimo: Optional[date], partenza: Optional[date],
+                   adesso: datetime) -> Optional[date]:
+    """Il giorno in cui il pianificatore creera' il prossimo invio: il primo, da
+    oggi se la finestra notturna non e' ancora passata, in cui periodo_dovuto
+    risponde. Si contano al piu' 40 giorni (oltre la frequenza piu' lunga)."""
+    roma = a_roma(adesso)
+    giorno = roma.date() if roma.hour <= ORA_A else roma.date() + timedelta(days=1)
+    for _ in range(40):
+        if periodo_dovuto(frequenza, ultimo, giorno, partenza) is not None:
+            return giorno
+        giorno += timedelta(days=1)
+    return None
+
+
+class AziendaNonTrovata(Exception):
+    """Su Invoicetronic la P.IVA non c'e': l'azienda nasce alla prima fattura."""
+
+
+class AziendaIncoerente(Exception):
+    """Invoicetronic risponde con un'azienda diversa da quella delle fatture gia'
+    arrivate: non si collega, va chiarito col supporto."""
+
+    def __init__(self, company_id: int, viste: List[int]):
+        super().__init__(f"azienda {company_id}, fatture arrivate da {viste}")
+        self.company_id = company_id
+        self.viste = viste
+
+
+def company_gia_viste(sb, piva: str) -> Tuple[set, int]:
+    """I company_id che il webhook ha gia' scritto per questa P.IVA, e quante righe
+    arrivate non lo riportano (con quelle il confronto non si puo' fare)."""
+    from utils.supabase_paging import fetch_all
+
+    righe = fetch_all(
+        sb.table("fatture_queue").select("id,payload_meta")
+        .eq("source", "invoicetronic").eq("piva_raw", piva).order("id")
+    )
+    viste: set = set()
+    senza = 0
+    for riga in righe:
+        valore = (riga.get("payload_meta") or {}).get("invoicetronic_company_id")
+        if isinstance(valore, int) and not isinstance(valore, bool):
+            viste.add(valore)
+        else:
+            senza += 1
+    return viste, senza
+
+
+def cerca_azienda(sb, invoicetronic, piva: str) -> Dict[str, Any]:
+    """L'azienda Invoicetronic di questa P.IVA, confrontata con le fatture gia'
+    arrivate. Solleva ErroreInvoicetronic, AziendaNonTrovata, AziendaIncoerente."""
+    azienda = invoicetronic.azienda_per_piva(piva)
+    if azienda is None:
+        raise AziendaNonTrovata(piva)
+    viste, senza_company = company_gia_viste(sb, piva)
+    if viste and viste != {azienda["id"]}:
+        raise AziendaIncoerente(azienda["id"], sorted(viste))
+    return {"company_id": azienda["id"], "nome": azienda.get("name"), "vat": azienda.get("vat"),
+            "gia_viste": sorted(viste), "senza_company": senza_company}
+
+
+def storico_orfano(sb, pive: List[str]) -> Dict[str, str]:
+    """Fin dove una configurazione ormai cancellata ha gia' spedito, per P.IVA."""
+    from utils.supabase_paging import fetch_all
+
+    if not pive:
+        return {}
+    righe = fetch_all(
+        sb.table(INVII).select("id,piva,periodo_al")
+        .is_("config_id", "null").in_("piva", pive)
+        .in_("tipo", ["primo", "ordinario"]).in_("stato", ["inviato", "esito_incerto"]).order("id")
+    )
+    storico: Dict[str, str] = {}
+    for riga in righe:
+        al = str(riga["periodo_al"])[:10]
+        storico[riga["piva"]] = max(storico.get(riga["piva"], al), al)
+    return storico
+
+
+def prima_fattura_arrivata(sb, piva: str) -> Optional[date]:
+    """Il giorno (di Roma) in cui e' arrivata la prima fattura SDI per questa P.IVA."""
+    righe = (
+        sb.table("fatture_queue").select("created_at")
+        .eq("source", "invoicetronic").eq("piva_raw", piva)
+        .order("created_at").limit(1).execute().data
+    )
+    return a_roma(_istante(righe[0]["created_at"])).date() if righe else None
+
+
+def recupero_dal(ultimo: Optional[date], prima: Optional[date], orfano: Optional[date],
+                 oggi: date) -> Optional[date]:
+    """Da quando partono le fatture «gia' ricevute», o None se non ce ne sono.
+    Dopo un invio riuscito: dal giorno dopo (il buco di quando era spento).
+    Altrimenti dalla prima fattura arrivata. Mai prima dello storico di una
+    configurazione cancellata, mai oltre i 2 anni, sempre prima di oggi."""
+    if ultimo is not None:
+        dal = ultimo + timedelta(days=1)
+    elif prima is not None:
+        dal = prima
+    else:
+        return None
+    if orfano is not None:
+        dal = max(dal, orfano + timedelta(days=1))
+    dal = max(dal, limite_due_anni(oggi))
+    return dal if dal < oggi else None
 
 
 # ── Dipendenze esterne (sostituibili nei test) ──────────────────────────────

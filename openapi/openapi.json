@@ -18774,7 +18774,7 @@
           "Admin"
         ],
         "summary": "Invio Commercialista Collega",
-        "description": "Crea la configurazione (spenta). Il company_id lo decide Invoicetronic,\nnon il body: il body dice solo quale azienda l'admin ha visto e confermato.",
+        "description": "Crea la configurazione spenta, senza email ne' consenso: serve alla prova a\nvuoto prima che il cliente attivi. Il company_id lo decide Invoicetronic.",
         "operationId": "invio_commercialista_collega_api_admin_clienti__cliente_id__invio_commercialista_post",
         "parameters": [
           {
@@ -18855,98 +18855,13 @@
         }
       }
     },
-    "/api/admin/clienti/{cliente_id}/invio-commercialista/azienda": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Invio Commercialista Cerca Azienda",
-        "operationId": "invio_commercialista_cerca_azienda_api_admin_clienti__cliente_id__invio_commercialista_azienda_get",
-        "parameters": [
-          {
-            "name": "cliente_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Cliente Id"
-            }
-          },
-          {
-            "name": "piva",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Piva"
-            }
-          },
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Invio Commercialista Cerca Azienda Api Admin Clienti  Cliente Id  Invio Commercialista Azienda Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/admin/clienti/{cliente_id}/invio-commercialista/{config_id}": {
       "patch": {
         "tags": [
           "Admin"
         ],
         "summary": "Invio Commercialista Modifica",
-        "description": "In tre passi, perche' il trigger azzera consenso e attivazione quando\ncambia l'email: prima i dati, poi il consenso (per l'email appena scritta),\npoi accensione o ripresa.",
+        "description": "Spegnere in emergenza, o riprendere dopo una sospensione della guardia.\nAccendere no: l'invio lo attiva il cliente, ed e' il suo consenso.",
         "operationId": "invio_commercialista_modifica_api_admin_clienti__cliente_id__invio_commercialista__config_id__patch",
         "parameters": [
           {
@@ -19042,7 +18957,7 @@
           "Admin"
         ],
         "summary": "Invio Commercialista Richiedi",
-        "description": "Scrive la richiesta. «Invia ora» e' il primo invio (dalla data di partenza)\nfinche' non ce n'e' uno riuscito, poi il periodo maturato dall'ultimo.",
+        "description": "Scrive la richiesta di una prova a vuoto o di un reinvio. Il primo invio e\ni successivi li crea il pianificatore notturno. Fine entro ieri, inizio entro\n2 anni, inizio prima della fine, reinvio dentro il gia' inviato: li\ncontrollano i vincoli del registro, e _rifiuto li dice con queste parole.",
         "operationId": "invio_commercialista_richiedi_api_admin_clienti__cliente_id__invio_commercialista__config_id__invii_post",
         "parameters": [
           {
@@ -19314,6 +19229,226 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Invio Commercialista Annulla Api Admin Clienti  Cliente Id  Invio Commercialista  Config Id  Invii  Invio Id  Annulla Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/invio-commercialista": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Invio Commercialista Cliente Stato",
+        "operationId": "invio_commercialista_cliente_stato_api_account_invio_commercialista_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Invio Commercialista Cliente Stato Api Account Invio Commercialista Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Invio Commercialista Cliente Attiva",
+        "description": "Attiva (o modifica) l'invio per una P.IVA. In tre passi, perche' il trigger\nazzera consenso e attivazione quando cambia l'email: prima i dati, poi il\nconsenso per l'email appena scritta, poi l'accensione.",
+        "operationId": "invio_commercialista_cliente_attiva_api_account_invio_commercialista_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttivaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Invio Commercialista Cliente Attiva Api Account Invio Commercialista Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/invio-commercialista/disattiva": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Invio Commercialista Cliente Disattiva",
+        "operationId": "invio_commercialista_cliente_disattiva_api_account_invio_commercialista_disattiva_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisattivaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Invio Commercialista Cliente Disattiva Api Account Invio Commercialista Disattiva Post"
                 }
               }
             }
@@ -20659,6 +20794,44 @@
         ],
         "title": "AssociazioneItem"
       },
+      "AttivaBody": {
+        "properties": {
+          "piva": {
+            "type": "string",
+            "title": "Piva"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "frequenza": {
+            "type": "string",
+            "enum": [
+              "settimanale",
+              "quindicinale",
+              "mensile"
+            ],
+            "title": "Frequenza"
+          },
+          "autorizzo": {
+            "type": "boolean",
+            "title": "Autorizzo"
+          },
+          "includi_precedenti": {
+            "type": "boolean",
+            "title": "Includi Precedenti",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "piva",
+          "email",
+          "frequenza",
+          "autorizzo"
+        ],
+        "title": "AttivaBody"
+      },
       "AutoReviewBody": {
         "properties": {
           "cliente_id": {
@@ -21561,16 +21734,11 @@
           "piva": {
             "type": "string",
             "title": "Piva"
-          },
-          "company_id": {
-            "type": "integer",
-            "title": "Company Id"
           }
         },
         "type": "object",
         "required": [
-          "piva",
-          "company_id"
+          "piva"
         ],
         "title": "CollegaBody"
       },
@@ -22241,6 +22409,19 @@
           "top_categorie"
         ],
         "title": "DashboardStats"
+      },
+      "DisattivaBody": {
+        "properties": {
+          "piva": {
+            "type": "string",
+            "title": "Piva"
+          }
+        },
+        "type": "object",
+        "required": [
+          "piva"
+        ],
+        "title": "DisattivaBody"
       },
       "DisiscrizioneBody": {
         "properties": {
@@ -23472,39 +23653,26 @@
             "type": "string",
             "enum": [
               "prova",
-              "invia_ora",
               "reinvio"
             ],
             "title": "Tipo"
           },
           "dal": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "date",
             "title": "Dal"
           },
           "al": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "format": "date",
             "title": "Al"
           }
         },
         "type": "object",
         "required": [
-          "tipo"
+          "tipo",
+          "dal",
+          "al"
         ],
         "title": "InvioBody"
       },
@@ -24444,62 +24612,6 @@
       },
       "ModificaBody": {
         "properties": {
-          "email_destinatario": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email Destinatario"
-          },
-          "frequenza": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "settimanale",
-                  "quindicinale",
-                  "mensile"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Frequenza"
-          },
-          "data_partenza": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data Partenza"
-          },
-          "consenso_data": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Consenso Data"
-          },
-          "revoca_consenso": {
-            "type": "boolean",
-            "title": "Revoca Consenso",
-            "default": false
-          },
           "attivo": {
             "anyOf": [
               {

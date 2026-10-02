@@ -1,7 +1,9 @@
 // Invio degli XML al commercialista: la logica pura della scheda admin
-// (components/admin/invio-commercialista.tsx). Decide il worker e rifiuta il DB;
-// qui solo cosa mostrare, con quali parole, e quali percorsi il proxy
-// (app/api/admin/clienti/[id]/invio-commercialista/[[...percorso]]) puo' inoltrare.
+// (components/admin/invio-commercialista.tsx). Dal 02/10 l'invio lo attiva il
+// cliente dalle Impostazioni: l'admin vede, prova, reinvia, spegne. Decide il
+// worker e rifiuta il DB; qui solo cosa mostrare, con quali parole, e quali
+// percorsi il proxy (app/api/admin/clienti/[id]/invio-commercialista/[[...percorso]])
+// puo' inoltrare.
 
 export type StatoInvio =
   | "richiesto" | "in_corso" | "inviato" | "errore" | "bloccato" | "prova_ok" | "esito_incerto";
@@ -39,6 +41,8 @@ export interface Configurazione {
   consenso_ricevuto: boolean;
   consenso_data: string | null;
   consenso_email: string | null;
+  consenso_at: string | null;
+  consenso_da: string | null;
   sospesa_at: string | null;
   sospesa_motivo: string | null;
   aggiornata_at: string;
@@ -51,16 +55,7 @@ export interface StatoInvioCommercialista {
   oggi: string;
   limite_due_anni: string;
   piva_disponibili: string[];
-  /** P.IVA → ultimo giorno gia' spedito da una configurazione ormai cancellata. */
-  storico_orfano: Record<string, string>;
   configurazioni: Configurazione[];
-}
-
-export function avvisoStoricoOrfano(storico: Record<string, string> | undefined, piva: string): string | null {
-  const fino = storico?.[piva];
-  return fino
-    ? `Una configurazione cancellata ha già inviato le fatture di questa P.IVA fino al ${formattaData(fino)}: scegli la partenza dopo, o il commercialista le riceve due volte.`
-    : null;
 }
 
 export const DUE_ANNI =
@@ -94,9 +89,9 @@ export const ETICHETTA_TIPO: Record<TipoInvio, string> = {
 };
 
 export const ETICHETTA_FREQUENZA: Record<Frequenza, string> = {
-  settimanale: "Settimanale (il lunedì)",
-  quindicinale: "Quindicinale (l'1 e il 16)",
-  mensile: "Mensile (l'1)",
+  settimanale: "ogni lunedì",
+  quindicinale: "il 1° e il 16 di ogni mese",
+  mensile: "il 1° di ogni mese",
 };
 
 // I motivi scritti dal worker (services/invio_commercialista_service.py) e i
@@ -146,18 +141,6 @@ export function testoMotivo(motivo: string | null | undefined): string {
   return dettaglio ? `${MOTIVI[m[1]]} (${dettaglio})` : MOTIVI[m[1]];
 }
 
-/** Cosa manca perché il DB lasci accendere la configurazione (icc_attivabile_chk). */
-export function requisitiMancanti(c: Configurazione): string[] {
-  const mancano: string[] = [];
-  if (c.invoicetronic_company_id == null) mancano.push("collegamento a Invoicetronic");
-  if (!c.email_destinatario) mancano.push("email del commercialista");
-  if (!c.consenso_ricevuto || !c.email_destinatario || c.consenso_email !== c.email_destinatario) {
-    mancano.push("consenso per questa email");
-  }
-  if (!c.data_partenza) mancano.push("data di partenza");
-  return mancano;
-}
-
 export function statoConfigurazione(c: Configurazione): { testo: string; tono: Tono } {
   if (c.sospesa_at) {
     return { testo: `Sospesa dalla guardia: ${testoMotivo(c.sospesa_motivo)}`, tono: "negativo" };
@@ -166,12 +149,28 @@ export function statoConfigurazione(c: Configurazione): { testo: string; tono: T
     return { testo: "Esito incerto da chiarire: nessun altro invio finché non lo chiudi", tono: "incerto" };
   }
   if (!c.attivo) {
-    const mancano = requisitiMancanti(c);
-    return { testo: mancano.length ? `Spenta — manca: ${mancano.join(", ")}` : "Spenta", tono: "neutro" };
+    return {
+      testo: c.consenso_ricevuto ? "Disattivato" : "Il cliente non l'ha attivato dalle sue Impostazioni",
+      tono: "neutro",
+    };
   }
   if (!c.sede_sdi_attiva) return { testo: "In pausa: nessuna sede con SDI attivo", tono: "incerto" };
-  if (!c.ultimo_giorno_inviato) return { testo: "Attiva — il primo invio si lancia a mano", tono: "incerto" };
-  return { testo: `Attiva — inviato fino al ${formattaData(c.ultimo_giorno_inviato)}`, tono: "positivo" };
+  if (!c.ultimo_giorno_inviato) {
+    return { testo: "Attivo — il primo invio parte da solo alla prossima scadenza", tono: "positivo" };
+  }
+  return { testo: `Attivo — inviato fino al ${formattaData(c.ultimo_giorno_inviato)}`, tono: "positivo" };
+}
+
+// Chi ha attivato, quando, per chi: la prova del consenso, a parole.
+export function rigaConsenso(c: Configurazione): string | null {
+  if (!c.consenso_ricevuto || !c.consenso_at) return null;
+  const quando = new Date(c.consenso_at);
+  const giorno = quando.toLocaleDateString("it-IT", {
+    timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric",
+  });
+  const ora = quando.toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
+  const chi = c.consenso_da ? ` (${c.consenso_da})` : "";
+  return `Attivato dal cliente il ${giorno} alle ${ora}${chi} → ${c.consenso_email}, ${ETICHETTA_FREQUENZA[c.frequenza]}`;
 }
 
 export function spostaGiorni(iso: string, giorni: number): string {
@@ -196,29 +195,6 @@ export function erroreDelPeriodo(dal: string, al: string, oggi: string): string 
   return null;
 }
 
-/** Il periodo che «Invia ora» chiederà: dalla data di partenza finché non c'è un
- * primo invio riuscito, poi dal giorno dopo l'ultimo inviato. Fino a ieri. */
-export function periodoInviaOra(
-  c: Pick<Configurazione, "data_partenza" | "ultimo_giorno_inviato">,
-  oggi: string,
-): { tipo: "primo" | "ordinario"; dal: string; al: string } | null {
-  const limite = limiteDueAnni(oggi);
-  const al = spostaGiorni(oggi, -1);
-  let tipo: "primo" | "ordinario";
-  let dal: string;
-  if (c.ultimo_giorno_inviato) {
-    tipo = "ordinario";
-    dal = spostaGiorni(c.ultimo_giorno_inviato, 1);
-  } else if (c.data_partenza) {
-    tipo = "primo";
-    dal = c.data_partenza;
-  } else {
-    return null;
-  }
-  if (dal < limite) dal = limite;
-  return dal > al ? null : { tipo, dal, al };
-}
-
 export function formattaData(iso: string | null | undefined): string {
   if (!iso) return "—";
   const [a, m, g] = iso.slice(0, 10).split("-");
@@ -236,15 +212,11 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Il percorso del worker per una richiesta al proxy, o null se non e' uno dei
  * percorsi di questa scheda. Il proxy non inoltra nient'altro: niente `..`,
- * niente segmenti arbitrari, e della query solo la P.IVA a 11 cifre. */
-export function percorsoProxy(clienteId: string, segmenti: string[], query: URLSearchParams): string | null {
+ * niente segmenti arbitrari, nessuna query. */
+export function percorsoProxy(clienteId: string, segmenti: string[]): string | null {
   if (!ID.test(clienteId)) return null;
   const base = `/api/admin/clienti/${clienteId}/invio-commercialista`;
   if (segmenti.length === 0) return base;
-  if (segmenti.length === 1 && segmenti[0] === "azienda") {
-    const piva = query.get("piva") ?? "";
-    return /^\d{11}$/.test(piva) ? `${base}/azienda?piva=${piva}` : null;
-  }
   const [config, ...resto] = segmenti;
   if (!ID.test(config)) return null;
   if (resto.length === 0) return `${base}/${config}`;

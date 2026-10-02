@@ -390,3 +390,30 @@ def test_la_riga_di_invoicetronic_dice_la_rilettura_e_la_conservazione() -> None
     assert "rilettura" in riga and f"{anni} anni" in riga, (
         f"La privacy non dice che gli originali si rileggono da Invoicetronic, che li tiene {anni} anni."
     )
+
+
+MIGRATION_DAL_CLIENTE = next(
+    (Path(__file__).resolve().parents[1] / "supabase" / "migrations").glob("*_invio_commercialista_dal_cliente.sql")
+)
+
+
+@pytest.mark.parametrize("sorgente", [PRIVACY_TSX, TERMINI_TSX], ids=lambda p: p.parent.name)
+def test_l_invio_al_commercialista_lo_attiva_il_cliente_dall_account(sorgente: Path) -> None:
+    """Dal 02/10/2026 non c'e' piu' una clausola firmata: l'autorizzazione e'
+    l'attivazione dalle Impostazioni, salvata col suo testo (consenso_testo).
+    Privacy e termini devono dire questo, non «richiesta scritta»."""
+    assert "consenso_testo" in _leggi(MIGRATION_DAL_CLIENTE), "il test non misura piu' nulla"
+    from services.routers import invio_commercialista_cliente as rotte
+    assert rotte.BASE == "/api/account/invio-commercialista"
+    testo = " ".join(_senza_commenti_jsx(_leggi(sorgente)).split())
+    assert "richiesta scritta" not in testo
+    assert "impostazioni del proprio account" in testo
+
+
+def test_la_privacy_dichiara_la_prova_dell_autorizzazione() -> None:
+    """Il worker salva quando, chi e quale testo: sono dati personali trattati."""
+    voce = " ".join(_voce(_senza_commenti_jsx(_leggi(PRIVACY_TSX)), "Dati del commercialista").split())
+    for dato in ("data e ora dell&apos;attivazione", "indirizzo email dell&apos;account",
+                 "testo dell&apos;autorizzazione"):
+        assert dato in voce, f"La privacy non dichiara: {dato}"
+    assert "consenso_at" in _leggi(MIGRATION_DAL_CLIENTE) and "consenso_da" in _leggi(MIGRATION_DAL_CLIENTE)

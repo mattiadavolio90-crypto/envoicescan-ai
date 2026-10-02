@@ -11,7 +11,7 @@ async function inoltra(req: NextRequest, { params }: Ctx, metodo: "GET" | "POST"
   const token = await getToken();
   if (!token) return unauthorized();
   const { id, percorso } = await params;
-  const path = percorsoProxy(id, percorso ?? [], req.nextUrl.searchParams);
+  const path = percorsoProxy(id, percorso ?? []);
   if (!path) return NextResponse.json({ detail: "Percorso non valido" }, { status: 400 });
   try {
     const res = await fetch(`${WORKER_URL}${path}`, {

@@ -1,13 +1,14 @@
-"""Invio degli XML al commercialista — l'area admin (fase D del piano, 25/09/2026).
+"""Invio degli XML al commercialista — l'area admin (fase D del piano, 25/09/2026;
+semplificata il 02/10/2026).
 
-Dalla scheda cliente l'admin:
-  - collega una P.IVA del cliente a Invoicetronic: il company_id si CERCA
-    (`GET /company/IT<piva>`), si confronta con quello delle fatture gia'
-    arrivate e si salva solo se coincide con quello che l'admin ha visto;
-  - scrive email del commercialista, frequenza, data di partenza, e registra il
-    consenso (vale per l'email di quel momento);
-  - lancia la prova a vuoto, l'invio (il primo o, dopo, quello del periodo
-    maturato) e i reinvii;
+Dal 02/10 l'invio lo attiva il CLIENTE dalle Impostazioni
+(routers/invio_commercialista_cliente.py): email, frequenza e consenso sono
+suoi, e il primo invio lo crea il pianificatore. Dalla scheda cliente l'admin:
+  - vede chi l'ha attivato, quando, per chi, e il registro;
+  - lancia la prova a vuoto (collegando la P.IVA a Invoicetronic, se il cliente
+    non l'ha ancora fatto: il company_id si CERCA, mai scritto a mano) e i reinvii;
+  - spegne in emergenza e riprende dopo una sospensione della guardia. Non
+    accende: il consenso e' del cliente;
   - chiarisce gli esiti incerti e annulla una richiesta non ancora presa.
 
 Nessun endpoint spedisce: scrivono una riga `richiesto` nel registro, che
@@ -19,8 +20,8 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date, timedelta
-from typing import Any, Dict, List, Literal, Optional, Set
+from datetime import date
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -60,8 +61,7 @@ DUE_ANNI = (
 )
 # I vincoli della migration, per nome: (status, frase per l'admin).
 _VINCOLI = {
-    "icc_attivabile_chk": (400, "Per attivare servono l'email del commercialista, il consenso per quell'email, "
-                                "la data di partenza e il collegamento a Invoicetronic."),
+    "icc_attivabile_chk": (400, "Per riprendere serve che il cliente abbia attivato l'invio."),
     "icc_email_chk": (400, "Email non valida."),
     "icc_frequenza_chk": (400, "Frequenza non valida."),
     "ici_mai_oggi_chk": (400, "Il periodo deve finire al piu' tardi ieri."),
@@ -124,48 +124,27 @@ def _piva_del_cliente(sb, cliente_id: str) -> List[str]:
     return sorted(p for p in tutte if isinstance(p, str) and _PIVA.match(p))
 
 
-def _company_gia_viste(sb, piva: str) -> tuple[Set[int], int]:
-    """I company_id che il webhook ha gia' scritto per questa P.IVA, e quante righe
-    arrivate non lo riportano (con quelle il confronto non si puo' fare)."""
-    righe = fetch_all(
-        sb.table("fatture_queue").select("id,payload_meta")
-        .eq("source", "invoicetronic").eq("piva_raw", piva).order("id")
-    )
-    viste: Set[int] = set()
-    senza = 0
-    for riga in righe:
-        valore = (riga.get("payload_meta") or {}).get("invoicetronic_company_id")
-        if isinstance(valore, int) and not isinstance(valore, bool):
-            viste.add(valore)
-        else:
-            senza += 1
-    return viste, senza
-
-
 def _trova_azienda(sb, cliente_id: str, piva: str) -> Dict[str, Any]:
     from services.invoicetronic_client import ErroreInvoicetronic
 
     if not _PIVA.match(piva or "") or piva not in _piva_del_cliente(sb, cliente_id):
         raise HTTPException(status_code=400, detail="La P.IVA non e' di una sede di questo cliente")
     try:
-        azienda = _client_invoicetronic().azienda_per_piva(piva)
+        return svc.cerca_azienda(sb, _client_invoicetronic(), piva)
     except ErroreInvoicetronic as exc:
         raise HTTPException(status_code=503, detail=f"Invoicetronic non risponde come dovrebbe: {exc}") from None
-    if azienda is None:
+    except svc.AziendaNonTrovata:
         raise HTTPException(
             status_code=404,
             detail="Su Invoicetronic questa P.IVA non c'e' ancora: l'azienda nasce all'arrivo della prima "
                    "fattura sul codice destinatario di OneFlux.",
-        )
-    viste, senza_company = _company_gia_viste(sb, piva)
-    if viste and viste != {azienda["id"]}:
+        ) from None
+    except svc.AziendaIncoerente as exc:
         raise HTTPException(
             status_code=409,
-            detail=f"Invoicetronic risponde con l'azienda {azienda['id']}, ma le fatture gia' arrivate per "
-                   f"questa P.IVA vengono da {sorted(viste)}: non si collega, va chiarito col supporto.",
-        )
-    return {"company_id": azienda["id"], "nome": azienda.get("name"), "vat": azienda.get("vat"),
-            "gia_viste": sorted(viste), "senza_company": senza_company}
+            detail=f"Invoicetronic risponde con l'azienda {exc.company_id}, ma le fatture gia' arrivate per "
+                   f"questa P.IVA vengono da {exc.viste}: non si collega, va chiarito col supporto.",
+        ) from None
 
 
 # ── Letture ─────────────────────────────────────────────────────────────────
@@ -202,55 +181,25 @@ def invio_commercialista_stato(cliente_id: str, admin_user: dict = Depends(_veri
         "oggi": oggi.isoformat(),
         "limite_due_anni": svc.limite_due_anni(oggi).isoformat(),
         "piva_disponibili": [p for p in pive if p not in collegate],
-        "storico_orfano": _storico_orfano(sb, sorted(set(pive) | collegate)),
         "configurazioni": risultato,
     }
-
-
-def _storico_orfano(sb, pive: List[str]) -> Dict[str, str]:
-    """Fin dove una configurazione ormai cancellata ha gia' spedito, per P.IVA: chi
-    ricollega quella P.IVA non deve scegliere una partenza che rispedisce."""
-    if not pive:
-        return {}
-    righe = fetch_all(
-        sb.table(svc.INVII).select("id,piva,periodo_al")
-        .is_("config_id", "null").in_("piva", pive)
-        .in_("tipo", ["primo", "ordinario"]).in_("stato", ["inviato", "esito_incerto"]).order("id")
-    )
-    storico: Dict[str, str] = {}
-    for riga in righe:
-        al = str(riga["periodo_al"])[:10]
-        storico[riga["piva"]] = max(storico.get(riga["piva"], al), al)
-    return storico
-
-
-@router.get(BASE + "/azienda", tags=["Admin"])
-def invio_commercialista_cerca_azienda(
-    cliente_id: str, piva: str, admin_user: dict = Depends(_verify_admin),
-) -> Dict[str, Any]:
-    sb = get_supabase_client()
-    _cliente(sb, cliente_id)
-    return _trova_azienda(sb, cliente_id, piva.strip())
 
 
 # ── Configurazione ──────────────────────────────────────────────────────────
 
 class CollegaBody(BaseModel):
     piva: str
-    company_id: int
 
 
 @router.post(BASE, tags=["Admin"])
 def invio_commercialista_collega(
     cliente_id: str, body: CollegaBody, admin_user: dict = Depends(_verify_admin),
 ) -> Dict[str, Any]:
-    """Crea la configurazione (spenta). Il company_id lo decide Invoicetronic,
-    non il body: il body dice solo quale azienda l'admin ha visto e confermato."""
+    """Crea la configurazione spenta, senza email ne' consenso: serve alla prova a
+    vuoto prima che il cliente attivi. Il company_id lo decide Invoicetronic."""
     sb = get_supabase_client()
     _cliente(sb, cliente_id)
     azienda = _trova_azienda(sb, cliente_id, body.piva.strip())
-    if azienda["company_id"] != body.company_id:
-        raise HTTPException(status_code=409, detail="Invoicetronic ora risponde con un'altra azienda: ricarica e ricontrolla.")
     try:
         righe = sb.table(svc.CONFIG).insert({
             "user_id": cliente_id,
@@ -268,11 +217,6 @@ def invio_commercialista_collega(
 
 
 class ModificaBody(BaseModel):
-    email_destinatario: Optional[str] = None
-    frequenza: Optional[Literal["settimanale", "quindicinale", "mensile"]] = None
-    data_partenza: Optional[date] = None
-    consenso_data: Optional[date] = None
-    revoca_consenso: bool = False
     attivo: Optional[bool] = None
     riprendi: bool = False
 
@@ -281,106 +225,48 @@ class ModificaBody(BaseModel):
 def invio_commercialista_modifica(
     cliente_id: str, config_id: str, body: ModificaBody, admin_user: dict = Depends(_verify_admin),
 ) -> Dict[str, Any]:
-    """In tre passi, perche' il trigger azzera consenso e attivazione quando
-    cambia l'email: prima i dati, poi il consenso (per l'email appena scritta),
-    poi accensione o ripresa."""
+    """Spegnere in emergenza, o riprendere dopo una sospensione della guardia.
+    Accendere no: l'invio lo attiva il cliente, ed e' il suo consenso."""
     sb = get_supabase_client()
-    config = _configurazione(sb, cliente_id, config_id)
-    oggi = _oggi()
-
-    dati: Dict[str, Any] = {}
-    if body.email_destinatario is not None:
-        email = body.email_destinatario.strip().lower()
-        dati["email_destinatario"] = email or None
-    if body.frequenza is not None:
-        dati["frequenza"] = body.frequenza
-    if body.data_partenza is not None:
-        if body.data_partenza < svc.limite_due_anni(oggi):
-            raise HTTPException(status_code=400, detail=DUE_ANNI)
-        if body.data_partenza >= oggi:
-            raise HTTPException(status_code=400, detail="La data di partenza deve essere passata.")
-        dati["data_partenza"] = body.data_partenza.isoformat()
-    if body.revoca_consenso:
-        dati.update({"consenso_ricevuto": False, "consenso_data": None, "consenso_email": None, "attivo": False})
-
-    passi: List[Dict[str, Any]] = [dati] if dati else []
-    if body.consenso_data is not None:
-        if body.consenso_data > oggi:
-            raise HTTPException(status_code=400, detail="Il consenso non puo' avere una data futura.")
-        email = dati.get("email_destinatario", config.get("email_destinatario"))
-        if not email:
-            raise HTTPException(status_code=400, detail="Prima scrivi l'email del commercialista: il consenso vale per quell'email.")
-        passi.append({"consenso_ricevuto": True, "consenso_data": body.consenso_data.isoformat(), "consenso_email": email})
-    finale: Dict[str, Any] = {}
-    if body.attivo is not None:
-        finale["attivo"] = body.attivo
+    _configurazione(sb, cliente_id, config_id)
+    if body.attivo is True:
+        raise HTTPException(status_code=400, detail="L'invio lo attiva il cliente dalle sue Impostazioni: "
+                                                    "e' la sua autorizzazione.")
+    campi: Dict[str, Any] = {}
+    if body.attivo is False:
+        campi["attivo"] = False
     if body.riprendi:
-        finale.update({"sospesa_at": None, "sospesa_motivo": None})
-    if finale:
-        passi.append(finale)
-    if not passi:
+        campi.update({"sospesa_at": None, "sospesa_motivo": None})
+    if not campi:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
-
-    for passo in passi:
-        try:
-            sb.table(svc.CONFIG).update(passo).eq("id", config_id).eq("user_id", cliente_id).execute()
-        except Exception as exc:
-            raise _rifiuto(exc) from None
+    try:
+        sb.table(svc.CONFIG).update(campi).eq("id", config_id).eq("user_id", cliente_id).execute()
+    except Exception as exc:
+        raise _rifiuto(exc) from None
     logger.info("invio_commercialista: configurazione %s aggiornata (%s) | admin=%s",
-                    config_id[:8], sorted(k for p in passi for k in p), admin_user.get("email"))
+                    config_id[:8], sorted(campi), admin_user.get("email"))
     return _configurazione(sb, cliente_id, config_id)
 
 
 # ── Invii ───────────────────────────────────────────────────────────────────
 
 class InvioBody(BaseModel):
-    tipo: Literal["prova", "invia_ora", "reinvio"]
-    dal: Optional[date] = None
-    al: Optional[date] = None
+    tipo: Literal["prova", "reinvio"]
+    dal: date
+    al: date
 
 
 @router.post(BASE + "/{config_id}/invii", tags=["Admin"])
 def invio_commercialista_richiedi(
     cliente_id: str, config_id: str, body: InvioBody, admin_user: dict = Depends(_verify_admin),
 ) -> Dict[str, Any]:
-    """Scrive la richiesta. «Invia ora» e' il primo invio (dalla data di partenza)
-    finche' non ce n'e' uno riuscito, poi il periodo maturato dall'ultimo."""
+    """Scrive la richiesta di una prova a vuoto o di un reinvio. Il primo invio e
+    i successivi li crea il pianificatore notturno. Fine entro ieri, inizio entro
+    2 anni, inizio prima della fine, reinvio dentro il gia' inviato: li
+    controllano i vincoli del registro, e _rifiuto li dice con queste parole."""
     sb = get_supabase_client()
     config = _configurazione(sb, cliente_id, config_id)
-    if config.get("invoicetronic_company_id") is None:
-        raise HTTPException(status_code=400, detail="Prima collega la P.IVA a Invoicetronic.")
-    oggi = _oggi()
-    ieri, limite = oggi - timedelta(days=1), svc.limite_due_anni(oggi)
-
-    if body.tipo == "invia_ora":
-        if (sb.table(svc.INVII).select("id").eq("config_id", config_id)
-                .in_("stato", ["richiesto", "in_corso", "esito_incerto"]).limit(1).execute().data):
-            raise HTTPException(status_code=409, detail=_VINCOLI["ici_uno_in_volo"][1])
-        ultimo = svc.ultimo_giorno_inviato(sb, config_id)
-        if ultimo is None:
-            if not config.get("data_partenza"):
-                raise HTTPException(status_code=400, detail="Manca la data di partenza.")
-            tipo, dal = "primo", max(date.fromisoformat(str(config["data_partenza"])[:10]), limite)
-            gia = _storico_orfano(sb, [config["piva"]]).get(config["piva"])
-            if gia and date.fromisoformat(gia) >= dal:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Una configurazione cancellata ha gia' inviato fino al {date.fromisoformat(gia):%d/%m/%Y}: "
-                           "sposta la data di partenza dopo, o il commercialista riceve due volte le stesse fatture.",
-                )
-        else:
-            tipo, dal = "ordinario", max(ultimo + timedelta(days=1), limite)
-        al = ieri
-        if dal > al:
-            raise HTTPException(status_code=400, detail="Niente da inviare: fino a ieri e' gia' stato tutto inviato.")
-    else:
-        # Fine entro ieri, inizio entro 2 anni, inizio prima della fine: li
-        # controllano i vincoli del registro, e _rifiuto li dice con queste parole.
-        if body.dal is None or body.al is None:
-            raise HTTPException(status_code=400, detail="Indica il periodo (dal, al).")
-        tipo, dal, al = body.tipo, body.dal, body.al
-
-    if tipo != "prova" and not svc.sede_sdi_attiva(sb, cliente_id, config["piva"]):
+    if body.tipo != "prova" and not svc.sede_sdi_attiva(sb, cliente_id, config["piva"]):
         raise HTTPException(status_code=400, detail="Sospesa: nessuna sede di questa P.IVA ha la ricezione SDI attiva.")
     try:
         righe = sb.table(svc.INVII).insert({
@@ -389,16 +275,16 @@ def invio_commercialista_richiedi(
             "piva": config["piva"],
             "invoicetronic_company_id": config["invoicetronic_company_id"],
             "destinatario": config.get("email_destinatario"),
-            "tipo": tipo,
-            "periodo_dal": dal.isoformat(),
-            "periodo_al": al.isoformat(),
+            "tipo": body.tipo,
+            "periodo_dal": body.dal.isoformat(),
+            "periodo_al": body.al.isoformat(),
             "stato": "richiesto",
             "richiesto_da": "admin",
         }).execute().data
     except Exception as exc:
         raise _rifiuto(exc) from None
     logger.info("invio_commercialista: richiesto %s %s..%s per configurazione %s | admin=%s",
-                    tipo, dal, al, config_id[:8], admin_user.get("email"))
+                    body.tipo, body.dal, body.al, config_id[:8], admin_user.get("email"))
     return righe[0]
 
 

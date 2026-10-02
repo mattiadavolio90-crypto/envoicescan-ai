@@ -12,7 +12,7 @@ export default function TerminiPage() {
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Termini di Servizio</h1>
       <p className="text-xs text-muted-foreground">
-        Ultimo aggiornamento: 9 settembre 2026 — versione 1.1
+        Ultimo aggiornamento: 2 ottobre 2026 — versione 1.2
       </p>
 
       <h2>1. Oggetto del Servizio</h2>
@@ -34,7 +34,8 @@ export default function TerminiPage() {
         <li>Controllo prezzi e confronto fornitori</li>
         <li>Worker automatico di elaborazione fatture con coda persistente</li>
         <li>
-          Su richiesta scritta del cliente, invio periodico al suo commercialista di una copia
+          Su richiesta del cliente, che lo attiva dalle impostazioni del proprio account, invio
+          periodico al suo commercialista di una copia
           delle fatture passive ricevute via SDI: una copia di comodo, che non sostituisce il
           Cassetto fiscale dell&apos;Agenzia delle Entrate né gli obblighi di conservazione
         </li>

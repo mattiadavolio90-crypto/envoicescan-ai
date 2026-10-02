@@ -6,15 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { NativeSelect } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  type Configurazione, type Frequenza, type Invio, type StatoInvioCommercialista, type Tono,
-  ETICHETTA_FREQUENZA, ETICHETTA_STATO, ETICHETTA_TIPO, TONO_STATO,
-  avvisoStoricoOrfano, erroreDelPeriodo, formattaByte, formattaData, periodoInviaOra, spostaGiorni,
+  type Configurazione, type Invio, type StatoInvioCommercialista, type Tono,
+  ETICHETTA_STATO, ETICHETTA_TIPO, TONO_STATO,
+  erroreDelPeriodo, formattaByte, formattaData, rigaConsenso, spostaGiorni,
   statoConfigurazione, testoMotivo,
 } from "@/lib/invio-commercialista";
 
@@ -25,9 +23,6 @@ const CLASSE_TONO: Record<Tono, string> = {
   neutro: "text-muted-foreground",
 };
 
-type Azienda = {
-  piva: string; company_id: number; nome: string | null; vat: string | null; gia_viste: number[]; senza_company: number;
-};
 type Chiarimento = { cfg: string; invio: Invio; esito: "arrivata" | "non_arrivata" };
 type RichiestaPeriodo = { config: Configurazione; tipo: "prova" | "reinvio"; dal: string; al: string };
 type Chiama = (path: string, metodo: "POST" | "PATCH", body?: object, ok?: string) => Promise<boolean>;
@@ -38,7 +33,9 @@ async function leggi(res: Response) {
   return data;
 }
 
-// Scheda cliente → «Invio al commercialista». Ogni pulsante scrive una richiesta:
+// Scheda cliente → «Invio al commercialista». L'invio lo attiva il cliente dalle
+// sue Impostazioni (e' il suo consenso); qui l'admin vede chi, quando e per chi,
+// prova a vuoto, reinvia, spegne in emergenza. Ogni pulsante scrive una richiesta:
 // l'esecutore del queue-worker la prende entro un minuto, e il registro qui
 // sotto si aggiorna da solo finche' c'e' un invio in coda o in corso.
 export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
@@ -46,9 +43,7 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
   const [dati, setDati] = useState<StatoInvioCommercialista | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [occupato, setOccupato] = useState(false);
-  const [azienda, setAzienda] = useState<Azienda | null>(null);
   const [periodo, setPeriodo] = useState<RichiestaPeriodo | null>(null);
-  const [inviaOra, setInviaOra] = useState<Configurazione | null>(null);
   const [chiarimento, setChiarimento] = useState<Chiarimento | null>(null);
 
   const carica = useCallback(async () => {
@@ -90,10 +85,20 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
     }
   };
 
-  async function cercaAzienda(piva: string) {
+  // Prova a vuoto su una P.IVA che il cliente non ha ancora attivato: prima la
+  // si collega a Invoicetronic (il company_id lo trova il worker), poi si chiede
+  // il periodo.
+  async function provaSenzaConfigurazione(piva: string) {
     setOccupato(true);
     try {
-      setAzienda({ piva, ...(await leggi(await fetch(`${base}/azienda?piva=${piva}`, { cache: "no-store" }))) });
+      const config = await leggi(await fetch(base, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ piva }),
+      }));
+      await carica();
+      const oggiIso = dati?.oggi ?? "";
+      setPeriodo({ config, tipo: "prova", dal: spostaGiorni(oggiIso, -30), al: spostaGiorni(oggiIso, -1) });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
@@ -103,7 +108,6 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
 
   const oggi = dati?.oggi ?? "";
   const erroreRichiesta = periodo ? erroreDelPeriodo(periodo.dal, periodo.al, oggi) : null;
-  const periodoOra = inviaOra ? periodoInviaOra(inviaOra, oggi) : null;
 
   return (
     <Card>
@@ -117,24 +121,20 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
           <p className="text-muted-foreground">Nessuna sede di questo cliente ha una P.IVA di 11 cifre.</p>
         )}
         {dati?.piva_disponibili.map((piva) => (
-          <div key={piva} className="space-y-1 rounded-lg border px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="tabular-nums">P.IVA {piva}</span>
-              <Button size="sm" variant="outline" disabled={occupato} onClick={() => cercaAzienda(piva)}>
-                Collega a Invoicetronic
-              </Button>
+          <div key={piva} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
+            <div>
+              <p className="tabular-nums">P.IVA {piva}</p>
+              <p className="text-muted-foreground">Il cliente non l&apos;ha attivato dalle sue Impostazioni</p>
             </div>
-            {avvisoStoricoOrfano(dati.storico_orfano, piva) && (
-              <p className="text-xs text-incerto">{avvisoStoricoOrfano(dati.storico_orfano, piva)}</p>
-            )}
+            <Button size="sm" variant="outline" disabled={occupato} onClick={() => provaSenzaConfigurazione(piva)}>
+              Prova a vuoto
+            </Button>
           </div>
         ))}
         {dati?.configurazioni.map((c) => (
           <BloccoConfigurazione
             key={`${c.id}-${c.aggiornata_at}`}
             c={c}
-            oggi={oggi}
-            avvisoStorico={avvisoStoricoOrfano(dati.storico_orfano, c.piva)}
             occupato={occupato}
             chiama={chiama}
             onPeriodo={(tipo) => setPeriodo({
@@ -143,47 +143,10 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
               dal: tipo === "prova" ? spostaGiorni(oggi, -30) : (c.ultimo_giorno_inviato ?? spostaGiorni(oggi, -1)),
               al: tipo === "prova" ? spostaGiorni(oggi, -1) : (c.ultimo_giorno_inviato ?? spostaGiorni(oggi, -1)),
             })}
-            onInviaOra={() => setInviaOra(c)}
             onChiarisci={(invio, esito) => setChiarimento({ cfg: `/${c.id}`, invio, esito })}
           />
         ))}
       </CardContent>
-
-      <Dialog open={azienda !== null} onOpenChange={(v) => !v && setAzienda(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Collega a Invoicetronic</DialogTitle>
-            <DialogDescription>Controlla che sia l&apos;azienda giusta: il collegamento non si cambia più.</DialogDescription>
-          </DialogHeader>
-          {azienda && (
-            <div className="space-y-1 py-2">
-              <p><span className="text-muted-foreground">Ragione sociale:</span> {azienda.nome || "—"}</p>
-              <p className="tabular-nums"><span className="text-muted-foreground">P.IVA:</span> {azienda.vat}</p>
-              <p className="tabular-nums"><span className="text-muted-foreground">Azienda Invoicetronic:</span> {azienda.company_id}</p>
-              <p className="text-muted-foreground">
-                {azienda.gia_viste.length
-                  ? "Coincide con quella delle fatture già arrivate."
-                  : azienda.senza_company
-                    ? `Le ${azienda.senza_company} fatture già arrivate per questa P.IVA non riportano l'azienda Invoicetronic: il confronto non si può fare, controlla ragione sociale e P.IVA.`
-                    : "Nessuna fattura di questa P.IVA è ancora arrivata a OneFlux: non c'è uno storico con cui confrontarla."}
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAzienda(null)}>Annulla</Button>
-            <Button
-              disabled={occupato}
-              onClick={async () => {
-                if (azienda && await chiama("", "POST", { piva: azienda.piva, company_id: azienda.company_id }, "Collegata")) {
-                  setAzienda(null);
-                }
-              }}
-            >
-              Collega
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={periodo !== null} onOpenChange={(v) => !v && setPeriodo(null)}>
         <DialogContent className="max-w-md">
@@ -258,61 +221,19 @@ export function InvioCommercialistaCard({ clienteId }: { clienteId: string }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={inviaOra !== null} onOpenChange={(v) => !v && setInviaOra(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{periodoOra?.tipo === "primo" ? "Primo invio" : "Invia ora"}</DialogTitle>
-            <DialogDescription>
-              L&apos;email parte davvero al commercialista, se l&apos;interruttore generale del queue-worker è acceso.
-            </DialogDescription>
-          </DialogHeader>
-          {inviaOra && (
-            <div className="space-y-1 py-2">
-              {periodoOra ? (
-                <p>Fatture arrivate dal <strong>{formattaData(periodoOra.dal)}</strong> al <strong>{formattaData(periodoOra.al)}</strong></p>
-              ) : (
-                <p className="text-muted-foreground">Niente da inviare: fino a ieri è già stato tutto inviato.</p>
-              )}
-              <p><span className="text-muted-foreground">A:</span> {inviaOra.email_destinatario}</p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setInviaOra(null)}>Annulla</Button>
-            <Button
-              disabled={occupato || !periodoOra}
-              onClick={async () => {
-                if (inviaOra && await chiama(`/${inviaOra.id}/invii`, "POST", { tipo: "invia_ora" }, "Invio richiesto")) {
-                  setInviaOra(null);
-                }
-              }}
-            >
-              Invia
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
 
-function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeriodo, onInviaOra, onChiarisci }: {
+function BloccoConfigurazione({ c, occupato, chiama, onPeriodo, onChiarisci }: {
   c: Configurazione;
-  oggi: string;
-  avvisoStorico: string | null;
   occupato: boolean;
   chiama: Chiama;
   onPeriodo: (tipo: "prova" | "reinvio") => void;
-  onInviaOra: () => void;
   onChiarisci: (invio: Invio, esito: "arrivata" | "non_arrivata") => void;
 }) {
-  const [email, setEmail] = useState(c.email_destinatario ?? "");
-  const [frequenza, setFrequenza] = useState<Frequenza>(c.frequenza);
-  const [partenza, setPartenza] = useState(c.data_partenza ?? "");
-  const [dataConsenso, setDataConsenso] = useState(oggi);
   const stato = statoConfigurazione(c);
-  const consensoValido = c.consenso_ricevuto && !!c.email_destinatario && c.consenso_email === c.email_destinatario;
-  const emailCambiata = email.trim().toLowerCase() !== (c.email_destinatario ?? "");
-  const modificata = emailCambiata || frequenza !== c.frequenza || partenza !== (c.data_partenza ?? "");
+  const consenso = rigaConsenso(c);
   const occupata = c.invii.some((i) => i.stato === "richiesto" || i.stato === "in_corso" || i.stato === "esito_incerto");
   const cfg = `/${c.id}`;
 
@@ -324,80 +245,15 @@ function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeri
           P.IVA {c.piva} · azienda Invoicetronic {c.invoicetronic_company_id ?? "—"}
         </p>
         <p className={`mt-1 ${CLASSE_TONO[stato.tono]}`}>{stato.testo}</p>
+        {consenso && <p className="mt-1 text-muted-foreground">{consenso}</p>}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="space-y-1.5 sm:col-span-3">
-          <Label htmlFor={`email-${c.id}`}>Email del commercialista</Label>
-          <Input id={`email-${c.id}`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          {emailCambiata && c.email_destinatario && (
-            <p className="text-xs text-incerto">Cambiare l&apos;email toglie consenso e attivazione: il consenso vale per un indirizzo.</p>
-          )}
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor={`freq-${c.id}`}>Frequenza</Label>
-          <NativeSelect id={`freq-${c.id}`} value={frequenza} onValueChange={(v) => setFrequenza(v as Frequenza)}>
-            {(Object.keys(ETICHETTA_FREQUENZA) as Frequenza[]).map((f) => (
-              <option key={f} value={f}>{ETICHETTA_FREQUENZA[f]}</option>
-            ))}
-          </NativeSelect>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`partenza-${c.id}`}>Fatture arrivate dal</Label>
-          <Input id={`partenza-${c.id}`} type="date" value={partenza} onChange={(e) => setPartenza(e.target.value)} />
-        </div>
-      </div>
-      {avvisoStorico && !c.ultimo_giorno_inviato && <p className="text-xs text-incerto">{avvisoStorico}</p>}
-      {modificata && (
-        <Button
-          size="sm"
-          disabled={occupato}
-          onClick={() => chiama(cfg, "PATCH", {
-            email_destinatario: email,
-            frequenza,
-            ...(partenza ? { data_partenza: partenza } : {}),
-          }, "Salvato")}
-        >
-          Salva
-        </Button>
-      )}
-
-      <div className="flex flex-wrap items-end gap-2 border-t pt-3">
-        {consensoValido ? (
-          <>
-            <p className="flex-1">Consenso del {formattaData(c.consenso_data)} per {c.consenso_email}</p>
-            <Button size="sm" variant="outline" disabled={occupato} onClick={() => chiama(cfg, "PATCH", { revoca_consenso: true }, "Consenso revocato")}>
-              Revoca
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="space-y-1.5">
-              <Label htmlFor={`consenso-${c.id}`}>Consenso firmato il</Label>
-              <Input id={`consenso-${c.id}`} type="date" value={dataConsenso} max={oggi} onChange={(e) => setDataConsenso(e.target.value)} />
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={occupato || !c.email_destinatario || modificata || !dataConsenso}
-              title={modificata ? "Prima salva l'email" : undefined}
-              onClick={() => chiama(cfg, "PATCH", { consenso_data: dataConsenso }, "Consenso registrato")}
-            >
-              Registra il consenso
-            </Button>
-          </>
+      <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+        {c.attivo && (
+          <Button size="sm" variant="outline" disabled={occupato} onClick={() => chiama(cfg, "PATCH", { attivo: false }, "Spento")}>
+            Spegni
+          </Button>
         )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 border-t pt-3">
-        <label className="flex items-center gap-2">
-          <Switch
-            checked={c.attivo}
-            disabled={occupato}
-            onCheckedChange={(v) => chiama(cfg, "PATCH", { attivo: v }, v ? "Attivato" : "Spento")}
-          />
-          Invio automatico
-        </label>
         {c.sospesa_at && (
           <Button size="sm" variant="outline" disabled={occupato} onClick={() => chiama(cfg, "PATCH", { riprendi: true }, "Ripresa")}>
             Riprendi dopo la verifica
@@ -409,9 +265,6 @@ function BloccoConfigurazione({ c, oggi, avvisoStorico, occupato, chiama, onPeri
           </Button>
           <Button size="sm" variant="outline" disabled={occupato || occupata || !c.ultimo_giorno_inviato} onClick={() => onPeriodo("reinvio")}>
             Reinvio
-          </Button>
-          <Button size="sm" disabled={occupato || occupata || !c.attivo || !!c.sospesa_at} onClick={onInviaOra}>
-            {c.ultimo_giorno_inviato ? "Invia ora" : "Primo invio"}
           </Button>
         </div>
       </div>

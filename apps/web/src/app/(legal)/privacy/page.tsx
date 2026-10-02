@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Privacy & Cookie Policy</h1>
       <p className="text-xs text-muted-foreground">
-        Ultimo aggiornamento: 25 settembre 2026 — versione 4.3
+        Ultimo aggiornamento: 2 ottobre 2026 — versione 4.4
       </p>
 
       <h2>Titolare del Trattamento</h2>
@@ -49,9 +49,10 @@ export default function PrivacyPage() {
           incassi giornalieri
         </li>
         <li>
-          <strong>Dati del commercialista</strong> (solo se il cliente chiede l&apos;invio automatico
+          <strong>Dati del commercialista</strong> (solo se il cliente attiva l&apos;invio automatico
           delle fatture al proprio commercialista): indirizzo email del commercialista o dello
-          studio indicato dal cliente, e data del consenso del cliente
+          studio indicato dal cliente; data e ora dell&apos;attivazione, indirizzo email
+          dell&apos;account che l&apos;ha fatta e testo dell&apos;autorizzazione accettata
         </li>
         <li>
           <strong>Dati del personale</strong> (solo se l&apos;utente utilizza la sezione Personale):
@@ -218,8 +219,9 @@ export default function PrivacyPage() {
       />
 
       <p>
-        <strong>Il commercialista indicato dal cliente</strong> riceve, su richiesta scritta del
-        cliente, una copia delle fatture passive ricevute tramite SDI sul codice destinatario
+        <strong>Il commercialista indicato dal cliente</strong> riceve, su richiesta del cliente,
+        che attiva l&apos;invio dalle impostazioni del proprio account indicando l&apos;indirizzo
+        del commercialista e autorizzandolo, una copia delle fatture passive ricevute tramite SDI sul codice destinatario
         gestito da ONEFLUX, con un link personale valido 30 giorni. È un destinatario scelto dal
         cliente, non un fornitore di ONEFLUX. È una copia di comodo: non è un servizio di
         conservazione e non sostituisce il Cassetto fiscale dell&apos;Agenzia delle Entrate.

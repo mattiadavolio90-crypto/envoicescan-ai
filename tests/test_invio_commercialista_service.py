@@ -52,23 +52,58 @@ def test_limite_due_anni_come_postgres():
     assert s.limite_due_anni(date(2028, 2, 29)) == date(2026, 2, 28)
 
 
+P = date(2026, 1, 1)  # partenza lontana: non fa da pavimento
+
+
 @pytest.mark.parametrize("frequenza,ultimo,oggi,atteso", [
-    ("mensile", None, date(2026, 9, 1), None),
     ("mensile", date(2026, 8, 31), date(2026, 9, 1), None),
-    ("mensile", date(2026, 7, 31), date(2026, 9, 1), (date(2026, 8, 1), date(2026, 8, 31))),
+    ("mensile", date(2026, 7, 31), date(2026, 9, 1), ("ordinario", date(2026, 8, 1), date(2026, 8, 31))),
     # l'invio del 1/9 e' fallito: il 2/9 si riprova e il periodo si allarga da solo
-    ("mensile", date(2026, 7, 31), date(2026, 9, 2), (date(2026, 8, 1), date(2026, 9, 1))),
+    ("mensile", date(2026, 7, 31), date(2026, 9, 2), ("ordinario", date(2026, 8, 1), date(2026, 9, 1))),
     ("mensile", date(2026, 9, 1), date(2026, 9, 2), None),
-    ("settimanale", date(2026, 9, 13), date(2026, 9, 21), (date(2026, 9, 14), date(2026, 9, 20))),
+    ("settimanale", date(2026, 9, 13), date(2026, 9, 21), ("ordinario", date(2026, 9, 14), date(2026, 9, 20))),
     ("settimanale", date(2026, 9, 20), date(2026, 9, 21), None),
     ("settimanale", date(2026, 9, 20), date(2026, 9, 27), None),
-    ("quindicinale", date(2026, 8, 31), date(2026, 9, 16), (date(2026, 9, 1), date(2026, 9, 15))),
+    ("quindicinale", date(2026, 8, 31), date(2026, 9, 16), ("ordinario", date(2026, 9, 1), date(2026, 9, 15))),
     ("quindicinale", date(2026, 9, 15), date(2026, 9, 16), None),
     # l'ultimo invio riuscito e' di tre anni fa: si riparte dal limite dei 2 anni
-    ("mensile", date(2023, 6, 10), date(2026, 9, 1), (date(2024, 9, 1), date(2026, 8, 31))),
+    ("mensile", date(2023, 6, 10), date(2026, 9, 1), ("ordinario", date(2024, 9, 1), date(2026, 8, 31))),
 ])
 def test_periodo_dovuto(frequenza, ultimo, oggi, atteso):
-    assert s.periodo_dovuto(frequenza, ultimo, oggi) == atteso
+    partenza = P if ultimo is None or ultimo >= P else ultimo
+    assert s.periodo_dovuto(frequenza, ultimo, oggi, partenza) == atteso
+
+
+@pytest.mark.parametrize("frequenza,partenza,oggi,atteso", [
+    # attivato mercoledi' 30/09 «solo le nuove»: il primo e' il lunedi' dopo
+    ("settimanale", date(2026, 9, 30), date(2026, 10, 1), None),
+    ("settimanale", date(2026, 9, 30), date(2026, 10, 5), ("primo", date(2026, 9, 30), date(2026, 10, 4))),
+    # attivato di lunedi': quel lunedi' non e' ancora finito, si aspetta il prossimo
+    ("settimanale", date(2026, 10, 5), date(2026, 10, 5), None),
+    ("settimanale", date(2026, 10, 5), date(2026, 10, 12), ("primo", date(2026, 10, 5), date(2026, 10, 11))),
+    # «anche quelle gia' ricevute»: la partenza e' nel passato, si parte la notte dopo
+    ("mensile", date(2026, 7, 15), date(2026, 10, 3), ("primo", date(2026, 7, 15), date(2026, 10, 2))),
+    # partenza oltre i 2 anni: si parte dal limite
+    ("mensile", date(2024, 1, 1), date(2026, 9, 1), ("primo", date(2024, 9, 1), date(2026, 8, 31))),
+])
+def test_il_primo_parte_dalla_partenza(frequenza, partenza, oggi, atteso):
+    assert s.periodo_dovuto(frequenza, None, oggi, partenza) == atteso
+
+
+def test_senza_partenza_non_parte_niente():
+    assert s.periodo_dovuto("mensile", None, date(2026, 9, 1), None) is None
+    assert s.periodo_dovuto("mensile", date(2026, 7, 31), date(2026, 9, 1), None) is None
+
+
+@pytest.mark.parametrize("partenza,oggi,atteso", [
+    # riattivato il 15/09 «solo le nuove» dopo mesi spento: si salta il buco
+    (date(2026, 9, 15), date(2026, 10, 1), ("ordinario", date(2026, 9, 15), date(2026, 9, 30))),
+    (date(2026, 9, 15), date(2026, 9, 16), None),
+    # riattivato «tutte»: la partenza resta prima, si riparte dal giorno dopo l'ultimo
+    (date(2026, 1, 1), date(2026, 10, 1), ("ordinario", date(2026, 6, 1), date(2026, 9, 30))),
+])
+def test_la_partenza_fa_da_pavimento_per_l_ordinario(partenza, oggi, atteso):
+    assert s.periodo_dovuto("mensile", date(2026, 5, 31), oggi, partenza) == atteso
 
 
 @pytest.mark.parametrize("istante,dentro", [
@@ -517,3 +552,47 @@ def test_l_elenco_del_bucket_non_gira_all_infinito():
     with pytest.raises(RuntimeError, match="massimo di pagine"):
         s.ArchivioSupabase(sb).elenca("cfg")
     assert bucket.list.call_count == s.PAGINE_BUCKET
+
+
+# ─── Attivazione dal cliente (02/10/2026) ────────────────────────────────────
+
+@pytest.mark.parametrize("ultimo,adesso,atteso", [
+    # attivato giovedi' 01/10 alle 12 di Roma, settimanale da oggi: lunedi' 05/10
+    (None, datetime(2026, 10, 1, 10, 0, tzinfo=UTC), date(2026, 10, 5)),
+    # lunedi' 05/10 alle 03:30 di Roma: la finestra notturna e' ancora aperta
+    (None, datetime(2026, 10, 5, 1, 30, tzinfo=UTC), date(2026, 10, 5)),
+    # alle 04:30 di Roma la finestra (02:00-04:59) e' ancora aperta
+    (None, datetime(2026, 10, 5, 2, 30, tzinfo=UTC), date(2026, 10, 5)),
+    # lunedi' 05/10 alle 05:00 di Roma, primo gia' inviato fino al 04/10: il 12/10
+    (date(2026, 10, 4), datetime(2026, 10, 5, 3, 0, tzinfo=UTC), date(2026, 10, 12)),
+    # lo stesso, ma il primo non e' partito: il pianificatore ci riprova domani
+    (None, datetime(2026, 10, 5, 3, 0, tzinfo=UTC), date(2026, 10, 6)),
+])
+def test_prossimo_invio(ultimo, adesso, atteso):
+    assert s.prossimo_invio("settimanale", ultimo, date(2026, 10, 1), adesso) == atteso
+
+
+def test_prossimo_invio_senza_partenza_non_c_e():
+    assert s.prossimo_invio("mensile", None, None, datetime(2026, 10, 1, 10, tzinfo=UTC)) is None
+
+
+@pytest.mark.parametrize("ultimo,prima,orfano,atteso", [
+    (None, None, None, None),
+    (None, date(2026, 7, 15), None, date(2026, 7, 15)),
+    # dopo un invio riuscito si recupera il buco, non dalla prima fattura
+    (date(2026, 8, 31), date(2026, 7, 15), None, date(2026, 9, 1)),
+    # una configurazione cancellata aveva gia' inviato fino al 31/07
+    (None, date(2026, 7, 15), date(2026, 7, 31), date(2026, 8, 1)),
+    # oltre i 2 anni: dal limite
+    (None, date(2024, 1, 1), None, date(2024, 10, 2)),
+    # niente da recuperare: l'ultimo invio arriva a ieri
+    (date(2026, 10, 1), date(2026, 7, 15), None, None),
+])
+def test_recupero_dal(ultimo, prima, orfano, atteso):
+    assert s.recupero_dal(ultimo, prima, orfano, date(2026, 10, 2)) == atteso
+
+
+def test_il_testo_autorizzato_nomina_destinatario_frequenza_e_piva():
+    testo = s.testo_autorizzazione("studio@x.it", "quindicinale", "07863990961")
+    assert "studio@x.it" in testo and "il 1° e il 16 di ogni mese" in testo and "07863990961" in testo
+    assert "Cassetto fiscale" in testo and "30 giorni" in testo
