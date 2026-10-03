@@ -1675,6 +1675,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   mezzo. Ora da attivo restano i campi con **Salva** (stessa chiamata, partenza
 >   invariata) e Disattiva accanto; il dialog di Disattiva dice che il periodo
 >   spento non si manda. Mutazione sulle correzioni **5/5**.
+> - **03/10/2026, `f38b5ac7` — piano consulente, fase A (bozze al fornitore spente):
+>   chiusa.** Mattia: l'assistente non prepara bozze al fornitore; se gliele
+>   chiedono rimanda allo Score. **Fatto:** tolti lo strumento `bozza_fornitore`, il
+>   campo `bozze` della risposta, la card con Copia della Home e il codice di
+>   `assistente.py` che la preparava (resta `_bozza_trattativa`, la bozza di
+>   Osservatorio → Score Fornitori); riga di prompt `_riga_trattativa` sempre
+>   presente in PV e catena, col rimando solo a chi vede la scheda; Demo Tour
+>   allineato. Dati: niente da cancellare (personale di ottobre di CASATI 14 gia' a
+>   0; i 100 € F&B di agosto sono una spesa extra vera portata con «Recupera»).
+>   **Prove:** `test_chat_bozza_prompt.py` riscritto (11), frontend aggiornati,
+>   `test_sql_chat_bozza.py` tolto con lo strumento; mutazione **9/9**; suite su
+>   copia pulita `python -m pytest -q -p no:randomly`: **18.658 verdi, 58 skip**, 6
+>   rossi tutti verdi nel repo vero (4 senza git/scratchpad, 2 della coda gia' noti
+>   come instabili). Revisore: codice senza rilievi. **Residuo** (fase I): in `/m`
+>   il rimando porta a una pagina che il mobile non ha. **Non pushato.**
 
 ---
 
