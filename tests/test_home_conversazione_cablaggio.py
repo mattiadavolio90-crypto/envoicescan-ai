@@ -58,8 +58,7 @@ def test_il_provider_manda_solo_la_vista_corrente_e_col_suo_contesto():
     n = _n(_PROVIDER)
     assert "messages:codaPerVista(vociRef.current,vista),contesto:vista.contesto,card_conferma:true" in n
     assert ("conRisposta(v,vista.chiave,messaggioRisposta(res.status,data),"
-            "data.reply?cardDaProposte(data.proposte,Date.now()):[],"
-            "data.reply?bozzeDaRisposta(data.bozze):[],)") in n
+            "data.reply?cardDaProposte(data.proposte,Date.now()):[],)") in n
     assert "constchiave=chiaveConversazione(utenteId);" in n
     assert "sessionStorage.removeItem(CHIAVE_VECCHIA)" in n
 
@@ -177,17 +176,14 @@ def test_la_card_arriva_a_schermo_con_i_suoi_pulsanti():
     assert 'disabled={card.stato==="invio"}onClick={()=>onConferma(card.id)}' in k
 
 
-def test_la_bozza_arriva_a_schermo_con_copia():
-    """Fase 3, step 4: la bozza al fornitore sta sotto la risposta, col suo «Copia»."""
-    p = _n(_PANNELLO)
-    assert "v.bozze?.map((b,j)=>(<CardBozzaFornitorekey={j}bozza={b}/>))" in p
-    b = _n(_WEB / "components/home/card-bozza.tsx")
-    assert "<CopyButtontesto={bozza.testo}/>" in b
-    assert "{bozza.testo}</pre>" in b
-    assert "fetch" not in b, "la card della bozza non manda niente a nessuno"
+def test_niente_card_della_bozza():
+    """Bozze al fornitore spente (Mattia, 3/10/2026): niente card sotto la risposta."""
+    assert not (_WEB / "components/home/card-bozza.tsx").exists()
+    for p in (_PANNELLO, _PROVIDER):
+        assert "bozz" not in _n(p).lower(), p
 
 
-def test_score_e_la_home_usano_lo_stesso_copia():
+def test_lo_score_usa_il_copia_condiviso():
     s = _n(_WEB / "app/(app)/prezzi/score-tab.tsx")
     assert 'import{CopyButton}from"@/components/ui/copy-button";' in s
     assert "functionCopyButton" not in s

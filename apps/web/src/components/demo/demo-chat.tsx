@@ -9,8 +9,8 @@ import { demoChatScambio, demoChatSuggerimenti } from "@/lib/demo-data";
 // Home vera (28/9/2026: niente piu' pulsante flottante). Stesso pannello del
 // prodotto (PannelloConversazione), ma NIENTE fetch a /api/chat, niente
 // sessionStorage, niente quota vera. Quando lo step chat e' attivo «recita» due
-// scambi: domanda → l'assistente pensa → risposta, poi il follow-up (il
-// messaggio di trattativa per il fornitore). Il campo resta inerte.
+// scambi: domanda → l'assistente pensa → risposta, poi il follow-up (dove
+// trovare il messaggio di trattativa per il fornitore). Il campo resta inerte.
 
 // Fase = quanti "eventi" della sceneggiatura sono avvenuti:
 //   0 vuota · 1 domanda1 · 2 pensa1 · 3 risposta1 · 4 domanda2 · 5 pensa2 · 6 risposta2
@@ -52,7 +52,7 @@ export function DemoConversazione({ attiva }: { attiva: boolean }) {
     <PannelloConversazione
       ancoraDemo="chat"
       voci={voci}
-      attesa={fase === 2 ? "Sto leggendo le tue fatture..." : fase === 5 ? "Preparo la bozza..." : null}
+      attesa={fase === 2 ? "Sto leggendo le tue fatture..." : fase === 5 ? "Guardo i tuoi fornitori..." : null}
       suggerimenti={fase === 0 ? demoChatSuggerimenti : null}
       valore=""
       placeholder="Chiedimi dei tuoi costi, fornitori, margini…"

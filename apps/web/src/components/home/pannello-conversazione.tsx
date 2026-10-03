@@ -5,7 +5,6 @@ import { Loader2, Send, SquarePen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type VoceChat } from "@/lib/home-chat";
-import { CardBozzaFornitore } from "./card-bozza";
 import { CardCifraDettata } from "./card-cifra";
 
 // Il disegno della conversazione dentro il riquadro dell'assistente: lo usano
@@ -75,9 +74,6 @@ export function PannelloConversazione({
               </div>
               {v.card?.map((c) => (
                 <CardCifraDettata key={c.id} card={c} onConferma={onConferma} onAnnulla={onAnnulla} />
-              ))}
-              {v.bozze?.map((b, j) => (
-                <CardBozzaFornitore key={j} bozza={b} />
               ))}
             </div>
           ))}

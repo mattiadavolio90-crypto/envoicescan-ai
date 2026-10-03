@@ -150,14 +150,12 @@ export function vistaCatena(): Vista {
 }
 
 // Un messaggio della conversazione, con la vista in cui e' stato scritto. Una
-// risposta dell'assistente puo' portare le card delle cifre dettate e le bozze
-// al fornitore (fase 3).
+// risposta dell'assistente puo' portare le card delle cifre dettate (fase 3).
 export type VoceChat = {
   role: "user" | "assistant";
   content: string;
   vista: string;
   card?: CardCifra[];
-  bozze?: BozzaFornitore[];
 };
 
 // Oltre, le voci piu' vecchie si lasciano cadere: la conversazione vive nel
@@ -185,9 +183,7 @@ export function parseConversazione(raw: string | null): VoceChat[] {
       .map((v) => {
         const voce: VoceChat = { role: v.role, content: v.content, vista: v.vista };
         const card = v.role === "assistant" ? cardSalvate(v.card) : [];
-        const bozze = v.role === "assistant" ? bozzeDaRisposta(v.bozze) : [];
         if (card.length) voce.card = card;
-        if (bozze.length) voce.bozze = bozze;
         return voce;
       });
   } catch {
@@ -251,13 +247,11 @@ export function conRisposta(
   vistaChiave: string,
   testo: string,
   card: CardCifra[] = [],
-  bozze: BozzaFornitore[] = [],
 ): VoceChat[] {
   let i = voci.length - 1;
   while (i >= 0 && !(voci[i].role === "user" && voci[i].vista === vistaChiave)) i--;
   const risposta: VoceChat = { role: "assistant", content: testo, vista: vistaChiave };
   if (card.length) risposta.card = card;
-  if (bozze.length) risposta.bozze = bozze;
   if (i < 0) return [...voci, risposta];
   return [...voci.slice(0, i + 1), risposta, ...voci.slice(i + 1)];
 }
@@ -535,49 +529,4 @@ export function conCard(voci: VoceChat[], id: string, f: (c: CardCifra) => CardC
 export function trovaCard(voci: VoceChat[], id: string): CardCifra | null {
   for (const v of voci) for (const c of v.card ?? []) if (c.id === id) return c;
   return null;
-}
-
-/* ─── La bozza al fornitore: la card con «Copia» (fase 3, step 4) ─────────── */
-//
-// Il worker restituisce `bozze` accanto a `reply`: lo stesso testo di Prezzi →
-// Score, per la sede aperta. Nessun invio: il cliente la copia e la usa dove
-// vuole. Arriva dal worker o da sessionStorage: si tengono solo i campi noti.
-
-export type BozzaFornitore = { fornitore: string; sede_nome: string | null; periodo: string; testo: string };
-
-export const MAX_BOZZE = 3;
-// Una bozza vera e' di 10-15 righe: oltre, non e' una bozza.
-const MAX_CARATTERI_BOZZA = 4000;
-
-export function bozzaValida(x: unknown): boolean {
-  if (!x || typeof x !== "object") return false;
-  const b = x as Record<string, unknown>;
-  return (
-    typeof b.fornitore === "string" &&
-    b.fornitore.trim() !== "" &&
-    typeof b.testo === "string" &&
-    b.testo.trim() !== "" &&
-    b.testo.length <= MAX_CARATTERI_BOZZA &&
-    (b.sede_nome == null || typeof b.sede_nome === "string") &&
-    (b.periodo == null || typeof b.periodo === "string")
-  );
-}
-
-export function bozzeDaRisposta(x: unknown): BozzaFornitore[] {
-  if (!Array.isArray(x)) return [];
-  return x
-    .filter(bozzaValida)
-    .slice(0, MAX_BOZZE)
-    .map((b: Record<string, unknown>) => ({
-      fornitore: b.fornitore as string,
-      sede_nome: typeof b.sede_nome === "string" && b.sede_nome.trim() ? b.sede_nome.trim() : null,
-      periodo: typeof b.periodo === "string" ? b.periodo : "",
-      testo: b.testo as string,
-    }));
-}
-
-// La riga sotto il titolo: su quali acquisti e' scritta.
-export function sottotitoloBozza(b: BozzaFornitore): string {
-  const acquisti = b.periodo ? `acquisti ${b.periodo}` : "acquisti di quest'anno";
-  return b.sede_nome ? `${b.sede_nome} · ${acquisti}` : acquisti;
 }

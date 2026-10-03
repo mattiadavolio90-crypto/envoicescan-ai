@@ -4,7 +4,6 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useRouter } from "next/navigation";
 import {
   CHIAVE_VECCHIA,
-  bozzeDaRisposta,
   cardDaProposte,
   chiaveConversazione,
   codaPerVista,
@@ -137,7 +136,6 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
           error?: string;
           domande_oggi?: number;
           proposte?: unknown;
-          bozze?: unknown;
         };
         setDomande({
           valore: contatoreAggiornato(res.status, data, quota.limiteGiorno, quota.domandeOggi),
@@ -150,7 +148,6 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
             vista.chiave,
             messaggioRisposta(res.status, data),
             data.reply ? cardDaProposte(data.proposte, Date.now()) : [],
-            data.reply ? bozzeDaRisposta(data.bozze) : [],
           ),
         );
       } catch {

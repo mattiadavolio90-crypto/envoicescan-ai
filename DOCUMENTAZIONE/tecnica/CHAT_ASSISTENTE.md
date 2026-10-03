@@ -189,7 +189,6 @@ vista catena si usano anche loro, con una `sede` obbligatoria (§5.3).
 | `trend_prezzo` | `_chat_trend_prezzo` | "la mozzarella è aumentata?" | prezzo unitario medio ponderato/mese, ~7 mesi |
 | `query_appuntamenti` | `_chat_query_appuntamenti` | "cosa ho oggi", "appuntamenti questa settimana" | **sola lettura** su `diario_eventi`; default oggi→+7gg (10/6) |
 | `proponi_incasso` / `proponi_personale` / `proponi_fatturato_mese` | `proponi` in `services/routers/assistente.py` | "ieri ho fatto 2.340: 1.800 al 10% e 540 senza IVA" | **non scrivono**: preparano una card con Conferma (§5.4); solo con `card_conferma` e pagina `margini`, mai in catena |
-| `bozza_fornitore` | `prepara_bozza` in `services/routers/assistente.py` | "preparami un messaggio per trattare con X" | la bozza di Prezzi → Score in una card con Copia (§5.5); **nessun invio**; solo con `card_conferma` e pagina `prezzi`, mai in catena |
 
 **Ricerca tollerante (`query_costi`, `trend_prezzo`, `confronto_prezzi`):** un
 termine generico viene cercato **sia su categoria sia su descrizione**, con
@@ -323,32 +322,24 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   (Postgres vero, due clienti), `tests/test_chat_proposte_prompt.py`,
   `tests/test_home_chat_frontend.py`.
 
-### 5.5 La bozza al fornitore da copiare (fase 3, step 4, dal 30/9/2026)
+### 5.5 Bozze al fornitore: le scrive Score, non l'assistente (dal 3/10/2026)
 
-«Preparami un messaggio per trattare con Ittica Marina»: l'assistente non scrive
-la lettera, la prende da dove il cliente la trova gia'.
+Dal 30/9 al 3/10 la chat aveva lo strumento `bozza_fornitore`, che mostrava in
+una card con Copia la bozza della scheda Score. Mattia l'ha spento il 3/10
+(«non mi interessa che l'assistente prepari bozze al fornitore»): strumento,
+card e campo della risposta sono stati tolti.
 
-- **Stessa bozza della pagina.** `prepara_bozza` calcola lo score della sede
-  aperta con `_calcola_score_fornitori` (router `prezzi`) sul periodo di default
-  della tab Score, dal 1° gennaio a oggi (giorno di Roma), e restituisce il testo
-  di `_bozza_trattativa`. Il fornitore si trova per nome esatto o per un pezzo di
-  nome (>= 3 lettere) che ne identifica uno solo (`_trova_fornitore`); ambiguo o
-  assente, il modello riceve l'elenco e chiede.
-- **Niente da trattare = nessuna card.** Fornitore affidabile o senza rincari e
-  sconti persi: il modello riceve il motivo. La regola del prompt gli vieta di
-  scrivere una bozza sua, anche per accorciarla o cambiarla dopo: al modello
-  torna solo il testo della conversazione, non la card, e la riscriverebbe a
-  memoria.
-- **Chi la vede.** Stesso interruttore delle cifre dettate (`card_conferma`) e
-  pagina `prezzi` in `_CHAT_TOOL_FLAG`; per un sotto-utente valgono le pagine
-  effettive e la sua sede attiva. In catena no: il prompt rimanda alla Home del
-  locale. I negozi hanno la stessa bozza (il testo non nomina la ristorazione).
-- **La card**: `ChatResponse.bozze` (massimo 3, lo stesso fornitore due volte =
-  l'ultima, nessuna senza `reply`), validate da `bozzaValida` / `bozzeDaRisposta`
-  in `lib/home-chat.ts`, resa da `components/home/card-bozza.tsx` con il
-  `CopyButton` comune (`components/ui/copy-button.tsx`, lo stesso di Score).
-- Test: `tests/test_sql_chat_bozza.py` (Postgres vero: la bozza della chat e'
-  uguale a quella di `GET /api/prezzi/score-fornitori`), `tests/test_chat_bozza_prompt.py`.
+- **Cosa dice il prompt.** Una riga sempre presente, PV e catena, con o senza
+  card (`_riga_trattativa`): l'assistente non scrive messaggi o bozze per
+  trattare con un fornitore e non si offre di farlo. A chi vede Osservatorio →
+  Score Fornitori (pagina `prezzi` senza `tab_off_prezzi_score`, o nessuna
+  restrizione) dice che li trova pronti li'; in catena «aprendo quel locale».
+- **Dove sta la bozza.** `_bozza_trattativa` in `services/routers/prezzi.py`,
+  resa da `prezzi/score-tab.tsx` con il `CopyButton` comune
+  (`components/ui/copy-button.tsx`).
+- Una conversazione salvata prima del 3/10 con delle bozze: `parseConversazione`
+  le scarta (si tengono solo i campi noti).
+- Test: `tests/test_chat_bozza_prompt.py`.
 
 ## 6. Il system prompt (`_build_chat_system_prompt`)
 
@@ -447,7 +438,7 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 | Cambiare quali messaggi si vedono o cosa si manda al backend | `vistaSede`, `vistaCatena`, `vociDellaVista`, `senzaVista`, `codaPerVista` in `lib/home-chat.ts` |
 | Cambiare cosa si puo' dettare, tetti, finestre | `services/routers/assistente.py` (`TETTO_*`, `GIORNI_INDIETRO_INCASSO`, `MESI_INDIETRO`, `proponi`) |
 | Cambiare cosa dice la card o come legge l'esito | `testoCard`, `esitoConferma` in `lib/home-chat.ts`; resa in `components/home/card-cifra.tsx` |
-| Cambiare il testo della bozza al fornitore | `_bozza_trattativa` in `services/routers/prezzi.py` (vale per la chat e per Score); periodo e ricerca del fornitore in `prepara_bozza` |
+| Cambiare il testo della bozza al fornitore | `_bozza_trattativa` in `services/routers/prezzi.py` (scheda Score); cosa dice la chat se gliela chiedono: `_riga_trattativa` |
 
 ### Testare la chat in locale
 
@@ -493,15 +484,19 @@ reale del cliente.
 | `apps/web/src/components/home/conversazione-assistente.tsx` | la conversazione nel riquadro del briefing: vista, quota, domande proposte |
 | `apps/web/src/components/home/pannello-conversazione.tsx` | il disegno, comune alla Home e al Demo Tour |
 | `apps/web/src/lib/home-chat.ts` | logica pura: messaggi della vista aperta, coda da inviare, contatore, card delle cifre dettate |
-| `services/routers/assistente.py` | cifre dettate: proposta (`proponi`) e Conferma (`POST /api/assistente/registra`) (§5.4); bozza al fornitore (`prepara_bozza`, §5.5) |
+| `services/routers/assistente.py` | cifre dettate: proposta (`proponi`) e Conferma (`POST /api/assistente/registra`) (§5.4) |
 | `apps/web/src/components/home/card-cifra.tsx` | la card con Conferma / Annulla |
-| `apps/web/src/components/home/card-bozza.tsx` | la card della bozza al fornitore, con Copia |
 | RPC `chat_usage_check_and_log` (DB) | rate-limit atomico |
 | `services/ai_cost_service.py` | `track_ai_usage` (ledger costi) |
 
 ---
 
 ## Changelog rilevante
+
+- **3/10/2026 (piano assistente consulente, fase A; non ancora pushato al
+  momento della nota)** — bozze al fornitore spente (§5.5): via lo strumento
+  `bozza_fornitore`, la card con Copia e il campo `bozze` della risposta; il
+  prompt rimanda a Osservatorio → Score Fornitori. Demo Tour allineato.
 
 - **30/9/2026 (fase 3, step 4; non ancora pushato al momento della nota)** —
   bozza al fornitore nella conversazione della Home (§5.5): strumento

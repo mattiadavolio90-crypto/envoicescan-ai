@@ -211,8 +211,8 @@ export const demoChatSuggerimenti = [
 ];
 
 // DUE scambi "da consulente": prima il confronto fornitori con consiglio,
-// poi l'assistente che LAVORA per te (prepara il messaggio di trattativa,
-// coerente con la bozza trattativa reale dello Score Fornitori).
+// poi il messaggio di trattativa, che l'assistente non scrive: rimanda allo
+// Score Fornitori, dove e' gia' pronto (Mattia, 3/10/2026).
 export const demoChatScambio: DemoChatMsg[] = [
   { role: "user", content: "Conviene cambiare fornitore per il salmone?" },
   {
@@ -227,9 +227,9 @@ export const demoChatScambio: DemoChatMsg[] = [
   {
     role: "assistant",
     content:
-      "Eccolo, puoi incollarlo su WhatsApp: «Buongiorno, ho visto che il salmone è passato da 18,90 a " +
-      "21,90 €/kg negli ultimi ordini. Compriamo da voi oltre 6.000 € al mese: vorrei rivedere il prezzo " +
-      "del salmone o valutare un listino dedicato. Possiamo sentirci?»",
+      "Lo trovi già pronto in Osservatorio → Score Fornitori, scritto sui tuoi acquisti: il salmone " +
+      "passato da 18,90 a 21,90 €/kg e gli oltre 6.000 € al mese che spendi da Ittica Marina. " +
+      "Lo copi con un tocco e lo incolli su WhatsApp o in una email.",
   },
 ];
 

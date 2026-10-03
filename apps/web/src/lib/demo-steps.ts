@@ -31,8 +31,8 @@ export type DemoStep = {
 // col posizionamento della landing ("si adatta a te, non il contrario") e col
 // doppio cuore lui-ti-parla / tu-gli-parli.
 //
-// ORDINE = DRAMMATURGIA, non mappa dell'app: wow subito (chat con messaggio di
-// trattativa), poi i soldi (rincari in euro), poi dove finiscono (MOL), poi
+// ORDINE = DRAMMATURGIA, non mappa dell'app: wow subito (chat sul fornitore da
+// trattare), poi i soldi (rincari in euro), poi dove finiscono (MOL), poi
 // l'ammazza-obiezione fatica ("non hai scritto un numero") un passo prima
 // della CTA, e il configuratore per ultimo come chiudi-fiducia ("comandi tu").
 // Il salmone +16% è il filo: briefing → chat → prezzi → margini, DICHIARATO
@@ -55,7 +55,7 @@ export const DEMO_STEPS: DemoStep[] = [
     openChat: true,
     title: "Chiedimi quello che vuoi",
     body:
-      "«Conviene cambiare fornitore per il salmone?» Confronto i fornitori sulle tue fatture, ti dico quanto pesi come cliente — e ti preparo il messaggio per trattare, pronto da incollare.",
+      "«Conviene cambiare fornitore per il salmone?» Confronto i fornitori sulle tue fatture, ti dico quanto pesi come cliente — e dove trovi il messaggio per trattare, già pronto da incollare.",
   },
   {
     id: "prezzi-variazioni",

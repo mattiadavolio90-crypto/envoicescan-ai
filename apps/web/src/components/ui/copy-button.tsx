@@ -4,8 +4,9 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 
-// «Copia» di un testo pronto da incollare altrove: la bozza al fornitore in
-// Prezzi → Score e nella conversazione della Home. Nessun invio.
+// «Copia» di un testo pronto da incollare altrove (la bozza al fornitore in
+// Osservatorio → Score, il link per un sotto-utente quando l'email non parte).
+// Nessun invio.
 export function CopyButton({ testo }: { testo: string }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
