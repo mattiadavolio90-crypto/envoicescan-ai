@@ -209,6 +209,17 @@ e basta.
 | updated_at | TIMESTAMP | |
 | — | UNIQUE(ristorante_id, anno, mese) | |
 
+### `spese_extra` — Spese non da fattura (Agenda → Spese)
+
+Voci scritte a mano: `data_spesa`, `categoria` (fra le canoniche; il `tipo`
+`fb`/`generale` ne deriva lato router), `importo` **al netto dell'IVA**: se nel
+modulo si dice che l'importo la comprende (4/5/10/22%, campo `iva_inclusa` delle
+rotte `/api/workspace/spese`) il worker salva il netto (`utils/iva.py`); l'aliquota
+non si salva. **Non entrano nel MOL da sole**: le porta nelle celle
+`altri_costi_fb`/`altri_costi_spese` il pulsante «Recupera dal tab Spese» di
+Margini (`get_costo_spese_da_voci`), che sovrascrive la cella — confermato da
+Mattia il 3/10/2026.
+
 ### `ricavi_giornalieri` — Ricavi day-by-day
 
 | Colonna | Tipo | Note |

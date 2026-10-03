@@ -20002,6 +20002,17 @@
               }
             ],
             "title": "Categoria"
+          },
+          "iva_inclusa": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iva Inclusa"
           }
         },
         "type": "object",
@@ -25199,6 +25210,17 @@
               }
             ],
             "title": "Categoria"
+          },
+          "iva_inclusa": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iva Inclusa"
           }
         },
         "type": "object",

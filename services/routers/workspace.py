@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIE_SPESE_GENERALI
 from config.logger_setup import get_logger
+from utils.iva import netto_da_lordo
 
 _briefing_logger = get_logger("router_workspace")
 
@@ -2376,6 +2377,7 @@ class NuovaSpesaBody(BaseModel):
     descrizione: str
     note: Optional[str] = None
     categoria: Optional[str] = None
+    iva_inclusa: Optional[int] = None  # aliquota se `importo` e' IVA inclusa: si salva il netto
 
 
 class AggiornaSpesaBody(BaseModel):
@@ -2385,6 +2387,16 @@ class AggiornaSpesaBody(BaseModel):
     descrizione: Optional[str] = None
     note: Optional[str] = None
     categoria: Optional[str] = None
+    iva_inclusa: Optional[int] = None
+
+
+def _importo_netto(importo: float, iva_inclusa: Optional[int]) -> float:
+    if iva_inclusa is None:
+        return round(float(importo), 2)
+    try:
+        return netto_da_lordo(float(importo), iva_inclusa)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Aliquota IVA non valida (4, 5, 10 o 22)")
 
 
 @router.get("/api/workspace/spese", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
@@ -2444,7 +2456,7 @@ def ws_spese_crea(body: NuovaSpesaBody, authorization: Optional[str] = Header(No
         "user_id": user_id,
         "data_spesa": body.data_spesa,
         "tipo": body.tipo,
-        "importo": round(float(body.importo), 2),
+        "importo": _importo_netto(body.importo, body.iva_inclusa),
         "descrizione": body.descrizione.strip(),
     }
     # Quando c'e' la categoria e' lei la fonte di verita': il tipo mandato dal
@@ -2479,7 +2491,9 @@ def ws_spese_aggiorna(spesa_id: str, body: AggiornaSpesaBody, authorization: Opt
     if "importo" in raw and raw["importo"] is not None:
         if float(raw["importo"]) < 0:
             raise HTTPException(status_code=400, detail="L'importo non può essere negativo")
-        updates["importo"] = round(float(raw["importo"]), 2)
+        updates["importo"] = _importo_netto(raw["importo"], raw.get("iva_inclusa"))
+    elif raw.get("iva_inclusa") is not None:
+        raise HTTPException(status_code=400, detail="Per scorporare l'IVA serve l'importo")
     if "note" in raw:  # azzerabile
         updates["note"] = raw["note"]
 
