@@ -104,3 +104,18 @@ def test_modifica_parte_solo_da_cio_che_si_puo_ancora_dare():
     assert _iniziale(con, ["home", "catena"]) == con
     nuova_sede = SEDI + [{"id": "s3", "nome": "BRERA"}]
     assert _iniziale(con, ["home", "catena"], nuova_sede) == {"pagine": ["home"], "sedi": ["s1", "s2"]}
+
+
+def test_le_pagine_si_chiamano_come_nella_barra_laterale():
+    """Il 3/10 il pannello diceva «Margini», «Prezzi», «Workspace»: Mattia non
+    ritrovava le pagine della sidebar. Il confronto e' con le voci vere."""
+    import re
+    from pathlib import Path
+
+    sidebar = (Path(__file__).resolve().parents[1] / "apps/web/src/components/nav/app-sidebar.tsx").read_text(encoding="utf-8")
+    voci = re.findall(r'\{ title: "([^"]+)", url: "[^"]+", icon: \w+, flag: (?:"(\w+)"|null) \}', sidebar)
+    assert len(voci) >= 8, voci
+    etichette = esegui_ts(MODULO, "emit(m.ETICHETTA_PAGINA);")
+    for titolo, flag in voci:
+        chiave = flag or "home"
+        assert etichette[chiave].startswith(titolo), (chiave, etichette[chiave], titolo)

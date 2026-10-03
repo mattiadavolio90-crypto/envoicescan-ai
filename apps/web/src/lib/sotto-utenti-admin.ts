@@ -27,16 +27,18 @@ export type Selezione = { pagine: string[]; sedi: string[] };
 
 export const PAGINA_CATENA = "catena";
 
-// Nell'ordine del menu. Home = la Home completa e l'assistente AI.
+// I nomi e l'ordine della barra laterale (components/nav/app-sidebar.tsx): un
+// test li confronta, cosi' il pannello non chiama una pagina in un altro modo.
+// Home = la Home completa e l'assistente AI.
 export const ETICHETTA_PAGINA: Record<string, string> = {
-  home: "Home e assistente AI",
-  analisi_fatture: "Analisi fatture",
-  margini: "Margini",
-  analisi_e_tag: "Analisi e tag",
-  prezzi: "Prezzi",
-  scadenziario: "Scadenziario",
-  agenda: "Agenda",
-  workspace: "Workspace",
+  home: "Home (con assistente AI)",
+  analisi_fatture: "Analisi Fatture",
+  margini: "Ricavi e Margini",
+  analisi_e_tag: "Analisi e Tag",
+  prezzi: "Osservatorio",
+  scadenziario: "Gestione Fatture",
+  agenda: "Agenda e Personale",
+  workspace: "Strumenti",
   catena: "Catena (tutte le sedi)",
 };
 
