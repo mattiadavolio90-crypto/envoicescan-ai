@@ -1690,6 +1690,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   rossi tutti verdi nel repo vero (4 senza git/scratchpad, 2 della coda gia' noti
 >   come instabili). Revisore: codice senza rilievi. **Residuo** (fase I): in `/m`
 >   il rimando porta a una pagina che il mobile non ha. **Non pushato.**
+> - **03/10/2026, `2d1f0779` — piano consulente, fase B (spese extra): chiusa.**
+>   Misura prima del codice (sola lettura): 17 mesi con spese in 5 sedi, 10 gia'
+>   portati in Margini con «Recupera» (8 identici, 2 con 20 € e 9,80 € di scarto),
+>   7 mai portati. Visti i numeri **Mattia ha rivisto la decisione**: le spese NON
+>   entrano nel MOL da sole, resta «Recupera». MOL, briefing e RPC invariati.
+>   **Fatto:** campo «IVA inclusa» (4/5/10/22) nel modulo Spese; il worker salva il
+>   netto (`utils/iva.py`, `iva_inclusa` sulle rotte `/api/workspace/spese`),
+>   anteprima nel modulo da `lib/iva-costi.ts`. **Prove:** `test_iva_costi.py`
+>   (20: le due copie uguali al centesimo su 12.000 casi, rotte, cablaggio);
+>   mutazione **8/8**; suite su copia pulita `python -m pytest -q -p no:randomly`:
+>   **18.677 verdi, 58 skip**, 4 rossi della copia senza git, verdi nel repo vero.
+>   **Residuo** (fase I): `/m` non ha il campo. **Non pushato.**
 
 ---
 
