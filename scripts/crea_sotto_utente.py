@@ -1,6 +1,8 @@
 """
-Crea, elenca o disattiva i sotto-utenti di un titolare, finche' non c'e' il
-pannello Admin (Fase 2 del piano sotto-utenti).
+Crea, elenca o disattiva i sotto-utenti di un titolare da riga di comando. Il
+modo normale e' il pannello Admin (scheda cliente → Sotto-utenti); lo script
+resta per le prove e le emergenze. Le regole sono le stesse
+(`services.sotto_utenti_service.valida_permessi`).
 
 Un sotto-utente e' una credenziale in piu' sopra lo STESSO account: vede solo le
 pagine e le sedi scelte qui, e i blocchi li applica il worker
@@ -37,69 +39,15 @@ import argparse
 import secrets
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from services.sotto_utenti_service import (  # noqa: E402
-    PAGINA_CATENA, PAGINE_ACCOUNT, PAGINE_SOTTO_UTENTE, _pagine_account_del_titolare,
+    sedi_operative as _sedi_operative_svc,
+    valida_permessi as valida_richiesta,
 )
-
-
-def valida_richiesta(
-    pagine: List[str], sedi_richieste: List[str], sedi_account: List[Dict[str, Any]],
-    pagine_titolare: Any = None,
-) -> Tuple[Dict[str, bool], List[str], List[str]]:
-    """(pagine come dict esplicito, id delle sedi, errori). Nessun accesso al DB.
-
-    `sedi_account`: le sedi attive NON tecniche del titolare (`id`, `nome_ristorante`).
-    `pagine_titolare`: `users.pagine_abilitate` del titolare.
-    Meglio un errore adesso che un flag acceso che non fa niente: la Catena senza
-    tutte le sedi e una pagina che il titolare non ha il worker le spegnerebbe in
-    silenzio.
-    """
-    errori: List[str] = []
-    richieste = [p.strip().lower() for p in pagine if p.strip()]
-    sconosciute = sorted(set(richieste) - PAGINE_SOTTO_UTENTE)
-    if sconosciute:
-        errori.append(f"pagine sconosciute: {', '.join(sconosciute)}")
-    if not richieste:
-        errori.append("serve almeno una pagina")
-    del_titolare = _pagine_account_del_titolare(pagine_titolare)
-    if del_titolare is not None:
-        spente = sorted(p for p in set(richieste) & PAGINE_ACCOUNT if p not in del_titolare)
-        if spente:
-            errori.append(f"pagine che il titolare non ha: {', '.join(spente)}")
-    dict_pagine = {p: (p in richieste) for p in sorted(PAGINE_SOTTO_UTENTE)}
-
-    per_id = {str(s["id"]): str(s["id"]) for s in sedi_account}
-    per_nome: Dict[str, str] = {}
-    omonime = set()
-    for s in sedi_account:
-        nome = str(s.get("nome_ristorante") or "").strip().lower()
-        if nome in per_nome:
-            omonime.add(nome)
-        per_nome[nome] = str(s["id"])
-    voci = [s.strip() for s in sedi_richieste if s.strip()]
-    if [v.lower() for v in voci] == ["tutte"]:
-        ids = list(per_id)
-    else:
-        ids = []
-        for v in voci:
-            if v not in per_id and v.lower() in omonime:
-                errori.append(f"piu' sedi si chiamano {v!r}: indicala per id")
-                continue
-            rid = per_id.get(v) or per_nome.get(v.lower())
-            if rid is None:
-                errori.append(f"sede non trovata fra quelle attive del titolare: {v!r}")
-            elif rid not in ids:
-                ids.append(rid)
-    if not ids and not errori:
-        errori.append("serve almeno una sede")
-    if dict_pagine[PAGINA_CATENA] and set(ids) != set(per_id):
-        errori.append("la Catena si puo' dare solo con TUTTE le sedi")
-    return dict_pagine, ids, errori
 
 
 def _titolare(sb, email: str) -> Dict[str, Any]:
@@ -113,12 +61,7 @@ def _titolare(sb, email: str) -> Dict[str, Any]:
 
 
 def _sedi_operative(sb, titolare_id: str) -> List[Dict[str, Any]]:
-    r = (
-        sb.table("ristoranti").select("id, nome_ristorante")
-        .eq("user_id", titolare_id).eq("attivo", True).eq("sede_tecnica", False)
-        .order("created_at").execute()
-    )
-    return r.data or []
+    return _sedi_operative_svc(sb, titolare_id)
 
 
 def elenca(sb, titolare_email: str) -> None:

@@ -142,8 +142,16 @@ pagina che gli risponderebbe 403.
   revoca comunque le sessioni.
 - **Limiti noti.** `users.last_briefing_seen` (il «bentornato» della Home) resta
   per account: lo scrive la rigenerazione in background, che non sa chi guarda.
-  I sotto-utenti si creano con `scripts/crea_sotto_utente.py` (dry-run di
-  default) finché non c'è il pannello Admin.
+  «Password dimenticata» dal login non vale per i sotto-utenti: il nuovo link lo
+  manda l'admin.
+- **Creazione (dal 02/10/2026).** Solo l'admin, dalla scheda cliente
+  (`services/routers/sotto_utenti_admin.py`; `scripts/crea_sotto_utente.py` per
+  prove ed emergenze, stesse regole: `valida_permessi`). Il sotto-utente nasce
+  **senza password** (hash non argon2: il login lo rifiuta) e riceve lo stesso
+  link di attivazione dei clienti (24 ore, `/api/auth/reset-confirm`, che cerca
+  in `sotto_utenti` solo se il token non è di un titolare). L'admin non la
+  conosce mai. Un link nuovo a chi è già attivo chiude le sue sessioni quando lo
+  usa; disattivare ed eliminare le chiudono subito.
 
 ---
 

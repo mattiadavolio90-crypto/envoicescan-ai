@@ -593,8 +593,10 @@ def imposta_password_da_token(
             .execute()
         
         if not result.data:
-            return False, "❌ Link non valido o già utilizzato", {}
-        
+            return _imposta_password_sotto_utente_da_token(
+                token, nuova_password, supabase_client, privacy_accepted
+            )
+
         user = result.data[0]
         
         # 2. Verifica scadenza token
@@ -650,6 +652,74 @@ def imposta_password_da_token(
     except Exception as e:
         logger.exception("Errore impostazione password da token")
         return False, "❌ Errore durante l'impostazione della password. Riprova.", {}
+
+
+def _imposta_password_sotto_utente_da_token(
+    token: str, nuova_password: str, supabase_client, privacy_accepted: bool,
+) -> Tuple[bool, str, Dict]:
+    """Stesso link di attivazione dei titolari, per un sotto-utente.
+
+    Si arriva qui solo se il token non e' di nessun titolare. Un sotto-utente
+    disattivato non si riattiva dal link: lo riaccende solo l'admin.
+    """
+    _non_valido = "❌ Link non valido o già utilizzato"
+    try:
+        result = supabase_client.table("sotto_utenti") \
+            .select("id, titolare_id, email, attivo, reset_expires") \
+            .eq("reset_code", token) \
+            .limit(1) \
+            .execute()
+    except Exception as exc:
+        if "sotto_utenti" in str(exc) and any(c in str(exc) for c in ("42P01", "PGRST205", "does not exist")):
+            return False, _non_valido, {}
+        raise
+    if not result.data:
+        return False, _non_valido, {}
+    su = result.data[0]
+    if not su.get("attivo"):
+        return False, _non_valido, {}
+
+    expires_str = su.get("reset_expires")
+    if not expires_str:
+        return False, "Link non valido o scaduto.", {}
+    expires = datetime.fromisoformat(str(expires_str).replace("Z", "+00:00"))
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires:
+        return False, "⏰ Link scaduto. Contatta il supporto per un nuovo link.", {}
+
+    titolare = supabase_client.table("users") \
+        .select("nome_ristorante") \
+        .eq("id", su["titolare_id"]) \
+        .limit(1) \
+        .execute()
+    nome_account = (titolare.data[0].get("nome_ristorante") if titolare.data else "") or ""
+    errori = valida_password_compliance(nuova_password, su.get("email", ""), nome_account)
+    if errori:
+        return False, errori[0], {}
+
+    _now = datetime.now(timezone.utc).isoformat()
+    _update = {
+        "reset_code": None,
+        "reset_expires": None,
+        "password_hash": ph.hash(nuova_password),
+        "password_changed_at": _now,
+    }
+    if privacy_accepted:
+        _update["privacy_accepted_at"] = _now
+    scritta = supabase_client.table("sotto_utenti").update(_update) \
+        .eq("id", su["id"]).eq("reset_code", token).execute()
+    if not scritta.data:
+        # L'admin ha mandato un link nuovo nel frattempo: questo non vale piu'.
+        return False, _non_valido, {}
+
+    from services.session_service import revoca_sessioni_sotto_utente
+    revoca_sessioni_sotto_utente(su["id"], supabase_client)
+
+    logger.info(f"✅ Password impostata per sotto_utente_id={su['id']}")
+    # Niente id: quello di un sotto-utente e' del titolare, e un chiamante che
+    # facesse l'accesso automatico entrerebbe come lui.
+    return True, "🎉 Password impostata con successo!", {}
 
 
 def verify_and_migrate_password(user_record: dict, password: str) -> bool:

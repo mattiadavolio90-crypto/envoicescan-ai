@@ -81,6 +81,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | `notification_inbox_service.py` | Costruisce le notifiche |
 | `auth_service.py` / `session_service.py` | Auth custom (non Supabase Auth) |
 | `sotto_utenti_service.py` / `permessi_rotte.py` | Sotto-utenti: sessione ristretta a pagine e sedi, mappa rotta → pagina chiusa per default (`tecnica/SICUREZZA_GDPR.md` §5bis) |
+| `routers/sotto_utenti_admin.py` | Sotto-utenti dalla scheda cliente admin: crea (link di attivazione 24 h), modifica pagine/sedi, disattiva, elimina, nuovo link |
 
 ### I router del worker
 

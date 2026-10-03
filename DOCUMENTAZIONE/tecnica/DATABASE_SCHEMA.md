@@ -293,12 +293,12 @@ liste admin (che leggono `users`) non lo vedono per costruzione.
 | id | UUID (PK) | |
 | titolare_id | UUID NOT NULL → `users` ON DELETE CASCADE | Immutabile (trigger) |
 | email | TEXT NOT NULL | Minuscola, unica anche contro `users.email` (trigger nei due versi) |
-| password_hash | TEXT NOT NULL | Argon2id, stesse regole del titolare |
+| password_hash | TEXT NOT NULL | Argon2id, stesse regole del titolare. Non argon2 (`!attivazione:…`) = in attesa: la password non è ancora stata scelta |
 | nome, attivo | TEXT, BOOLEAN | `attivo=false` = login rifiutato |
 | pagine | JSONB NOT NULL `{}` | Chiavi esplicite, assente = spenta; `home`, `catena` esistono solo qui |
 | ultimo_ristorante_id | UUID → `ristoranti` ON DELETE SET NULL | Sede attiva DELLA PERSONA |
 | tema, vista_fatture, privacy_accepted_at, last_briefing_seen | | Preferenze della persona |
-| reset_code, reset_expires, password_changed_at, last_login, created_at | | Attivazione (Fase 2) e audit minimo |
+| reset_code, reset_expires, password_changed_at, last_login, created_at | | Link di attivazione o nuova password (24 h, dal pannello Admin) e audit minimo |
 
 ### `sotto_utenti_sedi` — Sedi assegnate
 

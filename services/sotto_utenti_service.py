@@ -283,3 +283,85 @@ def pagine_per_client(user: Dict[str, Any], pagine_normalizzate: Optional[List[s
         if ctx.get(chiave) and chiave not in lista:
             lista.append(chiave)
     return lista
+
+
+# ─── Gestione (pannello Admin e script) ─────────────────────────────────────
+
+STATO_ATTIVO = "attivo"
+STATO_IN_ATTESA = "in_attesa"
+STATO_DISATTIVATO = "disattivato"
+
+
+def stato(riga: Dict[str, Any]) -> str:
+    """Disattivato vince; senza un hash argon2 la password non e' mai stata scelta."""
+    if not riga.get("attivo"):
+        return STATO_DISATTIVATO
+    if not str(riga.get("password_hash") or "").startswith("$argon2"):
+        return STATO_IN_ATTESA
+    return STATO_ATTIVO
+
+
+def valida_permessi(
+    pagine: Iterable[str], sedi_richieste: Iterable[str], sedi_account: List[Dict[str, Any]],
+    pagine_titolare: Any = None,
+):
+    """(pagine come dict esplicito, id delle sedi, errori). Nessun accesso al DB.
+
+    `sedi_account`: le sedi attive NON tecniche del titolare (`id`, `nome_ristorante`).
+    `sedi_richieste`: id o nomi, oppure la sola voce "tutte".
+    `pagine_titolare`: `users.pagine_abilitate` del titolare.
+    Meglio un errore adesso che un flag acceso che non fa niente: la Catena senza
+    tutte le sedi e una pagina che il titolare non ha il worker le spegnerebbe in
+    silenzio.
+    """
+    errori: List[str] = []
+    richieste = [str(p).strip().lower() for p in pagine if str(p).strip()]
+    sconosciute = sorted(set(richieste) - PAGINE_SOTTO_UTENTE)
+    if sconosciute:
+        errori.append(f"pagine sconosciute: {', '.join(sconosciute)}")
+    if not richieste:
+        errori.append("serve almeno una pagina")
+    del_titolare = _pagine_account_del_titolare(pagine_titolare)
+    if del_titolare is not None:
+        spente = sorted(p for p in set(richieste) & PAGINE_ACCOUNT if p not in del_titolare)
+        if spente:
+            errori.append(f"pagine che il titolare non ha: {', '.join(spente)}")
+    dict_pagine = {p: (p in richieste) for p in sorted(PAGINE_SOTTO_UTENTE)}
+
+    per_id = {str(s["id"]): str(s["id"]) for s in sedi_account}
+    per_nome: Dict[str, str] = {}
+    omonime = set()
+    for s in sedi_account:
+        nome = str(s.get("nome_ristorante") or "").strip().lower()
+        if nome in per_nome:
+            omonime.add(nome)
+        per_nome[nome] = str(s["id"])
+    voci = [str(s).strip() for s in sedi_richieste if str(s).strip()]
+    if [v.lower() for v in voci] == ["tutte"]:
+        ids = list(per_id)
+    else:
+        ids = []
+        for v in voci:
+            if v not in per_id and v.lower() in omonime:
+                errori.append(f"piu' sedi si chiamano {v!r}: indicala per id")
+                continue
+            rid = per_id.get(v) or per_nome.get(v.lower())
+            if rid is None:
+                errori.append(f"sede non trovata fra quelle attive del titolare: {v!r}")
+            elif rid not in ids:
+                ids.append(rid)
+    if not ids and not errori:
+        errori.append("serve almeno una sede")
+    if dict_pagine[PAGINA_CATENA] and set(ids) != set(per_id):
+        errori.append("la Catena si puo' dare solo con TUTTE le sedi")
+    return dict_pagine, ids, errori
+
+
+def sedi_operative(sb, titolare_id: str) -> List[Dict[str, Any]]:
+    """Le sedi assegnabili: attive e non tecniche, nell'ordine di creazione."""
+    r = (
+        sb.table("ristoranti").select("id, nome_ristorante")
+        .eq("user_id", str(titolare_id)).eq("attivo", True).eq("sede_tecnica", False)
+        .order("created_at").execute()
+    )
+    return r.data or []

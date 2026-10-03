@@ -36,7 +36,7 @@ def _codice_vivo(percorso: pathlib.Path) -> str:
     )
 
 
-def test_ci_sono_sedici_router():
+def test_ci_sono_diciassette_router():
     """Se ne nasce uno nuovo il test sotto deve girare anche su quello.
 
     Il tredicesimo e' `email_settimanale` (24/09/2026, fase 7 del piano
@@ -46,9 +46,11 @@ def test_ci_sono_sedici_router():
     Il quindicesimo e' `assistente` (29/09/2026, fase 3 del piano consulente):
     la conferma delle cifre dettate all'assistente. Il sedicesimo e'
     `invio_commercialista_cliente` (02/10/2026): l'invio al commercialista lo
-    attiva il titolare dalle Impostazioni."""
-    assert len(_FILE) == 16, (
-        f"i router sono {len(_FILE)}, non 16: aggiorna il test invece di "
+    attiva il titolare dalle Impostazioni. Il diciassettesimo e'
+    `sotto_utenti_admin` (02/10/2026): i sotto-utenti dalla scheda cliente,
+    ogni endpoint dietro `_verify_admin`."""
+    assert len(_FILE) == 17, (
+        f"i router sono {len(_FILE)}, non 17: aggiorna il test invece di "
         "cancellarlo — un router nuovo senza guardia e' il caso che R5 previene"
     )
 
