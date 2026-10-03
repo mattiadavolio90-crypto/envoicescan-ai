@@ -79,6 +79,7 @@ def app(db_sql, monkeypatch):
         _cur(db_sql, "INSERT INTO public.fatture_queue (id, event_id, piva_raw, source, payload_meta, created_at) "
                      "VALUES (nextval('public.fatture_queue_id_seq'), %s, %s, 'invoicetronic', %s, now() - interval '1 hour')",
              f"ev-seme-{piva}", piva, f'{{"invoicetronic_company_id": {AZIENDA if piva == PIVA else 3000}}}')
+    _cur(db_sql, "INSERT INTO public.sessioni (user_id, token, source) VALUES (%s, 't', 'login')", U1)
     client = TestClient(fw.app, raise_server_exceptions=False,
                         headers={"X-Worker-Key": CHIAVE, "Authorization": "Bearer t"})
     client.db, client.finto, client.avvisi, client.utente = db_sql, finto, avvisi, utente
@@ -242,3 +243,48 @@ def test_flag_sdi_acceso_ma_nessuna_fattura_arrivata_niente_scheda(app):
     _cur(app.db, "DELETE FROM public.fatture_queue WHERE piva_raw = %s", PIVA)
     assert app.get(BASE).json()["pive"] == []
     assert _attiva(app).status_code == 400 and _config(app) is None
+
+
+# ─── Review del 02/10 ────────────────────────────────────────────────────────
+
+def test_l_admin_che_impersona_non_attiva_al_posto_del_cliente(app):
+    """La sessione d'impersonazione e' una sessione vera del cliente: senza questo
+    controllo il consenso risulterebbe dato dal cliente, ed e' falso."""
+    _cur(app.db, "UPDATE public.sessioni SET source = 'impersonation' WHERE token = 't'")
+    assert app.get(BASE).json()["impersonazione"] is True
+    r = _attiva(app)
+    assert r.status_code == 403 and "solo lui" in r.json()["detail"] and _config(app) is None
+
+
+def test_l_admin_che_impersona_puo_spegnere(app):
+    assert _attiva(app).status_code == 200
+    _cur(app.db, "UPDATE public.sessioni SET source = 'impersonation' WHERE token = 't'")
+    assert app.post(f"{BASE}/disattiva", json={"piva": PIVA}).status_code == 200
+    assert _config(app)[0] is False
+
+
+def test_il_titolare_non_risulta_in_impersonazione(app):
+    assert app.get(BASE).json()["impersonazione"] is False
+
+
+def test_una_sede_disattivata_non_porta_la_sua_piva(app):
+    _cur(app.db, "UPDATE public.ristoranti SET attivo = false WHERE partita_iva = %s", PIVA)
+    assert app.get(BASE).json()["pive"] == []
+
+
+def test_le_gia_ricevute_partono_dopo_lo_storico_di_una_configurazione_cancellata(app):
+    _arrivata(app, 40)
+    assert _attiva(app, includi_precedenti=True).status_code == 200
+    cid = _cur(app.db, "SELECT id FROM public.invio_commercialista_config")[0][0]
+    fino = _oggi() - timedelta(days=20)
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET data_partenza = %s WHERE id = %s",
+         _oggi() - timedelta(days=40), cid)
+    iid = _cur(app.db, "INSERT INTO public.invio_commercialista_invii (config_id, user_id, piva, invoicetronic_company_id, "
+                       "destinatario, tipo, periodo_dal, periodo_al, richiesto_da) VALUES (%s, %s, %s, %s, %s, 'primo', %s, %s, "
+                       "'notturno') RETURNING id", cid, U1, PIVA, AZIENDA, EMAIL, _oggi() - timedelta(days=40), fino)[0][0]
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'in_corso', email_tentata_at = now() WHERE id = %s", iid)
+    _cur(app.db, "UPDATE public.invio_commercialista_invii SET stato = 'inviato' WHERE id = %s", iid)
+    _cur(app.db, "DELETE FROM public.invio_commercialista_config WHERE id = %s", cid)
+    assert app.get(BASE).json()["pive"][0]["recupero_dal"] == (fino + timedelta(days=1)).isoformat()
+    assert _attiva(app, includi_precedenti=True).status_code == 200
+    assert _config(app)[3] == fino + timedelta(days=1)

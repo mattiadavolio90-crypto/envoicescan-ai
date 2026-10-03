@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -76,6 +77,7 @@ function BloccoPiva({
   const [autorizzo, setAutorizzo] = useState(false);
   const [occupato, setOccupato] = useState(false);
   const [confermaSpegni, setConfermaSpegni] = useState(false);
+  const router = useRouter();
   const riga = rigaStato(voce, stato.frequenze);
   const ultimo = rigaUltimoInvio(voce.ultimo_invio);
   const recupero = voce.attivo ? null : etichettaRecupero(voce);
@@ -92,6 +94,9 @@ function BloccoPiva({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(typeof data?.detail === "string" ? data.detail : "Non è andata: riprova più tardi.");
+        // Le scritture sono tre: dopo un errore a metà la scheda mostrerebbe lo
+        // stato di prima. Si rilegge dal server.
+        router.refresh();
         return false;
       }
       onStato(data as StatoFattureCommercialista);
@@ -131,11 +136,14 @@ function BloccoPiva({
       <p className={CLASSE_TONO[riga.tono]}>{riga.testo}</p>
       {ultimo && <p className="text-muted-foreground">{ultimo}</p>}
 
-      {!modifica && !voce.sospeso && (
+      {!modifica && voce.attivo && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={occupato} onClick={() => setModifica(true)}>
-            Modifica
-          </Button>
+          {!voce.sospeso && (
+            <Button size="sm" variant="outline" disabled={occupato} onClick={() => setModifica(true)}>
+              Modifica
+            </Button>
+          )}
+          {/* Anche da sospeso: il testo autorizzato promette che si disattiva in qualsiasi momento. */}
           <Button size="sm" variant="outline" disabled={occupato} onClick={() => setConfermaSpegni(true)}>
             Disattiva
           </Button>

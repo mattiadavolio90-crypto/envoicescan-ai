@@ -1029,3 +1029,18 @@ def test_l_ordinario_non_va_prima_della_partenza(db_sql, psycopg):
         _invio(db_sql, cid, "ordinario", "2026-08-01", "2026-09-20", da="notturno")
     _invio(db_sql, cid, "ordinario", "2026-09-01", "2026-09-20", da="notturno")
 
+
+
+def test_il_reinvio_non_scavalca_il_buco_scelto_dal_cliente(db_sql, psycopg):
+    """Spedito luglio, poi riattivato «solo le nuove» da settembre: agosto non e'
+    mai stato inviato, e un reinvio da luglio a settembre lo manderebbe."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _inviato(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    _esegui(db_sql, "UPDATE public.invio_commercialista_config SET data_partenza = '2026-09-01' WHERE id = %s", cid)
+    ordinario = _invio(db_sql, cid, "ordinario", "2026-09-01", "2026-09-20", da="notturno")
+    _stato(db_sql, ordinario, "in_corso", email_tentata_at=TENTATA)
+    _stato(db_sql, ordinario, "inviato")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "reinvio", "2026-07-15", "2026-09-05")
+    _invio(db_sql, cid, "reinvio", "2026-09-02", "2026-09-05")

@@ -25,7 +25,7 @@ def _voce(**campi):
 
 
 def _stato(**campi):
-    stato = {"disponibile": True, "oggi": "2026-10-02", "frequenze": FREQUENZE,
+    stato = {"disponibile": True, "impersonazione": False, "oggi": "2026-10-02", "frequenze": FREQUENZE,
              "testo_autorizzazione": "Autorizzo a {email}, {frequenza}, P.IVA {piva}.", "pive": [_voce()]}
     stato.update(campi)
     return stato
@@ -43,6 +43,7 @@ def _chiama(funzione, *argomenti):
     (_stato(), {"is_admin": True}, False),
     (_stato(), {"sotto_utente": True}, False),
     (_stato(disponibile=False), {}, False),
+    (_stato(impersonazione=True), {}, False),
     (_stato(pive=[]), {}, False),
     (None, {}, False),
 ])
@@ -158,3 +159,13 @@ def test_il_pulsante_attiva_chiede_email_valida_e_autorizzazione():
     assert "disabled={occupato || !emailOk || !autorizzo} onClick={attiva}" in sorgente
     assert "const emailOk = emailValida(email);" in sorgente
     assert "{ piva: voce.piva, email, frequenza, autorizzo, includi_precedenti: includi }" in sorgente
+
+
+def test_disattivare_resta_possibile_anche_da_sospeso():
+    """Il testo autorizzato promette che si disattiva in qualsiasi momento."""
+    sorgente = _normalizzato("app/(app)/impostazioni/fatture-commercialista-card.tsx")
+    assert "{!modifica && voce.attivo && (" in sorgente
+    blocco = sorgente.split("{!modifica && voce.attivo && (", 1)[1].split("</div> )}", 1)[0]
+    assert "onClick={() => setConfermaSpegni(true)}" in blocco
+    assert blocco.index("{!voce.sospeso && (") < blocco.index("Modifica") < blocco.index("Disattiva")
+    assert blocco.split("Modifica", 1)[1].count("voce.sospeso") == 0

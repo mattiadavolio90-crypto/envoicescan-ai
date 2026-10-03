@@ -27,6 +27,8 @@ export interface VocePiva {
 
 export interface StatoFattureCommercialista {
   disponibile: boolean;
+  /** Un admin che impersona il cliente: l'autorizzazione non e' sua da dare. */
+  impersonazione: boolean;
   oggi: string;
   frequenze: Record<Frequenza, string>;
   testo_autorizzazione: string;
@@ -34,8 +36,9 @@ export interface StatoFattureCommercialista {
 }
 
 // Solo il titolare (un admin non ha un commercialista, un sotto-utente non
-// sceglie per l'account), solo a servizio acceso (altrimenti la scheda
-// prometterebbe un invio che non parte) e solo se c'e' una P.IVA che riceve via SDI.
+// sceglie per l'account, un admin che impersona non autorizza al posto del
+// cliente), solo a servizio acceso (altrimenti la scheda prometterebbe un invio
+// che non parte) e solo se c'e' una P.IVA che riceve via SDI.
 export function mostraFattureCommercialista(
   stato: StatoFattureCommercialista | null | undefined,
   account: { is_admin?: boolean | null; sotto_utente?: boolean | null },
@@ -43,6 +46,7 @@ export function mostraFattureCommercialista(
   return (
     !!stato &&
     stato.disponibile === true &&
+    stato.impersonazione !== true &&
     account.is_admin !== true &&
     account.sotto_utente !== true &&
     stato.pive.length > 0

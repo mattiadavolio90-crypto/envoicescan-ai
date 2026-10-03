@@ -63,12 +63,28 @@ _PIVA = re.compile(r"^[0-9]{11}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 NON_DISPONIBILE = "L'invio al commercialista non è ancora disponibile."
 SOLO_TITOLARE = "L'invio al commercialista lo può attivare solo il titolare dell'account."
+IMPERSONAZIONE = ("Stai guardando l'account di un cliente: l'invio al commercialista lo attiva solo lui, "
+                  "perché è la sua autorizzazione.")
 
 
 def _solo_titolare(user: Dict[str, Any]) -> Dict[str, Any]:
     if _su.e_sotto_utente(user):
         raise HTTPException(status_code=403, detail=SOLO_TITOLARE)
     return user
+
+
+def _impersonazione(sb, authorization: Optional[str]) -> bool:
+    """La sessione e' di un admin che impersona il cliente? Allora l'attivazione
+    registrerebbe come consenso del cliente un atto dell'admin. Il `source` della
+    sessione non arriva nel dict utente: si legge qui. Una guardia non tace
+    quando non sa: senza risposta dal DB vale come impersonazione."""
+    token = (authorization or "").split(" ", 1)[-1].strip()
+    try:
+        righe = sb.table("sessioni").select("source").eq("token", token).limit(1).execute().data or []
+    except Exception:
+        logger.warning("invio_commercialista cliente: sessione non leggibile, attivazione negata")
+        return True
+    return not righe or righe[0].get("source") == "impersonation"
 
 
 def _oggi() -> date:
@@ -116,7 +132,7 @@ def _ultimo_invio(sb, config_id: str) -> Optional[Dict[str, Any]]:
     return righe[0] if righe else None
 
 
-def _stato(sb, user_id: str) -> Dict[str, Any]:
+def _stato(sb, user_id: str, impersonazione: bool) -> Dict[str, Any]:
     oggi = _oggi()
     adesso = svc.adesso_utc()
     pive = _pive_sdi(sb, user_id)
@@ -149,6 +165,7 @@ def _stato(sb, user_id: str) -> Dict[str, Any]:
         voci.append(voce)
     return {
         "disponibile": svc.invio_attivo(),
+        "impersonazione": impersonazione,
         "oggi": oggi.isoformat(),
         "frequenze": svc.FREQUENZE,
         "testo_autorizzazione": svc.TESTO_AUTORIZZAZIONE,
@@ -159,7 +176,8 @@ def _stato(sb, user_id: str) -> Dict[str, Any]:
 @router.get(BASE, tags=["Account"], dependencies=[Depends(_verify_worker_key)])
 def invio_commercialista_cliente_stato(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     user = _solo_titolare(_resolve_user_from_token(authorization))
-    return _stato(get_supabase_client(), str(user["id"]))
+    sb = get_supabase_client()
+    return _stato(sb, str(user["id"]), _impersonazione(sb, authorization))
 
 
 class AttivaBody(BaseModel):
@@ -228,6 +246,8 @@ def invio_commercialista_cliente_attiva(
     if not _EMAIL.match(email):
         raise HTTPException(status_code=400, detail="L'email del commercialista non sembra valida.")
     sb = get_supabase_client()
+    if _impersonazione(sb, authorization):
+        raise HTTPException(status_code=403, detail=IMPERSONAZIONE)
     piva = body.piva.strip()
     if piva not in _pive_sdi(sb, user_id):
         raise HTTPException(status_code=400, detail="Questa P.IVA non riceve fatture tramite OneFlux.")
@@ -267,7 +287,7 @@ def invio_commercialista_cliente_attiva(
     if not config.get("attivo"):
         _avvisa_admin(f"ℹ️ Invio al commercialista attivato dal cliente {user_id[:8]} "
                       f"(configurazione {str(config['id'])[:8]}, {body.frequenza}, fatture dal {partenza:%d/%m/%Y}).")
-    return _stato(sb, user_id)
+    return _stato(sb, user_id, _impersonazione(sb, authorization))
 
 
 class DisattivaBody(BaseModel):
@@ -287,4 +307,4 @@ def invio_commercialista_cliente_disattiva(
     _scrivi(sb, config["id"], {"attivo": False})
     logger.info("invio_commercialista: disattivato dal cliente %s (configurazione %s)",
                 user_id[:8], str(config["id"])[:8])
-    return _stato(sb, user_id)
+    return _stato(sb, user_id, _impersonazione(sb, authorization))

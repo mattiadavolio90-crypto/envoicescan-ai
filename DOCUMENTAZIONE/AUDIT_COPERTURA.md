@@ -1580,6 +1580,46 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   comunque con 403); archiviare una notifica la archivia per tutto l'account.
 >   **Prima del push:** migration `20260928215000_sotto_utenti.sql` sul live (oggi
 >   assente). Nessun sotto-utente sul live. **Non pushato.**
+> - **02/10/2026, `460234a5` — invio al commercialista: lo attiva il cliente dalle
+>   Impostazioni** (decisione di Mattia: niente clausole firmate; piano approvato in
+>   plan mode). **Fatto:** scheda «Fatture al commercialista» in Impostazioni, solo
+>   al titolare, solo per le P.IVA con una sede SDI attiva **e** almeno una fattura
+>   arrivata (le 4 sedi col flag acceso dal 23/06 e mai un arrivo restano fuori),
+>   solo con `INVIO_COMMERCIALISTA_ATTIVO=1`; l'attivazione e' il consenso, salvato
+>   con `consenso_at`/`consenso_da`/`consenso_testo` (testo deciso dal worker, non
+>   dal client); collegamento a Invoicetronic e primo invio automatici (il primo lo
+>   crea il pianificatore dalla data di partenza, che fa da pavimento anche per gli
+>   ordinari); area admin ridotta a vedere, provare, reinviare, spegnere; privacy
+>   4.4 e termini 1.2. **Prove:** `tests/test_sql_invio_commercialista_cliente.py`
+>   (25 su Postgres vero), test SQL del registro e del pianificatore aggiornati
+>   (primo notturno, partenza esatta, storico orfano, pavimento, riattivazione),
+>   `test_fatture_commercialista_frontend.py` (35), presidi privacy (+3),
+>   isolamento per risorsa 326/326 con la GET nuova in `GET_SESSIONE`. Mutazione
+>   **37: 35 uccisi, 2 equivalenti** (la pulizia GDPR riscriveva campi che il
+>   trigger azzera gia'; la guardia «secondo primo» doppiava `ici_un_solo_primo`):
+>   righe ridondanti tolte; il caso di confine delle 04:30 aggiunto dopo un
+>   sopravvissuto. Suite su copia di `460234a5` (`python -m pytest tests/ -q
+>   -p no:randomly -p no:cacheprovider`): **18.704 verdi, 58 skip, 22 rossi, nessuno
+>   di questo commit** — 14 identici su `c501bedb` (briefing personale, chat
+>   proposte/retail, salute: non toccati qui), 4 solo per la copia senza `.git`,
+>   4 di `test_sql_assistente_registra`/`test_sql_chat_proposte` che passano da soli
+>   su entrambi i commit (date di Roma a cavallo di mezzanotte). **Prima del push:**
+>   migration `20261002194731_invio_commercialista_dal_cliente.sql` sul live; per
+>   accendere, la variabile anche sul worker FastAPI (oggi spenta su entrambi).
+>   **Review su `460234a5`: NON CHIUSA, due blocchi, chiusi nel commit dopo.**
+>   B1: l'impersonazione admin e' una sessione vera del cliente, e l'admin poteva
+>   attivare registrando come consenso del cliente un atto suo → la rotta legge il
+>   `source` della sessione e rifiuta (403), la scheda si nasconde; spegnere resta
+>   possibile. B2: verbale non committato. Chiusi anche tre rilievi non bloccanti:
+>   da sospeso il cliente non poteva disattivare (il testo autorizzato lo promette);
+>   un reinvio a cavallo del buco scelto dal cliente («solo le nuove») spediva giorni
+>   mai inviati → il trigger vuole ogni giorno dentro un periodo spedito; due mutanti
+>   del revisore sopravvissuti (sede disattivata, storico orfano nell'attivazione)
+>   → test. Mutazione sulle correzioni **7/7**.
+>   **Residui (decide Mattia):** la prova del consenso non ha storico (ogni «Salva»
+>   la riscrive) e la pulizia GDPR la cancella 90 giorni dopo la disattivazione,
+>   mentre il registro degli invii resta; «solo le nuove» include le fatture
+>   arrivate nel giorno stesso dell'attivazione. **Non pushato.**
 
 ---
 

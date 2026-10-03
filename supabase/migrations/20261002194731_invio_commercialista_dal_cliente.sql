@@ -18,7 +18,9 @@
 --     riattiva «solo le fatture nuove» non riceve il buco di quando era spento,
 --     e uno che le chiede tutte riparte da dove si era fermato, senza doppioni;
 --   - il primo parte dopo l'ultimo giorno gia' spedito da una configurazione
---     cancellata della stessa P.IVA (prima lo controllava solo il router admin).
+--     cancellata della stessa P.IVA (prima lo controllava solo il router admin);
+--   - un reinvio copre solo giorni gia' spediti, uno per uno: col pavimento il
+--     gia' inviato puo' avere buchi, e prima bastava stare fra il primo e l'ultimo.
 --
 -- Idempotente. Nessuna funzione cambia firma.
 
@@ -117,7 +119,6 @@ AS $function$
 DECLARE
     v_cfg     public.invio_commercialista_config%ROWTYPE;
     v_ultimo  date;
-    v_primo   date;
     v_limite  date;
     v_attesa  date;
     v_orfano  date;
@@ -272,16 +273,21 @@ BEGIN
         END IF;
     END IF;
 
-    IF NEW.tipo = 'reinvio' THEN
-        SELECT min(periodo_dal) INTO v_primo
-        FROM public.invio_commercialista_invii
-        WHERE config_id = NEW.config_id
-          AND tipo IN ('primo', 'ordinario')
-          AND stato IN ('inviato', 'esito_incerto');
-        IF v_ultimo IS NULL OR NEW.periodo_al > v_ultimo OR NEW.periodo_dal < v_primo THEN
-            RAISE EXCEPTION 'si reinvia solo cio'' che e'' gia'' stato inviato'
-                USING ERRCODE = 'check_violation';
-        END IF;
+    -- Ogni giorno del reinvio dentro un periodo gia' spedito: con la partenza che
+    -- fa da pavimento il gia' inviato puo' avere buchi (riattivato «solo le
+    -- nuove»), e un reinvio a cavallo manderebbe fatture che il cliente ha escluso.
+    IF NEW.tipo = 'reinvio' AND EXISTS (
+        SELECT 1 FROM generate_series(NEW.periodo_dal, NEW.periodo_al, interval '1 day') AS g(giorno)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM public.invio_commercialista_invii i
+            WHERE i.config_id = NEW.config_id
+              AND i.tipo IN ('primo', 'ordinario')
+              AND i.stato IN ('inviato', 'esito_incerto')
+              AND g.giorno::date BETWEEN i.periodo_dal AND i.periodo_al
+        )
+    ) THEN
+        RAISE EXCEPTION 'si reinvia solo cio'' che e'' gia'' stato inviato'
+            USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;
 END;
