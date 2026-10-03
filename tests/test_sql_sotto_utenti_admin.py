@@ -370,3 +370,64 @@ def test_link_sostituito_mentre_si_attiva_non_dichiara_successo(admin, monkeypat
     r = _attiva(sc, token)
     assert r.status_code == 400
     assert not _riga(sc)[1].startswith("$argon2")
+
+
+# ─── «Password dimenticata» dal login ─────────────────────────────────────────
+
+
+def _password_dimenticata(sc, email=EMAIL):
+    return sc.client.post("/api/auth/reset-request", json={"email": email},
+                          headers={"X-Worker-Key": CHIAVE_WORKER})
+
+
+def test_password_dimenticata_vale_anche_per_il_sotto_utente(admin):
+    sc = admin
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], EMAIL, [sc.a.ids["sede1"]], {"analisi_fatture": True})
+    r = _password_dimenticata(sc)
+    assert r.status_code == 200, r.text
+    generico = r.json()["message"]
+    assert len(sc.inviate) == 1 and sc.inviate[0]["to"] == EMAIL
+    assert "onboarding=1" not in sc.inviate[0]["html"]
+    assert _attiva(sc, _token_dall_email(sc), "Turno-Pranzo-Nuovo-2027!").status_code == 200
+    assert _login(sc, EMAIL, "Turno-Pranzo-Nuovo-2027!").status_code == 200
+    # La risposta e' la stessa di un'email sconosciuta: non rivela chi esiste.
+    assert _password_dimenticata(sc, "nessuno@isolamento.test").json()["message"] == generico
+
+
+def test_password_dimenticata_non_rimanda_entro_cinque_minuti(admin):
+    sc = admin
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], EMAIL, [sc.a.ids["sede1"]], {"analisi_fatture": True})
+    assert _password_dimenticata(sc).status_code == 200
+    import services.fastapi_worker as fw
+    fw._rate_buckets.clear()
+    assert _password_dimenticata(sc).status_code == 200
+    assert len(sc.inviate) == 1
+
+
+def test_password_dimenticata_non_attiva_chi_e_in_attesa_o_disattivato(admin):
+    sc = admin
+    _crea(sc)  # in attesa: ha gia' il link di attivazione dell'admin
+    assert len(sc.inviate) == 1
+    # Link dell'admin scaduto: a fermarlo dev'essere lo stato, non i 5 minuti.
+    sc.conn.execute("UPDATE public.sotto_utenti SET reset_expires = now() - interval '1 day' WHERE email = %s", (EMAIL,))
+    assert _password_dimenticata(sc).status_code == 200
+    assert len(sc.inviate) == 1
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "spento@isolamento.test", [sc.a.ids["sede1"]],
+                       {"analisi_fatture": True}, attivo=False)
+    assert _password_dimenticata(sc, "spento@isolamento.test").status_code == 200
+    assert len(sc.inviate) == 1
+
+
+def test_password_dimenticata_se_l_email_non_parte_si_puo_riprovare_subito(admin, monkeypatch):
+    sc = admin
+    from services import email_service
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], EMAIL, [sc.a.ids["sede1"]], {"analisi_fatture": True})
+    monkeypatch.setattr(email_service, "brevo_send", lambda *a, **k: False)
+    assert _password_dimenticata(sc).status_code == 200
+    assert _riga(sc)[2] is None
+    inviate = []
+    monkeypatch.setattr(email_service, "brevo_send", lambda to, *a, **k: inviate.append(to) or True)
+    import services.fastapi_worker as fw
+    fw._rate_buckets.clear()
+    assert _password_dimenticata(sc).status_code == 200
+    assert inviate == [EMAIL]

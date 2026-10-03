@@ -216,7 +216,8 @@ def test_cifra_gia_registrata_uguale_nessuna_card(scenario, modello):
 
 
 @pytest.mark.parametrize("args,nome", [
-    ({**INCASSO, "data": (OGGI + timedelta(days=1)).isoformat()}, "proponi_incasso"),
+    # Dopodomani: OGGI e' della raccolta, e a cavallo della mezzanotte «domani» e' oggi.
+    ({**INCASSO, "data": (OGGI + timedelta(days=2)).isoformat()}, "proponi_incasso"),
     ({**INCASSO, "iva10": 150_000}, "proponi_incasso"),
     ({"anno": OGGI.year + 1, "mese": 1, "importo": 1000}, "proponi_personale"),
     ({"anno": OGGI.year, "mese": OGGI.month, "importo": 0}, "proponi_personale"),

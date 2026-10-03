@@ -207,8 +207,10 @@ def test_mese_tenuto_a_totale_rifiuta_il_giorno_e_non_lo_spegne(scenario):
                            "AND anno = %s AND mese = %s", a.ids["sede1"], IERI.year, IERI.month)[0] == "mensile"
 
 
+# Futuro = dopodomani, non domani: OGGI si calcola alla raccolta, e se la suite
+# passa la mezzanotte di Roma «domani» diventa oggi (3/10/2026, 3 rossi).
 @pytest.mark.parametrize("giorno,importi", [
-    (OGGI + timedelta(days=1), {}),
+    (OGGI + timedelta(days=2), {}),
     (OGGI - timedelta(days=61), {}),
     (IERI, {"fatturato_iva10": -10}),
     (IERI, {"fatturato_iva10": 0, "altri_ricavi_noiva": 0}),
@@ -223,7 +225,9 @@ def test_incasso_non_valido_e_400_e_non_scrive(scenario, giorno, importi):
 
 def test_limiti_del_periodo_sono_ammessi(scenario):
     a = scenario.a
-    for giorno in (OGGI, OGGI - timedelta(days=60)):
+    # «Oggi» al momento della chiamata, non alla raccolta: i limiti sono esatti.
+    oggi = datetime.now(tz=ZoneInfo("Europe/Rome")).date()
+    for giorno in (oggi, oggi - timedelta(days=60)):
         resp = _registra(scenario, a, **_incasso(a.ids["sede1"], giorno=giorno))
         assert resp.status_code == 200, (giorno, resp.text)
 
@@ -578,6 +582,6 @@ def test_un_rifiuto_non_invalida_niente(scenario, worker, monkeypatch):
     a = scenario.a
     chiamate = []
     monkeypatch.setattr(worker, "_invalidate_home_kpi_cache", lambda rid=None: chiamate.append(rid))
-    resp = _registra(scenario, a, **_incasso(a.ids["sede1"], giorno=OGGI + timedelta(days=1)))
+    resp = _registra(scenario, a, **_incasso(a.ids["sede1"], giorno=OGGI + timedelta(days=2)))
     assert resp.status_code == 400
     assert chiamate == []

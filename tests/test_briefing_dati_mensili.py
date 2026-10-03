@@ -19,6 +19,8 @@ os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "x")
 
 from datetime import date
 
+import pytest
+
 from unittest.mock import MagicMock
 
 from services.fastapi_worker import _briefing_dati_mensili_mancanti
@@ -140,6 +142,23 @@ def _nel_giorno_del_sollecito_incasso():
             return _dtmod.datetime(2026, 9, giorno, 12, 0, tzinfo=tz)
 
     return _patch.object(_dtmod, "datetime", _FakeDateTime)
+
+
+@pytest.fixture(autouse=True)
+def _oggi_fissato():
+    """Ogni test gira nello stesso «oggi»: il 24/09/2026, giovedi'.
+
+    Dal 23/09/2026 il personale del mese appena chiuso si sollecita solo dal
+    `_GIORNO_SOLLECITO_PERSONALE` (15) e l'incasso solo il giovedi'. Senza una
+    data fissa i test del personale erano verdi dal 15 a fine mese e rossi dal
+    1° al 14 (scoperto il 3/10/2026). I mesi attesi li calcolano gli helper qui
+    sopra dallo stesso «oggi», quindi restano coerenti.
+    """
+    from services.fastapi_worker import _GIORNO_SOLLECITO_PERSONALE
+    with _nel_giorno_del_sollecito_incasso():
+        import datetime as _dtmod
+        assert _dtmod.datetime.now().day >= _GIORNO_SOLLECITO_PERSONALE
+        yield
 
 
 def _topics(notifs):

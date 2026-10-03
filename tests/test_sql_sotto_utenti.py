@@ -252,7 +252,11 @@ def test_due_sotto_utenti_cambiano_sede_senza_spostare_gli_altri(scenario):
 def test_titolare_che_cambia_sede_non_sposta_il_sotto_utente(scenario):
     sc = scenario
     sedi = [sc.a.ids["sede1"], sc.a.ids["sede2"]]
-    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "uno@isolamento.test", sedi, {"analisi_fatture": True})
+    su_id = _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "uno@isolamento.test", sedi, {"analisi_fatture": True})
+    # Sede attiva esplicita: le due sedi del seed hanno lo stesso created_at, e la
+    # sede di default a pari data dipendeva da cosa era girato prima su quel DB.
+    sc.conn.execute("UPDATE public.sotto_utenti SET ultimo_ristorante_id = %s WHERE id = %s",
+                    (sc.a.ids["sede1"], su_id))
     t1 = _login(sc, "uno@isolamento.test").json()["token"]
     r = _chiama(sc, sc.a.token, "POST", "/api/account/cambia-sede", json={"ristorante_id": sc.a.ids["sede2"]})
     assert r.status_code == 200, r.text

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import services.fastapi_worker as fw
 from config.constants import SETTORE_RETAIL, SETTORE_RISTORAZIONE
-from tests.test_chat_settore_retail import USER, _kpi_mock, _sb
+from tests.test_chat_settore_retail import USER, _Settembre, _kpi_mock, _sb
 
 REGOLA = "usa proponi_incasso, proponi_personale o proponi_fatturato_mese"
 
@@ -47,6 +47,8 @@ def test_senza_card_nel_client_il_prompt_e_quello_di_prima(monkeypatch):
 
 
 def test_con_card_gli_avvisi_offrono_di_dettare(monkeypatch):
+    # Dopo il 15: prima l'avviso del personale non c'e' (il sollecito parte da li').
+    monkeypatch.setattr(fw, "datetime", _Settembre)
     p = _prompt(monkeypatch)
     assert "Movimenti → Ricavi, oppure di dettarti qui il fatturato del mese" in p
     assert "(sezione Personale), oppure di dirti qui la cifra" in p

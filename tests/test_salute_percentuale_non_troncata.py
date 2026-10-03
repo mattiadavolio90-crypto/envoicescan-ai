@@ -108,6 +108,15 @@ def _pct_classificate(resp):
 def _chiama_home_salute(monkeypatch, sb):
     import services.fastapi_worker as fw
 
+    from tests.test_chat_settore_retail import _Settembre
+
+    # Dopo il 15: prima il personale del mese chiuso non e' ancora dovuto, la sua
+    # voce va a 100 e la formula di _pct_classificate non vale piu'.
+    import datetime as _dtmod
+
+    monkeypatch.setattr(fw, "datetime", _Settembre)
+    # home_salute importa `datetime` dentro la funzione: si fissa anche il modulo.
+    monkeypatch.setattr(_dtmod, "datetime", _Settembre)
     monkeypatch.setattr(fw, "_resolve_user_from_token", lambda _a: {"id": "u1"})
     monkeypatch.setattr(fw, "_get_supabase_client", lambda: sb)
     monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda _u, _s: "rid-1")

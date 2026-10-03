@@ -48,7 +48,20 @@ def _sb():
     return sb
 
 
+class _Settembre(fw.datetime):
+    """Il giorno in cui e' stata presa la fixture (dopo il 15, quindi col
+    sollecito del personale): gli avvisi del prompt dipendono da «oggi», e senza
+    una data fissa il presidio era rosso dal 1° al 14 di ogni mese."""
+
+    @classmethod
+    def now(cls, tz=None):
+        from datetime import timezone
+        istante = fw.datetime(2026, 9, 24, 10, 0, tzinfo=timezone.utc)
+        return istante.astimezone(tz) if tz else istante.replace(tzinfo=None)
+
+
 def _prompt(settore, monkeypatch):
+    monkeypatch.setattr(fw, "datetime", _Settembre)
     monkeypatch.setattr(fw, "home_kpi", lambda *a, **k: _kpi_mock())
     monkeypatch.setattr(fw, "_chat_top_cat_forn", lambda *a, **k: ([], []))
     return _build_chat_system_prompt(USER, _sb(), None, "r-1", settore)

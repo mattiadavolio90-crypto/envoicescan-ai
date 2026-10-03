@@ -1699,7 +1699,10 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
                 .maybe_single() \
                 .execute()
             if not check_utente.data:
-                logger.info(f"Reset richiesto per email non registrata: {email}")
+                # Non e' un titolare: puo' essere un sotto-utente. Stessa risposta
+                # in ogni caso, o il messaggio rivelerebbe chi esiste.
+                _invia_reset_sotto_utente(email.lower().strip(), code, expires, supabase_client)
+                logger.info(f"Reset richiesto per email non registrata come titolare: {email}")
                 _record_reset_request(email, supabase_client)
                 return True, _MSG_GENERICO
         except Exception:
@@ -1813,6 +1816,64 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
     except Exception:
         logger.exception("Errore invio codice reset")
         return False, "Errore nell'invio email. Riprova o contatta il supporto."
+
+
+def _invia_reset_sotto_utente(email: str, code: str, expires: str, supabase_client) -> bool:
+    """«Password dimenticata» per un sotto-utente gia' attivato. Best-effort.
+
+    Solo chi ha gia' scelto una password: chi e' ancora in attesa riceve il
+    link di attivazione dall'admin, che passa anche dal consenso privacy.
+    Il cooldown dei titolari (`_record_reset_request`) scrive su `users`: qui
+    lo fa `reset_expires` — un link chiesto da meno di 5 minuti non si rimanda.
+    Il link e' lo stesso dei titolari: `/api/auth/reset-confirm` lo trova in
+    `sotto_utenti` (`_imposta_password_sotto_utente_da_token`).
+    """
+    try:
+        r = supabase_client.table("sotto_utenti") \
+            .select("id, nome, password_hash, reset_expires") \
+            .eq("email", email).eq("attivo", True).limit(1).execute()
+        if not r.data:
+            return False
+        su = r.data[0]
+        if not str(su.get("password_hash") or "").startswith("$argon2"):
+            return False
+        precedente = su.get("reset_expires")
+        if precedente:
+            scade = datetime.fromisoformat(str(precedente).replace("Z", "+00:00"))
+            if scade.tzinfo is None:
+                scade = scade.replace(tzinfo=timezone.utc)
+            if scade - timedelta(minutes=55) > datetime.now(timezone.utc):
+                return False
+        supabase_client.table("sotto_utenti").update(
+            {"reset_code": code, "reset_expires": expires}
+        ).eq("id", su["id"]).execute()
+        nome_chiaro = su.get("nome") or email
+
+        import html as _html
+        from services.email_service import brevo_send, email_template
+        link = f"https://app.oneflux.it/reset-password?token={code}"
+        nome = _html.escape(nome_chiaro)
+        corpo = (
+            f'Ciao <strong style="color:#f1f5f9;">{nome}</strong>,<br><br>'
+            "Hai chiesto di reimpostare la password del tuo accesso a ONEFLUX."
+        )
+        html_body = email_template(
+            titolo="Recupera la tua password",
+            corpo_html=corpo,
+            cta_label="Reimposta password",
+            cta_link=link,
+            nota="Il link è valido per 1 ora. Se non l'hai chiesto tu, ignora questa email.",
+        )
+        inviata = brevo_send(email, nome_chiaro, "🔑 Recupero Password - ONEFLUX", html_body, contesto="reset_sotto_utente")
+        if not inviata:
+            # Email non partita: niente attesa di 5 minuti per riprovare.
+            supabase_client.table("sotto_utenti").update(
+                {"reset_code": None, "reset_expires": None}
+            ).eq("id", su["id"]).eq("reset_code", code).execute()
+        return inviata
+    except Exception:
+        logger.exception("Reset password sotto-utente non inviato")
+        return False
 
 
 def hash_password(password: str) -> str:

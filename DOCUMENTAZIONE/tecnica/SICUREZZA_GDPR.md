@@ -142,8 +142,10 @@ pagina che gli risponderebbe 403.
   revoca comunque le sessioni.
 - **Limiti noti.** `users.last_briefing_seen` (il «bentornato» della Home) resta
   per account: lo scrive la rigenerazione in background, che non sa chi guarda.
-  «Password dimenticata» dal login non vale per i sotto-utenti: il nuovo link lo
-  manda l'admin.
+  «Password dimenticata» dal login vale anche per i sotto-utenti già attivati
+  (stessa risposta generica). Non si rimanda se c'è già un link valido chiesto
+  da meno di 5 minuti o mandato dall'admin (24 ore); chi è ancora in attesa usa
+  il link di attivazione dell'admin.
 - **Creazione (dal 02/10/2026).** Solo l'admin, dalla scheda cliente
   (`services/routers/sotto_utenti_admin.py`; `scripts/crea_sotto_utente.py` per
   prove ed emergenze, stesse regole: `valida_permessi`). Il sotto-utente nasce

@@ -1602,10 +1602,13 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   ridondante, tolto. Revisore 🟢. Suite su copia dell'indice: 18.747 verdi; 22
 >   rossi nessuno della fase (14 anche su HEAD pulito, legati al cambio mese; 4 da
 >   copia senza `.git`; 4 SQL legati all'ora, 81/81 rilanciati).
->   **Non fatto (residui):** «password dimenticata» non vale per i sotto-utenti
->   (il link lo manda l'admin); l'ordine delle sedi a pari `created_at` rende
->   `test_titolare_che_cambia_sede_non_sposta_il_sotto_utente` dipendente
->   dall'ordine dei file (verde in CI, alfabetico). **Non pushato.**
+>   **Residui chiusi il 3/10:** «password dimenticata» anche per i sotto-utenti
+>   attivati (mutazioni 4/4); `test_titolare_che_cambia_sede_non_sposta_il_sotto_utente`
+>   non dipende piu' dall'ordine dei file (sede attiva esplicita: le due sedi del
+>   seed hanno lo stesso `created_at`). Sistemati anche i 18 test legati alla
+>   data, non della fase: 14 rossi dal 1° al 14 di ogni mese (sollecito del
+>   personale dal 15) con «oggi» fissato al 24/09/2026; 4 rossi se la suite passa
+>   la mezzanotte di Roma (`OGGI` calcolato alla raccolta). **Non pushato.**
 > - **02/10/2026, `460234a5` — invio al commercialista: lo attiva il cliente dalle
 >   Impostazioni** (decisione di Mattia: niente clausole firmate; piano approvato in
 >   plan mode). **Fatto:** scheda «Fatture al commercialista» in Impostazioni, solo
