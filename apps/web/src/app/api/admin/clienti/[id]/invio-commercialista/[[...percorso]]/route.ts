@@ -7,7 +7,7 @@ type Ctx = { params: Promise<{ id: string; percorso?: string[] }> };
 
 // Proxy della scheda «Invio al commercialista». Inoltra solo i percorsi che
 // percorsoProxy riconosce: il resto e' un 400, mai una chiamata al worker.
-async function inoltra(req: NextRequest, { params }: Ctx, metodo: "GET" | "POST" | "PATCH") {
+async function inoltra(req: NextRequest, { params }: Ctx, metodo: "GET" | "POST") {
   const token = await getToken();
   if (!token) return unauthorized();
   const { id, percorso } = await params;
@@ -34,8 +34,4 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
 export async function POST(req: NextRequest, ctx: Ctx) {
   return inoltra(req, ctx, "POST");
-}
-
-export async function PATCH(req: NextRequest, ctx: Ctx) {
-  return inoltra(req, ctx, "PATCH");
 }

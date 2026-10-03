@@ -1652,7 +1652,23 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Residui (decide Mattia):** la prova del consenso non ha storico (ogni «Salva»
 >   la riscrive) e la pulizia GDPR la cancella 90 giorni dopo la disattivazione,
 >   mentre il registro degli invii resta; «solo le nuove» include le fatture
->   arrivate nel giorno stesso dell'attivazione. **Non pushato.**
+>   arrivate nel giorno stesso dell'attivazione. Pushato il 03/10 (`46e93b87`), con
+>   la migration applicata prima (md5 delle funzioni verificati sul live).
+> - **03/10/2026 — invio al commercialista: lo attiva solo l'admin** (Mattia, visto
+>   in produzione: «il cliente non fa niente, cose semplici, attivo e disattivo»).
+>   **Fatto:** tolti la scheda nelle Impostazioni, il router
+>   `invio_commercialista_cliente.py`, le sue rotte e la lib; la card admin diventa
+>   una riga per P.IVA con SDI (OFFSIDE: due locali e una P.IVA, una riga; Sushiland:
+>   tre P.IVA, tre righe) con email o PEC, ogni quanto, **Attiva**/**Disattiva**;
+>   via prova a vuoto, reinvio e annulla. Attivare collega Invoicetronic, registra
+>   chi e quando (`consenso_da` = l'admin, `consenso_testo` = «Attivato da … su
+>   richiesta del cliente»), parte dalle fatture di oggi; da attivo cambiare email
+>   non sposta la partenza; riattivare toglie una sospensione (il trigger ricontrolla
+>   la P.IVA). Resta il chiarimento degli esiti incerti. Privacy 4.5 e termini 1.3:
+>   «su richiesta del cliente». Nessuna migration nuova. **Prove:**
+>   `test_sql_invio_commercialista_admin.py` riscritto (32 su Postgres vero),
+>   `test_invio_commercialista_frontend.py` (37), presidi privacy. Mutazione
+>   **24/24** (uno sopravvissuto al primo giro, sede chiusa con SDI: test aggiunto).
 
 ---
 

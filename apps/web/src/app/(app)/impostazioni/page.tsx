@@ -24,12 +24,9 @@ export default async function ImpostazioniPage() {
 
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value ?? "";
-  // L'invio al commercialista e' solo del titolare: per un sotto-utente il
-  // worker risponde 403 e qui arriva null, cioe' nessuna scheda.
-  const [data, sediRes, commercialista] = await Promise.all([
+  const [data, sediRes] = await Promise.all([
     workerGetJson("/api/account/me", token),
     workerGetJson("/api/account/sedi", token),
-    user.sotto_utente ? Promise.resolve(null) : workerGetJson("/api/account/invio-commercialista", token),
   ]);
 
   if (!data) {
@@ -62,7 +59,7 @@ export default async function ImpostazioniPage() {
         title={chain ? "Account del gruppo" : "Account"}
         hint={chain ? "Dati del gruppo e preferenze" : "I tuoi dati e le preferenze"}
       />
-      <AccountClient data={data} chain={chain} nomeGruppo={nomeGruppo} sedi={sedi} commercialista={commercialista} />
+      <AccountClient data={data} chain={chain} nomeGruppo={nomeGruppo} sedi={sedi} />
     </div>
   );
 }

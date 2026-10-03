@@ -576,23 +576,7 @@ def test_prossimo_invio_senza_partenza_non_c_e():
     assert s.prossimo_invio("mensile", None, None, datetime(2026, 10, 1, 10, tzinfo=UTC)) is None
 
 
-@pytest.mark.parametrize("ultimo,prima,orfano,atteso", [
-    (None, None, None, None),
-    (None, date(2026, 7, 15), None, date(2026, 7, 15)),
-    # dopo un invio riuscito si recupera il buco, non dalla prima fattura
-    (date(2026, 8, 31), date(2026, 7, 15), None, date(2026, 9, 1)),
-    # una configurazione cancellata aveva gia' inviato fino al 31/07
-    (None, date(2026, 7, 15), date(2026, 7, 31), date(2026, 8, 1)),
-    # oltre i 2 anni: dal limite
-    (None, date(2024, 1, 1), None, date(2024, 10, 2)),
-    # niente da recuperare: l'ultimo invio arriva a ieri
-    (date(2026, 10, 1), date(2026, 7, 15), None, None),
-])
-def test_recupero_dal(ultimo, prima, orfano, atteso):
-    assert s.recupero_dal(ultimo, prima, orfano, date(2026, 10, 2)) == atteso
-
-
-def test_il_testo_autorizzato_nomina_destinatario_frequenza_e_piva():
-    testo = s.testo_autorizzazione("studio@x.it", "quindicinale", "07863990961")
-    assert "studio@x.it" in testo and "il 1° e il 16 di ogni mese" in testo and "07863990961" in testo
-    assert "Cassetto fiscale" in testo and "30 giorni" in testo
+def test_il_testo_registrato_nomina_chi_verso_chi_frequenza_e_piva():
+    testo = s.testo_attivazione("md@oneflux.it", "studio@x.it", "quindicinale", "07863990961")
+    assert testo == ("Attivato da md@oneflux.it su richiesta del cliente: invio a studio@x.it, "
+                     "il 1° e il 16 di ogni mese, delle fatture ricevute tramite OneFlux per la P.IVA 07863990961.")

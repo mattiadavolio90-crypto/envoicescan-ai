@@ -270,28 +270,20 @@ def _crea_dovuto(sb, config: Dict[str, Any], oggi: date, da_oggi: str,
     return True
 
 
-# ── Attivazione dal cliente ─────────────────────────────────────────────────
+# ── Attivazione ─────────────────────────────────────────────────────────────
 
 FREQUENZE = {
     "settimanale": "ogni lunedì",
     "quindicinale": "il 1° e il 16 di ogni mese",
     "mensile": "il 1° di ogni mese",
 }
-# Il testo che il cliente autorizza premendo «Attiva». Si salva cosi' com'e',
-# compilato, in consenso_testo: e' la prova del consenso. Il frontend lo riceve
-# dal worker e lo mostra; non lo manda indietro, quindi il testo salvato non lo
-# decide il client.
-TESTO_AUTORIZZAZIONE = (
-    "Autorizzo OneFlux a inviare a {email}, {frequenza}, una copia dei file originali "
-    "(XML o P7M) delle fatture passive ricevute tramite OneFlux per la P.IVA {piva}, "
-    "con un link per scaricarle valido 30 giorni. È una copia di comodo: non sostituisce "
-    "il Cassetto fiscale dell'Agenzia delle Entrate né la conservazione a norma. Posso "
-    "disattivare l'invio in qualsiasi momento dalle Impostazioni."
-)
 
 
-def testo_autorizzazione(email: str, frequenza: str, piva: str) -> str:
-    return TESTO_AUTORIZZAZIONE.format(email=email, frequenza=FREQUENZE[frequenza], piva=piva)
+def testo_attivazione(admin: str, email: str, frequenza: str, piva: str) -> str:
+    """Cosa si registra in consenso_testo quando l'admin attiva, su richiesta del
+    cliente: chi, verso chi, ogni quanto, per quale P.IVA."""
+    return (f"Attivato da {admin} su richiesta del cliente: invio a {email}, "
+            f"{FREQUENZE[frequenza]}, delle fatture ricevute tramite OneFlux per la P.IVA {piva}.")
 
 
 def prossimo_invio(frequenza: str, ultimo: Optional[date], partenza: Optional[date],
@@ -355,24 +347,6 @@ def cerca_azienda(sb, invoicetronic, piva: str) -> Dict[str, Any]:
             "gia_viste": sorted(viste), "senza_company": senza_company}
 
 
-def storico_orfano(sb, pive: List[str]) -> Dict[str, str]:
-    """Fin dove una configurazione ormai cancellata ha gia' spedito, per P.IVA."""
-    from utils.supabase_paging import fetch_all
-
-    if not pive:
-        return {}
-    righe = fetch_all(
-        sb.table(INVII).select("id,piva,periodo_al")
-        .is_("config_id", "null").in_("piva", pive)
-        .in_("tipo", ["primo", "ordinario"]).in_("stato", ["inviato", "esito_incerto"]).order("id")
-    )
-    storico: Dict[str, str] = {}
-    for riga in righe:
-        al = str(riga["periodo_al"])[:10]
-        storico[riga["piva"]] = max(storico.get(riga["piva"], al), al)
-    return storico
-
-
 def prima_fattura_arrivata(sb, piva: str) -> Optional[date]:
     """Il giorno (di Roma) in cui e' arrivata la prima fattura SDI per questa P.IVA."""
     righe = (
@@ -381,24 +355,6 @@ def prima_fattura_arrivata(sb, piva: str) -> Optional[date]:
         .order("created_at").limit(1).execute().data
     )
     return a_roma(_istante(righe[0]["created_at"])).date() if righe else None
-
-
-def recupero_dal(ultimo: Optional[date], prima: Optional[date], orfano: Optional[date],
-                 oggi: date) -> Optional[date]:
-    """Da quando partono le fatture «gia' ricevute», o None se non ce ne sono.
-    Dopo un invio riuscito: dal giorno dopo (il buco di quando era spento).
-    Altrimenti dalla prima fattura arrivata. Mai prima dello storico di una
-    configurazione cancellata, mai oltre i 2 anni, sempre prima di oggi."""
-    if ultimo is not None:
-        dal = ultimo + timedelta(days=1)
-    elif prima is not None:
-        dal = prima
-    else:
-        return None
-    if orfano is not None:
-        dal = max(dal, orfano + timedelta(days=1))
-    dal = max(dal, limite_due_anni(oggi))
-    return dal if dal < oggi else None
 
 
 # ── Dipendenze esterne (sostituibili nei test) ──────────────────────────────

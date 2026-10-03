@@ -134,9 +134,7 @@ pagina che gli risponderebbe 403.
   sede nuova la spegne finché non la si assegna.
 - **Account.** Password, preferenze e consenso privacy della persona stanno
   sulla sua riga; elimina, esporta, svuota, admin e impostazioni di business
-  sono vietati. Anche l'invio delle fatture al commercialista
-  (`/api/account/invio-commercialista`, dal 02/10/2026): attivarlo e' il
-  consenso del titolare, e la rotta lo ricontrolla da se'.
+  sono vietati.
 - **Cache.** Il dict di un sotto-utente vive al massimo 2 s (non i 30 s del
   titolare): una disattivazione arriva ovunque in pochi secondi, e disattivare
   revoca comunque le sessioni.

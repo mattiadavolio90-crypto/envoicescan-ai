@@ -10572,7 +10572,6 @@ from services.routers.gruppo import router as _gruppo_router  # noqa: E402
 from services.routers.riparto import router as _riparto_router  # noqa: E402
 from services.routers.email_settimanale import router as _email_settimanale_router  # noqa: E402
 from services.routers.invio_commercialista import router as _invio_commercialista_router  # noqa: E402
-from services.routers.invio_commercialista_cliente import router as _invio_commercialista_cliente_router  # noqa: E402
 from services.routers.assistente import router as _assistente_router  # noqa: E402
 from services.routers.sotto_utenti_admin import router as _sotto_utenti_admin_router  # noqa: E402
 app.include_router(_tag_router)
@@ -10589,7 +10588,6 @@ app.include_router(_gruppo_router)
 app.include_router(_riparto_router)
 app.include_router(_email_settimanale_router)
 app.include_router(_invio_commercialista_router)
-app.include_router(_invio_commercialista_cliente_router)
 app.include_router(_assistente_router)
 app.include_router(_sotto_utenti_admin_router)
 

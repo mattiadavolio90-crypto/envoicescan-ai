@@ -264,10 +264,6 @@ ROTTE_VIETATE: Set[Rotta] = {
     ("POST", "/api/account/elimina"),
     ("GET", "/api/account/esporta-dati"),
     ("POST", "/api/account/svuota-dati"),
-    # Invio delle fatture al commercialista: lo attiva il titolare, ed e' il suo consenso.
-    ("GET", "/api/account/invio-commercialista"),
-    ("POST", "/api/account/invio-commercialista"),
-    ("POST", "/api/account/invio-commercialista/disattiva"),
     ("POST", "/api/home/config"),
     ("POST", "/api/prezzi/soglia-alert"),
     ("POST", "/api/gruppo/assistant-config"),

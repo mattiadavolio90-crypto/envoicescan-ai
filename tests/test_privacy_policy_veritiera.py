@@ -398,22 +398,24 @@ MIGRATION_DAL_CLIENTE = next(
 
 
 @pytest.mark.parametrize("sorgente", [PRIVACY_TSX, TERMINI_TSX], ids=lambda p: p.parent.name)
-def test_l_invio_al_commercialista_lo_attiva_il_cliente_dall_account(sorgente: Path) -> None:
-    """Dal 02/10/2026 non c'e' piu' una clausola firmata: l'autorizzazione e'
-    l'attivazione dalle Impostazioni, salvata col suo testo (consenso_testo).
-    Privacy e termini devono dire questo, non «richiesta scritta»."""
-    assert "consenso_testo" in _leggi(MIGRATION_DAL_CLIENTE), "il test non misura piu' nulla"
-    from services.routers import invio_commercialista_cliente as rotte
-    assert rotte.BASE == "/api/account/invio-commercialista"
+def test_l_invio_al_commercialista_e_su_richiesta_del_cliente(sorgente: Path) -> None:
+    """Dal 03/10/2026 lo attiva l'admin su richiesta del cliente: niente clausola
+    firmata, niente attivazione dalle Impostazioni (quella rotta non esiste piu').
+    Privacy e termini devono dire questo e non le versioni di prima."""
+    from services.routers import invio_commercialista as rotte
+    percorsi = {r.path for r in rotte.router.routes}
+    assert rotte.BASE + "/attiva" in percorsi, "il test non misura piu' nulla"
+    assert not (ROOT / "services" / "routers" / "invio_commercialista_cliente.py").exists()
     testo = " ".join(_senza_commenti_jsx(_leggi(sorgente)).split())
+    assert "su richiesta del cliente" in testo.lower()
     assert "richiesta scritta" not in testo
-    assert "impostazioni del proprio account" in testo
+    assert "impostazioni del proprio account" not in testo
 
 
-def test_la_privacy_dichiara_la_prova_dell_autorizzazione() -> None:
-    """Il worker salva quando, chi e quale testo: sono dati personali trattati."""
-    voce = " ".join(_voce(_senza_commenti_jsx(_leggi(PRIVACY_TSX)), "Dati del commercialista").split())
-    for dato in ("data e ora dell&apos;attivazione", "indirizzo email dell&apos;account",
-                 "testo dell&apos;autorizzazione"):
-        assert dato in voce, f"La privacy non dichiara: {dato}"
+def test_la_privacy_dichiara_la_traccia_dell_attivazione() -> None:
+    """Il worker salva quando e chi ha attivato (consenso_at, consenso_da), e
+    l'indirizzo puo' essere una PEC: sono dati trattati."""
     assert "consenso_at" in _leggi(MIGRATION_DAL_CLIENTE) and "consenso_da" in _leggi(MIGRATION_DAL_CLIENTE)
+    voce = " ".join(_voce(_senza_commenti_jsx(_leggi(PRIVACY_TSX)), "Dati del commercialista").split())
+    for dato in ("email o PEC", "data e ora dell&apos;attivazione", "chi l&apos;ha registrata"):
+        assert dato in voce, f"La privacy non dichiara: {dato}"

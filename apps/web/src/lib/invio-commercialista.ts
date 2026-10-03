@@ -1,98 +1,41 @@
-// Invio degli XML al commercialista: la logica pura della scheda admin
-// (components/admin/invio-commercialista.tsx). Dal 02/10 l'invio lo attiva il
-// cliente dalle Impostazioni: l'admin vede, prova, reinvia, spegne. Decide il
-// worker e rifiuta il DB; qui solo cosa mostrare, con quali parole, e quali
-// percorsi il proxy (app/api/admin/clienti/[id]/invio-commercialista/[[...percorso]])
-// puo' inoltrare.
+// Invio degli XML al commercialista: la logica pura della card admin
+// (components/admin/invio-commercialista.tsx). Lo attiva solo l'admin, una riga
+// per P.IVA. Decide il worker e rifiuta il DB; qui solo cosa mostrare, con quali
+// parole, e quali percorsi il proxy
+// (app/api/admin/clienti/[id]/invio-commercialista/[[...percorso]]) puo' inoltrare.
 
-export type StatoInvio =
-  | "richiesto" | "in_corso" | "inviato" | "errore" | "bloccato" | "prova_ok" | "esito_incerto";
-export type TipoInvio = "primo" | "ordinario" | "reinvio" | "prova";
 export type Frequenza = "settimanale" | "quindicinale" | "mensile";
 export type Tono = "positivo" | "negativo" | "incerto" | "neutro";
 
-export interface Invio {
-  id: string;
-  tipo: TipoInvio;
-  stato: StatoInvio;
+export interface UltimoInvio {
   periodo_dal: string;
   periodo_al: string;
-  richiesto_da: "notturno" | "admin";
   n_file: number | null;
-  byte_totali: number | null;
-  destinatario: string | null;
-  motivo: string | null;
-  creata_at: string;
   conclusa_at: string | null;
-  email_tentata_at: string | null;
-  link_scade_il: string | null;
-  file_rimossi_at: string | null;
 }
 
-export interface Configurazione {
-  id: string;
+export interface VocePiva {
   piva: string;
-  invoicetronic_company_id: number | null;
-  invoicetronic_nome: string | null;
-  email_destinatario: string | null;
-  frequenza: Frequenza;
-  data_partenza: string | null;
+  sedi: string[];
+  sdi_attivo: boolean;
+  arrivate: boolean;
+  config_id: string | null;
   attivo: boolean;
-  consenso_ricevuto: boolean;
-  consenso_data: string | null;
-  consenso_email: string | null;
-  consenso_at: string | null;
-  consenso_da: string | null;
-  sospesa_at: string | null;
   sospesa_motivo: string | null;
-  aggiornata_at: string;
-  sede_sdi_attiva: boolean;
-  ultimo_giorno_inviato: string | null;
-  invii: Invio[];
+  email: string | null;
+  frequenza: Frequenza;
+  attivato_il: string | null;
+  attivato_da: string | null;
+  ultimo_invio: UltimoInvio | null;
+  prossimo_invio: string | null;
+  da_chiarire: { id: string; periodo_dal: string; periodo_al: string } | null;
 }
 
 export interface StatoInvioCommercialista {
-  oggi: string;
-  limite_due_anni: string;
-  piva_disponibili: string[];
-  configurazioni: Configurazione[];
+  interruttore: boolean;
+  frequenze: Record<Frequenza, string>;
+  pive: VocePiva[];
 }
-
-export const DUE_ANNI =
-  "Invoicetronic conserva le fatture ricevute per 2 anni. Per periodi precedenti usa il Cassetto fiscale dell'Agenzia delle Entrate.";
-
-export const ETICHETTA_STATO: Record<StatoInvio, string> = {
-  richiesto: "In coda",
-  in_corso: "In corso",
-  inviato: "Inviato",
-  errore: "Non riuscito",
-  bloccato: "Bloccato",
-  prova_ok: "Prova riuscita",
-  esito_incerto: "Esito incerto",
-};
-
-export const TONO_STATO: Record<StatoInvio, Tono> = {
-  richiesto: "neutro",
-  in_corso: "neutro",
-  inviato: "positivo",
-  errore: "negativo",
-  bloccato: "negativo",
-  prova_ok: "positivo",
-  esito_incerto: "incerto",
-};
-
-export const ETICHETTA_TIPO: Record<TipoInvio, string> = {
-  primo: "Primo invio",
-  ordinario: "Invio",
-  reinvio: "Reinvio",
-  prova: "Prova a vuoto",
-};
-
-export const ETICHETTA_FREQUENZA: Record<Frequenza, string> = {
-  settimanale: "ogni lunedì",
-  quindicinale: "il 1° e il 16 di ogni mese",
-  mensile: "il 1° di ogni mese",
-};
 
 // I motivi scritti dal worker (services/invio_commercialista_service.py) e i
 // codici della guardia (services/invio_commercialista_guardia.py).
@@ -141,58 +84,9 @@ export function testoMotivo(motivo: string | null | undefined): string {
   return dettaglio ? `${MOTIVI[m[1]]} (${dettaglio})` : MOTIVI[m[1]];
 }
 
-export function statoConfigurazione(c: Configurazione): { testo: string; tono: Tono } {
-  if (c.sospesa_at) {
-    return { testo: `Sospesa dalla guardia: ${testoMotivo(c.sospesa_motivo)}`, tono: "negativo" };
-  }
-  if (c.invii.some((i) => i.stato === "esito_incerto")) {
-    return { testo: "Esito incerto da chiarire: nessun altro invio finché non lo chiudi", tono: "incerto" };
-  }
-  if (!c.attivo) {
-    return {
-      testo: c.consenso_ricevuto ? "Disattivato" : "Il cliente non l'ha attivato dalle sue Impostazioni",
-      tono: "neutro",
-    };
-  }
-  if (!c.sede_sdi_attiva) return { testo: "In pausa: nessuna sede con SDI attivo", tono: "incerto" };
-  if (!c.ultimo_giorno_inviato) {
-    return { testo: "Attivo — il primo invio parte da solo alla prossima scadenza", tono: "positivo" };
-  }
-  return { testo: `Attivo — inviato fino al ${formattaData(c.ultimo_giorno_inviato)}`, tono: "positivo" };
-}
-
-// Chi ha attivato, quando, per chi: la prova del consenso, a parole.
-export function rigaConsenso(c: Configurazione): string | null {
-  if (!c.consenso_ricevuto || !c.consenso_at) return null;
-  const quando = new Date(c.consenso_at);
-  const giorno = quando.toLocaleDateString("it-IT", {
-    timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric",
-  });
-  const ora = quando.toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
-  const chi = c.consenso_da ? ` (${c.consenso_da})` : "";
-  return `Attivato dal cliente il ${giorno} alle ${ora}${chi} → ${c.consenso_email}, ${ETICHETTA_FREQUENZA[c.frequenza]}`;
-}
-
-export function spostaGiorni(iso: string, giorni: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + giorni);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Come `oggi - interval '2 years'` di Postgres: il 29/02 diventa il 28/02. */
-export function limiteDueAnni(oggi: string): string {
-  const anno = Number(oggi.slice(0, 4)) - 2;
-  const meseGiorno = oggi.slice(5) === "02-29" ? "02-28" : oggi.slice(5);
-  return `${String(anno).padStart(4, "0")}-${meseGiorno}`;
-}
-
-/** Lo stesso controllo del worker su un periodo scelto dall'admin (prova, reinvio). */
-export function erroreDelPeriodo(dal: string, al: string, oggi: string): string | null {
-  if (!dal || !al) return "Indica il periodo.";
-  if (dal > al) return "La data di inizio viene dopo quella di fine.";
-  if (al >= oggi) return "Il periodo deve finire al più tardi ieri.";
-  if (dal < limiteDueAnni(oggi)) return DUE_ANNI;
-  return null;
+// La stessa regola del worker (e del vincolo icc_email_chk).
+export function emailValida(email: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 }
 
 export function formattaData(iso: string | null | undefined): string {
@@ -201,29 +95,85 @@ export function formattaData(iso: string | null | undefined): string {
   return `${g}/${m}/${a}`;
 }
 
-export function formattaByte(n: number | null | undefined): string {
-  if (n == null) return "—";
-  if (n < 1024) return `${n} byte`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+const GIORNI = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+const MESI = [
+  "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+  "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+];
+
+// «lunedì 5 ottobre»: calcolato sulla data, senza fuso (la data e' gia' di Roma).
+export function giornoEsteso(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return `${GIORNI[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${d} ${MESI[m - 1]}`;
+}
+
+/** Cosa si puo' fare su una riga: attivare, solo disattivare, o niente. */
+export function azioneRiga(v: VocePiva): "attiva" | "disattiva" | "nessuna" {
+  if (v.attivo) return "disattiva";
+  return v.sdi_attivo && v.arrivate ? "attiva" : "nessuna";
+}
+
+export function rigaStato(v: VocePiva, frequenze: Record<Frequenza, string>): { testo: string; tono: Tono } {
+  if (v.da_chiarire) {
+    return {
+      testo: "Brevo non ha confermato l'ultima email: controlla nei suoi log se è arrivata. Finché non lo dici, non parte altro.",
+      tono: "incerto",
+    };
+  }
+  if (v.attivo && v.sospesa_motivo) {
+    return { testo: `Fermo per un controllo di sicurezza: ${testoMotivo(v.sospesa_motivo)} Per ripartire: Disattiva, poi Attiva.`, tono: "negativo" };
+  }
+  if (v.attivo && !v.sdi_attivo) {
+    return { testo: `In pausa: nessuna sede di questa P.IVA riceve più via SDI.`, tono: "incerto" };
+  }
+  if (v.attivo && v.email) {
+    const prossimo = v.prossimo_invio ? ` Prossimo invio: ${giornoEsteso(v.prossimo_invio)}.` : "";
+    return { testo: `Attivo → ${v.email}, ${frequenze[v.frequenza]}.${prossimo}`, tono: "positivo" };
+  }
+  if (!v.arrivate) {
+    return { testo: "Nessuna fattura è ancora arrivata via SDI: si potrà attivare dopo la prima.", tono: "neutro" };
+  }
+  return { testo: "Non attivo.", tono: "neutro" };
+}
+
+export function rigaUltimoInvio(u: UltimoInvio | null): string | null {
+  if (!u) return null;
+  const periodo = `dal ${formattaData(u.periodo_dal)} al ${formattaData(u.periodo_al)}`;
+  const quando = u.conclusa_at ? ` il ${formattaData(u.conclusa_at)}` : "";
+  const n = u.n_file ?? 0;
+  if (n === 0) return `Ultimo invio${quando}: nessuna fattura arrivata ${periodo}.`;
+  return `Ultimo invio${quando}: ${n} ${n === 1 ? "fattura" : "fatture"} ${periodo}.`;
+}
+
+// Chi ha attivato e quando: la traccia della richiesta del cliente.
+export function rigaAttivazione(v: VocePiva): string | null {
+  if (!v.attivo || !v.attivato_il) return null;
+  const quando = new Date(v.attivato_il);
+  const giorno = quando.toLocaleDateString("it-IT", {
+    timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric",
+  });
+  const ora = quando.toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
+  return `Attivato il ${giorno} alle ${ora}${v.attivato_da ? ` da ${v.attivato_da}` : ""}`;
+}
+
+export function etichettaPiva(v: VocePiva): string {
+  return v.sedi.length ? `${v.sedi.join(", ")} · P.IVA ${v.piva}` : `P.IVA ${v.piva}`;
 }
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Il percorso del worker per una richiesta al proxy, o null se non e' uno dei
- * percorsi di questa scheda. Il proxy non inoltra nient'altro: niente `..`,
+ * percorsi di questa card. Il proxy non inoltra nient'altro: niente `..`,
  * niente segmenti arbitrari, nessuna query. */
 export function percorsoProxy(clienteId: string, segmenti: string[]): string | null {
   if (!ID.test(clienteId)) return null;
   const base = `/api/admin/clienti/${clienteId}/invio-commercialista`;
   if (segmenti.length === 0) return base;
-  const [config, ...resto] = segmenti;
-  if (!ID.test(config)) return null;
-  if (resto.length === 0) return `${base}/${config}`;
-  if (resto[0] !== "invii") return null;
-  if (resto.length === 1) return `${base}/${config}/invii`;
-  if (resto.length === 3 && ID.test(resto[1]) && (resto[2] === "chiarisci" || resto[2] === "annulla")) {
-    return `${base}/${config}/invii/${resto[1]}/${resto[2]}`;
+  if (segmenti.length === 1 && (segmenti[0] === "attiva" || segmenti[0] === "disattiva")) {
+    return `${base}/${segmenti[0]}`;
+  }
+  if (segmenti.length === 3 && segmenti[0] === "invii" && ID.test(segmenti[1]) && segmenti[2] === "chiarisci") {
+    return `${base}/invii/${segmenti[1]}/chiarisci`;
   }
   return null;
 }

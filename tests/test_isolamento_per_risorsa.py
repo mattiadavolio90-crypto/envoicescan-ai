@@ -612,7 +612,6 @@ GET_SESSIONE: Dict[str, Dict[str, Any]] = {
     "/api/scadenziario": {}, "/api/scadenziario/calendario": _MESE, "/api/scadenziario/fornitori": {},
     "/api/scadenziario/regole": {}, "/api/cestino": {}, "/api/account/me": {},
     "/api/account/esporta-dati": {}, "/api/account/sedi": {}, "/api/prezzi/soglia-alert": {},
-    "/api/account/invio-commercialista": {},
     "/api/prezzi/variazioni": _PERIODO, "/api/prezzi/preferiti": {}, "/api/prezzi/sconti-omaggi": _PERIODO,
     "/api/prezzi/note-credito": _PERIODO, "/api/prezzi/storico-prodotto": {"prodotto": "PRODOTTO"},
     "/api/prezzi/score-fornitori": _PERIODO, "/api/ricavi/giornalieri": _PERIODO,
