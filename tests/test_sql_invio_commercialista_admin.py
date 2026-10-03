@@ -251,6 +251,19 @@ def test_disattivare_e_riattivare_riparte_da_oggi(app):
     assert _config(app)["partenza"] == _oggi(), "il buco di quando era spento non si manda"
 
 
+def test_salvare_da_sospesa_riparte_senza_buchi(app):
+    """Dalla card una configurazione sospesa riparte con Salva (la chiamata e'
+    /attiva su una configurazione ancora attiva): la partenza resta, nessun
+    giorno perso."""
+    assert _attiva(app).status_code == 200
+    prima = _oggi() - timedelta(days=20)
+    _cur(app.db, "UPDATE public.invio_commercialista_config SET data_partenza = %s, sospesa_at = now(), "
+                 "sospesa_motivo = 'x'", prima)
+    assert _attiva(app).status_code == 200
+    c = _config(app)
+    assert (c["attivo"], c["sospesa_at"], c["partenza"]) == (True, None, prima)
+
+
 def test_riattivare_toglie_la_sospensione_della_guardia(app):
     assert _attiva(app).status_code == 200
     _cur(app.db, "UPDATE public.invio_commercialista_config SET sospesa_at = now(), sospesa_motivo = 'x'")

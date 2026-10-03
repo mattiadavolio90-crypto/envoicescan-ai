@@ -9,7 +9,7 @@ a 4 processi, partirebbe 4 volte). Ogni minuto:
      si segnala una volta.
   2. pianificatore: solo fra le 02:00 e le 04:59 di Roma e con
      INVIO_COMMERCIALISTA_ATTIVO=1. Una riga per ogni configurazione attiva (la
-     attiva il cliente dalle Impostazioni), non sospesa, con una sede SDI attiva
+     attiva l'admin dalla scheda cliente), non sospesa, con una sede SDI attiva
      e oltre la sua scadenza: `primo` dalla data di partenza se non ce n'e' ancora
      uno riuscito, poi `ordinario` dal giorno dopo l'ultimo inviato (mai prima
      della partenza, mai oltre 2 anni), fino a ieri, sul giorno di ARRIVO su

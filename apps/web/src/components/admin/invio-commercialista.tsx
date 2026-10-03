@@ -134,7 +134,7 @@ function RigaPiva({ v, frequenze, intestazione, occupato, chiama }: {
         </div>
       )}
 
-      {azione === "attiva" && (
+      {azione !== "nessuna" && (
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-56 flex-1 space-y-1.5">
             <Label htmlFor={`email-${v.piva}`}>Email o PEC del commercialista</Label>
@@ -150,26 +150,25 @@ function RigaPiva({ v, frequenze, intestazione, occupato, chiama }: {
             </NativeSelect>
           </div>
           <Button size="sm" disabled={occupato || !emailValida(email)}
-            onClick={() => chiama("/attiva", { piva: v.piva, email, frequenza }, "Invio attivato")}>
-            Attiva
+            onClick={() => chiama("/attiva", { piva: v.piva, email, frequenza }, azione === "modifica" ? "Salvato" : "Invio attivato")}>
+            {azione === "modifica" ? "Salva" : "Attiva"}
           </Button>
+          {azione === "modifica" && (
+            <Button size="sm" variant="outline" disabled={occupato} onClick={() => setConferma("disattiva")}>
+              Disattiva
+            </Button>
+          )}
         </div>
-      )}
-
-      {azione === "disattiva" && (
-        <Button size="sm" variant="outline" disabled={occupato} onClick={() => setConferma("disattiva")}>
-          Disattiva
-        </Button>
       )}
 
       <ConfirmDialog
         open={conferma !== null}
         titolo={conferma === "disattiva" ? "Disattivare l'invio?" : conferma === "arrivata" ? "L'email è arrivata?" : "L'email non è arrivata?"}
         messaggio={conferma === "disattiva"
-          ? "Il commercialista non riceverà più le fatture di questa P.IVA. Puoi riattivarlo quando vuoi."
+          ? "Il commercialista non riceverà più le fatture di questa P.IVA. Se lo riattivi, riparte dalle fatture arrivate da quel giorno: quelle del periodo spento non vengono inviate. Per cambiare solo l'email usa Salva."
           : conferma === "arrivata"
             ? "Solo se nei log di Brevo risulta consegnata: il periodo resta inviato e si riparte dal giorno dopo."
-            : "Solo se nei log di Brevo risulta non partita o rifiutata: il periodo si rispedisce, e se fosse arrivata il commercialista lo riceverebbe due volte."}
+            : "Solo se nei log di Brevo risulta non partita o rifiutata: il periodo torna da inviare, e se fosse arrivata il commercialista lo riceverebbe due volte."}
         confermaLabel={conferma === "disattiva" ? "Disattiva" : "Conferma"}
         onConferma={async () => {
           const scelta = conferma;

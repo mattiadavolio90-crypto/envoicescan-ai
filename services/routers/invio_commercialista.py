@@ -9,8 +9,10 @@ scritto a mano) e il primo invio lo crea il pianificatore notturno, dalle
 fatture arrivate da oggi. Si registra chi ha attivato, quando e verso chi
 (consenso_at, consenso_da, consenso_testo): su richiesta del cliente.
 
-Restano: Disattiva, e il chiarimento di un esito incerto (Brevo non ha
-confermato), l'unico caso che ferma la P.IVA finche' qualcuno non guarda i log.
+Da attivo si salva (email e frequenza nuove, o la ripresa dopo una
+sospensione) senza spegnere: la partenza resta quella. Disattiva e poi Attiva
+riparte invece da oggi, e il periodo spento non si manda. Resta il chiarimento
+di un esito incerto (Brevo non ha confermato), l'unico caso che ferma la P.IVA finche' qualcuno non guarda i log.
 Nessun endpoint spedisce: scrivono la configurazione, ed e' il DB (trigger e
 vincoli delle migration 20260925113943 e 20261002194731) a rifiutare cio' che
 non va.
@@ -271,7 +273,7 @@ def invio_commercialista_disattiva(
     _cliente(sb, cliente_id)
     config = _configurazioni(sb, cliente_id).get(body.piva.strip())
     if config is None:
-        raise HTTPException(status_code=404, detail="Invio non trovato")
+        raise HTTPException(status_code=404, detail="Configurazione non trovata")
     _scrivi(sb, config["id"], {"attivo": False})
     logger.info("invio_commercialista: disattivato per cliente %s (configurazione %s) | admin=%s",
                 cliente_id[:8], str(config["id"])[:8], admin_user.get("email"))

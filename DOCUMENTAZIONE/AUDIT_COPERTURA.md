@@ -1669,6 +1669,12 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `test_sql_invio_commercialista_admin.py` riscritto (32 su Postgres vero),
 >   `test_invio_commercialista_frontend.py` (37), presidi privacy. Mutazione
 >   **24/24** (uno sopravvissuto al primo giro, sede chiusa con SDI: test aggiunto).
+>   **Review su `dc7dd0a7`: NON CHIUSA.** Su una riga attiva c'era solo Disattiva:
+>   per cambiare email (o uscire da una sospensione) la card faceva disattivare e
+>   riattivare, che riparte da oggi e perde in silenzio le fatture dei giorni in
+>   mezzo. Ora da attivo restano i campi con **Salva** (stessa chiamata, partenza
+>   invariata) e Disattiva accanto; il dialog di Disattiva dice che il periodo
+>   spento non si manda. Mutazione sulle correzioni **5/5**.
 
 ---
 

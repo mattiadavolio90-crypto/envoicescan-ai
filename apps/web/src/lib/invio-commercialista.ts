@@ -40,7 +40,7 @@ export interface StatoInvioCommercialista {
 // I motivi scritti dal worker (services/invio_commercialista_service.py) e i
 // codici della guardia (services/invio_commercialista_guardia.py).
 const MOTIVI: Record<string, string> = {
-  invio_spento: "Interruttore generale spento (INVIO_COMMERCIALISTA_ATTIVO sul queue-worker): parte solo la prova a vuoto.",
+  invio_spento: "Interruttore generale spento (INVIO_COMMERCIALISTA_ATTIVO sul queue-worker): non parte niente.",
   non_piu_autorizzato: "Dopo la richiesta la configurazione è stata spenta, sospesa o ha cambiato email.",
   configurazione_cambiata_durante_l_invio: "La configurazione è cambiata mentre si preparavano i file: nessuna email è partita.",
   configurazione_assente: "La configurazione non esiste più.",
@@ -107,9 +107,11 @@ export function giornoEsteso(iso: string): string {
   return `${GIORNI[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${d} ${MESI[m - 1]}`;
 }
 
-/** Cosa si puo' fare su una riga: attivare, solo disattivare, o niente. */
-export function azioneRiga(v: VocePiva): "attiva" | "disattiva" | "nessuna" {
-  if (v.attivo) return "disattiva";
+/** Cosa si puo' fare su una riga. Da attivo si salva (email e frequenza nuove,
+ * o la ripresa dopo una sospensione) senza spegnere: disattivare e riattivare
+ * ripartirebbe da oggi, e le fatture dei giorni in mezzo non arriverebbero mai. */
+export function azioneRiga(v: VocePiva): "attiva" | "modifica" | "nessuna" {
+  if (v.attivo) return "modifica";
   return v.sdi_attivo && v.arrivate ? "attiva" : "nessuna";
 }
 
@@ -121,7 +123,7 @@ export function rigaStato(v: VocePiva, frequenze: Record<Frequenza, string>): { 
     };
   }
   if (v.attivo && v.sospesa_motivo) {
-    return { testo: `Fermo per un controllo di sicurezza: ${testoMotivo(v.sospesa_motivo)} Per ripartire: Disattiva, poi Attiva.`, tono: "negativo" };
+    return { testo: `Fermo per un controllo di sicurezza: ${testoMotivo(v.sospesa_motivo)} Per ripartire premi Salva.`, tono: "negativo" };
   }
   if (v.attivo && !v.sdi_attivo) {
     return { testo: `In pausa: nessuna sede di questa P.IVA riceve più via SDI.`, tono: "incerto" };

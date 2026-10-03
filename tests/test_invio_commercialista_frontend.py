@@ -61,8 +61,9 @@ def test_il_proxy_non_inoltra_nient_altro():
 
 @pytest.mark.parametrize("campi,atteso", [
     ({}, "attiva"),
-    ({"attivo": True, "email": "s@x.it"}, "disattiva"),
-    ({"attivo": True, "sdi_attivo": False}, "disattiva"),
+    ({"attivo": True, "email": "s@x.it"}, "modifica"),
+    ({"attivo": True, "sdi_attivo": False}, "modifica"),
+    ({"attivo": True, "sospesa_motivo": "x"}, "modifica"),
     ({"arrivate": False}, "nessuna"),
     ({"sdi_attivo": False}, "nessuna"),
 ])
@@ -81,7 +82,7 @@ def test_azione_della_riga(campi, atteso):
      "In pausa: nessuna sede di questa P.IVA riceve più via SDI.", "incerto"),
     ({"attivo": True, "email": "studio@x.it", "sospesa_motivo": "piva_non_solo_del_cliente"},
      "Fermo per un controllo di sicurezza: La P.IVA risulta anche su un altro account. "
-     "Per ripartire: Disattiva, poi Attiva.", "negativo"),
+     "Per ripartire premi Salva.", "negativo"),
     ({"attivo": True, "email": "studio@x.it",
       "da_chiarire": {"id": INVIO, "periodo_dal": "2026-09-28", "periodo_al": "2026-10-04"}},
      "Brevo non ha confermato l'ultima email: controlla nei suoi log se è arrivata. "
@@ -145,7 +146,7 @@ def test_etichetta_della_piva():
 def test_i_motivi_diventano_frasi():
     motivi = ["invio_spento", "invoicetronic: HTTP 401", "brevo_rifiutata_http_400", "codice_mai_visto", None, ""]
     assert esegui_ts(MODULO, "emit(input.map(m.testoMotivo));", argomento=motivi, richiede=["testoMotivo"]) == [
-        "Interruttore generale spento (INVIO_COMMERCIALISTA_ATTIVO sul queue-worker): parte solo la prova a vuoto.",
+        "Interruttore generale spento (INVIO_COMMERCIALISTA_ATTIVO sul queue-worker): non parte niente.",
         "Invoicetronic ha risposto con un errore. (HTTP 401)",
         "Brevo ha rifiutato l'email (HTTP 400): ricontrolla l'indirizzo.",
         "codice_mai_visto", "", "",
@@ -161,9 +162,19 @@ def _normalizzato(percorso):
 def test_la_card_attiva_solo_con_email_valida_e_manda_piva_email_frequenza():
     sorgente = _normalizzato("components/admin/invio-commercialista.tsx")
     assert ('<Button size="sm" disabled={occupato || !emailValida(email)} '
-            'onClick={() => chiama("/attiva", { piva: v.piva, email, frequenza }, "Invio attivato")}>') in sorgente
-    assert '{azione === "attiva" && (' in sorgente and '{azione === "disattiva" && (' in sorgente
+            'onClick={() => chiama("/attiva", { piva: v.piva, email, frequenza }, '
+            'azione === "modifica" ? "Salvato" : "Invio attivato")}>') in sorgente
     assert "const azione = azioneRiga(v);" in sorgente
+
+
+def test_da_attivo_il_form_resta_e_disattiva_sta_accanto_a_salva():
+    """Cambiare email da attivo passa da Salva (la partenza resta): se servisse
+    Disattiva + Attiva si perderebbero le fatture dei giorni in mezzo."""
+    sorgente = _normalizzato("components/admin/invio-commercialista.tsx")
+    blocco = sorgente.split('{azione !== "nessuna" && (', 1)[1].split("<ConfirmDialog", 1)[0]
+    assert 'Email o PEC del commercialista' in blocco
+    assert '{azione === "modifica" && (' in blocco and 'setConferma("disattiva")' in blocco
+    assert sorgente.count('setConferma("disattiva")') == 1
 
 
 def test_le_impostazioni_del_cliente_non_hanno_l_invio():
