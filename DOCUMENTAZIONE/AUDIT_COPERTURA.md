@@ -1578,8 +1578,34 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `last_briefing_seen` resta per account (lo scrive la rigenerazione in
 >   background); il cablaggio dei `.tsx` non ha test di rendering (il server nega
 >   comunque con 403); archiviare una notifica la archivia per tutto l'account.
->   **Prima del push:** migration `20260928215000_sotto_utenti.sql` sul live (oggi
->   assente). Nessun sotto-utente sul live. **Non pushato.**
+>   **Pushato** il 30/9 sera; migration applicata sul live a mano il 2/10 (nel
+>   frattempo il codice girava tollerando le tabelle assenti). Prove post-deploy
+>   del 2/10 sul worker di produzione con un sotto-utente di prova (poi
+>   cancellato): pagine e area Account rifiutate, disattivazione = fuori subito.
+> - **02-03/10/2026, `9f72608` — sotto-utenti, Fase 2 (pannello Admin): chiusa.**
+>   **Fatto:** scheda cliente → «Sotto-utenti» (`services/routers/sotto_utenti_admin.py`,
+>   17esimo router; `components/admin/sotto-utenti.tsx`, logica in
+>   `lib/sotto-utenti-admin.ts`): crea, modifica pagine/sedi, disattiva, elimina,
+>   nuovo link. Nasce senza password e riceve il link di attivazione dei clienti
+>   (24 h); `reset-confirm` cerca in `sotto_utenti` solo se il token non e' di un
+>   titolare (ramo titolare invariato). Regole uniche con lo script
+>   (`sotto_utenti_service.valida_permessi`).
+>   **Trovato (revisore):** il router nasceva senza la guardia R5 (CI rossa); la
+>   «Modifica» restava bloccata se al cliente si spegneva una pagina gia' data;
+>   l'attivazione dichiarava successo anche se un link nuovo l'aveva superata.
+>   Tutti corretti prima del commit.
+>   **Prove:** `tests/test_sql_sotto_utenti_admin.py` (23 su Postgres vero: ciclo
+>   crea → link → password → login con le sole pagine/sedi, scadenza, riuso,
+>   disattivato, Catena, sede e sotto-utente di un altro cliente, email doppie e
+>   admin, corsa sul link), `test_sotto_utenti_admin_frontend.py` (8 via node).
+>   Mutazione 30/30 (copia isolata); 1 sopravvissuto del primo giro era codice
+>   ridondante, tolto. Revisore 🟢. Suite su copia dell'indice: 18.747 verdi; 22
+>   rossi nessuno della fase (14 anche su HEAD pulito, legati al cambio mese; 4 da
+>   copia senza `.git`; 4 SQL legati all'ora, 81/81 rilanciati).
+>   **Non fatto (residui):** «password dimenticata» non vale per i sotto-utenti
+>   (il link lo manda l'admin); l'ordine delle sedi a pari `created_at` rende
+>   `test_titolare_che_cambia_sede_non_sposta_il_sotto_utente` dipendente
+>   dall'ordine dei file (verde in CI, alfabetico). **Non pushato.**
 > - **02/10/2026, `460234a5` — invio al commercialista: lo attiva il cliente dalle
 >   Impostazioni** (decisione di Mattia: niente clausole firmate; piano approvato in
 >   plan mode). **Fatto:** scheda «Fatture al commercialista» in Impostazioni, solo
