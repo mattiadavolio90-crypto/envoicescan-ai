@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,9 @@ const CLASSE_TONO: Record<Tono, string> = {
 // invio li fa il sistema.
 export function FattureCommercialistaCard({ statoIniziale }: { statoIniziale: StatoFattureCommercialista }) {
   const [stato, setStato] = useState(statoIniziale);
+  // Dopo router.refresh() la pagina rilegge lo stato dal server: lo si riprende,
+  // altrimenti useState terrebbe quello vecchio.
+  useEffect(() => setStato(statoIniziale), [statoIniziale]);
   const multiple = stato.pive.length > 1;
 
   return (

@@ -82,7 +82,7 @@ def app(db_sql, monkeypatch):
     _cur(db_sql, "INSERT INTO public.sessioni (user_id, token, source) VALUES (%s, 't', 'login')", U1)
     client = TestClient(fw.app, raise_server_exceptions=False,
                         headers={"X-Worker-Key": CHIAVE, "Authorization": "Bearer t"})
-    client.db, client.finto, client.avvisi, client.utente = db_sql, finto, avvisi, utente
+    client.db, client.finto, client.avvisi, client.utente, client.sb = db_sql, finto, avvisi, utente, sb
     return client
 
 
@@ -288,3 +288,28 @@ def test_le_gia_ricevute_partono_dopo_lo_storico_di_una_configurazione_cancellat
     assert app.get(BASE).json()["pive"][0]["recupero_dal"] == (fino + timedelta(days=1)).isoformat()
     assert _attiva(app, includi_precedenti=True).status_code == 200
     assert _config(app)[3] == fino + timedelta(days=1)
+
+
+def test_senza_riga_di_sessione_vale_come_impersonazione(app):
+    """Una guardia non tace quando non sa."""
+    _cur(app.db, "DELETE FROM public.sessioni WHERE token = 't'")
+    assert app.get(BASE).json()["impersonazione"] is True
+    assert _attiva(app).status_code == 403 and _config(app) is None
+
+
+def test_sessione_illeggibile_vale_come_impersonazione(app, monkeypatch):
+    import services.fastapi_worker as fw
+
+    class _SessioniRotte:
+        def __init__(self, sb):
+            self._sb = sb
+
+        def table(self, nome):
+            if nome == "sessioni":
+                raise RuntimeError("DB giu'")
+            return self._sb.table(nome)
+
+        def __getattr__(self, nome):
+            return getattr(self._sb, nome)
+    monkeypatch.setattr(fw, "get_supabase_client", lambda: _SessioniRotte(app.sb))
+    assert _attiva(app).status_code == 403 and _config(app) is None

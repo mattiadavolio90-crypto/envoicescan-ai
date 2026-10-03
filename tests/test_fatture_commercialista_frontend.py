@@ -169,3 +169,12 @@ def test_disattivare_resta_possibile_anche_da_sospeso():
     assert "onClick={() => setConfermaSpegni(true)}" in blocco
     assert blocco.index("{!voce.sospeso && (") < blocco.index("Modifica") < blocco.index("Disattiva")
     assert blocco.split("Modifica", 1)[1].count("voce.sospeso") == 0
+
+
+def test_dopo_un_errore_la_scheda_riprende_lo_stato_dal_server():
+    """router.refresh() porta uno statoIniziale nuovo, ma useState lo ignora: senza
+    l'effetto la scheda mostrerebbe lo stato di prima dell'errore."""
+    sorgente = _normalizzato("app/(app)/impostazioni/fatture-commercialista-card.tsx")
+    assert "useEffect(() => setStato(statoIniziale), [statoIniziale]);" in sorgente
+    errore = sorgente.split("if (!res.ok) {", 1)[1].split("return false;", 1)[0]
+    assert "router.refresh();" in errore

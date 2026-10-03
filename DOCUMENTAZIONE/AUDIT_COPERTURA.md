@@ -1641,7 +1641,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   un reinvio a cavallo del buco scelto dal cliente («solo le nuove») spediva giorni
 >   mai inviati → il trigger vuole ogni giorno dentro un periodo spedito; due mutanti
 >   del revisore sopravvissuti (sede disattivata, storico orfano nell'attivazione)
->   → test. Mutazione sulle correzioni **7/7**.
+>   → test. Mutazione sulle correzioni **7/7**. Secondo giro: **CHIUSA**; chiusi
+>   anche i suoi non bloccanti: `router.refresh()` non rileggeva la scheda
+>   (`useState` ignora le prop nuove: ora un effetto la risincronizza) e 4 mutanti
+>   del revisore vivi (sessione assente o illeggibile = impersonazione; reinvio su
+>   un periodo fallito o spedito per un'altra P.IVA) → test, **5/5**.
 >   **Residui (decide Mattia):** la prova del consenso non ha storico (ogni «Salva»
 >   la riscrive) e la pulizia GDPR la cancella 90 giorni dopo la disattivazione,
 >   mentre il registro degli invii resta; «solo le nuove» include le fatture

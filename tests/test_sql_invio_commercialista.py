@@ -1044,3 +1044,29 @@ def test_il_reinvio_non_scavalca_il_buco_scelto_dal_cliente(db_sql, psycopg):
     with pytest.raises(psycopg.errors.CheckViolation):
         _invio(db_sql, cid, "reinvio", "2026-07-15", "2026-09-05")
     _invio(db_sql, cid, "reinvio", "2026-09-02", "2026-09-05")
+
+
+def test_il_reinvio_non_copre_un_periodo_fallito(db_sql, psycopg):
+    """Agosto e' fallito: lo rimanda l'ordinario, non un reinvio."""
+    _semina(db_sql)
+    cid = _config(db_sql)
+    _inviato(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    fallito = _invio(db_sql, cid, "ordinario", "2026-08-01", "2026-08-31", da="notturno")
+    _stato(db_sql, fallito, "errore", motivo="download fallito")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "reinvio", "2026-07-15", "2026-08-05")
+
+
+def test_il_reinvio_non_conta_i_giorni_spediti_per_un_altra_piva(db_sql, psycopg):
+    _semina(db_sql)
+    altra = "12345678903"
+    _esegui(db_sql, "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) "
+                    "VALUES (%s, %s, 'C', %s, TRUE)", SEDE_2, U1, altra)
+    cid = _config(db_sql)
+    seconda = _config(db_sql, piva=altra, company=3000)
+    _inviato(db_sql, cid, "primo", "2026-07-01", "2026-07-31")
+    iid = _invio(db_sql, seconda, "primo", "2026-08-01", "2026-08-31", piva=altra, company=3000)
+    _stato(db_sql, iid, "in_corso", email_tentata_at=TENTATA)
+    _stato(db_sql, iid, "inviato")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        _invio(db_sql, cid, "reinvio", "2026-08-01", "2026-08-10")
