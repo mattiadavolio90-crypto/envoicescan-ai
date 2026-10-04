@@ -4,7 +4,8 @@ Il modello non scrive mai: propone una card (incasso di un giorno, personale di
 un mese, fatturato di un mese, una spesa extra) e la scrittura parte solo da qui, quando il
 cliente preme Conferma. Per questo l'endpoint non si fida di niente di cio' che
 arriva: la sede della proposta si riverifica (dell'account, attiva, non tecnica,
-fra quelle del sotto-utente, con la pagina Margini), i valori si rivalidano, e
+fra quelle del sotto-utente, con la pagina del tipo: Margini, o Agenda per la
+spesa), i valori si rivalidano, e
 se il valore registrato non e' piu' quello mostrato sulla card (un'email di
 cassa arrivata nel frattempo, un form in un'altra scheda) si risponde 409 invece
 di sovrascrivere.

@@ -294,7 +294,8 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   client mostra le card: senza, niente strumenti `proponi_*`, niente regole nel
   prompt (`cifre_dettate` di `_build_chat_system_prompt` e
   `_build_chat_system_prompt_catena`) e gli avvisi di prima. La Home lo manda;
-  `/m` no (fase 8). Strumenti mappati su `margini` in `_CHAT_TOOL_FLAG`, fuori
+  `/m` no (fase 8). Strumenti mappati su `margini` in `_CHAT_TOOL_FLAG` (`proponi_spesa` su
+  `agenda`), fuori
   da `_CHAT_TOOLS_SEDE_IN_CATENA` e rifiutati da `_chat_esegui_tool_sede`: in
   catena il prompt rimanda alla Home del locale.
 - **Divisione IVA** (decisione di Mattia, 29/9): si detta IVA inclusa; se il
