@@ -155,7 +155,12 @@ logger = get_logger('daily_briefing')
 #               Nella stessa versione (mai deployata da sola): il MOL si
 #               confronta solo col personale in entrambi i mesi, e il verde
 #               «tutto a posto» si spegne sotto un'osservazione negativa.
-_BRIEFING_CODE_VERSION = 28
+#   29 (04/10): il costo del personale ha una terza voce, la «chiamata»
+#               (margini_mensili.costo_personale_chiamata), che si somma a lordo
+#               ed extra. Un mese con la sola chiamata conta come personale
+#               inserito: senza bump lo snapshot di oggi continuerebbe a
+#               sollecitare un personale gia' registrato fino al TTL.
+_BRIEFING_CODE_VERSION = 29
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

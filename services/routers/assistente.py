@@ -286,7 +286,7 @@ def leggi_fatturato_mese(sb, rid: str, anno: int, mese: int) -> Letto:
 def leggi_personale(sb, rid: str, anno: int, mese: int) -> Letto:
     resp = (
         sb.table("margini_mensili")
-        .select("id, costo_dipendenti, costo_personale_extra")
+        .select("id, costo_dipendenti, costo_personale_extra, costo_personale_chiamata")
         .eq("ristorante_id", rid)
         .eq("anno", anno)
         .eq("mese", mese)
@@ -303,7 +303,8 @@ def leggi_personale(sb, rid: str, anno: int, mese: int) -> Letto:
         str(riga["id"]),
         {"costo_dipendenti": valore} if valore > 0 else None,
         {"costo_dipendenti": riga.get("costo_dipendenti")},
-        info={"costo_personale_extra": _num(riga.get("costo_personale_extra"))},
+        info={"costo_personale_extra": _num(riga.get("costo_personale_extra")),
+              "costo_personale_chiamata": _num(riga.get("costo_personale_chiamata"))},
     )
 
 
@@ -457,8 +458,8 @@ _MESI = ("", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "lugl
 
 class PropostaCifra(BaseModel):
     """Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra
-    (il frontend lo rimanda cosi' com'e'); `sede_nome` e `costo_personale_extra`
-    servono solo a scrivere la card."""
+    (il frontend lo rimanda cosi' com'e'); `sede_nome`, `costo_personale_extra` e
+    `costo_personale_chiamata` servono solo a scrivere la card."""
     tipo: Literal["incasso_giorno", "personale_mese", "fatturato_mese"]
     ristorante_id: str
     sede_nome: Optional[str] = None
@@ -471,6 +472,7 @@ class PropostaCifra(BaseModel):
     costo_dipendenti: Optional[float] = None
     precedente: Optional[Dict[str, float]] = None
     costo_personale_extra: Optional[float] = None
+    costo_personale_chiamata: Optional[float] = None
 
 
 def chiave_proposta(p: PropostaCifra) -> Tuple[str, Any]:
@@ -608,13 +610,17 @@ def _proponi_personale(args, sb, rid, sede_nome, oggi):
     valore = valida_personale(corpo)
     letto = leggi_personale(sb, rid, anno, mese)
     extra = (letto.info or {}).get("costo_personale_extra") or 0.0
+    chiamata = (letto.info or {}).get("costo_personale_chiamata") or 0.0
     if _gia_cosi(letto.attuale, {"costo_dipendenti": valore}):
         return None, {"gia_registrato": True, "valore_attuale": letto.attuale}
     proposta = PropostaCifra(tipo="personale_mese", ristorante_id=rid, sede_nome=sede_nome,
                              anno=anno, mese=mese, costo_dipendenti=valore, precedente=letto.attuale,
-                             costo_personale_extra=extra or None)
+                             costo_personale_extra=extra or None,
+                             costo_personale_chiamata=chiamata or None)
     al_modello = {"proposta_pronta": True, "mese": f"{_MESI[mese]} {anno}", "costo_dipendenti": valore,
                   "valore_attuale": letto.attuale or "nessun valore", "istruzione": _PRONTA}
     if extra:
         al_modello["extra_gia_registrati"] = extra
+    if chiamata:
+        al_modello["chiamata_gia_registrata"] = chiamata
     return proposta, al_modello

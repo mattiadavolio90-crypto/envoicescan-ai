@@ -114,7 +114,7 @@ class GruppoKpi(BaseModel):
     spesa_fornitori: float      # Σ costi_fb_totali del periodo (food cost in €)
     mol: float                  # Σ mol del periodo (totale gruppo, valore assoluto)
     food_cost_pct: Optional[float]  # Σ costi_fb_totali / Σ netto — come food cost % della Home PV
-    costo_personale: float      # Σ (costo_dipendenti + costo_personale_extra)
+    costo_personale: float      # Σ (costo_dipendenti + costo_personale_extra + costo_personale_chiamata)
     spese_generali: float       # Σ (costi_spese_auto + altri_costi_spese)
     # Cascata dati (decisione 19/06): "nessuno" = nessun PV ha fatturato/F&B ->
     # non mostrare numeri; "food" = ci sono F&B ma manca personale/spese in qualche
@@ -283,6 +283,7 @@ def _aggrega_sedi_mensili(
             pers = (
                 float(r.get("costo_dipendenti") or 0)
                 + float(r.get("costo_personale_extra") or 0)
+                + float(r.get("costo_personale_chiamata") or 0)
             )
             mol_v = (netto - fb_tot) - sp_tot - pers
 
@@ -1107,7 +1108,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
             "ristorante_id,mese,fatturato_netto,fatturato_iva10,fatturato_iva22,"
             "altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,"
             "quote_riparto_fb,quote_riparto_spese,"
-            "costo_dipendenti,costo_personale_extra"
+            "costo_dipendenti,costo_personale_extra,costo_personale_chiamata"
         )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
@@ -1494,7 +1495,7 @@ def gruppo_margini_coperti(
             "ristorante_id,mese,fatturato_netto,fatturato_iva10,fatturato_iva22,"
             "altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,"
             "quote_riparto_fb,quote_riparto_spese,"
-            "costo_dipendenti,costo_personale_extra,coperti"
+            "costo_dipendenti,costo_personale_extra,costo_personale_chiamata,coperti"
         )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
@@ -1898,7 +1899,11 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # personale del mese chiuso prima del 15, e lo snapshot porta la lista nuova
 # `osservazioni`. Uno snapshot v2 non ha le osservazioni e chiederebbe il
 # personale il 1° ottobre.
-_SEGNALI_CODE_VERSION = 3
+# 4 = 04/10/2026 (fase C1 del piano consulente): il personale ha una terza voce,
+# `costo_personale_chiamata`, che si somma a lordo ed extra nel MOL dei segnali
+# `margine_calo`/osservazioni. Uno snapshot v3 la ignora e mostra un margine piu'
+# alto del vero per le sedi che la usano.
+_SEGNALI_CODE_VERSION = 4
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
@@ -2270,7 +2275,7 @@ def _calcola_segnali(
                         "ristorante_id,mese,fatturato_iva10,fatturato_iva22,"
                         "altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,"
                         "quote_riparto_fb,quote_riparto_spese,"
-                        "costo_dipendenti,costo_personale_extra"
+                        "costo_dipendenti,costo_personale_extra,costo_personale_chiamata"
                     )
                     .in_("ristorante_id", ids)
                     .eq("anno", anno_i)

@@ -801,9 +801,9 @@ def test_riparto_ricalcola_tutte_le_voci_derivate(db_sql, sql):
              fatturato_netto = 250
     Costi:   food auto 40 + altri food 10 + quota fb 20   = 70
              spese auto 30 + altre spese 5 + quota spese 15 = 50
-             personale 20 + extra 10                        = 30
+             lordo 20 + extra 10 + chiamata 7               = 37
     primo_margine = 250 - 70 = 180
-    mol           = 250 - 70 - 50 - 30 = 100
+    mol           = 250 - 70 - 50 - 37 = 93
     """
     _semina_utente_e_sedi(db_sql)
     _imposta_margini(
@@ -813,6 +813,7 @@ def test_riparto_ricalcola_tutte_le_voci_derivate(db_sql, sql):
         costi_fb_auto=Decimal("40.00"), altri_costi_fb=Decimal("10.00"),
         costi_spese_auto=Decimal("30.00"), altri_costi_spese=Decimal("5.00"),
         costo_dipendenti=Decimal("20.00"), costo_personale_extra=Decimal("10.00"),
+        costo_personale_chiamata=Decimal("7.00"),
     )
     riparto_fb = _riparto(db_sql, tipo="fb", file="fb.xml")
     _quota(db_sql, riparto_fb, importo=Decimal("20.00"))
@@ -825,7 +826,37 @@ def test_riparto_ricalcola_tutte_le_voci_derivate(db_sql, sql):
     assert margini["fatturato_netto"] == Decimal("250.00")
     assert margini["costi_fb_totali"] == Decimal("70.00")
     assert margini["primo_margine"] == Decimal("180.00")
-    assert margini["mol"] == Decimal("100.00")
+    assert margini["mol"] == Decimal("93.00")
+
+
+def test_riparto_la_sola_chiamata_entra_nel_mol(db_sql, sql):
+    """Lordo 0 ed extra 0: il personale del mese e' tutto a chiamata e deve
+    pesare sul MOL lo stesso. 7 non e' scomponibile negli altri numeri del
+    seed: se l'addendo sparisce il MOL torna 250 - 15 = 235, non 228."""
+    _semina_utente_e_sedi(db_sql)
+    _imposta_margini(
+        db_sql,
+        fatturato_iva10=Decimal("110.00"), fatturato_iva22=Decimal("122.00"),
+        altri_ricavi_noiva=Decimal("50.00"),
+        costo_dipendenti=Decimal("0.00"), costo_personale_extra=Decimal("0.00"),
+        costo_personale_chiamata=Decimal("7.00"),
+    )
+    riparto = _riparto(db_sql, tipo="generale")
+    _quota(db_sql, riparto, importo=Decimal("15.00"))
+
+    sql("SELECT public.riparto_quote_mensili(%s, 2026, 3)", UTENTE)
+
+    margini = _margini(sql)
+    assert margini["fatturato_netto"] == Decimal("250.00")
+    assert margini["quote_riparto_spese"] == Decimal("15.00")
+    assert margini["primo_margine"] == Decimal("250.00")
+    assert margini["mol"] == Decimal("228.00")
+    # la funzione ricalcola, non riscrive le voci di personale
+    assert sql(
+        "SELECT costo_dipendenti, costo_personale_extra, costo_personale_chiamata "
+        "FROM public.margini_mensili WHERE ristorante_id = %s AND anno = 2026 AND mese = 3",
+        SEDE,
+    )[0] == (Decimal("0.00"), Decimal("0.00"), Decimal("7.00"))
 
 
 def test_riparto_azzera_la_sede_uscita_dal_riparto(db_sql, sql):

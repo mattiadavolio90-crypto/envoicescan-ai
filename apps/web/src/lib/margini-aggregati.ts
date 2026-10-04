@@ -63,6 +63,7 @@ export type MesePivot = {
   costi_spese_totali: number;
   costo_dipendenti: number;
   costo_personale_extra: number;
+  costo_personale_chiamata: number;
   costi_personale: number;
   mol: number;
   quote_riparto_fb: number;

@@ -24190,6 +24190,11 @@
             "title": "Costo Personale Extra",
             "default": 0.0
           },
+          "costo_personale_chiamata": {
+            "type": "number",
+            "title": "Costo Personale Chiamata",
+            "default": 0.0
+          },
           "costi_fb_auto": {
             "type": "number",
             "title": "Costi Fb Auto",
@@ -24473,6 +24478,11 @@
           "mol": {
             "type": "number",
             "title": "Mol"
+          },
+          "costo_personale_chiamata": {
+            "type": "number",
+            "title": "Costo Personale Chiamata",
+            "default": 0.0
           },
           "quote_riparto_fb": {
             "type": "number",
@@ -25952,6 +25962,17 @@
               }
             ],
             "title": "Costo Personale Extra"
+          },
+          "costo_personale_chiamata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Personale Chiamata"
           }
         },
         "type": "object",
@@ -25960,7 +25981,7 @@
           "ristorante_id"
         ],
         "title": "PropostaCifra",
-        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome` e `costo_personale_extra`\nservono solo a scrivere la card."
+        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome`, `costo_personale_extra` e\n`costo_personale_chiamata` servono solo a scrivere la card."
       },
       "RankingPV": {
         "properties": {

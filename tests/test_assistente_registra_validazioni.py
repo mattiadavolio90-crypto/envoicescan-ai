@@ -168,3 +168,74 @@ def test_update_che_non_trova_i_valori_letti_e_409():
 def test_update_che_trova_gia_il_dettato_e_un_successo():
     A._aggiorna(_SbFinto(), "t", LETTO, "rid", {}, DETTATO,
                 lambda: A.Letto("id-riga", {"costo_dipendenti": 12000.0}, {}))
+
+
+# ─── Il personale: lordo, ore extra e chiamata ────────────────────────────────
+class _SbMese:
+    """Una riga di margini_mensili; tiene la select chiesta, perche' una select a
+    colonne esplicite che dimentica la chiamata la perde anche se il mock la da'."""
+
+    def __init__(self, riga):
+        self.riga = riga
+        self.select_chiesta = None
+
+    def table(self, _nome):
+        return self
+
+    def select(self, colonne):
+        self.select_chiesta = colonne
+        return self
+
+    def eq(self, *_a):
+        return self
+
+    def limit(self, _n):
+        return self
+
+    def execute(self):
+        return type("R", (), {"data": [self.riga] if self.riga else []})()
+
+
+def test_leggi_personale_chiede_e_porta_anche_la_chiamata():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 1000, "costo_personale_extra": 200,
+                  "costo_personale_chiamata": 37})
+    letto = A.leggi_personale(sb, "rid", 2026, 9)
+    assert "costo_personale_chiamata" in sb.select_chiesta
+    assert letto.attuale == {"costo_dipendenti": 1000.0}
+    assert letto.info == {"costo_personale_extra": 200.0, "costo_personale_chiamata": 37.0}
+
+
+def test_leggi_personale_chiamata_null_vale_zero():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 1000, "costo_personale_extra": None,
+                  "costo_personale_chiamata": None})
+    assert A.leggi_personale(sb, "rid", 2026, 9).info == {
+        "costo_personale_extra": 0.0, "costo_personale_chiamata": 0.0}
+
+
+def test_proposta_personale_con_la_sola_chiamata_registrata():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 0, "costo_personale_extra": 0,
+                  "costo_personale_chiamata": 37})
+    proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "importo": 1000}, sb,
+                                                "rid", "NAVIGLI", date(2026, 10, 4))
+    assert (proposta.costo_dipendenti, proposta.costo_personale_extra, proposta.costo_personale_chiamata) == \
+        (1000.0, None, 37.0)
+    assert al_modello["chiamata_gia_registrata"] == 37.0
+    assert "extra_gia_registrati" not in al_modello
+
+
+def test_proposta_personale_con_extra_e_chiamata_le_tiene_distinte():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 0, "costo_personale_extra": 200,
+                  "costo_personale_chiamata": 37})
+    proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "importo": 1000}, sb,
+                                                "rid", None, date(2026, 10, 4))
+    assert (proposta.costo_personale_extra, proposta.costo_personale_chiamata) == (200.0, 37.0)
+    assert (al_modello["extra_gia_registrati"], al_modello["chiamata_gia_registrata"]) == (200.0, 37.0)
+
+
+def test_proposta_personale_senza_extra_ne_chiamata():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 0, "costo_personale_extra": 0,
+                  "costo_personale_chiamata": 0})
+    proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "importo": 1000}, sb,
+                                                "rid", None, date(2026, 10, 4))
+    assert (proposta.costo_personale_extra, proposta.costo_personale_chiamata) == (None, None)
+    assert "chiamata_gia_registrata" not in al_modello

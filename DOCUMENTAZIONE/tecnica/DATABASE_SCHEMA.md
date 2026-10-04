@@ -196,7 +196,8 @@ e basta.
 | altri_costi_fb | NUMERIC(10,2) | Costi F&B extra non in fatture |
 | altri_costi_spese | NUMERIC(10,2) | Spese extra non in fatture |
 | costo_dipendenti | NUMERIC(10,2) | Costo personale lordo mensile |
-| costo_personale_extra | NUMERIC(10,2) | Costo ore extra (da turni o manuale) |
+| costo_personale_extra | NUMERIC(10,2) | «Ore extra»: costo ore extra (da turni o manuale) |
+| costo_personale_chiamata | NUMERIC(10,2) DEFAULT 0 | «Chiamata» (dal 04/10/2026). Totale personale = costo_dipendenti («Lordo») + costo_personale_extra + costo_personale_chiamata, ovunque (MOL, completezza, catena, RPC) |
 | **SNAPSHOT AUTOMATICI** | | |
 | costi_fb_auto | NUMERIC(10,2) | Costi F&B da `fatture` (ricalcolati) |
 | costi_spese_auto | NUMERIC(10,2) | Costi Spese da `fatture` (ricalcolati) |
@@ -437,7 +438,7 @@ Migrazione automatica da `note_diario` → `diario_eventi` nella migration SQL.
 | tipo_giorno | TEXT DEFAULT 'turno' | `turno` \| `riposo` \| `ferie` \| `malattia`. Righe non-`turno` non hanno orari (sono uno stato-giorno esplicito, non un turno vuoto) |
 | importo_a_carico | NUMERIC (nullable) | Solo per `ferie`/`malattia`; sommato a parte in `costo_assenze_a_carico`, mai in `costo_dipendenti` (per non falsare il MOL) |
 | mensile | BOOLEAN DEFAULT FALSE | TRUE = riga aggregata da busta paga invece che turno giornaliero. Esclusività giornaliero/mensile per dipendente+mese verificata a livello applicativo |
-| ore_dichiarate / lordo_mensile / importo_extra | NUMERIC (nullable) | Solo se `mensile=TRUE`: ore totali (già ord+extra) e lordo del mese dalla busta paga reale, non ricalcolati da tariffa. `ore_extra ≤ ore_dichiarate` e `importo_extra ≤ lordo_mensile` sono garantiti in scrittura (400) su POST e PATCH |
+| ore_dichiarate / lordo_mensile / importo_extra / importo_chiamata | NUMERIC (nullable) | Solo se `mensile=TRUE`: ore totali (già ord+extra) e lordo del mese dalla busta paga reale, non ricalcolati da tariffa. `ore_extra ≤ ore_dichiarate` e `importo_extra ≤ lordo_mensile` sono garantiti in scrittura (400) su POST e PATCH |
 | note | TEXT (nullable) | |
 | created_at | TIMESTAMPTZ | |
 

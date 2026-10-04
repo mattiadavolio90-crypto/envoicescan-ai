@@ -115,14 +115,19 @@ def _patch_due_endpoint(saved_rows, costi_auto):
     return client
 
 
-@pytest.mark.parametrize("iva10,iva22,fb_auto,dipendenti", [
+@pytest.mark.parametrize("iva10,iva22,fb_auto,dipendenti,extra,chiamata", [
     # Scelti perche' cadono male sull'arrotondamento: 2745/8123 = 33,79%
-    (8935.30, 0.0, 2745.0, 1500.0),
-    (11000.0, 12200.0, 7333.0, 2100.0),
-    (5000.0, 0.0, 1.0, 0.0),
+    (8935.30, 0.0, 2745.0, 1500.0, 0.0, 0.0),
+    (11000.0, 12200.0, 7333.0, 2100.0, 0.0, 0.0),
+    (5000.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+    # Le tre voci del personale (fase C1): lordo, ore extra e chiamata si
+    # sommano in entrambe le copie della formula.
+    (8935.30, 0.0, 2745.0, 1000.0, 200.0, 37.0),
+    # Solo chiamata: se una delle due copie la ignora, il MOL diverge di 37.
+    (8935.30, 0.0, 2745.0, 0.0, 0.0, 37.0),
 ])
 def test_kpi_e_analisi_danno_lo_stesso_mol_e_le_stesse_percentuali(
-    iva10, iva22, fb_auto, dipendenti
+    iva10, iva22, fb_auto, dipendenti, extra, chiamata
 ):
     saved = [{
         "anno": 2026, "mese": 3,
@@ -130,7 +135,8 @@ def test_kpi_e_analisi_danno_lo_stesso_mol_e_le_stesse_percentuali(
         "altri_ricavi_noiva": 0.0,
         "altri_costi_fb": 0.0, "altri_costi_spese": 0.0,
         "quote_riparto_fb": 0.0, "quote_riparto_spese": 0.0,
-        "costo_dipendenti": dipendenti, "costo_personale_extra": 0.0,
+        "costo_dipendenti": dipendenti, "costo_personale_extra": extra,
+        "costo_personale_chiamata": chiamata,
     }]
     client = _patch_due_endpoint(saved, (fb_auto, 0.0))
 
@@ -167,6 +173,9 @@ def test_kpi_e_analisi_danno_lo_stesso_mol_e_le_stesse_percentuali(
     assert round(agg["pm"], 2) == analisi.totali.primo_margine
     assert round(agg["fb"], 2) == analisi.totali.costi_fb_totali
     assert round(agg["pers"], 2) == analisi.totali.costi_personale
+    # Il totale personale e' la somma delle tre voci, letta da entrambi i lati.
+    assert analisi.totali.costi_personale == round(dipendenti + extra + chiamata, 2)
+    assert analisi.totali.costo_personale_chiamata == chiamata
 
     # Le percentuali: stesso numero di decimali, o la stessa pagina mostra
     # 33,8 sopra e 33,79 sotto.

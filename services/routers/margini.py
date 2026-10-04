@@ -118,6 +118,7 @@ class MarginiMeseData(BaseModel):
     altri_costi_spese: float = 0.0
     costo_dipendenti: float = 0.0
     costo_personale_extra: float = 0.0
+    costo_personale_chiamata: float = 0.0
     costi_fb_auto: float = 0.0
     costi_spese_auto: float = 0.0
     # Quote dei costi di gruppo ripartiti su questa sede nel mese. Popolate SOLO
@@ -182,7 +183,7 @@ def get_margini(
 
     resp = (
         sb.table("margini_mensili")
-        .select("mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,costo_dipendenti,costo_personale_extra,quote_riparto_fb,quote_riparto_spese")
+        .select("mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,costo_dipendenti,costo_personale_extra,costo_personale_chiamata,quote_riparto_fb,quote_riparto_spese")
         .eq("ristorante_id", ristorante_id)
         .eq("anno", anno)
         .execute()
@@ -211,6 +212,7 @@ def get_margini(
             altri_costi_spese=float(s.get("altri_costi_spese") or 0),
             costo_dipendenti=float(s.get("costo_dipendenti") or 0),
             costo_personale_extra=float(s.get("costo_personale_extra") or 0),
+            costo_personale_chiamata=float(s.get("costo_personale_chiamata") or 0),
             costi_fb_auto=float(costi_fb_auto.get(m, 0)),
             costi_spese_auto=float(costi_spese_auto.get(m, 0)),
             quote_riparto_fb=float(s.get("quote_riparto_fb") or 0),
@@ -259,7 +261,7 @@ def save_margini(
         fatt_netto = (m.fatturato_iva10 / IVA_DIVISORE_10) + (m.fatturato_iva22 / IVA_DIVISORE_22) + m.altri_ricavi_noiva
         costi_fb_tot = m.costi_fb_auto + m.altri_costi_fb + q_fb
         costi_spese_tot = m.costi_spese_auto + m.altri_costi_spese + q_spese
-        costi_pers = m.costo_dipendenti + m.costo_personale_extra
+        costi_pers = m.costo_dipendenti + m.costo_personale_extra + m.costo_personale_chiamata
         primo_margine = fatt_netto - costi_fb_tot
         mol = primo_margine - costi_spese_tot - costi_pers
         fn = fatt_netto if fatt_netto > 0 else 1.0
@@ -275,6 +277,7 @@ def save_margini(
             "altri_costi_spese": m.altri_costi_spese,
             "costo_dipendenti": m.costo_dipendenti,
             "costo_personale_extra": m.costo_personale_extra,
+            "costo_personale_chiamata": m.costo_personale_chiamata,
             "costi_fb_auto": m.costi_fb_auto,
             "costi_spese_auto": m.costi_spese_auto,
             "quote_riparto_fb": q_fb,
@@ -865,6 +868,7 @@ _COLORI_EMOJI = {"🟢": "#16a34a", "🟡": "#ca8a04", "🟠": "#ea580c", "🔴"
 
 _CELL_FIELDS_EDITABILI = {
     "altri_costi_fb", "altri_costi_spese", "costo_dipendenti", "costo_personale_extra",
+    "costo_personale_chiamata",
 }
 
 
@@ -1005,6 +1009,7 @@ class MesiPivot(BaseModel):
     costo_personale_extra: float
     costi_personale: float
     mol: float
+    costo_personale_chiamata: float = 0.0
     # Quote dei costi di gruppo ripartiti su questa sede (modalità catena). Sono
     # già dentro costi_fb_totali / costi_spese_totali: servono al frontend per
     # mostrarle nelle righe di dettaglio, altrimenti i subtotali non quadrano
@@ -1289,6 +1294,7 @@ def get_margini_analisi(
         altri_sp = float(r.get("altri_costi_spese") or 0)
         cd = float(r.get("costo_dipendenti") or 0)
         cpe = float(r.get("costo_personale_extra") or 0)
+        cch = float(r.get("costo_personale_chiamata") or 0)
         # Quote dei costi di gruppo ripartiti su questa sede (modalità catena):
         # vanno sommate ai costi F&B/spese come già fa GET /api/margini, altrimenti
         # tabella-analisi e KPI mostrerebbero un MOL diverso dal conto economico.
@@ -1297,7 +1303,7 @@ def get_margini_analisi(
 
         fb_tot = fb_auto + altri_fb + q_fb
         sp_tot = spese_auto + altri_sp + q_spese
-        pers = cd + cpe
+        pers = cd + cpe + cch
         pm = netto - fb_tot
         mol_v = pm - sp_tot - pers
 
@@ -1317,6 +1323,7 @@ def get_margini_analisi(
             costi_spese_totali=round(sp_tot, 2),
             costo_dipendenti=round(cd, 2),
             costo_personale_extra=round(cpe, 2),
+            costo_personale_chiamata=round(cch, 2),
             costi_personale=round(pers, 2),
             mol=round(mol_v, 2),
             quote_riparto_fb=round(q_fb, 2),
@@ -1337,6 +1344,7 @@ def get_margini_analisi(
     tot_spese_totali = sum(p.costi_spese_totali for p in mesi_pivot)
     tot_cd = sum(p.costo_dipendenti for p in mesi_pivot)
     tot_cpe = sum(p.costo_personale_extra for p in mesi_pivot)
+    tot_cch = sum(p.costo_personale_chiamata for p in mesi_pivot)
     tot_pers = sum(p.costi_personale for p in mesi_pivot)
     tot_mol = sum(p.mol for p in mesi_pivot)
     tot_q_fb = sum(p.quote_riparto_fb for p in mesi_pivot)
@@ -1351,6 +1359,7 @@ def get_margini_analisi(
         costi_spese_auto=round(tot_spese_auto, 2), altri_costi_spese=round(tot_altri_spese, 2),
         costi_spese_totali=round(tot_spese_totali, 2),
         costo_dipendenti=round(tot_cd, 2), costo_personale_extra=round(tot_cpe, 2),
+        costo_personale_chiamata=round(tot_cch, 2),
         costi_personale=round(tot_pers, 2), mol=round(tot_mol, 2),
         quote_riparto_fb=round(tot_q_fb, 2), quote_riparto_spese=round(tot_q_spese, 2),
     )

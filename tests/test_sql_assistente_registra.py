@@ -262,6 +262,21 @@ def test_personale_a_zero_vale_come_nessun_valore_e_l_extra_resta(scenario):
     assert _margini(scenario, a.ids["sede1"], OGGI.year, OGGI.month) == (12000.0, 800.0)
 
 
+def test_personale_con_la_sola_chiamata_scrive_il_lordo_e_la_chiamata_resta(scenario):
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_personale_chiamata) "
+        "VALUES (%s, %s, %s, %s, 37)",
+        (a.ids["user_id"], a.ids["sede1"], OGGI.year, OGGI.month),
+    )
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], costo_dipendenti=1000))
+    assert resp.status_code == 200, resp.text
+    assert _riga(scenario, "SELECT costo_dipendenti::float, costo_personale_extra::float, "
+                           "costo_personale_chiamata::float FROM public.margini_mensili "
+                           "WHERE ristorante_id = %s AND anno = %s AND mese = %s",
+                 a.ids["sede1"], OGGI.year, OGGI.month) == (1000.0, 0.0, 37.0)
+
+
 def test_personale_gia_registrato_serve_il_precedente(scenario):
     a = scenario.a
     scenario.conn.execute(
@@ -544,18 +559,18 @@ def test_personale_null_nel_db_si_aggiorna(scenario):
     assert _margini(scenario, a.ids["sede1"], OGGI.year, OGGI.month)[0] == 12000.0
 
 
-def test_il_personale_mostra_anche_l_extra_per_la_card(scenario):
+def test_il_personale_mostra_anche_l_extra_e_la_chiamata_per_la_card(scenario):
     from services.routers import assistente as A
 
     a = scenario.a
     scenario.conn.execute(
         "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti, "
-        "costo_personale_extra) VALUES (%s, %s, %s, %s, 8000, 450.5)",
+        "costo_personale_extra, costo_personale_chiamata) VALUES (%s, %s, %s, %s, 8000, 450.5, 37)",
         (a.ids["user_id"], a.ids["sede1"], OGGI.year, OGGI.month),
     )
     letto = A.leggi_personale(scenario.sb, a.ids["sede1"], OGGI.year, OGGI.month)
     assert letto.attuale == {"costo_dipendenti": 8000.0}
-    assert letto.info == {"costo_personale_extra": 450.5}
+    assert letto.info == {"costo_personale_extra": 450.5, "costo_personale_chiamata": 37.0}
 
 
 # ─── Dopo la scrittura ────────────────────────────────────────────────────────

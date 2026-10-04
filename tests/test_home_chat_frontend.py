@@ -489,10 +489,11 @@ PROPOSTA = {
     "tipo": "incasso_giorno", "ristorante_id": "r-1", "sede_nome": "NAVIGLI", "data": "2026-09-29",
     "fatturato_iva10": 1800, "altri_ricavi_noiva": 540, "fatturato_iva22": 0, "precedente": None,
     "anno": None, "mese": None, "costo_dipendenti": None, "costo_personale_extra": None,
+    "costo_personale_chiamata": None,
 }
 PERSONALE = {**PROPOSTA, "tipo": "personale_mese", "data": None, "anno": 2026, "mese": 8,
              "fatturato_iva10": 0, "altri_ricavi_noiva": 0, "costo_dipendenti": 12000,
-             "costo_personale_extra": 450}
+             "costo_personale_extra": 450, "costo_personale_chiamata": 37}
 FATTURATO = {**PROPOSTA, "tipo": "fatturato_mese", "data": None, "anno": 2026, "mese": 8,
              "fatturato_iva10": 30000, "altri_ricavi_noiva": 2000, "fatturato_iva22": 500}
 
@@ -513,6 +514,7 @@ def test_proposta_del_worker_valida(p):
     {"fatturato_iva10": 0, "altri_ricavi_noiva": 0},
     {"precedente": {"fatturato_iva10": "700"}}, {"precedente": [1]},
     {"sede_nome": 3}, {"costo_personale_extra": -5},
+    {"costo_personale_chiamata": -5}, {"costo_personale_chiamata": "37"},
 ], ids=lambda m: ",".join(f"{k}={v!r}" for k, v in m.items()))
 def test_proposta_incasso_malformata_scartata(modifica):
     assert _chiama("propostaValida", [{**PROPOSTA, **modifica}]) is False
@@ -582,7 +584,18 @@ def test_card_non_array_o_su_voce_del_cliente_si_toglie_la_voce_resta():
 
 def test_la_conferma_rimanda_la_proposta_senza_i_campi_della_card():
     out = _chiama("corpoConferma", [{**PERSONALE, "user_id": "altro", "extra": 1}])
-    assert out == {k: v for k, v in PERSONALE.items() if k not in ("sede_nome", "costo_personale_extra")}
+    assert out == {k: v for k, v in PERSONALE.items()
+                   if k not in ("sede_nome", "costo_personale_extra", "costo_personale_chiamata")}
+    assert "costo_personale_chiamata" not in out
+
+
+def test_la_sola_chiamata_non_entra_nella_conferma():
+    """La Conferma scrive solo il lordo: la chiamata e' una nota della card."""
+    p = {**PERSONALE, "costo_personale_extra": None, "costo_personale_chiamata": 37}
+    assert _chiama("propostaValida", [p]) is True
+    out = _chiama("corpoConferma", [p])
+    assert "costo_personale_chiamata" not in out
+    assert out["costo_dipendenti"] == 12000
 
 
 # ─── Cosa dice la card ────────────────────────────────────────────────────────
@@ -614,14 +627,29 @@ def test_testo_card_fatturato_del_mese():
     assert t["totale"] == "32.500,00\u00a0€"
 
 
-def test_testo_card_personale_con_extra_e_precedente():
+def test_testo_card_personale_con_extra_chiamata_e_precedente():
     t = _chiama("testoCard", [{**PERSONALE, "precedente": {"costo_dipendenti": 8000}}, 2026])
     assert t["titolo"] == "Costo del personale di agosto 2026"
-    assert t["righe"] == [["Personale", "12.000,00\u00a0€"]]
+    assert t["righe"] == [["Lordo", "12.000,00\u00a0€"]]
     assert t["totale"] is None
-    assert t["nota"] == "Risulta già 8.000,00\u00a0€: lo sostituisco. Più 450,00\u00a0€ di extra già registrati, che restano."
-    senza = _chiama("testoCard", [{**PERSONALE, "costo_personale_extra": None}, 2026])
+    assert t["nota"] == ("Risulta già 8.000,00\u00a0€: lo sostituisco. Più 450,00\u00a0€ di ore extra "
+                         "e 37,00\u00a0€ di chiamata già registrati, che restano.")
+    senza = _chiama("testoCard", [{**PERSONALE, "costo_personale_extra": None,
+                                   "costo_personale_chiamata": None}, 2026])
     assert senza["nota"] is None
+
+
+def test_testo_card_personale_con_la_sola_chiamata():
+    t = _chiama("testoCard", [{**PERSONALE, "costo_dipendenti": 1000, "costo_personale_extra": 0,
+                               "costo_personale_chiamata": 37}, 2026])
+    assert t["righe"] == [["Lordo", "1.000,00\u00a0€"]]
+    assert t["nota"] == "Più 37,00\u00a0€ di chiamata già registrati, che restano."
+
+
+def test_testo_card_personale_con_le_sole_ore_extra():
+    t = _chiama("testoCard", [{**PERSONALE, "costo_dipendenti": 1000, "costo_personale_extra": 200,
+                               "costo_personale_chiamata": 0}, 2026])
+    assert t["nota"] == "Più 200,00\u00a0€ di ore extra già registrati, che restano."
 
 
 def test_senza_nome_della_sede_niente_riga_vuota():

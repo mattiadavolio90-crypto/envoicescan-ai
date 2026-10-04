@@ -312,6 +312,7 @@ export type PropostaCifra = {
   fatturato_iva22: number;
   costo_dipendenti?: number | null;
   costo_personale_extra?: number | null;
+  costo_personale_chiamata?: number | null;
   /** Cio' che la card mostra come «risulta …»; null = nessun valore. */
   precedente?: Record<string, number> | null;
 };
@@ -349,6 +350,7 @@ export function propostaValida(x: unknown): x is PropostaCifra {
   if (p.precedente != null && !valoriValidi(p.precedente)) return false;
   if (p.sede_nome != null && typeof p.sede_nome !== "string") return false;
   if (p.costo_personale_extra != null && !importo(p.costo_personale_extra)) return false;
+  if (p.costo_personale_chiamata != null && !importo(p.costo_personale_chiamata)) return false;
   if (p.tipo === "incasso_giorno") {
     return typeof p.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.data) && totaleIncasso(p as PropostaCifra) > 0;
   }
@@ -446,15 +448,20 @@ export function testoCard(p: PropostaCifra, annoCorrente: number): TestoCard {
     p.tipo === "incasso_giorno" ? giornoInChiaro(p.data ?? "", annoCorrente) : `${MESI[(p.mese ?? 1) - 1]} ${p.anno}`;
   if (p.tipo === "personale_mese") {
     const extra = p.costo_personale_extra ?? 0;
+    const chiamata = p.costo_personale_chiamata ?? 0;
     const prima = p.precedente?.costo_dipendenti;
+    const restano = [
+      extra > 0 ? `${euro(extra)} di ore extra` : null,
+      chiamata > 0 ? `${euro(chiamata)} di chiamata` : null,
+    ].filter(Boolean);
     return {
       titolo: `Costo del personale di ${quando}`,
       sede,
-      righe: [["Personale", euro(p.costo_dipendenti ?? 0)]],
+      righe: [["Lordo", euro(p.costo_dipendenti ?? 0)]],
       totale: null,
       nota: [
         prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
-        extra > 0 ? `Più ${euro(extra)} di extra già registrati, che restano.` : null,
+        restano.length ? `Più ${restano.join(" e ")} già registrati, che restano.` : null,
       ].filter(Boolean).join(" ") || null,
     };
   }

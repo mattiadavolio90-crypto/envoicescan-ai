@@ -2909,7 +2909,7 @@ class HomeKpiResponse(BaseModel):
     is_mese_in_corso: bool      # False = stiamo mostrando l'ultimo mese completo
     fatturato: float
     food_cost_pct: Optional[float]   # None se fatturato 0 (non calcolabile)
-    costo_personale: float           # costo del personale (dipendenti + extra)
+    costo_personale: float           # costo del personale (lordo + extra + chiamata)
     spese_generali: float
     mol: float
     has_data: bool
@@ -3982,7 +3982,7 @@ def _build_chat_system_prompt(
             try:
                 q_per = (
                     supabase_client.table("margini_mensili")
-                    .select("costo_dipendenti,costo_personale_extra")
+                    .select("costo_dipendenti,costo_personale_extra,costo_personale_chiamata")
                     .eq("user_id", user_id_str)
                     .eq("anno", _mc_anno)
                     .eq("mese", _mc_mese)
@@ -3991,7 +3991,9 @@ def _build_chat_system_prompt(
                     q_per = q_per.eq("ristorante_id", ristorante_id)
                 per_data = q_per.execute().data or []
                 personale_ok = any(
-                    (float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)) > 0
+                    (float(r.get("costo_dipendenti") or 0)
+                     + float(r.get("costo_personale_extra") or 0)
+                     + float(r.get("costo_personale_chiamata") or 0)) > 0
                     for r in per_data
                 )
                 # Quarto consumatore della stessa regola (23/09): senza, prima del
@@ -6902,7 +6904,7 @@ def _briefing_dati_mensili_mancanti(
     (un tempo anche /api/ricavi/notifica-mancante, tolto il 25/09/2026).
 
     Replica ESATTAMENTE la logica di quelle fonti (mese precedente, tabella
-    margini_mensili, personale = dipendenti + extra; incasso = riga
+    margini_mensili, personale = lordo + extra + chiamata; incasso = riga
     ricavi_giornalieri per ieri). Cosi' briefing e Salute non si contraddicono
     mai: prima il briefing leggeva solo notification_inbox, popolata pero'
     soltanto dalla vecchia pagina Streamlit / dall'endpoint dedicato -> sull'app
@@ -6937,7 +6939,7 @@ def _briefing_dati_mensili_mancanti(
         resp = (
             supabase_client.table("margini_mensili")
             .select("mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
-                    "costo_dipendenti,costo_personale_extra")
+                    "costo_dipendenti,costo_personale_extra,costo_personale_chiamata")
             .eq("ristorante_id", ristorante_id)
             .eq("anno", mc_anno)
             .execute()
@@ -6950,7 +6952,8 @@ def _briefing_dati_mensili_mancanti(
                               + float(r.get("fatturato_iva22") or 0)
                               + float(r.get("altri_ricavi_noiva") or 0)),
                     "personale": (float(r.get("costo_dipendenti") or 0)
-                                  + float(r.get("costo_personale_extra") or 0)),
+                                  + float(r.get("costo_personale_extra") or 0)
+                                  + float(r.get("costo_personale_chiamata") or 0)),
                 }
     except Exception as exc:
         logger.warning("briefing dati mensili: lettura margini fallita: %s", exc)
@@ -7983,7 +7986,7 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
                 supabase_client.table("margini_mensili")
                 .select(
                     "fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
-                    "costo_dipendenti,costo_personale_extra"
+                    "costo_dipendenti,costo_personale_extra,costo_personale_chiamata"
                 )
                 .eq("ristorante_id", ristorante_id)
                 .eq("anno", mc_anno)
@@ -7998,7 +8001,8 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
                     + float(r.get("altri_ricavi_noiva") or 0)
                 )
                 if (float(r.get("costo_dipendenti") or 0)
-                        + float(r.get("costo_personale_extra") or 0)) > 0:
+                        + float(r.get("costo_personale_extra") or 0)
+                        + float(r.get("costo_personale_chiamata") or 0)) > 0:
                     personale_ok = True
             # Non ancora dovuto = non "mancante": vedi _personale_gia_dovuto.
             if not _personale_gia_dovuto(oggi, (mc_anno, mc_mese)):
@@ -8793,7 +8797,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             sb.table("margini_mensili")
             .select(
                 "fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
-                "costo_dipendenti,costo_personale_extra"
+                "costo_dipendenti,costo_personale_extra,costo_personale_chiamata"
             )
             .eq("ristorante_id", ristorante_id)
             .eq("anno", mc_anno)
@@ -8808,7 +8812,8 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
                 + float(r.get("altri_ricavi_noiva") or 0)
             )
             if (float(r.get("costo_dipendenti") or 0)
-                    + float(r.get("costo_personale_extra") or 0)) > 0:
+                    + float(r.get("costo_personale_extra") or 0)
+                    + float(r.get("costo_personale_chiamata") or 0)) > 0:
                 personale_ok = True
         # Non ancora dovuto = non "mancante": vedi _personale_gia_dovuto.
         if not _personale_gia_dovuto(oggi, (mc_anno, mc_mese)):
@@ -9085,6 +9090,7 @@ def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: in
     personale = (
         float(row.get("costo_dipendenti") or 0)
         + float(row.get("costo_personale_extra") or 0)
+        + float(row.get("costo_personale_chiamata") or 0)
     )
     # MOL RICALCOLATO (netto − F&B − spese − personale), come get_margini_analisi.
     # Il `mol` salvato in margini_mensili è uno snapshot che diventa stantio
@@ -10281,7 +10287,11 @@ def _aggrega_mensili_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
         # come in GET /api/margini, così KPI/sparkline non divergono dal conto economico.
         fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0) + float(r.get("quote_riparto_fb") or 0)
         sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0) + float(r.get("quote_riparto_spese") or 0)
-        pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
+        pers = (
+            float(r.get("costo_dipendenti") or 0)
+            + float(r.get("costo_personale_extra") or 0)
+            + float(r.get("costo_personale_chiamata") or 0)
+        )
         pm = netto - fb_tot
         mol_v = pm - sp_tot - pers
         tot["lordo"] += lordo
@@ -10339,7 +10349,11 @@ def _aggrega_totali_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
         # come in GET /api/margini, così i totali periodo non divergono dal conto economico.
         fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0) + float(r.get("quote_riparto_fb") or 0)
         sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0) + float(r.get("quote_riparto_spese") or 0)
-        pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
+        pers = (
+            float(r.get("costo_dipendenti") or 0)
+            + float(r.get("costo_personale_extra") or 0)
+            + float(r.get("costo_personale_chiamata") or 0)
+        )
         pm = netto - fb_tot
         mol_v = pm - sp_tot - pers
         tot["lordo"] += lordo

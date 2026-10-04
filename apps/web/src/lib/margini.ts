@@ -35,6 +35,7 @@ export type MarginiMese = {
   altri_costi_spese: number;
   costo_dipendenti: number;
   costo_personale_extra: number;
+  costo_personale_chiamata: number;
   costi_fb_auto: number;
   costi_spese_auto: number;
 };

@@ -496,13 +496,14 @@ def test_le_tre_rpc_del_tag_non_concordano_su_da_classificare(db_sql, sql):
 # ---------------------------------------------------------------------------
 
 def _margini_mensili(db_sql, *, sede=SEDE, anno=2026, mese=3, iva10=0, iva22=0,
-                     noiva=0, dipendenti=0, extra=0):
+                     noiva=0, dipendenti=0, extra=0, chiamata=0):
     with db_sql.cursor() as cur:
         cur.execute(
             "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, "
             "fatturato_iva10, fatturato_iva22, altri_ricavi_noiva, costo_dipendenti, "
-            "costo_personale_extra) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (UTENTE, sede, anno, mese, iva10, iva22, noiva, dipendenti, extra),
+            "costo_personale_extra, costo_personale_chiamata) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (UTENTE, sede, anno, mese, iva10, iva22, noiva, dipendenti, extra, chiamata),
         )
         # stesso mese, cliente diverso: se il filtro per sede sparisce, questi
         # 999.999 entrano nel netto e il test muore.
@@ -539,12 +540,26 @@ def test_salute_conta_fatture_e_righe_da_rivedere(db_sql, sql):
 
 def test_salute_somma_i_ricavi_e_il_personale_del_mese(db_sql, sql):
     _semina_utente_e_sedi(db_sql)
-    _margini_mensili(db_sql, iva10=1000, iva22=200, noiva=50, dipendenti=300, extra=25)
-    _margini_mensili(db_sql, anno=2026, mese=4, iva10=999999)
+    _margini_mensili(db_sql, iva10=1000, iva22=200, noiva=50, dipendenti=300, extra=25,
+                     chiamata=12)
+    _margini_mensili(db_sql, anno=2026, mese=4, iva10=999999, chiamata=777777)
 
     _, _, _, netto, personale = _salute(sql, anno=2026, mese=3)[0]
     assert netto == Decimal("1250"), "il netto non e' la somma delle tre voci"
-    assert personale == Decimal("325"), "il personale non somma dipendenti + extra"
+    # 300 + 25 + 12: senza la chiamata 325, senza l'extra 312, senza il lordo 37
+    assert personale == Decimal("337"), "il personale non somma lordo + extra + chiamata"
+
+
+def test_salute_la_sola_chiamata_e_personale_inserito(db_sql, sql):
+    """Lordo 0 ed extra 0: un mese con la sola chiamata ha il personale, e il
+    semaforo non deve segnarlo come mancante."""
+    _semina_utente_e_sedi(db_sql, sedi=(SEDE, SEDE_B))
+    _margini_mensili(db_sql, sede=SEDE, iva10=1000, chiamata=37)
+    _margini_mensili(db_sql, sede=SEDE_B, iva10=1000)
+
+    per_sede = {str(r[0]): r[3:] for r in _salute(sql, sedi=(SEDE, SEDE_B))}
+    assert per_sede[SEDE] == (Decimal("1000"), Decimal("37"))
+    assert per_sede[SEDE_B] == (Decimal("1000"), Decimal("0"))
 
 
 def test_salute_ritorna_una_riga_anche_per_la_sede_senza_dati(db_sql, sql):

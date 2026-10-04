@@ -192,6 +192,7 @@ def _pivot(**over):
         "costo_dipendenti": 4096.0, "costo_personale_extra": 8192.0,
         "costi_personale": 16384.0, "mol": 32768.0,
         "quote_riparto_fb": 65536.0, "quote_riparto_spese": 131072.0,
+        "costo_personale_chiamata": 262144.0,
     }
     base.update(over)
     return base
@@ -202,6 +203,12 @@ def test_pivot_media_divide_ogni_campo_numerico():
     assert out["fatturato_netto"] == 4.0
     assert out["mol"] == 8192.0
     assert out["costi_personale"] == 4096.0
+
+
+def test_pivot_media_divide_anche_la_chiamata():
+    out = _chiama("pivotMedia", [_pivot(), 4], richiede=["pivotMedia"])
+    assert (out["costo_dipendenti"], out["costo_personale_extra"], out["costo_personale_chiamata"]) == \
+        (1024.0, 2048.0, 65536.0)
 
 
 def test_pivot_media_divide_anche_anno_e_mese():
