@@ -386,6 +386,9 @@ export const demoPrezziKpi = {
 // confronto del briefing ("food cost +2 punti, margine −3") è VERIFICABILE qui:
 // aprile 29%/24%, maggio 31%/21%. Ogni colonna quadra al centesimo
 // (netto − F&B − spese − personale = MOL).
+// Il personale ha tre voci (Lordo + Ore extra + Chiamata, 04/10/2026): la
+// Chiamata e' stata TOLTA dal lordo, cosi' il totale del personale e il MOL
+// restano quelli che il tour cita.
 export type DemoMeseMargini = {
   label: string;
   fatturato_iva10: number;
@@ -401,8 +404,8 @@ export type DemoMeseMargini = {
   costi_spese_totali: number;
   costo_dipendenti: number;
   costo_personale_extra: number;
+  costo_personale_chiamata: number;
   costi_personale: number;
-  totale_costi: number;
   mol: number;
 };
 
@@ -420,10 +423,10 @@ export const demoMarginiApr: DemoMeseMargini = {
   costi_spese_auto: 7200,
   altri_costi_spese: 3000,
   costi_spese_totali: 10200,
-  costo_dipendenti: 16000,
+  costo_dipendenti: 15200,
   costo_personale_extra: 2000,
+  costo_personale_chiamata: 800,
   costi_personale: 18000,
-  totale_costi: 45600,
   mol: 14400,
 };
 
@@ -441,10 +444,10 @@ export const demoMarginiMag: DemoMeseMargini = {
   costi_spese_auto: 8256,
   altri_costi_spese: 3000,
   costi_spese_totali: 11256,
-  costo_dipendenti: 16700,
+  costo_dipendenti: 15800,
   costo_personale_extra: 2000,
+  costo_personale_chiamata: 900,
   costi_personale: 18700,
-  totale_costi: 49300,
   mol: 13100,
 };
 
@@ -462,10 +465,10 @@ export const demoMarginiTot: DemoMeseMargini = {
   costi_spese_auto: 15456,
   altri_costi_spese: 6000,
   costi_spese_totali: 21456,
-  costo_dipendenti: 32700,
+  costo_dipendenti: 31000,
   costo_personale_extra: 4000,
+  costo_personale_chiamata: 1700,
   costi_personale: 36700,
-  totale_costi: 94900,
   mol: 27500,
 };
 

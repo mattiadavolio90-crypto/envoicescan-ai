@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Calculator, Calendar, FlaskConical, Info, Lock, Settings2, Sigma, Users } from "lucide-react";
+import { BarChart3, Calculator, Calendar, ChevronRight, FlaskConical, Info, Lock, Settings2, Sigma, Users } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { KpiBar, type KpiData } from "@/app/(app)/margini/kpi-bar";
 import { formatEuro } from "@/lib/format";
@@ -54,6 +54,10 @@ const TABS = [
 
 // Righe del conto economico, come ROWS di calcolo-tab.tsx: la chiave punta al
 // campo del mese, così Apr/Mag/Totale leggono la stessa definizione di riga.
+// Stessa struttura a gruppi della tabella vera (RIGHE_MARGINI): una testata
+// per gruppo, il dettaglio sotto. Qui i gruppi sono STATICI: chiusi, tranne
+// «Costo personale» aperto per mostrare le sue tre voci. Margine F&B e MOL
+// restano fuori dai gruppi, sempre visibili.
 type NumericKey = Exclude<keyof DemoMeseMargini, "label">;
 type Row = {
   label: string;
@@ -63,21 +67,18 @@ type Row = {
   valueColor?: string;
   locked?: boolean;
   sep?: boolean;
+  testata?: "aperta" | "chiusa";
+  dettaglio?: boolean;
 };
 const ROWS: Row[] = [
-  { label: "Ricavi IVA 10%", key: "fatturato_iva10", locked: true },
-  { label: "Ricavi IVA 22%", key: "fatturato_iva22", locked: true },
-  { label: "Altri ricavi (no IVA)", key: "altri_ricavi_noiva", locked: true },
-  { label: "= Fatturato Netto", key: "fatturato_netto", metric: true, sep: true, labelColor: "text-sky-500 dark:text-sky-400", valueColor: "text-sky-600 dark:text-sky-400" },
-  { label: "Costi F&B (Fatture)", key: "costi_fb_auto", locked: true },
-  { label: "Altri Costi F&B", key: "altri_costi_fb" },
-  { label: "= Costi F&B Totali", key: "costi_fb_totali", metric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "text-orange-600 dark:text-orange-400" },
-  { label: "= 1° Margine", key: "primo_margine", metric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "text-emerald-600 dark:text-emerald-400" },
-  { label: "Spese Gen. (Fatture)", key: "costi_spese_auto", locked: true, sep: true },
-  { label: "Altre Spese Generali", key: "altri_costi_spese" },
-  { label: "Costo Personale Lordo", key: "costo_dipendenti", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "text-pink-600 dark:text-pink-400" },
-  { label: "Costo Personale Extra", key: "costo_personale_extra", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "text-pink-600 dark:text-pink-400" },
-  { label: "= Spese Generali + Personale", key: "totale_costi", metric: true, sep: true, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "text-violet-600 dark:text-violet-400" },
+  { label: "Incasso", key: "fatturato_netto", metric: true, testata: "chiusa", labelColor: "text-sky-500 dark:text-sky-400", valueColor: "text-sky-600 dark:text-sky-400" },
+  { label: "Spese F&B", key: "costi_fb_totali", metric: true, sep: true, testata: "chiusa", labelColor: "text-orange-500 dark:text-orange-400", valueColor: "text-orange-600 dark:text-orange-400" },
+  { label: "Margine F&B", key: "primo_margine", metric: true, sep: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "text-emerald-600 dark:text-emerald-400" },
+  { label: "Spese generali", key: "costi_spese_totali", metric: true, sep: true, testata: "chiusa", labelColor: "text-violet-500 dark:text-violet-400", valueColor: "text-violet-600 dark:text-violet-400" },
+  { label: "Costo personale", key: "costi_personale", metric: true, sep: true, testata: "aperta", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "text-pink-600 dark:text-pink-400" },
+  { label: "Lordo", key: "costo_dipendenti", dettaglio: true },
+  { label: "Ore extra", key: "costo_personale_extra", dettaglio: true },
+  { label: "Chiamata", key: "costo_personale_chiamata", dettaglio: true },
 ];
 
 function pct(raw: number, netto: number): string | null {
@@ -127,7 +128,7 @@ export function DemoMargini() {
         <div className="flex items-center gap-2">
           <Info className="size-3 text-muted-foreground" />
           <p className="text-xs text-muted-foreground">
-            Modifica le righe in bianco; le altre sono calcolate o ereditate dalle fatture.
+            Apri un totale per vederne le voci; quelle modificabili si cliccano.
           </p>
           <div className="ml-auto inline-flex items-center rounded-md border border-input p-0.5 text-xs font-semibold">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-primary text-primary-foreground">
@@ -178,7 +179,7 @@ export function DemoMargini() {
                 {/* Riga MOL — ancora del tour (data-attr sul <tr>) */}
                 <tr data-demo-anchor="mol" className="border-t-[3px] border-t-border font-semibold bg-emerald-500/[0.06]">
                   <td className="px-3 py-2.5 border-r border-border whitespace-nowrap font-bold text-green-600 dark:text-green-300">
-                    = 2° Margine (MOL)
+                    Guadagno finale (MOL)
                   </td>
                   <CellaMol mese={apr} corrente={false} />
                   <CellaMol mese={mag} corrente />
@@ -248,8 +249,13 @@ function RigaVoce({ r }: { r: Row }) {
   const pTot = pct(totVal, tot.fatturato_netto);
   return (
     <tr className={`${r.sep ? "border-t-[3px] border-t-border" : "border-t border-border"} ${r.metric ? "font-semibold bg-muted/[0.04]" : ""}`}>
-      <td className={`px-3 py-2 border-r border-border whitespace-nowrap ${r.metric ? `font-bold ${r.labelColor ?? ""}` : r.labelColor ?? ""}`}>
-        {r.label}
+      <td className={`${r.dettaglio ? "pl-7 pr-3 text-muted-foreground" : "px-3"} py-2 border-r border-border whitespace-nowrap ${r.metric ? `font-bold ${r.labelColor ?? ""}` : r.labelColor ?? ""}`}>
+        {r.testata ? (
+          <span className="inline-flex items-center gap-1.5">
+            <ChevronRight className={`size-3.5 shrink-0 ${r.testata === "aperta" ? "rotate-90" : ""}`} />
+            {r.label}
+          </span>
+        ) : r.label}
       </td>
       <CellaValore value={apr[r.key]} netto={apr.fatturato_netto} metric={r.metric} valueColor={r.valueColor} locked={r.locked} corrente={false} />
       <CellaValore value={mag[r.key]} netto={mag.fatturato_netto} metric={r.metric} valueColor={r.valueColor} locked={r.locked} corrente />

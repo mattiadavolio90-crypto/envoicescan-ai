@@ -338,16 +338,6 @@ def test_derive_spese_somma_la_quota_di_riparto():
     assert res == 512.0 + 131072.0
 
 
-def test_derive_totale_costi_somma_spese_e_personale():
-    res = esegui_ts(
-        _MODULO,
-        'emit(m.rowVal({ key: "totale_costi", derive: m.DERIVE.totale_costi }, input));',
-        argomento=_pivot(),
-        richiede=["rowVal"],
-    )
-    assert res == 2048.0 + 16384.0
-
-
 @pytest.mark.parametrize("chiave,campo_quota", [
     ("costi_fb_auto", "quote_riparto_fb"),
     ("costi_spese_auto", "quote_riparto_spese"),
@@ -387,15 +377,43 @@ def test_derive_quota_mancante_non_produce_nan(chiave, campo_quota, assente):
     assert res["val"] == valori[chiave]
 
 
-def test_le_tre_derive_esistono_tutte():
+def test_le_due_derive_esistono_tutte():
     """Se una `derive` viene rinominata nel .tsx senza aggiornare il modulo,
-    `ROWS` prende `undefined` e la riga silenziosamente perde il calcolo."""
+    `ROWS` prende `undefined` e la riga silenziosamente perde il calcolo.
+
+    Erano tre fino al 04/10/2026: `totale_costi` («= Spese Generali +
+    Personale») e' uscita con i gruppi apribili — le testate «Spese generali»
+    e «Costo personale» ne dicono gia' i due addendi."""
     res = esegui_ts(
         _MODULO,
         'emit(Object.keys(m.DERIVE).sort());',
         richiede=["rowVal"],
     )
-    assert res == ["costi_fb_auto", "costi_spese_auto", "totale_costi"]
+    assert res == ["costi_fb_auto", "costi_spese_auto"]
+
+
+def test_le_righe_auto_della_struttura_portano_la_derive():
+    """La derive deve arrivare alla RIGA che la tabella disegna, non solo
+    esistere: dal 04/10/2026 ROWS si costruisce da `RIGHE_MARGINI`, e una riga
+    `costi_fb_auto` senza derive mostrerebbe il costo senza la quota di riparto."""
+    res = esegui_ts(
+        _MODULO,
+        """
+        const out = {};
+        for (const r of m.RIGHE_MARGINI) {
+          if (r.key === "costi_fb_auto" || r.key === "costi_spese_auto") {
+            out[r.key] = m.rowVal(r, input);
+          }
+        }
+        emit(out);
+        """,
+        argomento=_pivot(),
+        richiede=["rowVal"],
+    )
+    assert res == {
+        "costi_fb_auto": 32.0 + 65536.0,
+        "costi_spese_auto": 512.0 + 131072.0,
+    }
 
 
 # ──────────────────────── buildMesiList (fase E) ───────────────────────────

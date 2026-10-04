@@ -70,14 +70,18 @@ export type MesePivot = {
   quote_riparto_spese: number;
 };
 
-// Le 3 righe virtuali di ROWS. Restano qui e non nel .tsx perche' `costi_fb_auto`
+// Le 2 righe virtuali di ROWS. Restano qui e non nel .tsx perche' `costi_fb_auto`
 // e `costi_spese_auto` sommano le quote di riparto: se una `derive` sparisce, la
 // quota ripartita non viene piu' mostrata e il costo appare piu' basso del vero
 // (e' l'errore gia' visto lato worker nel ciclo 07).
+//
+// La terza, `totale_costi` («= Spese Generali + Personale»), e' sparita il
+// 04/10/2026 con i gruppi apribili: le testate «Spese generali» e «Costo
+// personale» dicono gia' i due addendi, e la loro somma era una riga in piu'
+// fra il Margine F&B e il MOL.
 export const DERIVE: Readonly<Record<string, (m: MesePivot) => number>> = Object.freeze({
   costi_fb_auto: (m: MesePivot) => m.costi_fb_auto + (m.quote_riparto_fb ?? 0),
   costi_spese_auto: (m: MesePivot) => m.costi_spese_auto + (m.quote_riparto_spese ?? 0),
-  totale_costi: (m: MesePivot) => m.costi_spese_totali + m.costi_personale,
 });
 
 export type RowLike = { key: string; derive?: (m: MesePivot) => number };
@@ -85,6 +89,114 @@ export type RowLike = { key: string; derive?: (m: MesePivot) => number };
 export function rowVal(row: RowLike, m: MesePivot): number {
   if (row.derive) return row.derive(m);
   return (m[row.key as keyof MesePivot] as number) ?? 0;
+}
+
+/* ─── calcolo-tab.tsx: gruppi apribili della tabella (04/10/2026) ─────────── */
+
+// Richiesta di Mattia (SCREEN 15): la tabella mostra le TESTATE — Incasso,
+// Spese F&B, Spese generali, Costo personale — e il dettaglio compare solo
+// aprendo il gruppo. Margine F&B e MOL restano sempre visibili: sono i due
+// risultati che la tabella esiste per dire.
+//
+// L'ordine delle righe, il gruppo e la testata vivono QUI e non in ROWS del
+// .tsx: il .tsx aggiunge solo l'aspetto (etichetta, colore, tipo di cella).
+// Cosi' un test puo' eseguire la struttura vera — prima i blocchi si
+// riconoscevano da indici scritti a mano (`SEP_BEFORE = {4, 8, 12}`), che una
+// riga aggiunta spostava senza che niente lo segnalasse.
+
+export type GruppoMargini = "incasso" | "fb" | "spese" | "personale";
+
+export type ChiaveRigaMargini =
+  | "fatturato_netto" | "fatturato_iva10" | "fatturato_iva22" | "altri_ricavi_noiva"
+  | "costi_fb_totali" | "costi_fb_auto" | "altri_costi_fb"
+  | "primo_margine"
+  | "costi_spese_totali" | "costi_spese_auto" | "altri_costi_spese"
+  | "costi_personale" | "costo_dipendenti" | "costo_personale_extra" | "costo_personale_chiamata"
+  | "mol";
+
+export type RigaMargini = {
+  key: ChiaveRigaMargini;
+  /** `null` = sempre visibile (Margine F&B, MOL). */
+  gruppo: GruppoMargini | null;
+  /** La riga che riassume il gruppo e lo apre/chiude. Una per gruppo, in testa. */
+  testata?: boolean;
+  derive?: (m: MesePivot) => number;
+};
+
+export const RIGHE_MARGINI: readonly RigaMargini[] = Object.freeze([
+  { key: "fatturato_netto",          gruppo: "incasso", testata: true },
+  { key: "fatturato_iva10",          gruppo: "incasso" },
+  { key: "fatturato_iva22",          gruppo: "incasso" },
+  { key: "altri_ricavi_noiva",       gruppo: "incasso" },
+  { key: "costi_fb_totali",          gruppo: "fb", testata: true },
+  { key: "costi_fb_auto",            gruppo: "fb", derive: DERIVE.costi_fb_auto },
+  { key: "altri_costi_fb",           gruppo: "fb" },
+  { key: "primo_margine",            gruppo: null },
+  { key: "costi_spese_totali",       gruppo: "spese", testata: true },
+  { key: "costi_spese_auto",         gruppo: "spese", derive: DERIVE.costi_spese_auto },
+  { key: "altri_costi_spese",        gruppo: "spese" },
+  { key: "costi_personale",          gruppo: "personale", testata: true },
+  { key: "costo_dipendenti",         gruppo: "personale" },
+  { key: "costo_personale_extra",    gruppo: "personale" },
+  { key: "costo_personale_chiamata", gruppo: "personale" },
+  { key: "mol",                      gruppo: null },
+] as RigaMargini[]);
+
+type RigaStruttura = { key: string; gruppo: GruppoMargini | null; testata?: boolean };
+
+/** Tutti chiusi: la tabella si apre corta, a ogni visita (niente memoria). */
+export function gruppiEspansiIniziali(): GruppoMargini[] {
+  return [];
+}
+
+/** Apre il gruppo se e' chiuso, lo chiude se e' aperto. Non tocca gli altri. */
+export function alternaGruppo(
+  espansi: readonly GruppoMargini[],
+  gruppo: GruppoMargini,
+): GruppoMargini[] {
+  return espansi.includes(gruppo)
+    ? espansi.filter((g) => g !== gruppo)
+    : [...espansi, gruppo];
+}
+
+/** Le righe da disegnare: testate e sempre-visibili, piu' il dettaglio dei gruppi aperti. */
+export function righeVisibili<R extends RigaStruttura>(
+  righe: readonly R[],
+  espansi: readonly GruppoMargini[],
+): R[] {
+  return righe.filter(
+    (r) => r.gruppo === null || r.testata === true || espansi.includes(r.gruppo),
+  );
+}
+
+/**
+ * Aria sopra la riga: si apre un blocco nuovo quando cambia il gruppo rispetto
+ * alla riga VISIBILE precedente, e sopra ogni sempre-visibile. Mai fra righe
+ * dello stesso gruppo, mai sopra la prima riga della tabella.
+ */
+export function separatoreSopra(
+  riga: RigaStruttura,
+  precedente: RigaStruttura | null | undefined,
+): boolean {
+  if (!precedente) return false;
+  return riga.gruppo === null || riga.gruppo !== precedente.gruppo;
+}
+
+/** Il piede della tabella: il MOL, riconosciuto per chiave e non per posizione. */
+export function rigaPiede(riga: { key: string }): boolean {
+  return riga.key === "mol";
+}
+
+/**
+ * Le celle mese che aprono il modulo del personale: le tre voci modificabili
+ * (Lordo, Ore extra, Chiamata) E la testata «Costo personale», anche a gruppo
+ * chiuso — il briefing manda su /margini quando il personale del mese manca, e
+ * l'inserimento deve restare a un clic. Le altre testate sono totali calcolati:
+ * aprono e chiudono il gruppo e basta.
+ */
+export function apreCostoPersonale(riga: RigaStruttura & { type?: string }): boolean {
+  if (riga.gruppo !== "personale") return false;
+  return riga.testata === true || riga.type === "input-editable";
 }
 
 // Divide tutti i campi numerici della pivot per il numero di mesi attivi.

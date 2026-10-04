@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil, Sigma, Divide } from "lucide-react";
+import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil, Sigma, Divide, ChevronRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
@@ -12,9 +12,10 @@ import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
 import {
-  DERIVE, meseSenzaCosti, pctIncidenza, pivotMedia, rowVal, scrollDaNodi,
-  coloreBarraRisultato,
-  type MesePivot, type RowLike,
+  meseSenzaCosti, pctIncidenza, pivotMedia, rowVal, scrollDaNodi,
+  coloreBarraRisultato, RIGHE_MARGINI, righeVisibili, separatoreSopra, rigaPiede,
+  gruppiEspansiIniziali, alternaGruppo, apreCostoPersonale,
+  type MesePivot, type RigaMargini, type ChiaveRigaMargini, type GruppoMargini,
 } from "@/lib/margini-aggregati";
 import { InfoPopover } from "@/components/ui/info-popover";
 import {
@@ -46,13 +47,14 @@ type AnalisiResponse = {
 };
 
 type EditableField =
-  | "altri_costi_fb" | "altri_costi_spese" | "costo_dipendenti" | "costo_personale_extra";
+  | "altri_costi_fb" | "altri_costi_spese"
+  | "costo_dipendenti" | "costo_personale_extra" | "costo_personale_chiamata";
 
 type Section = "ricavi" | "fb" | "spese" | "personale" | "margine";
 
 type ValueColor = "white" | "sign" | "totale";
 
-type RowDef = RowLike & {
+type Aspetto = {
   label: string;
   type: "input-readonly" | "input-readonly-tooltip" | "input-editable" | "computed";
   field?: EditableField;
@@ -63,36 +65,42 @@ type RowDef = RowLike & {
   valueColor: ValueColor;              // colore dei valori nelle celle
 };
 
-const ROWS: RowDef[] = [
-  { key: "fatturato_iva10",       label: "Ricavi IVA 10%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
-  { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
-  { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
-  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
-  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", derive: DERIVE.costi_fb_auto, valueColor: "white" },
-  { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
-  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
-  { key: "primo_margine",         label: "Margine F&B", type: "computed", section: "margine", isMetric: true, labelColor: "text-primary-text", valueColor: "sign" },
-  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", derive: DERIVE.costi_spese_auto, valueColor: "white" },
-  { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
-  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
-  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "white" },
-  { key: "totale_costi",          label: "= Spese Generali + Personale", type: "computed", section: "spese", isMetric: true, derive: DERIVE.totale_costi, labelColor: "text-primary-text", valueColor: "totale" },
-  { key: "mol",                   label: "Guadagno finale (MOL)",  type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-primary-text", valueColor: "sign" },
-];
+type RowDef = RigaMargini & Aspetto;
 
-// Separatori tra blocchi: respiro sopra queste righe (indici di ROWS).
-//
-// Dal 23/09/2026 e' ARIA, non un bordo piu' spesso: su quattordici righe alte
-// uguali il gruppo si leggeva solo avvicinando l'occhio al filo grigio. Lo
-// spazio raggruppa senza disegnare niente — sulle tabelle e' la differenza fra
-// un elenco puntato e cinque paragrafi. Il bordo resta, sottile come gli altri.
-const SEP_BEFORE = new Set([4, 8, 12]);
+// L'aspetto di ogni riga. Ordine, gruppo e testata NON stanno qui: li decide
+// RIGHE_MARGINI (lib/margini-aggregati), che un test esegue. Il Record sulle
+// chiavi obbliga a dare un aspetto a ogni riga della struttura.
+const ASPETTO: Record<ChiaveRigaMargini, Aspetto> = {
+  fatturato_netto:          { label: "Incasso",               type: "computed", section: "ricavi", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  fatturato_iva10:          { label: "Ricavi IVA 10%",        type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
+  fatturato_iva22:          { label: "Ricavi IVA 22%",        type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
+  altri_ricavi_noiva:       { label: "Altri ricavi (no IVA)", type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
+  costi_fb_totali:          { label: "Spese F&B",             type: "computed", section: "fb", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  costi_fb_auto:            { label: "Costi F&B (Fatture)",   type: "input-readonly", section: "fb", valueColor: "white" },
+  altri_costi_fb:           { label: "Altri Costi F&B",       type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
+  primo_margine:            { label: "Margine F&B",           type: "computed", section: "margine", isMetric: true, labelColor: "text-primary-text", valueColor: "sign" },
+  costi_spese_totali:       { label: "Spese generali",        type: "computed", section: "spese", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  costi_spese_auto:         { label: "Spese Gen. (Fatture)",  type: "input-readonly", section: "spese", valueColor: "white" },
+  altri_costi_spese:        { label: "Altre Spese Generali",  type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
+  costi_personale:          { label: "Costo personale",       type: "computed", section: "personale", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  costo_dipendenti:         { label: "Lordo",                 type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
+  costo_personale_extra:    { label: "Ore extra",             type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "white" },
+  costo_personale_chiamata: { label: "Chiamata",              type: "input-editable", field: "costo_personale_chiamata", section: "personale", valueColor: "white" },
+  mol:                      { label: "Guadagno finale (MOL)", type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-primary-text", valueColor: "sign" },
+};
 
-// L'ultima riga di ROWS (il MOL) e' il piede della tabella: e' il punto d'arrivo
-// della lettura, come il totale in fondo a una fattura. Si ricava dalla lunghezza
-// invece di scrivere 13: aggiungendo una riga a ROWS, un indice fisso lascerebbe
-// il piede a meta' tabella senza che niente lo segnali.
-const IDX_PIEDE = ROWS.length - 1;
+const ROWS: RowDef[] = RIGHE_MARGINI.map((r) => ({ ...r, ...ASPETTO[r.key] }));
+
+// Separatori e piede si ricavano dalla RIGA, non dalla posizione: con i gruppi
+// apribili la stessa riga cambia indice a ogni apertura. Aria (non un bordo
+// piu' spesso, dal 23/09/2026) sopra ogni blocco nuovo — `separatoreSopra` —
+// e respiro sul MOL, il punto d'arrivo della lettura come il totale in fondo a
+// una fattura — `rigaPiede`.
+function padYRiga(row: RowDef, precedente: RowDef | null): string {
+  if (rigaPiede(row)) return "py-3.5";
+  if (separatoreSopra(row, precedente)) return "pt-4 pb-2";
+  return "py-2";
+}
 
 // Colore dei valori (e della % incidenza) in base al value-color mode.
 //
@@ -139,6 +147,14 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
   const [costoPersMese, setCostoPersMese] = useState<MesePivot | null>(null);
   const [speseCella, setSpeseCella] = useState<{ mese: MesePivot; tipo: TipoSpesaCella } | null>(null);
   const [vista, setVista] = useState<"totale" | "media">("totale");
+  // Gruppi aperti: stato React e basta, niente localStorage — a ogni apertura
+  // della pagina la tabella torna corta (decisione 6 del 04/10/2026).
+  const [espansi, setEspansi] = useState<GruppoMargini[]>(gruppiEspansiIniziali);
+  const alterna = useCallback(
+    (g: GruppoMargini) => setEspansi((e) => alternaGruppo(e, g)),
+    [],
+  );
+  const righe = useMemo(() => righeVisibili(ROWS, espansi), [espansi]);
 
   const reqIdRef = useRef(0);
   const load = useCallback(async () => {
@@ -281,14 +297,14 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
       <div className="flex items-center gap-2">
         <InfoPopover title="Come compilare la tabella margini">
           <p className="text-muted-foreground">
-            Ogni costo ha tre possibili origini. La tabella li combina per calcolare margini e incidenze.
+            La tabella mostra i totali: <em>Incasso</em>, <em>Spese F&amp;B</em>, <em>Spese generali</em> e <em>Costo personale</em>, con <em>Margine F&amp;B</em> e <em>Guadagno finale (MOL)</em> sempre in vista. Clicca il nome di un totale (la freccia) per aprire le voci che lo compongono; si richiude a ogni nuova visita.
           </p>
           <div className="space-y-1.5 text-muted-foreground">
-            <p><strong className="text-foreground">Righe grigie (automatiche)</strong> — es. <em>Costi F&amp;B (Fatture)</em> e <em>Spese Gen. (Fatture)</em>: arrivano dalle tue fatture, non si modificano.</p>
-            <p><strong className="text-foreground">Righe in bianco (modificabili)</strong> — cliccale per inserire un valore.</p>
-            <p className="pl-3">· <strong className="text-foreground">Costo Personale</strong>: tre voci che si sommano — <em>Lordo</em>, <em>Ore extra</em> e <em>Chiamata</em>. Clicca la cella per <strong className="text-foreground">recuperarle dal tab Agenda → Personale</strong> (turni o stipendi del mese) oppure scriverle a mano.</p>
+            <p><strong className="text-foreground">Voci automatiche</strong> — es. <em>Costi F&amp;B (Fatture)</em> e <em>Spese Gen. (Fatture)</em>: arrivano dalle tue fatture, non si modificano.</p>
+            <p><strong className="text-foreground">Voci modificabili</strong> — cliccale per inserire un valore.</p>
+            <p className="pl-3">· <strong className="text-foreground">Costo personale</strong>: tre voci che si sommano — <em>Lordo</em>, <em>Ore extra</em> e <em>Chiamata</em>. Clicca la cella del mese, anche sul totale a gruppo chiuso, per <strong className="text-foreground">recuperarle dal tab Agenda → Personale</strong> (turni o stipendi del mese) oppure scriverle a mano.</p>
             <p className="pl-3">· <strong className="text-foreground">Altre Spese / Altri Costi F&amp;B</strong>: recupera dal tab <strong className="text-foreground">Agenda → Spese</strong> o inserisci un importo a mano.</p>
-            <p><strong className="text-foreground">Righe colorate (= totali)</strong>: calcolate in automatico dalle righe sopra.</p>
+            <p><strong className="text-foreground">Totali colorati</strong>: calcolati in automatico dalle voci del loro gruppo.</p>
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
             <p>Usa <strong className="text-foreground">Totale / Media</strong> per vedere la somma del periodo o la media mensile, e <strong className="text-foreground">Carica ricavi</strong> per inserire gli incassi.</p>
@@ -296,7 +312,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
         </InfoPopover>
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <Info className="size-3" />
-          Modifica le righe in bianco; le altre sono calcolate o ereditate dalle fatture.
+          Apri un totale per vederne le voci; quelle modificabili si cliccano.
         </p>
         {/* Toggle Totale / Media */}
         <div className="ml-auto inline-flex items-center rounded-md border border-input p-0.5 text-xs font-semibold">
@@ -409,38 +425,34 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
               </tr>
             </thead>
             <tbody>
-              {ROWS.map((row, ri) => {
+              {righe.map((row, ri) => {
                 const isMetric = row.isMetric;
-                // Aria sopra i blocchi (SEP_BEFORE) e respiro sul piede (il MOL).
-                // Deciso QUI e passato alle celle: messo sul <tr> come
-                // `[&>*]:py-3.5` competeva col `py-2` scritto sulle <td> a pari
-                // specificita', e vinceva l'ultimo nel CSS generato.
-                const padY =
-                  ri === IDX_PIEDE ? "py-3.5"
-                  : SEP_BEFORE.has(ri) ? "pt-4 pb-2"
-                  : "py-2";
+                const piede = rigaPiede(row);
+                // Aria sopra i blocchi e respiro sul piede (il MOL), ricavati
+                // dalla riga e dalla riga visibile sopra (padYRiga). Deciso QUI e
+                // passato alle celle: messo sul <tr> come `[&>*]:py-3.5`
+                // competeva col `py-2` scritto sulle <td> a pari specificita', e
+                // vinceva l'ultimo nel CSS generato.
+                const padY = padYRiga(row, righe[ri - 1] ?? null);
                 return (
                   <tr
-                    key={ri}
+                    key={row.key}
                     className={`border-t border-border ${
                       isMetric ? "font-semibold bg-muted/[0.04]" : ""
                     } ${
-                      ri === IDX_PIEDE
+                      piede
                         ? "border-t-2 border-t-border bg-[color-mix(in_oklab,var(--primary)5%,var(--color-card))]"
                         : ""
                     }`}
                   >
-                    {/* Le righe di DETTAGLIO vanno in grigio, i totali restano pieni.
-                        Prima erano tutte nero su bianco come il titolo di pagina:
-                        «Costo Personale Extra», che e' vuota, pesava quanto
-                        «Guadagno finale (MOL)». Scorrendo la colonna ora si vedono
-                        cinque righe scure — i quattro totali e il MOL — che
-                        disegnano la struttura del conto economico. In tema chiaro
-                        si nota piu' che al buio: il nero su bianco e' piu'
-                        aggressivo del bianco su nero. */}
+                    {/* Le righe di DETTAGLIO vanno in grigio e rientrate sotto la
+                        loro testata; testate, Margine F&B e MOL restano piene. A
+                        gruppi chiusi la colonna mostra sei righe scure — le
+                        quattro testate, il margine e il MOL — che disegnano la
+                        struttura del conto economico. */}
                     <td
-                      className={`sticky left-0 z-10 px-3 ${padY} border-r border-border whitespace-nowrap ${
-                        ri === IDX_PIEDE
+                      className={`sticky left-0 z-10 ${row.gruppo && !row.testata ? "pl-7 pr-3" : "px-3"} ${padY} border-r border-border whitespace-nowrap ${
+                        piede
                           ? "bg-[color-mix(in_oklab,var(--primary)5%,var(--color-card))] text-base"
                           : "bg-card"
                       } ${
@@ -449,7 +461,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                           : row.labelColor ?? "text-muted-foreground"
                       }`}
                     >
-                      {row.label}
+                      <EtichettaRiga row={row} espansi={espansi} onAlterna={alterna} />
                     </td>
                     {mesiVisibili.map((m) => {
                       const isCurrent = m.anno === ANNO_MESE_CORRENTE.anno && m.mese === ANNO_MESE_CORRENTE.mese;
@@ -459,7 +471,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                           row={row}
                           mese={m}
                           isCurrent={isCurrent}
-                          isPiede={ri === IDX_PIEDE}
+                          isPiede={piede}
                           padY={padY}
                           onSave={saveCell}
                           onOpenCosto={setCostoPersMese}
@@ -483,6 +495,9 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
           mesi={mesiVisibili}
           totali={totaliRiepilogo ?? data.totali}
           isMedia={isMedia}
+          righe={righe}
+          espansi={espansi}
+          onAlterna={alterna}
           onSave={saveCell}
           onOpenCosto={setCostoPersMese}
           onOpenSpese={(mese, tipo) => setSpeseCella({ mese, tipo })}
@@ -519,6 +534,40 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
         />
       )}
     </div>
+  );
+}
+
+/* ============================================================ */
+/* Etichetta: la testata di un gruppo apre e chiude il dettaglio */
+/* ============================================================ */
+function EtichettaRiga({
+  row,
+  espansi,
+  onAlterna,
+  className = "",
+}: {
+  row: RowDef;
+  espansi: readonly GruppoMargini[];
+  onAlterna: (g: GruppoMargini) => void;
+  className?: string;
+}) {
+  if (!row.testata || !row.gruppo) return <span className={className}>{row.label}</span>;
+  const gruppo = row.gruppo;
+  const aperto = espansi.includes(gruppo);
+  return (
+    <button
+      type="button"
+      onClick={() => onAlterna(gruppo)}
+      aria-expanded={aperto}
+      title={aperto ? `Chiudi il dettaglio di ${row.label}` : `Apri il dettaglio di ${row.label}`}
+      className={`inline-flex items-center gap-1.5 text-left rounded outline-none focus-visible:ring-1 focus-visible:ring-primary hover:opacity-80 transition-opacity ${className}`}
+    >
+      <ChevronRight
+        aria-hidden="true"
+        className={`size-3.5 shrink-0 transition-transform ${aperto ? "rotate-90" : ""}`}
+      />
+      {row.label}
+    </button>
   );
 }
 
@@ -564,8 +613,9 @@ function Cell({
       }`
     : "border-r border-border";
 
-  // Righe personale: cella cliccabile che apre il widget (recupera da Personale o manuale)
-  if (row.section === "personale" && row.type === "input-editable") {
+  // Righe personale (e la loro testata, anche a gruppo chiuso): cella
+  // cliccabile che apre il widget (recupera da Personale o manuale)
+  if (apreCostoPersonale(row)) {
     return (
       <td className={`text-right p-0 align-middle ${currentCls}`}>
         <button
@@ -574,7 +624,7 @@ function Cell({
           title="Imposta costo (recupera da Personale o inserisci a mano)"
           className={`w-full px-3 ${padY} text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella`}
         >
-          <span className={`inline-flex items-center justify-end gap-1 ${colorCls}`}>
+          <span className={`inline-flex items-center justify-end gap-1 ${isMetric ? "font-bold" : ""} ${colorCls}`}>
             {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
             <Pencil className="size-3 opacity-0 group-hover/cella:opacity-40 transition-opacity" />
           </span>
@@ -745,6 +795,9 @@ function MobileMeseView({
   mesi,
   totali,
   isMedia,
+  righe,
+  espansi,
+  onAlterna,
   onSave,
   onOpenCosto,
   onOpenSpese,
@@ -752,6 +805,9 @@ function MobileMeseView({
   mesi: MesePivot[];
   totali: MesePivot;
   isMedia: boolean;
+  righe: RowDef[];
+  espansi: readonly GruppoMargini[];
+  onAlterna: (g: GruppoMargini) => void;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
   onOpenCosto: (m: MesePivot) => void;
   onOpenSpese: (m: MesePivot, tipo: TipoSpesaCella) => void;
@@ -780,21 +836,29 @@ function MobileMeseView({
       </div>
 
       <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
-        {ROWS.map((row, ri) => {
+        {righe.map((row, ri) => {
           const raw = rowVal(row, current);
           const isMetric = row.isMetric;
           const editable = row.type === "input-editable" && !isTotal;
-          const isPersonale = row.section === "personale" && row.type === "input-editable";
+          const isPersonale = apreCostoPersonale(row);
           const isSpesa = row.type === "input-editable" && (row.field === "altri_costi_fb" || row.field === "altri_costi_spese");
           const tipoSpesa: TipoSpesaCella | null = row.field === "altri_costi_fb" ? "fb" : row.field === "altri_costi_spese" ? "generale" : null;
           const colorCls = valueColorCls(row.valueColor, raw, incompleto);
           const pct = pctIncidenza(raw, current.fatturato_netto);
 
           return (
-            <div key={ri} className="flex items-center justify-between gap-3 px-3 py-2.5">
-              <span className={`text-sm ${isMetric ? `font-semibold ${row.labelColor ?? ""}` : row.labelColor ?? ""}`}>
-                {row.label}
-              </span>
+            <div
+              key={row.key}
+              className={`flex items-center justify-between gap-3 ${
+                separatoreSopra(row, righe[ri - 1] ?? null) ? "pt-4 pb-2.5" : "py-2.5"
+              } ${row.gruppo && !row.testata ? "pl-7 pr-3" : "px-3"}`}
+            >
+              <EtichettaRiga
+                row={row}
+                espansi={espansi}
+                onAlterna={onAlterna}
+                className={`text-sm ${isMetric ? `font-semibold ${row.labelColor ?? ""}` : row.labelColor ?? ""}`}
+              />
               {isPersonale && !isTotal ? (
                 <button
                   type="button"
