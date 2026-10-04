@@ -195,7 +195,7 @@ e basta.
 | altri_ricavi_noiva | NUMERIC(10,2) | Altri ricavi non soggetti IVA |
 | altri_costi_fb | NUMERIC(10,2) | Costi F&B extra non in fatture |
 | altri_costi_spese | NUMERIC(10,2) | Spese extra non in fatture |
-| costo_dipendenti | NUMERIC(10,2) | Costo personale lordo mensile |
+| costo_dipendenti | NUMERIC(10,2) | «Lordo»: costo ordinario del personale del mese (senza ore extra né chiamata) |
 | costo_personale_extra | NUMERIC(10,2) | «Ore extra»: costo ore extra (da turni o manuale) |
 | costo_personale_chiamata | NUMERIC(10,2) DEFAULT 0 | «Chiamata» (dal 04/10/2026). Totale personale = costo_dipendenti («Lordo») + costo_personale_extra + costo_personale_chiamata, ovunque (MOL, completezza, catena, RPC) |
 | **SNAPSHOT AUTOMATICI** | | |

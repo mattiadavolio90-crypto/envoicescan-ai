@@ -1702,6 +1702,28 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   mutazione **8/8**; suite su copia pulita `python -m pytest -q -p no:randomly`:
 >   **18.677 verdi, 58 skip**, 4 rossi della copia senza git, verdi nel repo vero.
 >   **Residuo** (fase I): `/m` non ha il campo. **Non pushato.**
+>   *(Pushato il 03/10 sera con la A: `e2a05b58..0503471b`.)*
+> - **04/10/2026, `360261cf` `346e2a40` `2a3603eb` — piano consulente, fase C
+>   (personale in tre voci): chiusa nel codice.** Misura prima (sola lettura): turni
+>   solo a CASATI 14, senza costo orario; nessuna riga mensile nel DB; OFFSIDE e
+>   OVERTIME usano lordo + extra. **Fatto:** colonna `costo_personale_chiamata`
+>   (migration `20261004083133`, con `riparto_quote_mensili` e
+>   `gruppo_salute_componenti` dal corpo live) e totale = Lordo + Ore extra +
+>   Chiamata in tutti i lettori (briefing 29, segnali 4); turni e stipendio del mese
+>   convivono con «lo stipendio vince» (`services/costo_personale_turni.py` e
+>   `lib/ore-turno.ts`, desktop e `/m`), «Inserisci mese» con le ore dei turni;
+>   modulo Margini a tre voci; tabella Margini a gruppi apribili
+>   (`lib/margini-aggregati.ts`). **Prove:** mutazione C1 33/33, C2-C3 44/44 + 3/3
+>   sul test di parita' server/client, C4 7/7; `python -m pytest tests/ -m "not sql"
+>   -q -p no:randomly` **17.831 verdi, 58 skip**; `-m sql` **995 verdi**, 2 rossi
+>   della coda (instabili noti, verdi da soli 2 volte su 2). Revisore: nessun difetto
+>   di codice sui tre commit. **Da fare prima del push (Mattia):** applicare la
+>   migration sul live (MCP declined), senza Margini e Gruppo vanno in errore e
+>   Home/briefing dicono «personale mancante». **Residui:** la modifica di una riga
+>   mensile vecchia con ore dichiarate le azzera se ci sono turni (0 righe sul
+>   live); etichette della cascata («Spese Generali + Personale», «1° Margine» in
+>   demo) non allineate alla tabella; strumento a tre voci dell'assistente (fase D).
+>   **Non pushato.**
 
 ---
 

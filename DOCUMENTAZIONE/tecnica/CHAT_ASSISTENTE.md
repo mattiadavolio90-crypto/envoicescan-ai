@@ -318,6 +318,11 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   `propostaValida`, `testoCard`, `esitoConferma`, `corpoConferma`) vive sulla
   voce della risposta in sessionStorage. Una Conferma ripetuta riceve 409 con
   `attuale` uguale al dettato: il client la legge come registrata.
+- **Personale in tre voci** (fase C, 04/10/2026): in Margini il personale e'
+  Lordo + Ore extra + Chiamata. `proponi_personale` scrive ancora solo il Lordo
+  (`costo_dipendenti`): la card dice «Lordo» e cita le ore extra e la chiamata
+  gia' registrate, che restano (`PropostaCifra.costo_personale_extra` /
+  `costo_personale_chiamata`, solo testo). Lo strumento a tre voci e' della fase D.
 - Test: `tests/test_sql_assistente_registra.py`, `tests/test_sql_chat_proposte.py`
   (Postgres vero, due clienti), `tests/test_chat_proposte_prompt.py`,
   `tests/test_home_chat_frontend.py`.
