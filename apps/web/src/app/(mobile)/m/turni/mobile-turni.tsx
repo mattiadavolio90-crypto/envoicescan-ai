@@ -11,7 +11,7 @@ import { MobileIncassi } from "../diario/mobile-incassi";
 import { MobileSpese } from "../diario/mobile-spese";
 import type { Settore } from "@/lib/categorie-spesa";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
-import { ripartisciOre, costoTurnoGiornaliero } from "@/lib/ore-turno";
+import { ripartisciOre, componentiStipendio, oreTurniPerDipendente, riepilogoPerDipendente, type OreSegnate, payloadMensile } from "@/lib/ore-turno";
 import { formatEuro } from "@/lib/format";
 
 // ─── Wrapper Movimenti: Incassi / Spese / Turni ─────────────────────────────────
@@ -73,6 +73,7 @@ interface Turno {
   ore_dichiarate?: number | null;
   lordo_mensile?: number | null;
   importo_extra?: number | null;
+  importo_chiamata?: number | null;
   // Stato-giorno esplicito (turno = default lavorato, altrimenti riposo/ferie/malattia)
   tipo_giorno?: TipoGiorno;
   importo_a_carico?: number | null;
@@ -631,12 +632,14 @@ interface MensileDialogProps {
   mese: string;              // YYYY-MM
   dipendenti: Dipendente[];
   nomePerId: Record<string, string>;
+  // Ore gia' segnate nei turni del mese: chi le ha mette solo lo stipendio.
+  oreTurniPerDip: Record<string, OreSegnate>;
   onClose: () => void;
   onSaved: () => void;
   onDipendenteCreato: () => void;
 }
 
-function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
+function MensileDialog({ open, turno, mese, dipendenti, nomePerId, oreTurniPerDip, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
   const [dipendenteId, setDipendenteId] = useState("");
   // Input separati ordinarie + extra; lo storage resta ore_totali / ore_extra
   // (di cui), come il desktop, cosi' API e DB non cambiano.
@@ -644,6 +647,7 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
   const [oreExtra, setOreExtra] = useState("");
   const [importoOrd, setImportoOrd] = useState("");
   const [importoExtra, setImportoExtra] = useState("");
+  const [importoChiamata, setImportoChiamata] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -665,10 +669,11 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
       const ext = turno?.ore_extra ?? 0;
       setOreOrd(turno ? toInput(Math.max(0, Math.round((tot - ext) * 100) / 100)) : "");
       setOreExtra(turno?.ore_extra ? toInput(turno.ore_extra) : "");
-      const lordo = turno?.lordo_mensile ?? 0;
-      const impExt = turno?.importo_extra ?? 0;
-      setImportoOrd(turno ? toInput(Math.max(0, Math.round((lordo - impExt) * 100) / 100)) : "");
+      // Tre importi come il desktop: ordinario = lordo − extra − chiamata.
+      const c = componentiStipendio(turno ?? {});
+      setImportoOrd(turno ? toInput(c.ordinario) : "");
       setImportoExtra(turno?.importo_extra ? toInput(turno.importo_extra) : "");
+      setImportoChiamata(turno?.importo_chiamata ? toInput(turno.importo_chiamata) : "");
       setNote(turno?.note ?? "");
     }
   }, [open, turno]);
@@ -678,22 +683,23 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
   const oreTot = Math.round((oreOrdN + oreExtN) * 100) / 100;
   const impOrdN = euroOr0(importoOrd);
   const impExtN = euroOr0(importoExtra);
-  const lordoTot = Math.round((impOrdN + impExtN) * 100) / 100;
+  const impChiN = euroOr0(importoChiamata);
+  const lordoTot = Math.round((impOrdN + impExtN + impChiN) * 100) / 100;
+  // Ore gia' segnate nei turni: si mostrano, non si richiedono (come il desktop).
+  const oreSegnate = dipendenteId ? oreTurniPerDip[dipendenteId] : undefined;
+  const oreDaiTurni = !!oreSegnate && oreSegnate.nTurni > 0;
 
   async function salva() {
     if (isNuovo && !dipendenteId) { toast.error("Seleziona un dipendente"); return; }
-    if (oreOrdN < 0 || oreExtN < 0) { toast.error("Le ore non possono essere negative"); return; }
-    if (impOrdN < 0 || impExtN < 0) { toast.error("Gli importi non possono essere negativi"); return; }
-    if (oreTot <= 0 && lordoTot <= 0) { toast.error("Inserisci almeno le ore o il lordo del mese"); return; }
+    const esito = payloadMensile({
+      oreOrd: oreOrdN, oreExtra: oreExtN,
+      importoOrd: impOrdN, importoExtra: impExtN, importoChiamata: impChiN,
+      oreDaiTurni, note,
+    });
+    if ("errore" in esito) { toast.error(esito.errore); return; }
     setSaving(true);
     try {
-      const payload = {
-        ore_totali: oreTot,
-        lordo: lordoTot,
-        ore_extra: oreExtN > 0 ? oreExtN : null,
-        importo_extra: impExtN > 0 ? impExtN : null,
-        note: note || null,
-      };
+      const { payload } = esito;
       if (turno) {
         const res = await fetch(`/api/workspace/personale/mensile/${turno.id}`, {
           method: "PATCH",
@@ -742,49 +748,61 @@ function MensileDialog({ open, turno, mese, dipendenti, nomePerId, onClose, onSa
               />
             )}
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Ore del mese *</label>
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={oreOrd}
-                  onChange={(e) => setOreOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="ordinarie · es. 148"
-                />
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={oreExtra}
-                  onChange={(e) => setOreExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="extra · es. 20"
-                />
+            {oreDaiTurni ? (
+              <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Ore segnate nei turni:{" "}
+                <span className="font-semibold tabular-nums text-foreground">{fmtOre(oreSegnate.ordinarie + oreSegnate.extra)}</span>
+                {oreSegnate.extra > 0 && (
+                  <>, di cui <span className="font-semibold tabular-nums text-foreground">{fmtOre(oreSegnate.extra)}</span> extra</>
+                )}
+                <span className="mt-0.5 block">Le ore restano quelle dei turni: qui metti solo lo stipendio.</span>
               </div>
-              {oreTot > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">Totale ore: <span className="font-semibold tabular-nums text-foreground">{fmtOre(oreTot)}</span></p>
-              )}
-            </div>
+            ) : (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Ore del mese *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={oreOrd}
+                    onChange={(e) => setOreOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
+                    placeholder="ordinarie · es. 148"
+                  />
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={oreExtra}
+                    onChange={(e) => setOreExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
+                    placeholder="extra · es. 20"
+                  />
+                </div>
+                {oreTot > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">Totale ore: <span className="font-semibold tabular-nums text-foreground">{fmtOre(oreTot)}</span></p>
+                )}
+              </div>
+            )}
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Lordo del mese (€) *</label>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Stipendio del mese (€) *</p>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Lordo (ordinario)</label>
+                <Input type="text" inputMode="decimal" value={importoOrd}
+                  onChange={(e) => setImportoOrd(e.target.value.replace(/[^0-9,.]/g, ""))} placeholder="es. 1700" />
+              </div>
               <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={importoOrd}
-                  onChange={(e) => setImportoOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="ordinario · es. 1700"
-                />
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={importoExtra}
-                  onChange={(e) => setImportoExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="extra · es. 150"
-                />
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Ore extra (€)</label>
+                  <Input type="text" inputMode="decimal" value={importoExtra}
+                    onChange={(e) => setImportoExtra(e.target.value.replace(/[^0-9,.]/g, ""))} placeholder="es. 150" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Chiamata (€)</label>
+                  <Input type="text" inputMode="decimal" value={importoChiamata}
+                    onChange={(e) => setImportoChiamata(e.target.value.replace(/[^0-9,.]/g, ""))} placeholder="es. 80" />
+                </div>
               </div>
               {lordoTot > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">Lordo totale: <span className="font-semibold tabular-nums text-foreground">{fmtEuro(lordoTot)}</span></p>
+                <p className="text-xs text-muted-foreground">Lordo totale: <span className="font-semibold tabular-nums text-foreground">{fmtEuro(lordoTot)}</span></p>
               )}
             </div>
 
@@ -848,12 +866,22 @@ function TurniBody() {
     return [toISO(lunedi), toISO(addDays(lunedi, 6))];
   })();
 
-  const load = useCallback(async (daISO: string, aISO: string, soloMensile: boolean) => {
+  // Le viste del MESE (Totali mensili e Giornalieri → Mese) leggono giornalieri
+  // E mensili insieme, come il desktop: turni e stipendio convivono (fase C) e
+  // il modulo mensile mostra le ore gia' segnate nei turni. La settimana legge
+  // i soli giornalieri.
+  const load = useCallback(async (daISO: string, aISO: string, interoMese: boolean) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/workspace/personale?da=${daISO}&a=${aISO}&mensile=${soloMensile}`);
-      if (!res.ok) throw new Error();
-      setData(await res.json());
+      const url = (mensile: boolean) => `/api/workspace/personale?da=${daISO}&a=${aISO}&mensile=${mensile}`;
+      const [resG, resM] = await Promise.all([
+        fetch(url(false)),
+        interoMese ? fetch(url(true)) : Promise.resolve(null),
+      ]);
+      if (!resG.ok || (resM && !resM.ok)) throw new Error();
+      const base: PersonaleResponse = await resG.json();
+      const mensili: PersonaleResponse | null = resM ? await resM.json() : null;
+      setData({ ...base, turni: [...(base?.turni ?? []), ...(mensili?.turni ?? [])] });
       setFallito(false);
     } catch {
       setFallito(true);
@@ -863,14 +891,15 @@ function TurniBody() {
     }
   }, []);
 
-  useEffect(() => { load(da, a, isMensile); }, [da, a, isMensile, load]);
+  const interoMese = isMensile || isVistaMese;
+  useEffect(() => { load(da, a, interoMese); }, [da, a, interoMese, load]);
 
   // Pull-to-refresh: ricarica la vista corrente. Listener registrato UNA sola
   // volta; legge da/a/modalita correnti da un ref invece di riattaccarsi.
-  const vistaRef = useRef({ da, a, isMensile });
-  vistaRef.current = { da, a, isMensile };
+  const vistaRef = useRef({ da, a, interoMese });
+  vistaRef.current = { da, a, interoMese };
   useEffect(() => {
-    const h = () => load(vistaRef.current.da, vistaRef.current.a, vistaRef.current.isMensile);
+    const h = () => load(vistaRef.current.da, vistaRef.current.a, vistaRef.current.interoMese);
     window.addEventListener("oneflux:refresh", h);
     return () => window.removeEventListener("oneflux:refresh", h);
   }, [load]);
@@ -893,7 +922,7 @@ function TurniBody() {
       const res = await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       toast.success(t.mensile ? "Mese eliminato" : "Turno eliminato");
-      load(da, a, isMensile);
+      load(da, a, interoMese);
     } catch {
       toast.error("Errore eliminazione");
     }
@@ -936,60 +965,24 @@ function TurniBody() {
 
   // Vista mensile: una riga per dipendente (ordinata per nome).
   const righeMensili = useMemo(
-    () => [...turni].sort((x, y) => (nomePerId[x.dipendente_id] ?? "").localeCompare(nomePerId[y.dipendente_id] ?? "")),
+    () => turni.filter((t) => t.mensile).sort((x, y) => (nomePerId[x.dipendente_id] ?? "").localeCompare(nomePerId[y.dipendente_id] ?? "")),
     [turni, nomePerId],
   );
   const costoMeseTot = useMemo(
-    () => righeMensili.reduce((s, t) => s + (t.lordo_mensile ?? 0), 0),
+    () => righeMensili.reduce((s, t) => s + componentiStipendio(t).totale, 0),
     [righeMensili],
   );
 
-  // Vista mese (giornaliero): accordion per dipendente con riepilogo + giorni del mese.
-  interface RiepilogoDipendente {
-    dipendenteId: string;
-    nome: string;
-    oreLavorate: number;
-    giorniLavorati: number;
-    giorniFerie: number;
-    giorniMalattia: number;
-    giorniRiposo: number;
-    costoTot: number;
-    turniOrdinati: Turno[];
-  }
-  const riepilogoMese = useMemo<RiepilogoDipendente[]>(() => {
+  const oreTurniPerDip = useMemo(() => oreTurniPerDipendente(turni, (t) => calcolaOreTotali(t as Turno)), [turni]);
+
+  // Vista mese (giornaliero): accordion per dipendente con riepilogo + giorni
+  // del mese. La regola sta in lib/ (riepilogoPerDipendente), la stessa del
+  // desktop: chi ha lo stipendio del mese costa lo stipendio, non i turni.
+  const riepilogoMese = useMemo(() => {
     if (!isVistaMese) return [];
-    const perDip = new Map<string, Turno[]>();
-    for (const t of turni) {
-      if (t.mensile) continue;
-      const arr = perDip.get(t.dipendente_id);
-      if (arr) arr.push(t);
-      else perDip.set(t.dipendente_id, [t]);
-    }
-    const righe: RiepilogoDipendente[] = [];
-    for (const [dipendenteId, elenco] of perDip) {
-      const turniOrdinati = [...elenco].sort((x, y) => x.data_turno.localeCompare(y.data_turno));
-      let oreLavorate = 0, giorniLavorati = 0, giorniFerie = 0, giorniMalattia = 0, giorniRiposo = 0, costoTot = 0;
-      for (const t of turniOrdinati) {
-        const tipo = t.tipo_giorno ?? "turno";
-        if (tipo === "turno") {
-          giorniLavorati++;
-          const ore = calcolaOreTotali(t);
-          oreLavorate += ore;
-          costoTot += costoTurnoGiornaliero(ore, t.ore_extra, t.costo_orario, t.costo_orario_extra);
-        } else if (tipo === "ferie") { giorniFerie++; costoTot += t.importo_a_carico ?? 0; }
-        else if (tipo === "malattia") { giorniMalattia++; costoTot += t.importo_a_carico ?? 0; }
-        else if (tipo === "riposo") { giorniRiposo++; }
-      }
-      righe.push({
-        dipendenteId,
-        nome: nomePerId[dipendenteId] ?? "",
-        oreLavorate: Math.round(oreLavorate * 100) / 100,
-        giorniLavorati, giorniFerie, giorniMalattia, giorniRiposo,
-        costoTot: Math.round(costoTot * 100) / 100,
-        turniOrdinati,
-      });
-    }
-    return righe.sort((x, y) => x.nome.localeCompare(y.nome));
+    return riepilogoPerDipendente(turni, calcolaOreTotali)
+      .map((r) => ({ ...r, nome: nomePerId[r.dipendenteId] ?? "" }))
+      .sort((x, y) => x.nome.localeCompare(y.nome));
   }, [isVistaMese, turni, nomePerId]);
 
   const fmtSett = `${lunedi.getDate()} ${MESI[lunedi.getMonth()]} – ${addDays(lunedi, 6).getDate()} ${MESI[addDays(lunedi, 6).getMonth()]}`;
@@ -1083,14 +1076,14 @@ function TurniBody() {
                         {fmtOre(r.oreLavorate)} · {r.giorniLavorati}g lavorati
                         {r.giorniFerie > 0 && <span> · {r.giorniFerie}g ferie</span>}
                         {r.giorniMalattia > 0 && <span> · {r.giorniMalattia}g malattia</span>}
-                        {r.costoTot > 0 && <span className="text-sky-700 dark:text-sky-400"> · {fmtEuro(r.costoTot)}</span>}
+                        {r.costoTot > 0 && <span className="text-sky-700 dark:text-sky-400"> · {fmtEuro(r.costoTot)}{r.haStipendio && " stipendio"}</span>}
                       </p>
                     </div>
                     <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${espanso ? "rotate-180" : ""}`} />
                   </button>
                   {espanso && (
                     <div className="space-y-2 border-t border-border p-3">
-                      {r.turniOrdinati.map((t) => {
+                      {r.turniGiornalieri.map((t) => {
                         const statoNonTurno = (t.tipo_giorno ?? "turno") !== "turno";
                         const giorno = t.data_turno.split("-")[2];
                         return (
@@ -1143,8 +1136,10 @@ function TurniBody() {
               </p>
             ) : (
               righeMensili.map((t) => {
-                const ore = calcolaOreTotali(t);
-                const ext = t.ore_extra ?? 0;
+                // Con i turni nel mese le ore vengono da li', non dalla riga.
+                const oreTurni = oreTurniPerDip[t.dipendente_id];
+                const ore = oreTurni ? oreTurni.ordinarie + oreTurni.extra : calcolaOreTotali(t);
+                const ext = oreTurni ? oreTurni.extra : (t.ore_extra ?? 0);
                 return (
                   <div key={t.id} className="flex items-center gap-3 rounded-xl border bg-card p-3.5">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
@@ -1155,6 +1150,8 @@ function TurniBody() {
                       <p className="text-xs text-muted-foreground">
                         {fmtOre(ore)}{ext > 0 && <span className="text-amber-600 dark:text-amber-400"> · +{fmtOre(ext)} str.</span>}
                         {(t.lordo_mensile ?? 0) > 0 && <span className="text-sky-700 dark:text-sky-400"> · {fmtEuro(t.lordo_mensile!)}</span>}
+                        {(t.importo_extra ?? 0) > 0 && <span> · di cui {fmtEuro(t.importo_extra!)} extra</span>}
+                        {(t.importo_chiamata ?? 0) > 0 && <span> · {fmtEuro(t.importo_chiamata!)} chiamata</span>}
                       </p>
                       {t.note && <p className="truncate text-xs text-muted-foreground/80">{t.note}</p>}
                     </div>
@@ -1272,8 +1269,8 @@ function TurniBody() {
         dipendenti={dipendenti}
         costiNoti={data?.costi_noti ?? {}}
         onClose={() => { setDialogOpen(false); setEditTurno(null); }}
-        onSaved={() => load(da, a, isMensile)}
-        onDipendenteCreato={() => load(da, a, isMensile)}
+        onSaved={() => load(da, a, interoMese)}
+        onDipendenteCreato={() => load(da, a, interoMese)}
       />
 
       <MensileDialog
@@ -1282,9 +1279,10 @@ function TurniBody() {
         mese={meseBase}
         dipendenti={dipendenti}
         nomePerId={nomePerId}
+        oreTurniPerDip={oreTurniPerDip}
         onClose={() => { setMensileDialogOpen(false); setEditMensile(null); }}
-        onSaved={() => load(da, a, isMensile)}
-        onDipendenteCreato={() => load(da, a, isMensile)}
+        onSaved={() => load(da, a, interoMese)}
+        onDipendenteCreato={() => load(da, a, interoMese)}
       />
 
       <ConfirmDialog

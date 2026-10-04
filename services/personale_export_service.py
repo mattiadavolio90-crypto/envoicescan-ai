@@ -20,14 +20,18 @@ def export_excel_personale_mensile(
     costo_standard_per_persona: dict,
     costo_extra_per_persona: dict,
     costo_assenze_per_persona: dict,
+    costo_chiamata_per_persona: Optional[dict] = None,
 ) -> bytes:
     """Genera il file Excel del mese richiesto.
 
     Foglio "Turni": righe = dipendenti, colonne = giorni del mese, cella =
     orario+ore per un turno lavorato o sigla per stato-giorno (R/F/M).
-    Foglio "Riepilogo": una riga per dipendente con ore/costo std+extra+assenze
-    e totale, presi 1:1 dai dizionari aggregati passati dal chiamante.
+    Foglio "Riepilogo": una riga per dipendente con ore e costi (Lordo, Ore
+    extra, Assenze, Chiamata) e totale, presi 1:1 dai dizionari aggregati
+    passati dal chiamante — che vi ha gia' applicato la regola «lo stipendio
+    del mese vince» (services/costo_personale_turni.py).
     """
+    costo_chiamata_per_persona = costo_chiamata_per_persona or {}
     from io import BytesIO
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -165,7 +169,7 @@ def export_excel_personale_mensile(
 
     # ---- FOGLIO RIEPILOGO ----
     ws2 = wb.create_sheet(title="Riepilogo")
-    tot_cols2 = 8
+    tot_cols2 = 9
     ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=tot_cols2)
     title2 = ws2.cell(row=1, column=1, value=f"RIEPILOGO {mese} — {nome_ristorante}")
     title2.font = Font(bold=True, size=14, color="FFFFFF")
@@ -173,7 +177,10 @@ def export_excel_personale_mensile(
     title2.alignment = Alignment(horizontal="center", vertical="center")
     ws2.row_dimensions[1].height = 28
 
-    headers2 = ["Dipendente", "Ore std", "Ore extra", "Ore totali", "Costo std (€)", "Costo extra (€)", "Costo assenze (€)", "Totale (€)"]
+    headers2 = [
+        "Dipendente", "Ore std", "Ore extra", "Ore totali",
+        "Costo lordo (€)", "Costo ore extra (€)", "Costo assenze (€)", "Costo chiamata (€)", "Totale (€)",
+    ]
     for c, h in enumerate(headers2, start=1):
         cell = ws2.cell(row=2, column=c, value=h)
         cell.font = header_font
@@ -182,7 +189,7 @@ def export_excel_personale_mensile(
         cell.border = border_thin
     ws2.row_dimensions[2].height = 20
 
-    tot_ore_std = tot_ore_ext = tot_costo_std = tot_costo_ext = tot_costo_ass = 0.0
+    tot_ore_std = tot_ore_ext = tot_costo_std = tot_costo_ext = tot_costo_ass = tot_costo_ch = 0.0
     for r, dip in enumerate(dipendenti_ordinati):
         row = 3 + r
         nome = dip["nome"]
@@ -191,15 +198,17 @@ def export_excel_personale_mensile(
         costo_std = round(costo_standard_per_persona.get(nome, 0.0), 2)
         costo_ext = round(costo_extra_per_persona.get(nome, 0.0), 2)
         costo_ass = round(costo_assenze_per_persona.get(nome, 0.0), 2)
-        totale = round(costo_std + costo_ext + costo_ass, 2)
+        costo_ch = round(costo_chiamata_per_persona.get(nome, 0.0), 2)
+        totale = round(costo_std + costo_ext + costo_ass + costo_ch, 2)
         tot_ore_std += ore_std
         tot_ore_ext += ore_ext
         tot_costo_std += costo_std
         tot_costo_ext += costo_ext
         tot_costo_ass += costo_ass
+        tot_costo_ch += costo_ch
 
         ore_tot_dip = round(ore_std + ore_ext, 2)
-        valori = [nome, ore_std, ore_ext, ore_tot_dip, costo_std, costo_ext, costo_ass, totale]
+        valori = [nome, ore_std, ore_ext, ore_tot_dip, costo_std, costo_ext, costo_ass, costo_ch, totale]
         for c, v in enumerate(valori, start=1):
             cell = ws2.cell(row=row, column=c, value=v)
             cell.border = border_thin
@@ -220,8 +229,8 @@ def export_excel_personale_mensile(
     tot_cell.border = border_thin
     valori_tot = [
         round(tot_ore_std, 2), round(tot_ore_ext, 2), round(tot_ore_std + tot_ore_ext, 2),
-        round(tot_costo_std, 2), round(tot_costo_ext, 2), round(tot_costo_ass, 2),
-        round(tot_costo_std + tot_costo_ext + tot_costo_ass, 2),
+        round(tot_costo_std, 2), round(tot_costo_ext, 2), round(tot_costo_ass, 2), round(tot_costo_ch, 2),
+        round(tot_costo_std + tot_costo_ext + tot_costo_ass + tot_costo_ch, 2),
     ]
     for c, v in enumerate(valori_tot, start=2):
         cell = ws2.cell(row=riga_tot, column=c, value=v)
@@ -235,8 +244,8 @@ def export_excel_personale_mensile(
             cell.number_format = "€ #,##0.00"
 
     ws2.column_dimensions["A"].width = 22
-    for col_letter in ["B", "C", "D", "E", "F", "G", "H"]:
-        ws2.column_dimensions[col_letter].width = 15
+    for c in range(2, tot_cols2 + 1):
+        ws2.column_dimensions[get_column_letter(c)].width = 17
 
     buf = BytesIO()
     wb.save(buf)

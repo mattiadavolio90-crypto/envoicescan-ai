@@ -391,7 +391,7 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
             <p><strong className="text-foreground">Dettaglio giornaliero</strong> = l&apos;andamento giorno per giorno del periodo selezionato.</p>
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
-            <p>I costi del personale arrivano dai turni/totali del tab Personale, le materie prime dalle fatture, le altre spese dal tab Spese.</p>
+            <p>I costi del personale entrano solo dal tab Marginalità, cliccando la cella del mese: li scrivi a mano o li recuperi dal tab Personale con <em>Recupera</em>. Le materie prime arrivano dalle fatture, le altre spese dal tab Spese.</p>
           </div>
         </InfoPopover>
 

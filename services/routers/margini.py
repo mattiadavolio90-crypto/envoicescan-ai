@@ -1089,11 +1089,19 @@ def get_costo_personale_da_turni(
     authorization: Optional[str] = Header(None),
 ):
     """Calcola il costo del personale del mese dai turni (tab Personale).
-    Restituisce lo split in EURO coerente con margini_mensili:
-      - costo_dipendenti       = Σ((ore_turno − ore_extra) × costo_orario)
-      - costo_personale_extra  = Σ(ore_extra × costo_orario)
-    I turni senza costo_orario impostato non contribuiscono (vengono contati a parte)."""
+    Restituisce lo split in EURO coerente con margini_mensili, con la regola
+    «lo stipendio del mese vince» (services/costo_personale_turni.py):
+      - dipendente con riga mensile (busta paga): costo SOLO dalla busta —
+        costo_dipendenti += lordo − extra − chiamata, costo_personale_extra +=
+        importo_extra, costo_personale_chiamata += importo_chiamata; i suoi
+        turni giornalieri danno le ore, non il costo; le sue assenze a carico
+        non si sommano.
+      - senza riga mensile: costo_dipendenti = Σ((ore − ore_extra) × costo_orario),
+        costo_personale_extra = Σ(ore_extra × costo_orario_extra|costo_orario);
+        i turni senza costo_orario non contribuiscono e si contano in n_senza_costo.
+    n_con_stipendio = dipendenti con riga mensile nel mese."""
     from calendar import monthrange
+    from services.costo_personale_turni import aggrega_per_dipendente_mese
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, sb)
@@ -1111,59 +1119,25 @@ def get_costo_personale_da_turni(
         .execute()
     ).data or []
 
-    costo_dipendenti = 0.0
-    costo_personale_extra = 0.0
-    costo_assenze_a_carico = 0.0
-    ore_totali = 0.0
-    ore_extra_tot = 0.0
-    n_turni = 0
-    n_senza_costo = 0
-    n_giorni_assenza = 0
-    for t in turni:
-        if t.get("tipo_giorno", "turno") != "turno":
-            n_giorni_assenza += 1
-            costo_assenze_a_carico += float(t.get("importo_a_carico") or 0)
-            continue
-        n_turni += 1
-        ore = _ore_turno(t)                     # totale: orari (giorn.) o ore_dichiarate (mensile)
-        extra = float(t.get("ore_extra") or 0)
-        # Le extra sono un sottoinsieme delle ore del turno (modello 05/09/2026):
-        # piu' extra che ore lavorate non esiste, e senza clamp l'ordinario
-        # (ore - extra) diventerebbe negativo.
-        extra = min(extra, ore)
-        ore_totali += ore
-        ore_extra_tot += extra
-        if t.get("mensile"):
-            # Riga mensile (busta paga): costo reale da lordo, non da tariffa.
-            # L'esclusivita' giornaliero/mensile per dipendente/mese garantisce
-            # che non si sommi mai al ramo giornaliero.
-            lordo = float(t.get("lordo_mensile") or 0)
-            imp_ext = float(t.get("importo_extra") or 0)
-            costo_personale_extra += imp_ext
-            costo_dipendenti += max(0.0, lordo - imp_ext)
-            continue
-        co = t.get("costo_orario")
-        if co is None:
-            n_senza_costo += 1
-            continue
-        co = float(co)
-        # Le ore extra usano costo_orario_extra se impostato, altrimenti il costo standard.
-        co_ext = t.get("costo_orario_extra")
-        co_ext = float(co_ext) if co_ext is not None else co
-        costo_personale_extra += extra * co_ext
-        costo_dipendenti += (ore - extra) * co
+    per_chiave = aggrega_per_dipendente_mese(turni, _ore_turno)
+    componenti = list(per_chiave.values())
+
+    def _somma(campo):
+        return sum(c[campo] for c in componenti)
 
     return {
         "anno": anno,
         "mese": mese,
-        "costo_dipendenti": round(costo_dipendenti, 2),
-        "costo_personale_extra": round(costo_personale_extra, 2),
-        "costo_assenze_a_carico": round(costo_assenze_a_carico, 2),
-        "ore_totali": round(ore_totali, 2),
-        "ore_extra": round(ore_extra_tot, 2),
-        "n_turni": n_turni,
-        "n_senza_costo": n_senza_costo,
-        "n_giorni_assenza": n_giorni_assenza,
+        "costo_dipendenti": round(_somma("costo_ordinario"), 2),
+        "costo_personale_extra": round(_somma("costo_extra"), 2),
+        "costo_personale_chiamata": round(_somma("costo_chiamata"), 2),
+        "costo_assenze_a_carico": round(_somma("costo_assenze"), 2),
+        "ore_totali": round(_somma("ore"), 2),
+        "ore_extra": round(_somma("ore_extra"), 2),
+        "n_turni": _somma("n_turni"),
+        "n_senza_costo": _somma("n_senza_costo"),
+        "n_giorni_assenza": _somma("n_giorni_assenza"),
+        "n_con_stipendio": sum(1 for c in componenti if c["con_stipendio"]),
     }
 
 

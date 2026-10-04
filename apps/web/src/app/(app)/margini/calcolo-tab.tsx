@@ -286,7 +286,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
           <div className="space-y-1.5 text-muted-foreground">
             <p><strong className="text-foreground">Righe grigie (automatiche)</strong> — es. <em>Costi F&amp;B (Fatture)</em> e <em>Spese Gen. (Fatture)</em>: arrivano dalle tue fatture, non si modificano.</p>
             <p><strong className="text-foreground">Righe in bianco (modificabili)</strong> — cliccale per inserire un valore.</p>
-            <p className="pl-3">· <strong className="text-foreground">Costo Personale</strong>: clicca la cella per <strong className="text-foreground">recuperare il totale dal tab Agenda → Personale</strong> (turni o totali mensili) oppure scrivilo a mano.</p>
+            <p className="pl-3">· <strong className="text-foreground">Costo Personale</strong>: tre voci che si sommano — <em>Lordo</em>, <em>Ore extra</em> e <em>Chiamata</em>. Clicca la cella per <strong className="text-foreground">recuperarle dal tab Agenda → Personale</strong> (turni o stipendi del mese) oppure scriverle a mano.</p>
             <p className="pl-3">· <strong className="text-foreground">Altre Spese / Altri Costi F&amp;B</strong>: recupera dal tab <strong className="text-foreground">Agenda → Spese</strong> o inserisci un importo a mano.</p>
             <p><strong className="text-foreground">Righe colorate (= totali)</strong>: calcolate in automatico dalle righe sopra.</p>
           </div>
@@ -500,6 +500,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
           label={costoPersMese.label}
           costoDipendenti={costoPersMese.costo_dipendenti}
           costoExtra={costoPersMese.costo_personale_extra}
+          costoChiamata={costoPersMese.costo_personale_chiamata}
           onClose={() => setCostoPersMese(null)}
           onSaved={load}
         />

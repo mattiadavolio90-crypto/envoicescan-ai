@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
-import { ripartisciOre, aggregaPerPersona, costoTurnoGiornaliero } from "@/lib/ore-turno";
+import { ripartisciOre, aggregaPerPersona, costoTurnoGiornaliero, componentiStipendio, dipendentiConStipendio, oreTurniPerDipendente, type OreSegnate, payloadMensile } from "@/lib/ore-turno";
 import { formatEuro } from "@/lib/format";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
@@ -32,6 +32,7 @@ export interface Turno {
   ore_dichiarate?: number | null;
   lordo_mensile?: number | null;
   importo_extra?: number | null;
+  importo_chiamata?: number | null;
   // Stato-giorno esplicito (turno = default lavorato, altrimenti riposo/ferie/malattia)
   tipo_giorno?: TipoGiorno;
   importo_a_carico?: number | null;
@@ -759,10 +760,14 @@ interface MensileDialogProps {
   mese: string;              // YYYY-MM
   dipendenti: Dipendente[];
   nomePerId: Record<string, string>;
-  // Chi ha già turni giornalieri (o già una riga mensile) in questo mese: il
-  // totale da busta paga sommerebbe due volte le stesse ore.
-  dipendentiConTurniGiornalieri?: Set<string>;
+  // Le ore gia' segnate nei turni del mese, per dipendente: chi le ha non le
+  // riscrive, mette solo lo stipendio (screen 13-14, CASATI 14).
+  oreTurniPerDip?: Record<string, OreSegnate>;
+  // Chi ha gia' la riga mensile del mese: se ne modifica una, non se ne
+  // aggiunge una seconda (il worker risponde 409).
   dipendentiConMensile?: Set<string>;
+  // Apre il modulo con il dipendente gia' scelto (bottone «Stipendio» nella riga).
+  dipendenteIdIniziale?: string;
   onClose: () => void;
   onSaved: () => void;
   onDipendenteCreato: () => void;
@@ -773,14 +778,17 @@ export function fmtMese(mese: string): string {
   return new Date(ay, am - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 }
 
-export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipendentiConTurniGiornalieri, dipendentiConMensile, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
+export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, oreTurniPerDip, dipendentiConMensile, dipendenteIdIniziale, onClose, onSaved, onDipendenteCreato }: MensileDialogProps) {
   const [dipendenteId, setDipendenteId] = useState("");
   // Input separati: ordinarie + extra (il totale è la somma). Lo storage resta
   // ore_totali / ore_extra (di cui), così l'API e il DB non cambiano.
   const [oreOrd, setOreOrd] = useState("");
   const [oreExtra, setOreExtra] = useState("");
+  // Tre importi separati; a DB va `lordo` = la somma (totale busta), extra e
+  // chiamata come «di cui».
   const [importoOrd, setImportoOrd] = useState("");
   const [importoExtra, setImportoExtra] = useState("");
+  const [importoChiamata, setImportoChiamata] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -797,53 +805,50 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipend
 
   useEffect(() => {
     if (open) {
-      setDipendenteId(turno?.dipendente_id ?? "");
+      setDipendenteId(turno?.dipendente_id ?? dipendenteIdIniziale ?? "");
       // Ricostruisce ordinarie = totale − extra dai valori salvati.
       const tot = turno?.ore_dichiarate ?? 0;
       const ext = turno?.ore_extra ?? 0;
       setOreOrd(turno ? toInput(Math.max(0, Math.round((tot - ext) * 100) / 100)) : "");
       setOreExtra(turno?.ore_extra ? toInput(turno.ore_extra) : "");
-      const lordo = turno?.lordo_mensile ?? 0;
-      const impExt = turno?.importo_extra ?? 0;
-      setImportoOrd(turno ? toInput(Math.max(0, Math.round((lordo - impExt) * 100) / 100)) : "");
+      // Ricostruisce i tre importi: ordinario = lordo − extra − chiamata.
+      const c = componentiStipendio(turno ?? {});
+      setImportoOrd(turno ? toInput(c.ordinario) : "");
       setImportoExtra(turno?.importo_extra ? toInput(turno.importo_extra) : "");
+      setImportoChiamata(turno?.importo_chiamata ? toInput(turno.importo_chiamata) : "");
       setNote(turno?.note ?? "");
     }
-  }, [open, turno]);
+  }, [open, turno, dipendenteIdIniziale]);
 
   const oreOrdN = oreOr0(oreOrd);
   const oreExtN = oreOr0(oreExtra);
   const oreTot = Math.round((oreOrdN + oreExtN) * 100) / 100;
   const impOrdN = euroOr0(importoOrd);
   const impExtN = euroOr0(importoExtra);
-  const lordoTot = Math.round((impOrdN + impExtN) * 100) / 100;
+  const impChiN = euroOr0(importoChiamata);
+  const lordoTot = Math.round((impOrdN + impExtN + impChiN) * 100) / 100;
 
   const nomeSelezionato = dipendenti.find(d => d.id === dipendenteId)?.nome ?? "Questo dipendente";
-  const haGiaTurni = isNuovo && !!dipendenteId && !!dipendentiConTurniGiornalieri?.has(dipendenteId);
   const haGiaMensile = isNuovo && !!dipendenteId && !!dipendentiConMensile?.has(dipendenteId);
+  // Ore gia' segnate nei turni: si mostrano, non si richiedono.
+  const oreSegnate = dipendenteId ? oreTurniPerDip?.[dipendenteId] : undefined;
+  const oreDaiTurni = !!oreSegnate && oreSegnate.nTurni > 0;
 
   async function salva() {
     if (isNuovo && !dipendenteId) { toast.error("Seleziona un dipendente"); return; }
-    if (haGiaTurni) {
-      toast.error(`${nomeSelezionato} ha già turni giornalieri in ${fmtMese(mese)}: le ore si conterebbero due volte.`);
-      return;
-    }
     if (haGiaMensile) {
       toast.error(`${nomeSelezionato} ha già un totale mensile per ${fmtMese(mese)}: modifica quello invece di aggiungerne un altro.`);
       return;
     }
-    if (oreOrdN < 0 || oreExtN < 0) { toast.error("Le ore non possono essere negative"); return; }
-    if (impOrdN < 0 || impExtN < 0) { toast.error("Gli importi non possono essere negativi"); return; }
-    if (oreTot <= 0 && lordoTot <= 0) { toast.error("Inserisci almeno le ore o il lordo del mese"); return; }
+    const esito = payloadMensile({
+      oreOrd: oreOrdN, oreExtra: oreExtN,
+      importoOrd: impOrdN, importoExtra: impExtN, importoChiamata: impChiN,
+      oreDaiTurni, note,
+    });
+    if ("errore" in esito) { toast.error(esito.errore); return; }
     setSaving(true);
     try {
-      const payload = {
-        ore_totali: oreTot,
-        lordo: lordoTot,
-        ore_extra: oreExtN > 0 ? oreExtN : null,
-        importo_extra: impExtN > 0 ? impExtN : null,
-        note: note || null,
-      };
+      const { payload } = esito;
       if (turno) {
         const res = await fetch(`/api/workspace/personale/mensile/${turno.id}`, {
           method: "PATCH",
@@ -870,6 +875,19 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipend
     }
   }
 
+  const campoEuro = (valore: string, set: (v: string) => void, etichetta: string, esempio: string) => (
+    <div>
+      <label className="text-xs font-medium text-muted-foreground mb-1 block">{etichetta}</label>
+      <Input
+        type="text"
+        inputMode="decimal"
+        value={valore}
+        onChange={e => set(e.target.value.replace(/[^0-9,.]/g, ""))}
+        placeholder={esempio}
+      />
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="flex max-h-[90dvh] flex-col max-w-md">
@@ -892,70 +910,59 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipend
               />
             )}
 
-            {(haGiaTurni || haGiaMensile) && (
+            {haGiaMensile && (
               <div className="rounded-md border border-incerto/50 bg-incerto/10 px-3 py-2">
                 <p className="text-xs text-incerto">
-                  {haGiaTurni ? (
-                    <>
-                      <strong>{nomeSelezionato}</strong> ha già turni giornalieri in {fmtMese(mese)}.
-                      Aggiungere anche il totale da busta paga conterebbe le ore due volte:
-                      per questo mese usa un metodo solo.
-                    </>
-                  ) : (
-                    <>
-                      <strong>{nomeSelezionato}</strong> ha già un totale mensile per {fmtMese(mese)}.
-                      Modifica quello dall&apos;elenco invece di aggiungerne un altro.
-                    </>
-                  )}
+                  <strong>{nomeSelezionato}</strong> ha già un totale mensile per {fmtMese(mese)}.
+                  Modifica quello dall&apos;elenco invece di aggiungerne un altro.
                 </p>
               </div>
             )}
 
-            {/* Ore: ordinarie + extra → totale */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore del mese *</label>
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={oreOrd}
-                  onChange={e => setOreOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="ordinarie · es. 148"
-                />
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={oreExtra}
-                  onChange={e => setOreExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="extra · es. 20"
-                />
+            {oreDaiTurni ? (
+              <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Ore segnate nei turni:{" "}
+                <span className="font-semibold tabular-nums text-foreground">{fmtOreDisplay(oreSegnate.ordinarie + oreSegnate.extra)}</span>
+                {oreSegnate.extra > 0 && (
+                  <>, di cui <span className="font-semibold tabular-nums text-foreground">{fmtOreDisplay(oreSegnate.extra)}</span> extra</>
+                )}
+                <span className="block mt-0.5">Le ore restano quelle dei turni: qui metti solo lo stipendio.</span>
               </div>
-              {oreTot > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">Totale ore: <span className="font-semibold tabular-nums">{fmtOreDisplay(oreTot)}</span></p>
-              )}
-            </div>
+            ) : (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore del mese *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={oreOrd}
+                    onChange={e => setOreOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
+                    placeholder="ordinarie · es. 148"
+                  />
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={oreExtra}
+                    onChange={e => setOreExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
+                    placeholder="extra · es. 20"
+                  />
+                </div>
+                {oreTot > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">Totale ore: <span className="font-semibold tabular-nums">{fmtOreDisplay(oreTot)}</span></p>
+                )}
+              </div>
+            )}
 
-            {/* Lordo: ordinario + extra → totale */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Lordo del mese (€) *</label>
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={importoOrd}
-                  onChange={e => setImportoOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="ordinario · es. 1700"
-                />
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={importoExtra}
-                  onChange={e => setImportoExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
-                  placeholder="extra · es. 150"
-                />
+            {/* Stipendio: tre voci separate, il lordo totale e' la somma */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Stipendio del mese (€) *</p>
+              <div className="grid grid-cols-3 gap-2">
+                {campoEuro(importoOrd, setImportoOrd, "Lordo (ordinario)", "es. 1700")}
+                {campoEuro(importoExtra, setImportoExtra, "Ore extra (€)", "es. 150")}
+                {campoEuro(importoChiamata, setImportoChiamata, "Chiamata (€)", "es. 80")}
               </div>
               {lordoTot > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">Lordo totale: <span className="font-semibold tabular-nums">{fmtEuro(lordoTot)}</span></p>
+                <p className="text-xs text-muted-foreground">Lordo totale: <span className="font-semibold tabular-nums">{fmtEuro(lordoTot)}</span></p>
               )}
             </div>
 
@@ -967,7 +974,7 @@ export function MensileDialog({ open, turno, mese, dipendenti, nomePerId, dipend
         </div>
         <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
           <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
-          <Button onClick={salva} disabled={saving || haGiaTurni || haGiaMensile}>{saving ? "Salvo…" : "Salva"}</Button>
+          <Button onClick={salva} disabled={saving || haGiaMensile}>{saving ? "Salvo…" : "Salva"}</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -1325,6 +1332,7 @@ export function PersonaleTab() {
   const [expandedDip, setExpandedDip] = useState<string | null>(null);
   const [mensileDialogOpen, setMensileDialogOpen] = useState(false);
   const [editMensile, setEditMensile] = useState<Turno | null>(null);
+  const [dipendenteIdMensile, setDipendenteIdMensile] = useState<string | undefined>(undefined);
   const [gestioneDipOpen, setGestioneDipOpen] = useState(false);
   const [copiaMeseOpen, setCopiaMeseOpen] = useState(false);
   const [turnoDaEliminare, setTurnoDaEliminare] = useState<Turno | null>(null);
@@ -1433,8 +1441,10 @@ export function PersonaleTab() {
   }
 
   // Calcola sempre lato frontend dai turni — robusto anche con worker vecchio
+  // Chi ha lo stipendio del mese: il costo e' quello, i suoi turni danno le ore.
   const { oreStd: oreStdPerPersona, oreExt: oreExtPerPersona, costoStd: costoStdPerPersona,
-          costoExt: costoExtPerPersona, costoTot: costoPerPersona } = aggregaPerPersona(
+          costoExt: costoExtPerPersona, costoChi: costoChiPerPersona,
+          costoTot: costoPerPersona } = aggregaPerPersona(
     turni,
     (t) => nomePerId[t.dipendente_id] ?? t.dipendente_id,
     (t) => calcolaOreTotali(t as Turno),
@@ -1444,30 +1454,33 @@ export function PersonaleTab() {
   const oreExtTotale = Object.values(oreExtPerPersona).reduce((s, v) => s + v, 0);
   const costoStdTotale = Object.values(costoStdPerPersona).reduce((s, v) => s + v, 0);
   const costoExtTotale = Object.values(costoExtPerPersona).reduce((s, v) => s + v, 0);
-  const costoTotale = costoStdTotale + costoExtTotale;
+  const costoChiTotale = Object.values(costoChiPerPersona).reduce((s, v) => s + v, 0);
+  const costoTotale = costoStdTotale + costoExtTotale + costoChiTotale;
   // La card «Totale» somma DUE assi — ore e costo — e ha senso se almeno uno
   // dei due ha davvero due addendi. Guardare le sole ore la nascondeva anche
   // quando il costo totale era una sintesi vera (straordinario pagato ma con
   // le ore contate altrove), e la mostrava quando entrambi gli assi avevano
   // un addendo solo.
+  // La chiamata non ha una card sua: sta solo nel Totale. Basta che ci sia
+  // perche' il Totale dica qualcosa che le altre due card non dicono (anche
+  // con il solo lordo + chiamata, o la sola chiamata).
   const sommaDueOre = oreStdTotale > 0 && oreExtTotale > 0;
   const sommaDueCosti = costoStdTotale > 0 && costoExtTotale > 0;
-  const totaleEUnaSintesi = sommaDueOre || sommaDueCosti;
+  const totaleEUnaSintesi = sommaDueOre || sommaDueCosti || costoChiTotale > 0;
   const totaleOre = oreStdTotale + oreExtTotale;
 
   // I chip-giorno del dialog sono sempre quelli del mese in vista.
   const giorniDialogoTurno = giorniDelMese(meseBase);
   const giornoDefaultDialogo = giorniDialogoTurno.includes(oggi) ? oggi : giorniDialogoTurno[0];
 
-  // Chi ha già turni giornalieri nel mese non può ricevere anche il totale da
-  // busta paga: sommerebbe due volte le stesse ore. La guardia sta anche lato
-  // worker; qui serve a non far nemmeno aprire la strada sbagliata.
-  const dipConTurniGiornalieri = new Set(
-    turni.filter(t => !t.mensile).map(t => t.dipendente_id)
-  );
+  // Turni e stipendio convivono (fase C): le ore gia' segnate nei turni il
+  // modulo mensile le mostra invece di richiederle. Una seconda riga mensile
+  // per lo stesso mese resta vietata (anche dal worker).
+  const oreTurniPerDip = oreTurniPerDipendente(turni, (t) => calcolaOreTotali(t as Turno));
   const dipConMensile = new Set(
     turni.filter(t => t.mensile).map(t => t.dipendente_id)
   );
+  const dipConStipendio = dipendentiConStipendio(turni);
 
   return (
     <div className="space-y-4">
@@ -1476,8 +1489,8 @@ export function PersonaleTab() {
         {/* Info: spiegazione dei due modi di registrare */}
         <InfoPopover title="Come gestire il personale">
           <p className="text-muted-foreground">
-            Due modi per registrare le ore e il costo dei dipendenti — scegli quello più comodo per te.
-            Per ogni dipendente, in un dato mese, usa <strong>uno solo</strong> dei due (non si mischiano).
+            Due modi per registrare le ore e il costo dei dipendenti, che si possono anche usare insieme:
+            i turni danno le ore, lo stipendio del mese dà il costo.
           </p>
           <div className="space-y-1.5 text-muted-foreground">
             <p className="font-medium text-foreground">📅 Turni giornalieri</p>
@@ -1485,10 +1498,10 @@ export function PersonaleTab() {
           </div>
           <div className="space-y-1.5 text-muted-foreground">
             <p className="font-medium text-foreground">🗓️ Totale mensile</p>
-            <p>A fine mese leggi la busta paga e inserisci i totali del dipendente: ore e lordo. Veloce se non vuoi tracciare i singoli turni.</p>
+            <p>A fine mese leggi la busta paga e inserisci lo stipendio del dipendente: lordo, ore extra e chiamata. Se hai già segnato i suoi turni le ore le trovi lì, altrimenti le scrivi tu.</p>
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
-            <p>I due modi convivono nella stessa pagina: ogni dipendente usa il suo. Per lo <strong>stesso</strong> dipendente nello <strong>stesso</strong> mese però va usato uno solo, altrimenti le ore si conterebbero due volte.</p>
+            <p>Per lo stesso dipendente nello stesso mese puoi segnare i turni e poi mettere lo stipendio: le ore restano quelle dei turni e il costo diventa quello dello stipendio, che <strong>vince</strong> sul costo orario dei turni (non si sommano).</p>
             <p className="mt-1.5">Per vedere i turni sul calendario, insieme ad appuntamenti e spese, vai su <strong>Agenda → Tutto</strong>.</p>
           </div>
         </InfoPopover>
@@ -1525,7 +1538,7 @@ export function PersonaleTab() {
             <Download className="size-4 mr-1.5" />{esportandoExcel ? "Esporto…" : "Excel"}
           </Button>
 
-          <Button variant="outline" onClick={() => { setEditMensile(null); setMensileDialogOpen(true); }}>
+          <Button variant="outline" onClick={() => { setEditMensile(null); setDipendenteIdMensile(undefined); setMensileDialogOpen(true); }}>
             <CalendarDays className="size-4 mr-1.5" />Totale mensile
           </Button>
 
@@ -1627,6 +1640,9 @@ export function PersonaleTab() {
                     }
                   </p>
                 </div>
+                {costoChiTotale > 0 && (
+                  <span className="block text-right text-xs text-muted-foreground tabular-nums">di cui chiamata {fmtEuro(costoChiTotale)}</span>
+                )}
               </CardContent>
             </Card>
             )}
@@ -1651,6 +1667,10 @@ export function PersonaleTab() {
               // iniziato. Va detto, o la sua riga sembra un dato incoerente.
               const disattivato = !dipId;
               const daBustaPaga = turniN.some(t => t.mensile);
+              const aTurni = turniN.some(t => !t.mensile && (t.tipo_giorno ?? "turno") === "turno");
+              // Lo stipendio vince: i turni di chi ce l'ha non mostrano un costo
+              // proprio, o le righe non sommerebbero al costo del dipendente.
+              const conStipendio = turniN.some(t => dipConStipendio.has(t.dipendente_id));
               const assenzeN = turniN.filter(t => (t.tipo_giorno ?? "turno") !== "turno").length;
               return (
                 <div key={n} className={`rounded-lg border ring-1 ${col.ring} overflow-hidden`}>
@@ -1676,7 +1696,7 @@ export function PersonaleTab() {
                             ? "bg-accent text-primary-text"
                             : "bg-muted text-muted-foreground"
                         }`}>
-                          {daBustaPaga ? "busta paga" : "a turni"}
+                          {daBustaPaga ? (aTurni ? "turni + stipendio" : "busta paga") : "a turni"}
                         </span>
                       )}
                       {disattivato && (
@@ -1687,6 +1707,20 @@ export function PersonaleTab() {
                     </button>
                     <div className="flex items-center gap-1 shrink-0">
                       {dipId && !daBustaPaga && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setEditMensile(null);
+                            setDipendenteIdMensile(dipId);
+                            setMensileDialogOpen(true);
+                          }}
+                        >
+                          <CalendarDays className="size-3.5 mr-1" />Stipendio
+                        </Button>
+                      )}
+                      {dipId && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -1718,7 +1752,7 @@ export function PersonaleTab() {
                       <div className="divide-y divide-border rounded-md border border-border">
                         {turniN.map(t => {
                           const oreT = calcolaOreTotali(t);
-                          const costoT = calcolaCostoTurno(t);
+                          const costoT = conStipendio ? 0 : calcolaCostoTurno(t);
                           const statoNonTurno = (t.tipo_giorno ?? "turno") !== "turno";
                           return (
                             <div key={t.id} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/20 group">
@@ -1743,12 +1777,17 @@ export function PersonaleTab() {
                               ) : t.mensile ? (
                                 <>
                                   <span className="text-muted-foreground w-24 shrink-0 capitalize">{fmtMese(t.data_turno.slice(0, 7))}</span>
-                                  <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
-                                  {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-incerto tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
+                                  {/* Con i turni le ore della riga mensile non contano (vengono dai turni). */}
+                                  {oreT > 0 && !aTurni
+                                    ? <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
+                                    : aTurni ? <span className="text-xs text-muted-foreground">ore dai turni</span> : null}
+                                  {oreT > 0 && !aTurni && (t.ore_extra ?? 0) > 0 && <span className="text-xs text-incerto tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
                                   {(t.lordo_mensile ?? 0) > 0 && <span className="text-xs text-primary-text tabular-nums">{fmtEuro(t.lordo_mensile!)} lordo</span>}
+                                  {(t.importo_extra ?? 0) > 0 && <span className="text-xs text-muted-foreground tabular-nums">di cui {fmtEuro(t.importo_extra!)} extra</span>}
+                                  {(t.importo_chiamata ?? 0) > 0 && <span className="text-xs text-muted-foreground tabular-nums">{fmtEuro(t.importo_chiamata!)} chiamata</span>}
                                   {t.note && <span className="min-w-0 text-xs text-muted-foreground italic truncate flex-1" title={t.note}>{t.note}</span>}
                                   <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditMensile(t); setMensileDialogOpen(true); }}>
+                                    <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditMensile(t); setDipendenteIdMensile(undefined); setMensileDialogOpen(true); }}>
                                       <Pencil className="size-3" />
                                     </Button>
                                     <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => setMensileDaEliminare(t)}>
@@ -1823,9 +1862,10 @@ export function PersonaleTab() {
         mese={meseBase}
         dipendenti={dipendenti}
         nomePerId={nomePerId}
-        dipendentiConTurniGiornalieri={dipConTurniGiornalieri}
+        oreTurniPerDip={oreTurniPerDip}
         dipendentiConMensile={dipConMensile}
-        onClose={() => { setMensileDialogOpen(false); setEditMensile(null); }}
+        dipendenteIdIniziale={dipendenteIdMensile}
+        onClose={() => { setMensileDialogOpen(false); setEditMensile(null); setDipendenteIdMensile(undefined); }}
         onSaved={() => load(da, fine)}
         onDipendenteCreato={() => load(da, fine)}
       />

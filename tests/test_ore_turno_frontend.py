@@ -190,6 +190,8 @@ def test_aggregazione_riga_mensile_usa_il_lordo_non_la_tariffa():
     assert r["costoExt"]["mario"] == 300.0
     assert r["costoTot"]["mario"] == 2000.0
     assert r["oreExt"]["mario"] == 20.0
+    # Senza chiamata la terza voce c'e' ma vale zero: la card la somma al totale.
+    assert r["costoChi"]["mario"] == 0
 
 
 def test_aggregazione_tiene_separate_le_persone():

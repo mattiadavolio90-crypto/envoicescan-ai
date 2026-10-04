@@ -12,6 +12,8 @@ import { formatEuro } from "./periodi";
 import { parseNumeroItOZero } from "@/lib/format";
 import {
   type CalcoloTurni, esitoRecuperoTurni, mostraCostoAssenze,
+  sintesiRecuperoTurni, totalePersonale, vociPersonaleValide,
+  celleDaSalvare,
 } from "@/lib/costo-personale-turni";
 
 type Props = {
@@ -21,6 +23,7 @@ type Props = {
   label: string;
   costoDipendenti: number;
   costoExtra: number;
+  costoChiamata: number;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -30,10 +33,11 @@ function toStr(v: number) {
 }
 
 export function CostoPersonaleDialog({
-  open, anno, mese, label, costoDipendenti, costoExtra, onClose, onSaved,
+  open, anno, mese, label, costoDipendenti, costoExtra, costoChiamata, onClose, onSaved,
 }: Props) {
   const [lordo, setLordo] = useState("");
   const [extra, setExtra] = useState("");
+  const [chiamata, setChiamata] = useState("");
   const [recuperando, setRecuperando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [sintesi, setSintesi] = useState<CalcoloTurni | null>(null);
@@ -42,9 +46,10 @@ export function CostoPersonaleDialog({
     if (open) {
       setLordo(toStr(costoDipendenti));
       setExtra(toStr(costoExtra));
+      setChiamata(toStr(costoChiamata));
       setSintesi(null);
     }
-  }, [open, costoDipendenti, costoExtra]);
+  }, [open, costoDipendenti, costoExtra, costoChiamata]);
 
   async function recuperaDaPersonale() {
     setRecuperando(true);
@@ -66,6 +71,7 @@ export function CostoPersonaleDialog({
       }
       setLordo(toStr(esito.lordo));
       setExtra(toStr(esito.extra));
+      setChiamata(toStr(esito.chiamata));
       if (esito.nSenzaCosto > 0) {
         toast.warning(`${esito.nSenzaCosto} turni senza costo orario sono stati ignorati nel calcolo`);
       } else {
@@ -90,11 +96,13 @@ export function CostoPersonaleDialog({
   async function salva() {
     const vLordo = parseNumeroItOZero(lordo);
     const vExtra = parseNumeroItOZero(extra);
-    if (vLordo < 0 || vExtra < 0) { toast.error("I valori non possono essere negativi"); return; }
+    const vChiamata = parseNumeroItOZero(chiamata);
+    if (!vociPersonaleValide(vLordo, vExtra, vChiamata)) { toast.error("I valori non possono essere negativi"); return; }
     setSalvando(true);
     try {
-      await salvaCampo("costo_dipendenti", vLordo);
-      await salvaCampo("costo_personale_extra", vExtra);
+      for (const [field, value] of celleDaSalvare(vLordo, vExtra, vChiamata)) {
+        await salvaCampo(field, value);
+      }
       toast.success("Costo del personale salvato");
       onSaved();
       onClose();
@@ -107,7 +115,9 @@ export function CostoPersonaleDialog({
 
   const vLordo = parseNumeroItOZero(lordo);
   const vExtra = parseNumeroItOZero(extra);
-  const totale = vLordo + vExtra;
+  const vChiamata = parseNumeroItOZero(chiamata);
+  const totale = totalePersonale(vLordo, vExtra, vChiamata);
+  const rigaSintesi = sintesiRecuperoTurni(sintesi);
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
@@ -132,12 +142,7 @@ export function CostoPersonaleDialog({
 
           {sintesi && (sintesi.n_turni > 0 || sintesi.n_giorni_assenza > 0) && (
             <div className="text-xs text-muted-foreground -mt-1 text-center space-y-1">
-              {sintesi.n_turni > 0 && (
-                <p>
-                  {sintesi.n_turni} turni · {Math.round(sintesi.ore_totali)}h di cui {Math.round(sintesi.ore_extra)}h extra
-                  {sintesi.n_senza_costo > 0 && ` · ${sintesi.n_senza_costo} senza costo orario`}
-                </p>
-              )}
+              {rigaSintesi && <p>{rigaSintesi}</p>}
               {mostraCostoAssenze(sintesi) && (
                 <p>
                   Ferie/malattia a carico: {formatEuro(sintesi.costo_assenze_a_carico)} su{" "}
@@ -154,27 +159,23 @@ export function CostoPersonaleDialog({
             <div className="flex-1 border-t border-border" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Costo personale lordo (€)</label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={lordo}
-                onChange={e => setLordo(e.target.value.replace(/[^0-9,.]/g, ""))}
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Costo personale extra (€)</label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={extra}
-                onChange={e => setExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
-                placeholder="0"
-              />
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {([
+              ["Lordo (€)", lordo, setLordo],
+              ["Ore extra (€)", extra, setExtra],
+              ["Chiamata (€)", chiamata, setChiamata],
+            ] as const).map(([etichetta, valore, imposta]) => (
+              <div key={etichetta}>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">{etichetta}</label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={valore}
+                  onChange={e => imposta(e.target.value.replace(/[^0-9,.]/g, ""))}
+                  placeholder="0"
+                />
+              </div>
+            ))}
           </div>
 
           <p className="text-xs text-muted-foreground text-right">

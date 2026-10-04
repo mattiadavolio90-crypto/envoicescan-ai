@@ -4,7 +4,8 @@ Test per l'inserimento mensile dei turni personale (totali da busta paga).
 Copre la logica lato worker introdotta con la modalità Mensile:
 - _ore_turno: per le righe mensili ritorna ore_dichiarate, non calcola dagli orari
 - ws_personale_list: aggrega il costo delle righe mensili dal lordo reale (non da tariffa)
-- guardia di esclusività giornaliero/mensile per dipendente/mese (HTTP 409)
+- convivenza giornaliero/mensile per dipendente/mese (dal 04/10/2026 niente
+  409 fra i due metodi; resta il 409 del doppio mensile)
 - validazioni del POST mensile
 - get_costo_personale_da_turni (margini): le righe mensili usano il lordo reale
 
@@ -225,54 +226,41 @@ class TestPersonaleListMensile:
 
 
 # ---------------------------------------------------------------------------
-# Guardia esclusività — POST giornaliero
+# Convivenza — POST giornaliero con riga mensile nel mese
 # ---------------------------------------------------------------------------
 
-class TestEsclusivitaGiornaliero:
+class TestConvivenzaGiornaliero:
+    """Dal 04/10/2026 (fase C2) turni e riga mensile convivono: il POST
+    giornaliero non interroga piu' la riga mensile e inserisce sempre."""
 
-    def test_blocca_se_esiste_riga_mensile(self):
-        # 1ª query (_dipendente_esiste) trova il dipendente, 2ª
-        # (_esiste_riga_mese mensile=True) trova una riga → POST giornaliero respinto.
+    def test_turno_inserito_anche_con_riga_mensile_nel_mese(self):
+        # 1ª query (_dipendente_esiste) trova il dipendente, 2ª e' l'insert.
+        # La vecchia 2ª query (_esiste_riga_mese mensile=True) avrebbe trovato
+        # la riga mensile e risposto 409: qui ritornerebbe l'insert.
         dip_q = _query_mock([{"id": "dip-mario"}])
-        esiste_q = _query_mock([{"id": "m1"}])
-        calls = {"n": 0}
-        def side_effect(_n):
-            calls["n"] += 1
-            return dip_q if calls["n"] == 1 else esiste_q
-        ctx, _ = _patch_workspace(side_effect)
-        body = workspace.NuovoTurnoBody(
-            dipendente_id="dip-mario", data_turno="2026-06-10", ora_inizio="09:00", ora_fine="17:00"
-        )
-        with ctx:
-            with pytest.raises(worker.HTTPException) as exc:
-                workspace.ws_personale_crea(body=body, authorization="Bearer x")
-        assert exc.value.status_code == 409
-        assert "mensile" in exc.value.detail.lower()
-
-    def test_ok_se_nessuna_riga_mensile(self):
-        dip_q = _query_mock([{"id": "dip-mario"}])
-        esiste_q = _query_mock([])           # nessuna riga mensile
         insert_q = _query_mock([{"id": "new", "dipendente_id": "dip-mario"}])
         calls = {"n": 0}
         def side_effect(_n):
             calls["n"] += 1
-            return {1: dip_q, 2: esiste_q}.get(calls["n"], insert_q)
+            return dip_q if calls["n"] == 1 else insert_q
         ctx, _ = _patch_workspace(side_effect)
         body = workspace.NuovoTurnoBody(
             dipendente_id="dip-mario", data_turno="2026-06-10", ora_inizio="09:00", ora_fine="17:00"
         )
-        with ctx:
+        with ctx, patch.object(workspace, "_esiste_riga_mese", MagicMock(return_value=True)):
             res = workspace.ws_personale_crea(body=body, authorization="Bearer x")
         assert res == {"id": "new", "dipendente_id": "dip-mario"}
+        assert insert_q.insert.call_count == 1
+        assert calls["n"] == 2
 
 
 # ---------------------------------------------------------------------------
-# Guardia esclusività + validazioni — POST mensile
+# Doppio mensile + validazioni — POST mensile
 # ---------------------------------------------------------------------------
 
 class TestPostMensile:
     """ws_personale_crea_mensile: 1ª query _dipendente_esiste, poi (dopo le
-    validazioni numeriche) _esiste_riga_mese mensile=False, poi mensile=True."""
+    validazioni numeriche) _esiste_riga_mese mensile=True, poi l'insert."""
 
     def _body(self, **kw):
         base = dict(dipendente_id="dip-mario", mese="2026-06", ore_totali=168, lordo=1850.0)
@@ -282,31 +270,30 @@ class TestPostMensile:
     def _dip_ok(self):
         return _query_mock([{"id": "dip-mario"}])
 
-    def test_blocca_se_esistono_turni_giornalieri(self):
-        # 1ª query (_dipendente_esiste) trova il dipendente, 2ª (_esiste_riga_mese
-        # mensile=False) trova turni → 409.
-        dip_q = self._dip_ok()
-        giorn_q = _query_mock([{"id": "g1"}])
-        calls = {"n": 0}
-        def side_effect(_n):
-            calls["n"] += 1
-            return dip_q if calls["n"] == 1 else giorn_q
-        ctx, _ = _patch_workspace(side_effect)
-        with ctx:
-            with pytest.raises(worker.HTTPException) as exc:
-                workspace.ws_personale_crea_mensile(body=self._body(), authorization="Bearer x")
-        assert exc.value.status_code == 409
-        assert "giornalieri" in exc.value.detail.lower()
+    def test_turni_giornalieri_nel_mese_non_bloccano_lo_stipendio(self):
+        """Il vecchio 409 «ha già turni giornalieri» non c'e' piu'.
+
+        _esiste_riga_mese risponde True SOLO per mensile=False: se il codice
+        interrogasse ancora i giornalieri per rifiutare, qui uscirebbe 409.
+        """
+        def esiste(_sb, _r, _d, _m, mensile):
+            return mensile is False
+        insert_q = _query_mock([{"id": "new"}])
+        ctx, _ = _patch_workspace(lambda _n: insert_q)
+        with ctx, patch.object(workspace, "_dipendente_esiste", MagicMock(return_value=True)), \
+                patch.object(workspace, "_esiste_riga_mese", side_effect=esiste):
+            res = workspace.ws_personale_crea_mensile(body=self._body(ore_totali=0), authorization="Bearer x")
+        assert res == {"id": "new"}
+        assert insert_q.insert.call_args[0][0]["ore_dichiarate"] == 0.0
 
     def test_blocca_se_esiste_gia_mensile(self):
-        # 1ª query (dipendente) ok, 2ª (giornalieri) vuota, 3ª (mensile) trova → 409.
+        # 1ª query (dipendente) ok, 2ª (mensile) trova → 409.
         dip_q = self._dip_ok()
-        vuota = _query_mock([])
         mensile_q = _query_mock([{"id": "m1"}])
         calls = {"n": 0}
         def side_effect(_n):
             calls["n"] += 1
-            return {1: dip_q, 2: vuota}.get(calls["n"], mensile_q)
+            return dip_q if calls["n"] == 1 else mensile_q
         ctx, _ = _patch_workspace(side_effect)
         with ctx:
             with pytest.raises(worker.HTTPException) as exc:
@@ -351,19 +338,19 @@ class TestPostMensile:
         assert exc.value.status_code == 400
 
     def test_creazione_valida_payload(self):
-        # dipendente ok, due _esiste_riga_mese vuote, poi insert.
+        # dipendente ok, _esiste_riga_mese (mensile) vuota, poi insert.
         dip_q = self._dip_ok()
-        vuota1 = _query_mock([])
-        vuota2 = _query_mock([])
+        vuota = _query_mock([])
         insert_q = _query_mock([{"id": "new"}])
         calls = {"n": 0}
         def side_effect(_n):
             calls["n"] += 1
-            return {1: dip_q, 2: vuota1, 3: vuota2}.get(calls["n"], insert_q)
+            return {1: dip_q, 2: vuota}.get(calls["n"], insert_q)
         ctx, _ = _patch_workspace(side_effect)
         with ctx:
             res = workspace.ws_personale_crea_mensile(
-                body=self._body(ore_totali=168, lordo=1850.0, ore_extra=8, importo_extra=120.0, note="  giugno  "),
+                body=self._body(ore_totali=168, lordo=1850.0, ore_extra=8, importo_extra=120.0,
+                                importo_chiamata=230.0, note="  giugno  "),
                 authorization="Bearer x",
             )
         assert res == {"id": "new"}
@@ -375,6 +362,7 @@ class TestPostMensile:
         assert payload["lordo_mensile"] == 1850.0
         assert payload["ore_extra"] == 8.0
         assert payload["importo_extra"] == 120.0
+        assert payload["importo_chiamata"] == 230.0
         assert payload["dipendente_id"] == "dip-mario"
 
 
@@ -617,8 +605,8 @@ class TestMarginiCostoAssenze:
 
 
 class TestEsclusivitaStatoGiornoMensile:
-    """_esiste_turno_lavorato_mese ignora le righe di stato: solo un turno
-    tipo_giorno='turno' deve bloccare la coesistenza con una riga mensile."""
+    """_esiste_turno_lavorato_mese ignora le righe di stato. Codice morto dal
+    04/10/2026 (turni e mensile convivono): lasciata, e qui resta coperta."""
 
     def test_nessun_turno_lavorato_ritorna_false(self):
         q = _query_mock([])  # nessuna riga trovata
@@ -1186,14 +1174,14 @@ class TestExportExcelPersonaleMensile:
         # Mario: 8h std, 80€ std + 50€ assenze = 130€ totale (nessuna extra)
         assert righe["Mario Rossi"][1] == 8.0
         assert righe["Mario Rossi"][3] == 8.0   # ore totali = std + extra
-        assert righe["Mario Rossi"][7] == 130.0
+        assert righe["Mario Rossi"][8] == 130.0
         # Anna: 8h std + 2h extra, 80+20 = 100€ totale (nessuna assenza)
         assert righe["Anna Bianchi"][2] == 2.0
         assert righe["Anna Bianchi"][3] == 10.0
-        assert righe["Anna Bianchi"][7] == 100.0
+        assert righe["Anna Bianchi"][8] == 100.0
         # Riga TOTALE: somma dei due dipendenti
         assert righe["TOTALE"][3] == 18.0
-        assert righe["TOTALE"][7] == 230.0
+        assert righe["TOTALE"][8] == 230.0
 
     def test_cella_mostra_orario_inizio_e_fine(self):
         """Il bug segnalato il 4/9/2026: la cella mostrava solo l'ora di
@@ -1386,4 +1374,4 @@ class TestEndpointExportMensile:
         righe = {r[0]: r for r in ws_riep.iter_rows(min_row=3, values_only=True) if r[0]}
         assert "Luigi" in righe, "l'ex-dipendente deve comparire nel Riepilogo"
         # 8h a 10€/h ciascuno: Mario 80€ + Luigi 80€ = 160€ nel TOTALE.
-        assert righe["TOTALE"][7] == 160.0
+        assert righe["TOTALE"][8] == 160.0

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from services import sotto_utenti_service as _su
 from pydantic import BaseModel
 
+from services.costo_personale_turni import aggrega_per_dipendente_mese
 from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIE_SPESE_GENERALI
 from config.logger_setup import get_logger
 from utils.iva import netto_da_lordo
@@ -1201,14 +1202,16 @@ class StatoGiornoIntervalloBody(BaseModel):
 
 
 class TurnoMensileBody(BaseModel):
-    """Inserimento aggregato mensile da busta paga: i totali del mese per un
-    dipendente, senza spezzare in turni giornalieri."""
+    """Inserimento aggregato mensile da busta paga: lo stipendio del mese di un
+    dipendente. Convive coi suoi turni giornalieri dello stesso mese: il costo
+    viene da qui, le ore dai turni se ci sono (allora ore_totali resta 0)."""
     dipendente_id: str
-    mese: str                              # YYYY-MM
-    ore_totali: float                      # monte ore del mese
-    lordo: float                           # importo lordo del mese (EUR)
-    ore_extra: Optional[float] = None       # ore di straordinario incluse nel mese
-    importo_extra: Optional[float] = None   # importo straordinario del mese (EUR)
+    mese: str                                  # YYYY-MM
+    ore_totali: Optional[float] = None         # monte ore del mese (None -> 0: ore dai turni)
+    lordo: float                               # TOTALE della busta del mese (EUR)
+    ore_extra: Optional[float] = None          # ore di straordinario incluse nel mese
+    importo_extra: Optional[float] = None      # di cui straordinario (EUR)
+    importo_chiamata: Optional[float] = None   # di cui chiamata (EUR)
     note: Optional[str] = None
 
 
@@ -1217,6 +1220,7 @@ class AggiornaTurnoMensileBody(BaseModel):
     lordo: Optional[float] = None
     ore_extra: Optional[float] = None
     importo_extra: Optional[float] = None
+    importo_chiamata: Optional[float] = None
     note: Optional[str] = None
 
 
@@ -1230,10 +1234,11 @@ def ws_personale_list(
     """Lista turni + nomi distinti + monte ore per persona nel periodo.
 
     Il filtro `mensile` seleziona le righe: True solo aggregati da busta paga,
-    False solo turni giornalieri, None entrambi. La regola di dominio resta che
-    lo STESSO dipendente nello STESSO mese non usi entrambi i metodi (le ore si
-    conterebbero due volte) — vedi guardia in POST; dipendenti diversi possono
-    invece usare metodi diversi e convivere nella stessa risposta."""
+    False solo turni giornalieri, None entrambi. Turni e riga mensile dello
+    STESSO dipendente nello STESSO mese convivono: i dizionari per persona
+    applicano la regola «lo stipendio del mese vince» per (dipendente, mese)
+    sulle righe restituite (services/costo_personale_turni.py) — completa solo
+    con mensile=None, che e' cio' che usa l'export."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -1265,72 +1270,36 @@ def ws_personale_list(
     ore_extra_per_persona: dict = {}
     costo_standard_per_persona: dict = {}
     costo_extra_per_persona: dict = {}
+    costo_chiamata_per_persona: dict = {}
     costo_assenze_per_persona: dict = {}
 
-    for t in turni:
-        nome = _nome(t["dipendente_id"])
+    def _somma(diz: dict, nome: str, valore: float) -> None:
+        diz[nome] = round(diz.get(nome, 0) + valore, 2)
 
-        if t.get("tipo_giorno", "turno") != "turno":
-            imp = float(t.get("importo_a_carico") or 0)
-            if imp:
-                costo_assenze_per_persona[nome] = round(costo_assenze_per_persona.get(nome, 0) + imp, 2)
-            continue
-
-        ore_tot = _ore_turno(t)
-        monte_ore[nome] = round(monte_ore.get(nome, 0) + ore_tot, 2)
-
-        extra = float(t.get("ore_extra") or 0)
-        # Stesso clamp di margini.py: le extra sono un sottoinsieme delle ore
-        # del turno, e senza guardia l'ordinario uscirebbe negativo.
-        extra = min(extra, ore_tot)
-        std = round(ore_tot - extra, 2)
-
-        ore_standard_per_persona[nome] = round(ore_standard_per_persona.get(nome, 0) + std, 2)
-        if extra:
-            ore_extra_per_persona[nome] = round(ore_extra_per_persona.get(nome, 0) + extra, 2)
-
-        if t.get("mensile"):
-            # Riga mensile: il costo e' il dato reale dalla busta paga, non
-            # ricalcolato da tariffa. lordo_mensile = totale del mese (incl.
-            # quota extra); importo_extra = quota straordinario.
-            lordo = float(t.get("lordo_mensile") or 0)
-            imp_ext = float(t.get("importo_extra") or 0)
-            costo_std = round(max(0.0, lordo - imp_ext), 2)
-            costo_standard_per_persona[nome] = round(
-                costo_standard_per_persona.get(nome, 0) + costo_std, 2
-            )
-            if imp_ext:
-                costo_extra_per_persona[nome] = round(
-                    costo_extra_per_persona.get(nome, 0) + imp_ext, 2
-                )
-            continue
-
-        co_std = t.get("costo_orario")
-        co_ext = t.get("costo_orario_extra")
-        # Senza tariffa standard non si paga nemmeno lo straordinario: il costo
-        # del turno non lo conosciamo, e pagare le sole extra inventerebbe un
-        # importo che finisce nel MOL. E' la stessa scelta di
-        # costoTurnoGiornaliero (apps/web/src/lib/ore-turno.ts): senza questa
-        # riga i due percorsi mostravano importi diversi per lo stesso turno.
-        # Se costo_orario_extra non e' impostato, si usa costo_orario.
-        co_ext_eff = (
-            None if co_std is None
-            else (float(co_ext) if co_ext is not None else float(co_std))
-        )
-        if co_std is not None:
-            costo_standard_per_persona[nome] = round(
-                costo_standard_per_persona.get(nome, 0) + std * float(co_std), 2
-            )
-        if co_ext_eff is not None and extra:
-            costo_extra_per_persona[nome] = round(
-                costo_extra_per_persona.get(nome, 0) + extra * co_ext_eff, 2
-            )
+    # Chiave interna (dipendente_id, mese): la regola si applica mese per mese,
+    # anche quando il periodo ne attraversa due; l'uscita resta per nome.
+    for (dip_id, _mese), c in aggrega_per_dipendente_mese(turni, _ore_turno).items():
+        nome = _nome(dip_id)
+        if c["ha_ore"]:
+            _somma(monte_ore, nome, c["ore"])
+            _somma(ore_standard_per_persona, nome, round(c["ore"] - c["ore_extra"], 2))
+        if c["ore_extra"]:
+            _somma(ore_extra_per_persona, nome, c["ore_extra"])
+        if c["costo_noto"]:
+            _somma(costo_standard_per_persona, nome, c["costo_ordinario"])
+        if c["costo_extra"]:
+            _somma(costo_extra_per_persona, nome, c["costo_extra"])
+        if c["costo_chiamata"]:
+            _somma(costo_chiamata_per_persona, nome, c["costo_chiamata"])
+        if c["costo_assenze"]:
+            _somma(costo_assenze_per_persona, nome, c["costo_assenze"])
 
     ore_standard_totale = round(sum(ore_standard_per_persona.values()), 2)
     ore_extra_totale = round(sum(ore_extra_per_persona.values()), 2)
     costo_standard_totale = round(sum(costo_standard_per_persona.values()), 2)
     costo_extra_totale = round(sum(costo_extra_per_persona.values()), 2)
-    costo_totale = round(costo_standard_totale + costo_extra_totale, 2)
+    costo_chiamata_totale = round(sum(costo_chiamata_per_persona.values()), 2)
+    costo_totale = round(costo_standard_totale + costo_extra_totale + costo_chiamata_totale, 2)
 
     # Dipendenti attivi + ultimi costi noti (per prefill nel dialog). Il prefill
     # usa dipendenti.costo_orario_default se impostato, altrimenti l'ultimo
@@ -1376,17 +1345,24 @@ def ws_personale_list(
         "ore_extra_per_persona": ore_extra_per_persona,
         "costo_standard_per_persona": costo_standard_per_persona,
         "costo_extra_per_persona": costo_extra_per_persona,
+        "costo_chiamata_per_persona": costo_chiamata_per_persona,
         "costo_assenze_per_persona": costo_assenze_per_persona,
         # legacy — mantenuto per compatibilità con eventuali consumer
         "extra_per_persona": ore_extra_per_persona,
         "costo_per_persona": {
-            n: round(costo_standard_per_persona.get(n, 0) + costo_extra_per_persona.get(n, 0), 2)
+            n: round(
+                costo_standard_per_persona.get(n, 0)
+                + costo_extra_per_persona.get(n, 0)
+                + costo_chiamata_per_persona.get(n, 0),
+                2,
+            )
             for n in nomi_distinti
         },
         "ore_standard_totale": ore_standard_totale,
         "ore_extra_totale": ore_extra_totale,
         "costo_standard_totale": costo_standard_totale,
         "costo_extra_totale": costo_extra_totale,
+        "costo_chiamata_totale": costo_chiamata_totale,
         "extra_totale": ore_extra_totale,
         "costo_totale": costo_totale,
         "nomi": nomi_distinti,
@@ -1456,6 +1432,7 @@ def ws_personale_export_mensile(
         costo_standard_per_persona=dati["costo_standard_per_persona"],
         costo_extra_per_persona=dati["costo_extra_per_persona"],
         costo_assenze_per_persona=dati["costo_assenze_per_persona"],
+        costo_chiamata_per_persona=dati["costo_chiamata_per_persona"],
     )
 
     filename = f"personale_mensile_{mese.replace('-', '')}.xlsx"
@@ -1496,9 +1473,10 @@ def _esiste_riga_mese(sb, ristorante_id: str, dipendente_id: str, mese: str, men
 def _esiste_turno_lavorato_mese(sb, ristorante_id: str, dipendente_id: str, mese: str) -> bool:
     """True se nel mese esiste almeno un turno EFFETTIVAMENTE lavorato
     (tipo_giorno='turno') per il dipendente. A differenza di _esiste_riga_mese,
-    ignora le righe di stato (riposo/ferie/malattia): marcare un'assenza per un
-    dipendente mensile non deve essere bloccato dall'esclusivita' giornaliero/
-    mensile, solo un turno lavorato lo e'."""
+    ignora le righe di stato (riposo/ferie/malattia).
+
+    Codice morto dal 04/10/2026 (fase C2): turni e riga mensile convivono, non
+    c'e' piu' un'esclusivita' da far rispettare. Lasciata di proposito."""
     primo, ultimo = _mese_bounds(mese)
     r = (
         sb.table("turni_personale").select("id")
@@ -1526,8 +1504,8 @@ def _dipendente_esiste(sb, ristorante_id: str, dipendente_id: str) -> bool:
 def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Header(None)):
     """Aggiunge un turno giornaliero (supporta secondo slot per spezzato).
 
-    Esclusivita': rifiutato se il dipendente ha gia' una riga MENSILE in quel
-    mese (giornaliero e mensile non coesistono per dipendente/mese)."""
+    Convive con la riga mensile dello stesso dipendente/mese: se c'e' lo
+    stipendio, questo turno conta come ore e non come costo."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -1536,12 +1514,6 @@ def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Heade
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    mese = body.data_turno[:7]
-    if _esiste_riga_mese(sb, ristorante_id, body.dipendente_id, mese, mensile=True):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Questo dipendente ha già un inserimento mensile per {mese}. Elimina la riga mensile per inserire turni giornalieri.",
-        )
     _valida_ore_extra_giornaliero(body)
     payload: dict = {
         "ristorante_id": ristorante_id,
@@ -1598,9 +1570,12 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
     if not sorgente:
         return {"ok": True, "n_copiati": 0, "n_saltati": 0, "messaggio": "Nessun turno nella settimana precedente"}
 
+    # mensile=False: la riga mensile sta sul giorno 1 e non occupa quel giorno;
+    # senza il filtro il turno del 1° verrebbe saltato in silenzio.
     esistenti = (
         sb.table("turni_personale").select("dipendente_id, data_turno")
         .eq("ristorante_id", ristorante_id)
+        .eq("mensile", False)
         .gte("data_turno", body.da).lte("data_turno", body.a)
         .execute()
     ).data or []
@@ -1676,9 +1651,11 @@ def ws_personale_copia_mese(body: CopiaMeseBody, authorization: Optional[str] = 
         giorni_dest_per_weekday[d.weekday()].append(d.isoformat())
         d = _date.fromordinal(d.toordinal() + 1)
 
+    # mensile=False: la riga mensile (giorno 1) non e' un giorno occupato.
     esistenti = (
         sb.table("turni_personale").select("dipendente_id, data_turno")
         .eq("ristorante_id", ristorante_id)
+        .eq("mensile", False)
         .gte("data_turno", dest_da).lte("data_turno", dest_a)
         .execute()
     ).data or []
@@ -1739,9 +1716,10 @@ def ws_personale_copia_mese(body: CopiaMeseBody, authorization: Optional[str] = 
 
 @router.post("/api/workspace/personale/mensile", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[str] = Header(None)):
-    """Inserisce i totali mensili di un dipendente (da busta paga) come singola
-    riga mensile. Esclusiva: rifiutato se esistono turni giornalieri per quel
-    dipendente in quel mese, o se la riga mensile esiste gia'."""
+    """Inserisce lo stipendio del mese di un dipendente (da busta paga) come
+    singola riga mensile. Convive coi turni giornalieri dello stesso mese: il
+    costo viene dalla busta, le ore dai turni (services/costo_personale_turni.py).
+    Rifiutato (409) solo se la riga mensile esiste gia'."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -1751,31 +1729,13 @@ def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[st
 
     if not _dipendente_esiste(sb, ristorante_id, body.dipendente_id):
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    if body.ore_totali < 0 or body.lordo < 0:
-        raise HTTPException(status_code=400, detail="Ore e lordo non possono essere negativi")
-    if body.ore_totali <= 0 and body.lordo <= 0:
-        raise HTTPException(status_code=400, detail="Inserisci almeno le ore o il lordo del mese")
+    ore_tot = float(body.ore_totali or 0)
     ore_ext = float(body.ore_extra or 0)
-    # Due errori distinti, due messaggi: con la condizione unita, inserendo -1
-    # il cliente leggeva "non possono superare le ore totali" — vero ma non il
-    # suo errore, e quindi inutile per correggerlo.
-    if ore_ext < 0:
-        raise HTTPException(status_code=400, detail="Le ore extra non possono essere negative")
-    if ore_ext > body.ore_totali + 0.01:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Le ore extra ({ore_ext:g}) non possono superare le ore totali del mese ({body.ore_totali:g})",
-        )
     imp_ext = float(body.importo_extra or 0)
-    if imp_ext < 0 or imp_ext > body.lordo + 0.01:
-        raise HTTPException(status_code=400, detail="L'importo extra non può superare il lordo")
+    imp_ch = float(body.importo_chiamata or 0)
+    _valida_mensile(ore_tot, float(body.lordo), ore_ext, imp_ext, imp_ch)
 
     primo, _ = _mese_bounds(body.mese)
-    if _esiste_riga_mese(sb, ristorante_id, body.dipendente_id, body.mese, mensile=False):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Questo dipendente ha già turni giornalieri per {body.mese}. Eliminali per usare l'inserimento mensile.",
-        )
     if _esiste_riga_mese(sb, ristorante_id, body.dipendente_id, body.mese, mensile=True):
         raise HTTPException(
             status_code=409,
@@ -1790,14 +1750,60 @@ def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[st
         "ora_inizio": "00:00",
         "ora_fine": "00:00",
         "mensile": True,
-        "ore_dichiarate": round(float(body.ore_totali), 2),
+        "ore_dichiarate": round(ore_tot, 2),
         "lordo_mensile": round(float(body.lordo), 2),
         "ore_extra": round(ore_ext, 2) if ore_ext else None,
         "importo_extra": round(imp_ext, 2) if imp_ext else None,
+        "importo_chiamata": round(imp_ch, 2) if imp_ch else None,
         "note": body.note or None,
     }
     resp = sb.table("turni_personale").insert(payload).execute()
     return resp.data[0] if resp.data else {}
+
+
+def _valida_mensile(ore_tot: float, lordo: float, ore_ext: float, imp_ext: float, imp_ch: float) -> None:
+    """Coerenza dei totali di una riga mensile, gia' risolti (body + DB).
+
+    Unica per POST e PATCH: una guardia presente solo sulla POST si aggira
+    creando una riga valida e correggendola subito dopo.
+    """
+    if ore_tot < 0 or lordo < 0:
+        raise HTTPException(status_code=400, detail="Ore e lordo non possono essere negativi")
+    if ore_tot <= 0 and lordo <= 0:
+        raise HTTPException(status_code=400, detail="Inserisci almeno le ore o il lordo del mese")
+    # Due errori distinti, due messaggi: con la condizione unita, inserendo -1
+    # il cliente leggeva "non possono superare le ore totali" — vero ma non il
+    # suo errore, e quindi inutile per correggerlo.
+    if ore_ext < 0:
+        raise HTTPException(status_code=400, detail="Le ore extra non possono essere negative")
+    if ore_tot > 0:
+        if ore_ext > ore_tot + 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Le ore extra ({ore_ext:g}) non possono superare le ore totali del mese ({ore_tot:g})",
+            )
+    elif ore_ext > 0:
+        # Ore 0 = le ore del mese vengono dai turni giornalieri: delle extra
+        # dichiarate qui non si saprebbe di quale monte ore siano parte.
+        raise HTTPException(
+            status_code=400,
+            detail="Senza ore totali le ore vengono dai turni: lascia vuote le ore extra",
+        )
+    # Il negativo va rifiutato quanto l'eccesso: un importo sotto zero
+    # GONFIEREBBE l'ordinario (lordo − extra − chiamata cresce).
+    if imp_ext < 0:
+        raise HTTPException(status_code=400, detail="L'importo extra non può essere negativo")
+    if imp_ch < 0:
+        raise HTTPException(status_code=400, detail="L'importo chiamata non può essere negativo")
+    # Extra e chiamata sono «di cui» del lordo (il totale della busta).
+    if imp_ext + imp_ch > lordo + 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Importo extra ({imp_ext:g}) e chiamata ({imp_ch:g}) insieme non possono "
+                f"superare il lordo del mese ({lordo:g})"
+            ),
+        )
 
 
 @router.patch("/api/workspace/personale/mensile/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
@@ -1823,13 +1829,15 @@ def ws_personale_aggiorna_mensile(turno_id: str, body: AggiornaTurnoMensileBody,
         updates["ore_extra"] = round(float(raw["ore_extra"]), 2) if raw["ore_extra"] else None
     if "importo_extra" in raw:  # azzerabile
         updates["importo_extra"] = round(float(raw["importo_extra"]), 2) if raw["importo_extra"] else None
+    if "importo_chiamata" in raw:  # azzerabile
+        updates["importo_chiamata"] = round(float(raw["importo_chiamata"]), 2) if raw["importo_chiamata"] else None
     if "note" in raw:  # azzerabile
         updates["note"] = raw["note"] or None
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
     # Come sul giornaliero: la POST validava e il PATCH no, quindi la guardia
     # si aggirava creando una riga valida e modificandola subito dopo. Il PATCH
-    # e' parziale, quindi il monte ore si legge a DB se non e' nel body.
+    # e' parziale, quindi cio' che non arriva nel body si legge a DB.
     _valida_extra_mensile_aggiornamento(sb, turno_id, ristorante_id, updates)
     resp = (
         sb.table("turni_personale").update(updates)
@@ -1839,50 +1847,45 @@ def ws_personale_aggiorna_mensile(turno_id: str, body: AggiornaTurnoMensileBody,
     return resp.data[0] if resp.data else {}
 
 
-def _valida_extra_mensile_aggiornamento(sb, turno_id: str, ristorante_id: str, updates: dict) -> None:
-    """Straordinario e importo extra non possono eccedere i totali del mese.
+_CAMPI_TOTALI_MENSILE = ("ore_dichiarate", "lordo_mensile", "ore_extra", "importo_extra", "importo_chiamata")
 
-    Vale su ciascuna delle due coppie (ore, importo) e legge da DB il totale
-    che il PATCH non sta cambiando: aggiornare le sole extra deve confrontarsi
-    con il monte ore che resta, non con zero.
+
+def _valida_extra_mensile_aggiornamento(sb, turno_id: str, ristorante_id: str, updates: dict) -> None:
+    """Le stesse regole della POST (_valida_mensile) sulla riga che RISULTA
+    dal PATCH: i campi nel body sovrascrivono quelli letti a DB.
+
+    Aggiornare le sole extra deve confrontarsi col monte ore e col lordo che
+    restano, non con zero; abbassare il lordo sotto extra + chiamata gia'
+    salvate va rifiutato come alzare le extra.
     """
-    if updates.get("ore_extra") is None and updates.get("importo_extra") is None:
+    if not any(c in updates for c in _CAMPI_TOTALI_MENSILE):
         return
+    # Il negativo si rifiuta prima di leggere: vale anche su una riga che non
+    # c'e', e il messaggio deve dire "negativo", non "superare".
+    if updates.get("ore_extra") is not None and float(updates["ore_extra"]) < 0:
+        raise HTTPException(status_code=400, detail="Le ore extra non possono essere negative")
+    if updates.get("importo_extra") is not None and float(updates["importo_extra"]) < 0:
+        raise HTTPException(status_code=400, detail="L'importo extra non può essere negativo")
+    if updates.get("importo_chiamata") is not None and float(updates["importo_chiamata"]) < 0:
+        raise HTTPException(status_code=400, detail="L'importo chiamata non può essere negativo")
     resp = (
         sb.table("turni_personale")
-        .select("ore_dichiarate,lordo_mensile")
+        .select(",".join(_CAMPI_TOTALI_MENSILE))
         .eq("id", turno_id).eq("ristorante_id", ristorante_id).eq("mensile", True)
         .execute()
     )
     riga = (resp.data or [{}])[0] if resp.data else {}
     if not riga:
-        return
-    coppie = (
-        ("ore_extra", "ore_dichiarate", "Le ore extra", "le ore totali del mese"),
-        ("importo_extra", "lordo_mensile", "L'importo extra", "il lordo del mese"),
+        return  # riga inesistente o altrui: ci pensa l'update a non trovare nulla
+
+    def _val(campo: str) -> float:
+        v = updates[campo] if campo in updates else riga.get(campo)
+        return float(v or 0)
+
+    _valida_mensile(
+        _val("ore_dichiarate"), _val("lordo_mensile"), _val("ore_extra"),
+        _val("importo_extra"), _val("importo_chiamata"),
     )
-    for campo, campo_tot, etichetta, etichetta_tot in coppie:
-        valore = updates.get(campo)
-        if valore is None:
-            continue
-        # Il negativo va rifiutato quanto l'eccesso: il clamp min(extra, ore) dei
-        # lettori difende solo dall'alto, quindi un valore sotto zero arriva
-        # intatto in margini.py e GONFIA costo_dipendenti (ore - extra cresce).
-        # La POST mensile lo rifiuta gia': senza questo, bastava creare una riga
-        # valida e correggerla in negativo - lo stesso bypass che questo helper
-        # esiste per chiudere, su un altro asse.
-        if float(valore) < 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{etichetta} non possono essere negative" if campo == "ore_extra"
-                else f"{etichetta} non può essere negativo",
-            )
-        totale = float(updates.get(campo_tot, riga.get(campo_tot)) or 0)
-        if float(valore) > totale + 0.01:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{etichetta} ({float(valore):g}) non possono superare {etichetta_tot} ({totale:g})",
-            )
 
 
 @router.patch("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
@@ -2306,9 +2309,11 @@ def ws_regole_turni_genera(body: GeneraTurniDaRegoleBody, authorization: Optiona
     for r in regole:
         regole_per_giorno.setdefault(r["giorno_settimana"], []).append(r)
 
+    # mensile=False: la riga mensile (giorno 1) non e' un giorno occupato.
     esistenti = (
         sb.table("turni_personale").select("dipendente_id, data_turno")
         .eq("ristorante_id", ristorante_id)
+        .eq("mensile", False)
         .gte("data_turno", body.data_da).lte("data_turno", body.data_a)
         .execute()
     ).data or []

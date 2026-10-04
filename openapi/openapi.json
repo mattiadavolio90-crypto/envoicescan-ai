@@ -7986,7 +7986,7 @@
           "Marginalità"
         ],
         "summary": "Get Costo Personale Da Turni",
-        "description": "Calcola il costo del personale del mese dai turni (tab Personale).\nRestituisce lo split in EURO coerente con margini_mensili:\n  - costo_dipendenti       = Σ((ore_turno − ore_extra) × costo_orario)\n  - costo_personale_extra  = Σ(ore_extra × costo_orario)\nI turni senza costo_orario impostato non contribuiscono (vengono contati a parte).",
+        "description": "Calcola il costo del personale del mese dai turni (tab Personale).\nRestituisce lo split in EURO coerente con margini_mensili, con la regola\n«lo stipendio del mese vince» (services/costo_personale_turni.py):\n  - dipendente con riga mensile (busta paga): costo SOLO dalla busta —\n    costo_dipendenti += lordo − extra − chiamata, costo_personale_extra +=\n    importo_extra, costo_personale_chiamata += importo_chiamata; i suoi\n    turni giornalieri danno le ore, non il costo; le sue assenze a carico\n    non si sommano.\n  - senza riga mensile: costo_dipendenti = Σ((ore − ore_extra) × costo_orario),\n    costo_personale_extra = Σ(ore_extra × costo_orario_extra|costo_orario);\n    i turni senza costo_orario non contribuiscono e si contano in n_senza_costo.\nn_con_stipendio = dipendenti con riga mensile nel mese.",
         "operationId": "get_costo_personale_da_turni_api_margini_costo_personale_turni_get",
         "parameters": [
           {
@@ -10679,7 +10679,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale List",
-        "description": "Lista turni + nomi distinti + monte ore per persona nel periodo.\n\nIl filtro `mensile` seleziona le righe: True solo aggregati da busta paga,\nFalse solo turni giornalieri, None entrambi. La regola di dominio resta che\nlo STESSO dipendente nello STESSO mese non usi entrambi i metodi (le ore si\nconterebbero due volte) — vedi guardia in POST; dipendenti diversi possono\ninvece usare metodi diversi e convivere nella stessa risposta.",
+        "description": "Lista turni + nomi distinti + monte ore per persona nel periodo.\n\nIl filtro `mensile` seleziona le righe: True solo aggregati da busta paga,\nFalse solo turni giornalieri, None entrambi. Turni e riga mensile dello\nSTESSO dipendente nello STESSO mese convivono: i dizionari per persona\napplicano la regola «lo stipendio del mese vince» per (dipendente, mese)\nsulle righe restituite (services/costo_personale_turni.py) — completa solo\ncon mensile=None, che e' cio' che usa l'export.",
         "operationId": "ws_personale_list_api_workspace_personale_get",
         "parameters": [
           {
@@ -10795,7 +10795,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale Crea",
-        "description": "Aggiunge un turno giornaliero (supporta secondo slot per spezzato).\n\nEsclusivita': rifiutato se il dipendente ha gia' una riga MENSILE in quel\nmese (giornaliero e mensile non coesistono per dipendente/mese).",
+        "description": "Aggiunge un turno giornaliero (supporta secondo slot per spezzato).\n\nConvive con la riga mensile dello stesso dipendente/mese: se c'e' lo\nstipendio, questo turno conta come ore e non come costo.",
         "operationId": "ws_personale_crea_api_workspace_personale_post",
         "parameters": [
           {
@@ -11092,7 +11092,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale Crea Mensile",
-        "description": "Inserisce i totali mensili di un dipendente (da busta paga) come singola\nriga mensile. Esclusiva: rifiutato se esistono turni giornalieri per quel\ndipendente in quel mese, o se la riga mensile esiste gia'.",
+        "description": "Inserisce lo stipendio del mese di un dipendente (da busta paga) come\nsingola riga mensile. Convive coi turni giornalieri dello stesso mese: il\ncosto viene dalla busta, le ore dai turni (services/costo_personale_turni.py).\nRifiutato (409) solo se la riga mensile esiste gia'.",
         "operationId": "ws_personale_crea_mensile_api_workspace_personale_mensile_post",
         "parameters": [
           {
@@ -20180,6 +20180,17 @@
             ],
             "title": "Importo Extra"
           },
+          "importo_chiamata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo Chiamata"
+          },
           "note": {
             "anyOf": [
               {
@@ -28444,7 +28455,14 @@
             "title": "Mese"
           },
           "ore_totali": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Ore Totali"
           },
           "lordo": {
@@ -28473,6 +28491,17 @@
             ],
             "title": "Importo Extra"
           },
+          "importo_chiamata": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo Chiamata"
+          },
           "note": {
             "anyOf": [
               {
@@ -28489,11 +28518,10 @@
         "required": [
           "dipendente_id",
           "mese",
-          "ore_totali",
           "lordo"
         ],
         "title": "TurnoMensileBody",
-        "description": "Inserimento aggregato mensile da busta paga: i totali del mese per un\ndipendente, senza spezzare in turni giornalieri."
+        "description": "Inserimento aggregato mensile da busta paga: lo stipendio del mese di un\ndipendente. Convive coi suoi turni giornalieri dello stesso mese: il costo\nviene da qui, le ore dai turni se ci sono (allora ore_totali resta 0)."
       },
       "UploadInvoiceResponse": {
         "properties": {
