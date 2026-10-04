@@ -29,11 +29,32 @@ def test_con_margini_le_regole_delle_cifre_dettate_ci_sono(monkeypatch):
     assert "Il 22% indicalo solo se lo nomina il cliente." in p
 
 
+REGOLA_SPESA = "usa proponi_spesa: va nelle Spese dell'Agenda, mai nel personale"
+
+
 def test_senza_margini_niente_regole_ne_offerta_di_dettare(monkeypatch):
-    senza = dict(USER, pagine_abilitate={"analisi_fatture": True, "agenda": True})
+    senza = dict(USER, pagine_abilitate={"analisi_fatture": True})
     p = _prompt(monkeypatch, user=senza)
     assert "proponi_" not in p
     assert "prepari tu la registrazione" not in p
+
+
+def test_con_la_sola_agenda_c_e_solo_la_regola_della_spesa(monkeypatch):
+    solo_agenda = dict(USER, pagine_abilitate={"analisi_fatture": True, "agenda": True})
+    p = _prompt(monkeypatch, user=solo_agenda)
+    assert REGOLA_SPESA in p
+    assert REGOLA not in p
+    assert "prepari tu la registrazione" not in p
+
+
+def test_con_margini_ma_senza_agenda_niente_regola_della_spesa(monkeypatch):
+    p = _prompt(monkeypatch, user=dict(USER, pagine_abilitate={"margini": True}))
+    assert REGOLA in p
+    assert "proponi_spesa" not in p
+
+
+def test_con_tutte_le_pagine_c_e_anche_la_spesa(monkeypatch):
+    assert REGOLA_SPESA in _prompt(monkeypatch)
 
 
 def test_senza_card_nel_client_il_prompt_e_quello_di_prima(monkeypatch):
@@ -44,6 +65,7 @@ def test_senza_card_nel_client_il_prompt_e_quello_di_prima(monkeypatch):
     assert "proponi_" not in p
     assert "prepari tu la registrazione" not in p
     assert "Suggerisci di registrare i ricavi in Movimenti → Ricavi." in p
+    assert REGOLA_SPESA not in p
 
 
 def test_con_card_gli_avvisi_offrono_di_dettare(monkeypatch):
@@ -102,6 +124,13 @@ def test_dopo_mezzanotte_oggi_e_il_giorno_di_roma(monkeypatch):
 def test_le_regole_nominano_solo_strumenti_che_esistono():
     nomi = {t["function"]["name"] for t in fw._CHAT_TOOLS_SEDE}
     assert set(fw._assistente.STRUMENTI_PROPOSTA) <= nomi
-    for nome in fw._assistente.STRUMENTI_PROPOSTA:
-        assert fw._CHAT_TOOL_FLAG[nome] == "margini"
+    pagina_per_strumento = {
+        "proponi_incasso": "incasso_giorno", "proponi_personale": "personale_mese",
+        "proponi_fatturato_mese": "fatturato_mese", "proponi_spesa": "spesa_extra",
+    }
+    assert set(pagina_per_strumento) == set(fw._assistente.STRUMENTI_PROPOSTA)
+    for nome, tipo in pagina_per_strumento.items():
+        # Lo strumento c'e' con la stessa pagina che la Conferma pretende.
+        assert fw._CHAT_TOOL_FLAG[nome] == fw._assistente.PAGINA_PER_TIPO[tipo]
         assert nome not in fw._CHAT_TOOLS_SEDE_IN_CATENA
+    assert fw._CHAT_TOOL_FLAG["proponi_spesa"] == "agenda"

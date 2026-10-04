@@ -3795,6 +3795,7 @@ def _build_chat_system_prompt(
     _pagine_set = set(pagine) if pagine is not None else None
     _pag_margini = _pagine_set is None or "margini" in _pagine_set
     _pag_fatture = _pagine_set is None or "analisi_fatture" in _pagine_set
+    _pag_agenda = _pagine_set is None or "agenda" in _pagine_set
     # Le cifre dettate (fase 3): gli strumenti proponi_* stanno sulla pagina
     # Margini e ci sono solo se il client mostra le card (ChatRequest.card_conferma):
     # la regola non promette cio' che il modello non ha.
@@ -3811,6 +3812,11 @@ def _build_chat_system_prompt(
         "- Le date relative (\"ieri\", \"sabato scorso\") calcolale da oggi e scrivi nella "
         "risposta il giorno per esteso.\n"
     ) if _cifre_dettate else ""
+    _riga_spesa = (
+        "- Se il cliente ti chiede di registrare una SPESA o un acquisto (\"latte 20 euro\", "
+        "\"altri costi F&B di settembre\") usa proponi_spesa: va nelle Spese dell'Agenda, mai "
+        "nel personale. Dalla voce scegli tu la categoria; l'IVA solo se la nomina lui.\n"
+    ) if cifre_dettate and _pag_agenda else ""
     _riga_bozza = _riga_trattativa(_pagine_set, "") + "\n"
     _detta_fatturato = (
         ", oppure di dettarti qui il fatturato del mese: prepari tu la registrazione."
@@ -4277,7 +4283,7 @@ Regole per gli strumenti:
 - Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
 - Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
 - Per appuntamenti e impegni in agenda ("cosa ho oggi", "appuntamenti di questa settimana") usa query_appuntamenti.
-{_riga_coperti}{_riga_cifre}{_riga_bozza}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
+{_riga_coperti}{_riga_cifre}{_riga_spesa}{_riga_bozza}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
 
@@ -5398,7 +5404,8 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             "description": (
                 "Prepara la registrazione del COSTO DEL PERSONALE DI UN MESE dettato dal "
                 "cliente (es. 'il personale di settembre e' 12.000'). NON registra: mostra "
-                "una card con il pulsante Conferma. Solo la cifra detta dal cliente."
+                "una card con il pulsante Conferma. Solo la cifra detta dal cliente. Mai per "
+                "un acquisto o una spesa (latte, merce, una riparazione): quella e' proponi_spesa."
             ),
             "parameters": {
                 "type": "object",
@@ -5436,6 +5443,33 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "proponi_spesa",
+            "description": (
+                "Prepara la registrazione di una SPESA EXTRA dettata dal cliente: un acquisto "
+                "o un costo fuori dalle fatture (es. 'ho comprato latte per 20 euro', 'altri "
+                "costi F&B di settembre 300', 'idraulico 150 con IVA al 22%'). Va nelle Spese "
+                "dell'Agenda. NON registra: mostra una card con il pulsante Conferma. La "
+                "categoria la scegli tu dalla voce (latte -> LATTICINI); chiedila solo se "
+                "davvero non si capisce. Se il cliente non nomina l'IVA l'importo si registra "
+                "com'e': non chiederla."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data": {"type": "string", "description": "Giorno della spesa YYYY-MM-DD"},
+                    "descrizione": {"type": "string", "description": "Cosa e' stato comprato o pagato, in poche parole (es. 'Latte')"},
+                    "categoria": {"type": "string", "enum": list(_assistente.CATEGORIE_SPESA)},
+                    "importo": {"type": "number", "description": "Importo in euro come l'ha detto il cliente"},
+                    "iva": {"type": "integer", "enum": [0, 4, 5, 10, 22],
+                            "description": "Aliquota IVA COMPRESA nell'importo, se il cliente la dice; 0 o assente = senza IVA"},
+                },
+                "required": ["data", "descrizione", "categoria", "importo"],
+            },
+        },
+    },
 ]
 
 # Gate per permessi pagina: la chat offre al modello solo gli strumenti delle
@@ -5454,6 +5488,7 @@ _CHAT_TOOL_FLAG = {
     "proponi_incasso": "margini",
     "proponi_personale": "margini",
     "proponi_fatturato_mese": "margini",
+    "proponi_spesa": "agenda",
 }
 
 

@@ -1,3 +1,5 @@
+import { ALIQUOTE_IVA_COSTI } from "@/lib/iva-costi";
+
 // Chat dell'assistente — logica pura. Dal 28/9/2026 la conversazione vive nel
 // riquadro del briefing della Home (components/home/conversazione-assistente.tsx),
 // non piu' nel pulsante flottante; lo stato sta in AssistenteProvider.
@@ -298,7 +300,7 @@ export function statoDomande(
 // La proposta e' gia' il corpo di quella chiamata: il client la rimanda com'e',
 // senza ricalcolare niente. Il numero sulla card e' il controllo umano.
 
-export type TipoCifra = "incasso_giorno" | "personale_mese" | "fatturato_mese";
+export type TipoCifra = "incasso_giorno" | "personale_mese" | "fatturato_mese" | "spesa_extra";
 
 export type PropostaCifra = {
   tipo: TipoCifra;
@@ -315,6 +317,16 @@ export type PropostaCifra = {
   costo_personale_chiamata?: number | null;
   /** Cio' che la card mostra come «risulta …»; null = nessun valore. */
   precedente?: Record<string, number> | null;
+  /** Spesa extra (fase D): `importo` com'e' stato detto, `iva_inclusa` l'aliquota
+   *  da scorporare (null = senza IVA), `importo_netto` cio' che si registra.
+   *  `id_proposta` diventa l'id della spesa: la Conferma ripetuta non la raddoppia. */
+  categoria?: string | null;
+  descrizione?: string | null;
+  importo?: number | null;
+  iva_inclusa?: number | null;
+  id_proposta?: string | null;
+  importo_netto?: number | null;
+  doppione?: boolean;
 };
 
 /** attesa: Conferma e Annulla; invio: la Conferma e' partita; cambiata: nel
@@ -324,7 +336,7 @@ export type StatoCard = "attesa" | "invio" | "registrata" | "annullata" | "cambi
 
 export type CardCifra = { id: string; proposta: PropostaCifra; stato: StatoCard; messaggio?: string };
 
-const TIPI_CIFRA: readonly string[] = ["incasso_giorno", "personale_mese", "fatturato_mese"];
+const TIPI_CIFRA: readonly string[] = ["incasso_giorno", "personale_mese", "fatturato_mese", "spesa_extra"];
 const STATI_CARD: readonly string[] = ["attesa", "invio", "registrata", "annullata", "cambiata", "errore"];
 
 function importo(x: unknown): x is number {
@@ -351,12 +363,25 @@ export function propostaValida(x: unknown): x is PropostaCifra {
   if (p.sede_nome != null && typeof p.sede_nome !== "string") return false;
   if (p.costo_personale_extra != null && !importo(p.costo_personale_extra)) return false;
   if (p.costo_personale_chiamata != null && !importo(p.costo_personale_chiamata)) return false;
+  if (p.tipo === "spesa_extra") return spesaValida(p);
   if (p.tipo === "incasso_giorno") {
     return typeof p.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.data) && totaleIncasso(p as PropostaCifra) > 0;
   }
   if (!intero(p.anno) || !intero(p.mese) || p.mese < 1 || p.mese > 12) return false;
   if (p.tipo === "personale_mese") return importo(p.costo_dipendenti) && p.costo_dipendenti > 0;
   return totaleIncasso(p as PropostaCifra) > 0;
+}
+
+function testoPieno(x: unknown): x is string {
+  return typeof x === "string" && x.trim().length > 0;
+}
+
+function spesaValida(p: Record<string, unknown>): boolean {
+  if (typeof p.data !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.data)) return false;
+  if (!testoPieno(p.categoria) || !testoPieno(p.descrizione) || !testoPieno(p.id_proposta)) return false;
+  if (!importo(p.importo) || p.importo <= 0 || !importo(p.importo_netto) || p.importo_netto <= 0) return false;
+  if (p.iva_inclusa != null && !(ALIQUOTE_IVA_COSTI as readonly number[]).includes(p.iva_inclusa as number)) return false;
+  return p.doppione === undefined || typeof p.doppione === "boolean";
 }
 
 // Le card di una risposta di /api/chat. `ora` rende gli id unici fra risposte.
@@ -398,6 +423,7 @@ export function totaleIncasso(p: Pick<PropostaCifra, "fatturato_iva10" | "altri_
 const CAMPI_CONFERMA = [
   "tipo", "ristorante_id", "data", "anno", "mese",
   "fatturato_iva10", "altri_ricavi_noiva", "fatturato_iva22", "costo_dipendenti", "precedente",
+  "categoria", "descrizione", "importo", "iva_inclusa", "id_proposta",
 ] as const;
 
 export function corpoConferma(p: PropostaCifra): Record<string, unknown> {
@@ -406,6 +432,8 @@ export function corpoConferma(p: PropostaCifra): Record<string, unknown> {
 
 // I campi che la Conferma scrive, come il server li confronta (al centesimo).
 function giaCosi(p: PropostaCifra, attuale: Record<string, number>): boolean {
+  // Una spesa si aggiunge: non c'e' un valore registrato con cui confrontarla.
+  if (p.tipo === "spesa_extra") return false;
   const dettati: Record<string, number> =
     p.tipo === "personale_mese"
       ? { costo_dipendenti: p.costo_dipendenti ?? 0 }
@@ -444,6 +472,7 @@ export type TestoCard = { titolo: string; sede: string | null; righe: [string, s
 // sostituisce. `annoCorrente` (di Roma) toglie l'anno dai giorni di quest'anno.
 export function testoCard(p: PropostaCifra, annoCorrente: number): TestoCard {
   const sede = p.sede_nome?.trim() || null;
+  if (p.tipo === "spesa_extra") return testoSpesa(p, sede, annoCorrente);
   const quando =
     p.tipo === "incasso_giorno" ? giornoInChiaro(p.data ?? "", annoCorrente) : `${MESI[(p.mese ?? 1) - 1]} ${p.anno}`;
   if (p.tipo === "personale_mese") {
@@ -486,12 +515,38 @@ export function testoCard(p: PropostaCifra, annoCorrente: number): TestoCard {
   };
 }
 
+function testoSpesa(p: PropostaCifra, sede: string | null, annoCorrente: number): TestoCard {
+  const righe: [string, string][] = [
+    ["Voce", p.descrizione ?? ""],
+    ["Categoria", p.categoria ?? ""],
+  ];
+  if (p.iva_inclusa != null) {
+    righe.push([`Con IVA ${p.iva_inclusa}%`, euro(p.importo ?? 0)]);
+    righe.push(["Si registra senza IVA", euro(p.importo_netto ?? 0)]);
+  } else {
+    righe.push(["Importo", euro(p.importo_netto ?? 0)]);
+  }
+  return {
+    titolo: `Spesa extra di ${giornoInChiaro(p.data ?? "", annoCorrente)}`,
+    sede,
+    righe,
+    totale: null,
+    nota: p.doppione ? "C'è già una spesa uguale in questo giorno: confermando ne aggiungi un'altra." : null,
+  };
+}
+
+// Dopo la Conferma di una spesa: dove la trova e come entra nel MOL (fase B:
+// solo con «Recupera», come quelle scritte a mano).
+export const MESSAGGIO_SPESA_REGISTRATA =
+  "Registrata nelle Spese dell'Agenda. Nel MOL entra quando in Margini premi «Recupera dal tab Spese».";
+
 // Com'e' andata la Conferma. Il 409 «valore_cambiato» porta il valore di adesso:
 // diventa il nuovo «risulta …» e si chiede una conferma nuova, mai in automatico.
 export function esitoConferma(status: number, data: unknown, card: CardCifra): CardCifra {
   const detail = data && typeof data === "object" ? (data as { detail?: unknown }).detail : undefined;
   if (status >= 200 && status < 300) {
-    return { ...card, stato: "registrata", messaggio: "Registrato." };
+    const messaggio = card.proposta.tipo === "spesa_extra" ? MESSAGGIO_SPESA_REGISTRATA : "Registrato.";
+    return { ...card, stato: "registrata", messaggio };
   }
   if (status === 409 && detail && typeof detail === "object") {
     const { motivo, attuale } = detail as { motivo?: unknown; attuale?: unknown };

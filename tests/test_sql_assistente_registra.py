@@ -600,3 +600,112 @@ def test_un_rifiuto_non_invalida_niente(scenario, worker, monkeypatch):
     resp = _registra(scenario, a, **_incasso(a.ids["sede1"], giorno=OGGI + timedelta(days=2)))
     assert resp.status_code == 400
     assert chiamate == []
+
+
+# ─── Spesa extra (fase D1 del piano consulente) ───────────────────────────────
+def _spesa(sede, giorno=IERI, **extra):
+    return {"tipo": "spesa_extra", "ristorante_id": sede, "data": giorno.isoformat(),
+            "categoria": "LATTICINI", "descrizione": "Latte", "importo": 20,
+            "id_proposta": str(uuid.uuid4()), **extra}
+
+
+def _spese(sc, sede):
+    """Le spese scritte dal test: lo snapshot ne ha gia' di sue, con altre descrizioni."""
+    return sc.conn.execute(
+        "SELECT id::text, data_spesa, tipo, categoria, descrizione, importo::float, user_id::text "
+        "FROM public.spese_extra WHERE ristorante_id = %s AND descrizione IN ('Latte', 'Idraulico') "
+        "ORDER BY created_at", (sede,),
+    ).fetchall()
+
+
+def test_la_spesa_si_scrive_al_netto_con_l_id_della_proposta(scenario):
+    a = scenario.a
+    corpo = _spesa(a.ids["sede2"], iva_inclusa=4)
+    resp = _registra(scenario, a, **corpo)
+    assert resp.status_code == 200, resp.text
+    assert _spese(scenario, a.ids["sede2"]) == [
+        (corpo["id_proposta"], IERI, "fb", "LATTICINI", "Latte", 19.23, a.ids["user_id"])
+    ]
+    assert _spese(scenario, a.ids["sede1"]) == []
+    assert resp.json()["valori"]["importo"] == 19.23
+
+
+def test_la_spesa_non_tocca_i_margini_del_mese(scenario):
+    a = scenario.a
+    prima = _riga(scenario, "SELECT count(*), coalesce(sum(altri_costi_fb), 0)::float FROM public.margini_mensili "
+                            "WHERE ristorante_id = %s", a.ids["sede1"])
+    assert _registra(scenario, a, **_spesa(a.ids["sede1"])).status_code == 200
+    dopo = _riga(scenario, "SELECT count(*), coalesce(sum(altri_costi_fb), 0)::float FROM public.margini_mensili "
+                           "WHERE ristorante_id = %s", a.ids["sede1"])
+    assert dopo == prima
+
+
+def test_recupera_dal_tab_spese_trova_la_spesa_registrata(scenario):
+    """La promessa della card: nel MOL entra con «Recupera dal tab Spese»."""
+    a = scenario.a
+    giorno = OGGI
+
+    def recupera():
+        resp = scenario.chiama(a, "GET", "/api/margini/costo-spese-extra",
+                               params={"anno": giorno.year, "mese": giorno.month})
+        assert resp.status_code == 200, resp.text
+        return resp.json()["totale_fb"], resp.json()["totale_generale"]
+
+    fb, generale = recupera()
+    assert _registra(scenario, a, **_spesa(a.ids["sede1"], giorno=giorno, importo=110, iva_inclusa=10)).status_code == 200
+    assert _registra(scenario, a, **_spesa(a.ids["sede1"], giorno=giorno, categoria="UTENZE E LOCALI",
+                                           descrizione="Idraulico", importo=50)).status_code == 200
+    assert recupera() == (round(fb + 100, 2), round(generale + 50, 2))
+
+
+def test_conferma_ripetuta_della_spesa_non_la_raddoppia(scenario):
+    a = scenario.a
+    corpo = _spesa(a.ids["sede1"])
+    assert _registra(scenario, a, **corpo).status_code == 200
+    resp = _registra(scenario, a, **corpo)
+    assert resp.status_code == 200, resp.text
+    assert len(_spese(scenario, a.ids["sede1"])) == 1
+
+
+def test_id_proposta_di_una_spesa_altrui_non_scrive_e_non_la_tocca(scenario):
+    a, b = scenario.a, scenario.b
+    corpo_b = _spesa(b.ids["sede1"])
+    assert _registra(scenario, b, **corpo_b).status_code == 200
+    prima = scenario.impronta(b)
+    resp = _registra(scenario, a, **_spesa(a.ids["sede1"], id_proposta=corpo_b["id_proposta"]))
+    assert resp.status_code == 500, resp.text
+    assert _spese(scenario, a.ids["sede1"]) == []
+    assert scenario.impronta(b) == prima
+
+
+def test_la_spesa_sulla_sede_di_un_altro_cliente_e_404(scenario):
+    a, b = scenario.a, scenario.b
+    prima = scenario.impronta(b)
+    assert _registra(scenario, a, **_spesa(b.ids["sede1"])).status_code == 404
+    assert scenario.impronta(b) == prima
+
+
+def test_sotto_utente_con_la_sola_agenda_registra_la_spesa_non_l_incasso(scenario):
+    token = _token_sotto_utente(scenario, {"home": True, "agenda": True, "margini": False})
+    sede = scenario.a.ids["sede1"]
+    assert _con_token(scenario, token, **_spesa(sede)).status_code == 200
+    assert len(_spese(scenario, sede)) == 1
+    assert _con_token(scenario, token, **_incasso(sede)).status_code == 403
+    assert _giorno(scenario, sede, IERI) is None
+
+
+def test_sotto_utente_con_margini_senza_agenda_non_registra_la_spesa(scenario):
+    token = _token_sotto_utente(scenario, {"home": True, "margini": True, "agenda": False})
+    sede = scenario.a.ids["sede1"]
+    assert _con_token(scenario, token, **_spesa(sede)).status_code == 403
+    assert _spese(scenario, sede) == []
+
+
+@pytest.mark.parametrize("campo,valore", [
+    ("categoria", "Da Classificare"), ("importo", 0), ("iva_inclusa", 7), ("descrizione", " "),
+    ("id_proposta", "x"), ("data", (OGGI + timedelta(days=1)).isoformat()),
+])
+def test_spesa_non_valida_e_400_e_non_scrive(scenario, campo, valore):
+    a = scenario.a
+    assert _registra(scenario, a, **_spesa(a.ids["sede1"], **{campo: valore})).status_code == 400
+    assert _spese(scenario, a.ids["sede1"]) == []

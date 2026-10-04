@@ -25871,7 +25871,8 @@
             "enum": [
               "incasso_giorno",
               "personale_mese",
-              "fatturato_mese"
+              "fatturato_mese",
+              "spesa_extra"
             ],
             "title": "Tipo"
           },
@@ -25984,6 +25985,77 @@
               }
             ],
             "title": "Costo Personale Chiamata"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "descrizione": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descrizione"
+          },
+          "importo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo"
+          },
+          "iva_inclusa": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iva Inclusa"
+          },
+          "id_proposta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Proposta"
+          },
+          "importo_netto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo Netto"
+          },
+          "doppione": {
+            "type": "boolean",
+            "title": "Doppione",
+            "default": false
           }
         },
         "type": "object",
@@ -25992,7 +26064,7 @@
           "ristorante_id"
         ],
         "title": "PropostaCifra",
-        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome`, `costo_personale_extra` e\n`costo_personale_chiamata` servono solo a scrivere la card."
+        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome`, `costo_personale_extra`,\n`costo_personale_chiamata`, `importo_netto` e `doppione` servono solo a\nscrivere la card."
       },
       "RankingPV": {
         "properties": {
@@ -26046,7 +26118,8 @@
             "enum": [
               "incasso_giorno",
               "personale_mese",
-              "fatturato_mese"
+              "fatturato_mese",
+              "spesa_extra"
             ],
             "title": "Tipo"
           },
@@ -26126,6 +26199,61 @@
               }
             ],
             "title": "Precedente"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "descrizione": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descrizione"
+          },
+          "importo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo"
+          },
+          "iva_inclusa": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iva Inclusa"
+          },
+          "id_proposta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Proposta"
           }
         },
         "type": "object",

@@ -188,7 +188,7 @@ vista catena si usano anche loro, con una `sede` obbligatoria (§5.3).
 | `ultimi_acquisti` | `_chat_ultimi_acquisti` | "ultimo acquisto", "ultima fattura di X" | ordine data desc; NON per totali |
 | `trend_prezzo` | `_chat_trend_prezzo` | "la mozzarella è aumentata?" | prezzo unitario medio ponderato/mese, ~7 mesi |
 | `query_appuntamenti` | `_chat_query_appuntamenti` | "cosa ho oggi", "appuntamenti questa settimana" | **sola lettura** su `diario_eventi`; default oggi→+7gg (10/6) |
-| `proponi_incasso` / `proponi_personale` / `proponi_fatturato_mese` | `proponi` in `services/routers/assistente.py` | "ieri ho fatto 2.340: 1.800 al 10% e 540 senza IVA" | **non scrivono**: preparano una card con Conferma (§5.4); solo con `card_conferma` e pagina `margini`, mai in catena |
+| `proponi_incasso` / `proponi_personale` / `proponi_fatturato_mese` / `proponi_spesa` | `proponi` in `services/routers/assistente.py` | "ieri ho fatto 2.340: 1.800 al 10% e 540 senza IVA", "latte 20 euro" | **non scrivono**: preparano una card con Conferma (§5.4); solo con `card_conferma` e pagina `margini` (la spesa: `agenda`), mai in catena |
 
 **Ricerca tollerante (`query_costi`, `trend_prezzo`, `confronto_prezzi`):** un
 termine generico viene cercato **sia su categoria sia su descrizione**, con
@@ -287,7 +287,7 @@ Il prompt di catena elenca i punti vendita del gruppo.
 
 ### 5.4 Le cifre dettate: proposta, card, Conferma (fase 3, dal 30/9/2026)
 
-Il cliente detta incasso di un giorno, personale o fatturato di un mese;
+Il cliente detta incasso di un giorno, personale o fatturato di un mese, una spesa extra;
 l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive.
 
 - **Chi le vede.** `ChatRequest.card_conferma` (default `False`) dice che il
@@ -323,9 +323,24 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   (`costo_dipendenti`): la card dice «Lordo» e cita le ore extra e la chiamata
   gia' registrate, che restano (`PropostaCifra.costo_personale_extra` /
   `costo_personale_chiamata`, solo testo). Lo strumento a tre voci e' della fase D.
+- **Spesa extra** (fase D1 del piano consulente, 04/10/2026): `proponi_spesa`
+  (pagina `agenda`, come il form `ws_spese_crea`) prepara una riga di
+  `spese_extra` — categoria scelta dal modello fra `CATEGORIE_SPESA`, tipo
+  derivato da lei (`_tipo_da_categoria`), importo al netto se il cliente nomina
+  l'IVA (4/5/10/22, `utils/iva.py::netto_da_lordo`), com'e' se non la nomina.
+  Anche «altri costi F&B / spese generali del mese» passano da qui, mai dalla
+  cella di Margini: la cella si sovrascrive al primo «Recupera dal tab Spese».
+  Una spesa si aggiunge (niente `precedente`): `id_proposta` diventa l'id della
+  riga, cosi' la Conferma ripetuta non la raddoppia; `doppione` avvisa sulla card
+  se nello stesso giorno c'e' gia' una spesa uguale. Nel MOL entra solo con
+  «Recupera dal tab Spese» (decisione 2 rivista, fase B): lo dicono il modello e
+  il messaggio della card dopo la Conferma (`MESSAGGIO_SPESA_REGISTRATA`). La
+  rotta accetta `margini` o `agenda` (`permessi_rotte.py`), poi controlla la
+  pagina del tipo (`PAGINA_PER_TIPO`).
 - Test: `tests/test_sql_assistente_registra.py`, `tests/test_sql_chat_proposte.py`
   (Postgres vero, due clienti), `tests/test_chat_proposte_prompt.py`,
-  `tests/test_home_chat_frontend.py`.
+  `tests/test_home_chat_frontend.py`, `tests/test_assistente_spesa_extra.py`,
+  `tests/test_spesa_extra_card_frontend.py`.
 
 ### 5.5 Bozze al fornitore: le scrive Score, non l'assistente (dal 3/10/2026)
 

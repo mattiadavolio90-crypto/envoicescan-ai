@@ -91,8 +91,9 @@ PAGINE_PER_ROTTA: Dict[Rotta, FrozenSet[str]] = {
     ("GET", "/api/ricavi/coperti-analisi"): _p(M),
     ("GET", "/api/ricavi/coperti-categorie"): _p(M),
     ("POST", "/api/ricavi/modalita"): _p(M),
-    # La «Conferma» delle cifre dettate all'assistente (incasso, personale, fatturato).
-    ("POST", "/api/assistente/registra"): _p(M),
+    # La «Conferma» delle cifre dettate all'assistente: incasso, personale e
+    # fatturato vogliono Margini, la spesa extra l'Agenda (controllo per tipo nella rotta).
+    ("POST", "/api/assistente/registra"): _p(M, A),
     # Incassi del giorno: anche /m/turni (Agenda su mobile).
     ("GET", "/api/ricavi/giornalieri"): _p(M, A),
     ("POST", "/api/ricavi/giornalieri"): _p(M, A),

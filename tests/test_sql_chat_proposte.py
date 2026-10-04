@@ -349,3 +349,99 @@ def test_sede_attiva_spenta_nessuna_card(scenario, modello):
     assert resp.status_code == 200, resp.text
     assert resp.json()["proposte"] == []
     assert modello["letti"][0]["errore"] == "Sede non trovata"
+
+
+# ─── Spesa extra (fase D1): «latte 20 €» va nelle Spese, non nel personale ────
+SPESA = {"data": IERI.isoformat(), "descrizione": "Latte", "categoria": "LATTICINI", "importo": 20}
+
+
+def _spese_latte(sc, sede):
+    return sc.conn.execute(
+        "SELECT tipo, categoria, importo::float FROM public.spese_extra "
+        "WHERE ristorante_id = %s AND descrizione = 'Latte'", (sede,),
+    ).fetchall()
+
+
+def test_la_spesa_proposta_non_scrive_e_la_conferma_la_registra(scenario, modello):
+    a = scenario.a
+    modello["chiamate"] = [("proponi_spesa", dict(SPESA, iva=4))]
+    resp = _chat(scenario)
+    assert resp.status_code == 200, resp.text
+    [proposta] = resp.json()["proposte"]
+    assert proposta["tipo"] == "spesa_extra"
+    assert (proposta["importo"], proposta["iva_inclusa"], proposta["importo_netto"]) == (20, 4, 19.23)
+    assert proposta["doppione"] is False
+    letto = modello["letti"][0]
+    assert letto["proposta_pronta"] is True and letto["si_registra"] == 19.23
+    assert "Recupera dal tab Spese" in letto["istruzione"]
+    assert _spese_latte(scenario, a.ids["sede1"]) == [], "lo strumento ha scritto"
+
+    assert _conferma(scenario, proposta).status_code == 200
+    assert _spese_latte(scenario, a.ids["sede1"]) == [("fb", "LATTICINI", 19.23)]
+    personale = scenario.conn.execute(
+        "SELECT coalesce(sum(costo_dipendenti), 0)::float FROM public.margini_mensili WHERE ristorante_id = %s",
+        (a.ids["sede1"],),
+    ).fetchone()[0]
+    assert _conferma(scenario, proposta).status_code == 200, "Conferma ripetuta"
+    assert len(_spese_latte(scenario, a.ids["sede1"])) == 1
+    assert scenario.conn.execute(
+        "SELECT coalesce(sum(costo_dipendenti), 0)::float FROM public.margini_mensili WHERE ristorante_id = %s",
+        (a.ids["sede1"],),
+    ).fetchone()[0] == personale
+
+
+def test_senza_iva_nominata_la_spesa_resta_com_e(scenario, modello):
+    modello["chiamate"] = [("proponi_spesa", SPESA)]
+    [proposta] = _chat(scenario).json()["proposte"]
+    assert (proposta["iva_inclusa"], proposta["importo_netto"]) == (None, 20.0)
+    assert modello["letti"][0]["iva_scorporata"] == "nessuna"
+
+
+def test_una_spesa_uguale_gia_presente_e_segnalata_sulla_card(scenario, modello):
+    modello["chiamate"] = [("proponi_spesa", SPESA)]
+    [prima] = _chat(scenario).json()["proposte"]
+    assert _conferma(scenario, prima).status_code == 200
+    [seconda] = _chat(scenario).json()["proposte"]
+    assert seconda["doppione"] is True
+    assert seconda["id_proposta"] != prima["id_proposta"]
+    assert "gia' una spesa uguale" in modello["letti"][0]["attenzione"]
+
+
+def test_due_spese_diverse_sono_due_card(scenario, modello):
+    modello["chiamate"] = [("proponi_spesa", SPESA), ("proponi_spesa", dict(SPESA, descrizione="Panna"))]
+    assert len(_chat(scenario).json()["proposte"]) == 2
+
+
+@pytest.mark.parametrize("args,motivo", [
+    (dict(SPESA, categoria="PERSONALE"), "Categoria non valida"),
+    (dict(SPESA, iva=7), "aliquota IVA non valida"),
+    (dict(SPESA, importo="20,00"), "importo passato come testo"),
+    (dict(SPESA, descrizione=""), "Manca la descrizione"),
+])
+def test_spesa_non_valida_nessuna_card_e_il_motivo(scenario, modello, args, motivo):
+    modello["chiamate"] = [("proponi_spesa", args)]
+    assert _chat(scenario).json()["proposte"] == []
+    assert motivo in modello["letti"][0]["errore"]
+
+
+def test_con_la_sola_agenda_c_e_solo_lo_strumento_della_spesa(scenario, modello):
+    _crea_sotto_utente(scenario.conn, scenario.a.ids["user_id"], "agenda@proposte.test",
+                       [scenario.a.ids["sede1"]], {"home": True, "agenda": True, "margini": False})
+    token = _login(scenario, "agenda@proposte.test").json()["token"]
+    modello["chiamate"] = [("proponi_spesa", SPESA), ("proponi_incasso", INCASSO)]
+    resp = _chat(scenario, token=token)
+    assert [n for n in modello["tools"] if n.startswith("proponi")] == ["proponi_spesa"]
+    [proposta] = resp.json()["proposte"]
+    assert proposta["tipo"] == "spesa_extra"
+    assert "non disponibile" in modello["letti"][1]["errore"]
+
+
+def test_senza_agenda_niente_strumento_della_spesa(scenario, modello):
+    _crea_sotto_utente(scenario.conn, scenario.a.ids["user_id"], "noagenda@proposte.test",
+                       [scenario.a.ids["sede1"]], {"home": True, "margini": True, "agenda": False})
+    token = _login(scenario, "noagenda@proposte.test").json()["token"]
+    modello["chiamate"] = [("proponi_spesa", SPESA)]
+    resp = _chat(scenario, token=token)
+    assert "proponi_spesa" not in modello["tools"]
+    assert resp.json()["proposte"] == []
+    assert "non disponibile" in modello["letti"][0]["errore"]

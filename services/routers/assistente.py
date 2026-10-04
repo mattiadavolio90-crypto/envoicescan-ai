@@ -1,7 +1,7 @@
 """La «Conferma» delle cifre dettate all'assistente (fase 3, M4).
 
 Il modello non scrive mai: propone una card (incasso di un giorno, personale di
-un mese, fatturato di un mese) e la scrittura parte solo da qui, quando il
+un mese, fatturato di un mese, una spesa extra) e la scrittura parte solo da qui, quando il
 cliente preme Conferma. Per questo l'endpoint non si fida di niente di cio' che
 arriva: la sede della proposta si riverifica (dell'account, attiva, non tecnica,
 fra quelle del sotto-utente, con la pagina Margini), i valori si rivalidano, e
@@ -28,9 +28,16 @@ from typing import Any, Dict, Literal, NamedTuple, Optional, Tuple
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from config.constants import SETTORE_RETAIL
+from config.constants import (
+    ALIQUOTE_IVA_COSTI,
+    CATEGORIE_FOOD_BEVERAGE,
+    CATEGORIE_SPESE_GENERALI,
+    SETTORE_RETAIL,
+)
 from config.logger_setup import get_logger
 from services import sotto_utenti_service as _su
+from services.routers.workspace import _tipo_da_categoria, _valida_categoria_spesa
+from utils.iva import netto_da_lordo
 
 logger = get_logger("router_assistente")
 
@@ -66,16 +73,31 @@ router = APIRouter(dependencies=[Depends(_verify_worker_key)])
 TETTO_INCASSO_GIORNO = 100_000.0
 TETTO_FATTURATO_MESE = 500_000.0
 TETTO_PERSONALE_MESE = 300_000.0
+# Spesa extra: la piu' alta sul live il 4/10/2026 era 1.306 €.
+TETTO_SPESA = 50_000.0
+# Le categorie di una spesa extra, nell'ordine del form dell'Agenda.
+CATEGORIE_SPESA = tuple(CATEGORIE_FOOD_BEVERAGE) + tuple(CATEGORIE_SPESE_GENERALI)
+DESCRIZIONE_MAX = 200
 GIORNI_INDIETRO_INCASSO = 60
 MESI_INDIETRO = 12  # il mese corrente e i 12 prima
 
 CAMPI_INCASSO = ("fatturato_iva10", "altri_ricavi_noiva", "fatturato_iva22")
-PAGINA_RICHIESTA = "margini"
+# La spesa extra si scrive dall'Agenda (`/api/workspace/spese`): chi non la vede
+# non la registra nemmeno dalla chat.
+PAGINA_PER_TIPO = {
+    "incasso_giorno": "margini",
+    "personale_mese": "margini",
+    "fatturato_mese": "margini",
+    "spesa_extra": "agenda",
+}
 _TOLLERANZA = 0.005
 
 
+TipoRegistra = Literal["incasso_giorno", "personale_mese", "fatturato_mese", "spesa_extra"]
+
+
 class RegistraRequest(BaseModel):
-    tipo: Literal["incasso_giorno", "personale_mese", "fatturato_mese"]
+    tipo: TipoRegistra
     ristorante_id: str
     data: Optional[str] = None
     anno: Optional[int] = None
@@ -86,6 +108,14 @@ class RegistraRequest(BaseModel):
     costo_dipendenti: Optional[float] = None
     # Il valore mostrato sulla card come «risulta …»; None = nessun valore.
     precedente: Optional[Dict[str, float]] = None
+    # Spesa extra: `importo` com'e' stato detto, `iva_inclusa` l'aliquota da
+    # scorporare (None = gia' senza IVA). `id_proposta` diventa l'id della riga:
+    # una Conferma ripetuta non scrive una seconda spesa.
+    categoria: Optional[str] = None
+    descrizione: Optional[str] = None
+    importo: Optional[float] = None
+    iva_inclusa: Optional[int] = None
+    id_proposta: Optional[str] = None
 
 
 class RegistraResponse(BaseModel):
@@ -147,6 +177,49 @@ def valida_mese(anno: Optional[int], mese: Optional[int], oggi: date) -> Tuple[i
     if indice < corrente - MESI_INDIETRO:
         raise HTTPException(status_code=400, detail="Mese troppo lontano: usa Margini")
     return anno, mese
+
+
+def valida_giorno_spesa(testo: Optional[str], oggi: date) -> date:
+    try:
+        giorno = date.fromisoformat(str(testo or ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida")
+    if giorno > oggi:
+        raise HTTPException(status_code=400, detail="Non si registra una spesa nel futuro")
+    indice = oggi.year * 12 + (oggi.month - 1) - MESI_INDIETRO
+    if giorno < date(indice // 12, indice % 12 + 1, 1):
+        raise HTTPException(status_code=400, detail="Data troppo lontana: usa l'Agenda")
+    return giorno
+
+
+def valida_spesa(body: RegistraRequest, oggi: date) -> Dict[str, Any]:
+    """La riga di `spese_extra` che la Conferma inserisce, con le regole del form
+    dell'Agenda (`ws_spese_crea`): categoria ammessa e tipo derivato da lei,
+    descrizione obbligatoria, importo salvato al netto dell'IVA dichiarata."""
+    giorno = valida_giorno_spesa(body.data, oggi)
+    categoria = _valida_categoria_spesa(body.categoria or "")
+    descrizione = (body.descrizione or "").strip()
+    if not descrizione:
+        raise HTTPException(status_code=400, detail="Manca la descrizione della spesa")
+    if len(descrizione) > DESCRIZIONE_MAX:
+        raise HTTPException(status_code=400, detail="Descrizione troppo lunga")
+    detto = _importo("importo", body.importo)
+    if detto <= 0:
+        raise HTTPException(status_code=400, detail="L'importo deve essere maggiore di zero")
+    if detto > TETTO_SPESA:
+        raise HTTPException(status_code=400, detail="Importo fuori scala: controlla la cifra")
+    if body.iva_inclusa is None:
+        netto = detto
+    elif body.iva_inclusa in ALIQUOTE_IVA_COSTI:
+        netto = netto_da_lordo(detto, body.iva_inclusa)
+    else:
+        raise HTTPException(status_code=400, detail="Aliquota IVA non valida (4, 5, 10 o 22)")
+    try:
+        id_riga = str(uuid.UUID(str(body.id_proposta)))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=400, detail="Proposta non valida")
+    return {"id": id_riga, "data_spesa": giorno.isoformat(), "tipo": _tipo_da_categoria(categoria),
+            "categoria": categoria, "descrizione": descrizione, "importo": netto}
 
 
 def _uguali(precedente: Optional[Dict[str, float]], attuale: Optional[Dict[str, float]]) -> bool:
@@ -405,10 +478,36 @@ def _registra_personale(sb, user, rid: str, body: RegistraRequest) -> Dict[str, 
     return {"anno": anno, "mese": mese, "costo_dipendenti": valore}
 
 
+def _registra_spesa(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
+    """Una spesa si aggiunge, non sostituisce niente: non c'e' un «risulta …» da
+    confrontare. Il doppione lo evita l'id della proposta: se l'insert fallisce
+    perche' la riga c'e' gia' (Conferma ripetuta, risposta persa) e' la stessa
+    spesa, ed e' un successo."""
+    riga = valida_spesa(body, _oggi())
+    try:
+        sb.table("spese_extra").insert(
+            {**riga, "ristorante_id": rid, "user_id": str(user["id"])}
+        ).execute()
+    except Exception as exc:
+        logger.warning("assistente/registra: insert spese_extra non riuscito: %s", exc)
+        gia = (
+            sb.table("spese_extra")
+            .select("id, importo")
+            .eq("id", riga["id"])
+            .eq("ristorante_id", rid)
+            .limit(1)
+            .execute()
+        )
+        if not gia.data or abs(_num(gia.data[0].get("importo")) - riga["importo"]) >= _TOLLERANZA:
+            raise HTTPException(status_code=500, detail="Registrazione non riuscita")
+    return {k: riga[k] for k in ("data_spesa", "tipo", "categoria", "descrizione", "importo")}
+
+
 _REGISTRA = {
     "incasso_giorno": _registra_incasso,
     "fatturato_mese": _registra_fatturato_mese,
     "personale_mese": _registra_personale,
+    "spesa_extra": _registra_spesa,
 }
 
 
@@ -434,7 +533,7 @@ def _invalida(user_id: str, rid: str, sb) -> None:
              dependencies=[Depends(_verify_worker_key)])
 def assistente_registra(body: RegistraRequest, authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
-    if not _su.ha_pagina(user, PAGINA_RICHIESTA):
+    if not _su.ha_pagina(user, PAGINA_PER_TIPO[body.tipo]):
         raise HTTPException(status_code=403, detail="Pagina non consentita per questo utente")
     sb = _get_supabase_client()
     rid = sede_scrivibile(user, sb, body.ristorante_id)
@@ -449,7 +548,7 @@ def assistente_registra(body: RegistraRequest, authorization: Optional[str] = He
 # stesse regole della Conferma e si legge il valore attuale con le stesse letture,
 # cosi' la card non propone mai cio' che la Conferma rifiuterebbe. Niente si
 # scrive: la proposta torna al cliente nella risposta della chat.
-STRUMENTI_PROPOSTA = ("proponi_incasso", "proponi_personale", "proponi_fatturato_mese")
+STRUMENTI_PROPOSTA = ("proponi_incasso", "proponi_personale", "proponi_fatturato_mese", "proponi_spesa")
 MAX_PROPOSTE = 3
 
 _MESI = ("", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio",
@@ -458,9 +557,10 @@ _MESI = ("", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "lugl
 
 class PropostaCifra(BaseModel):
     """Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra
-    (il frontend lo rimanda cosi' com'e'); `sede_nome`, `costo_personale_extra` e
-    `costo_personale_chiamata` servono solo a scrivere la card."""
-    tipo: Literal["incasso_giorno", "personale_mese", "fatturato_mese"]
+    (il frontend lo rimanda cosi' com'e'); `sede_nome`, `costo_personale_extra`,
+    `costo_personale_chiamata`, `importo_netto` e `doppione` servono solo a
+    scrivere la card."""
+    tipo: TipoRegistra
     ristorante_id: str
     sede_nome: Optional[str] = None
     data: Optional[str] = None
@@ -473,10 +573,20 @@ class PropostaCifra(BaseModel):
     precedente: Optional[Dict[str, float]] = None
     costo_personale_extra: Optional[float] = None
     costo_personale_chiamata: Optional[float] = None
+    categoria: Optional[str] = None
+    descrizione: Optional[str] = None
+    importo: Optional[float] = None
+    iva_inclusa: Optional[int] = None
+    id_proposta: Optional[str] = None
+    importo_netto: Optional[float] = None
+    doppione: bool = False
 
 
 def chiave_proposta(p: PropostaCifra) -> Tuple[str, Any]:
-    """Due proposte sulla stessa cifra nella stessa risposta: vale l'ultima."""
+    """Due proposte sulla stessa cifra nella stessa risposta: vale l'ultima. Due
+    spese diverse nello stesso giorno sono due card."""
+    if p.tipo == "spesa_extra":
+        return (p.tipo, (p.data, p.categoria, (p.descrizione or "").lower(), p.importo, p.iva_inclusa))
     return (p.tipo, p.data if p.tipo == "incasso_giorno" else (p.anno, p.mese))
 
 
@@ -519,6 +629,8 @@ def proponi(nome: str, args: Dict[str, Any], *, user: Dict[str, Any], sb,
             return _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi, settore)
         if nome == "proponi_personale":
             return _proponi_personale(args, sb, rid, sede_nome, oggi)
+        if nome == "proponi_spesa":
+            return _proponi_spesa(args, sb, rid, sede_nome, oggi)
         return None, {"errore": f"strumento sconosciuto: {nome}"}
     except HTTPException as exc:
         motivo = exc.detail if isinstance(exc.detail, str) else "richiesta non valida"
@@ -623,4 +735,62 @@ def _proponi_personale(args, sb, rid, sede_nome, oggi):
         al_modello["extra_gia_registrati"] = extra
     if chiamata:
         al_modello["chiamata_gia_registrata"] = chiamata
+    return proposta, al_modello
+
+
+_PRONTA_SPESA = (
+    _PRONTA + " Digli anche che la spesa va nelle Spese dell'Agenda e che nel MOL entra "
+    "quando in Margini preme «Recupera dal tab Spese»."
+)
+
+
+def _aliquota_detta(args: Dict[str, Any]) -> Tuple[Optional[int], Optional[Dict[str, Any]]]:
+    """(aliquota o None, errore per il modello). 0 o assente = importo senza IVA."""
+    if args.get("iva") is None:
+        return None, None
+    aliquota = _intero(args, "iva")
+    if aliquota == 0:
+        return None, None
+    if aliquota in ALIQUOTE_IVA_COSTI:
+        return aliquota, None
+    return None, {"errore": "aliquota IVA non valida",
+                  "cosa_fare": "Le aliquote sono 4, 5, 10 o 22; 0 se l'importo e' senza IVA."}
+
+
+def _proponi_spesa(args, sb, rid, sede_nome, oggi):
+    if isinstance(args.get("importo"), str):
+        return None, _IMPORTO_IN_TESTO
+    aliquota, errore = _aliquota_detta(args)
+    if errore:
+        return None, errore
+    corpo = RegistraRequest(
+        tipo="spesa_extra", ristorante_id=rid, data=args.get("data"),
+        categoria=str(args.get("categoria") or "").strip().upper(),
+        descrizione=args.get("descrizione"), importo=_numero(args, "importo"),
+        iva_inclusa=aliquota, id_proposta=str(uuid.uuid4()),
+    )
+    riga = valida_spesa(corpo, oggi)
+    simili = (
+        sb.table("spese_extra")
+        .select("id")
+        .eq("ristorante_id", rid)
+        .eq("data_spesa", riga["data_spesa"])
+        .eq("categoria", riga["categoria"])
+        .eq("importo", riga["importo"])
+        .limit(1)
+        .execute()
+    )
+    doppione = bool(simili.data)
+    proposta = PropostaCifra(
+        tipo="spesa_extra", ristorante_id=rid, sede_nome=sede_nome, data=riga["data_spesa"],
+        categoria=riga["categoria"], descrizione=riga["descrizione"], importo=corpo.importo,
+        iva_inclusa=aliquota, id_proposta=riga["id"], importo_netto=riga["importo"], doppione=doppione,
+    )
+    al_modello = {"proposta_pronta": True, "giorno": riga["data_spesa"], "descrizione": riga["descrizione"],
+                  "categoria": riga["categoria"], "si_registra": riga["importo"],
+                  "iva_scorporata": f"{aliquota}%" if aliquota else "nessuna",
+                  "istruzione": _PRONTA_SPESA}
+    if doppione:
+        al_modello["attenzione"] = ("c'e' gia' una spesa uguale in questo giorno: confermando se ne "
+                                    "aggiunge un'altra. Diglielo.")
     return proposta, al_modello
