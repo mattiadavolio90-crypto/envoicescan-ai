@@ -3684,15 +3684,40 @@ def _chat_nome_sede(ristorante_id: Optional[str], supabase_client) -> Optional[s
         return None
 
 
+def _vede_score(pagine) -> bool:
+    return pagine is None or ("prezzi" in pagine and f"{_TAB_OFF_PREFIX}prezzi_score" not in pagine)
+
+
 def _riga_trattativa(pagine, dove: str) -> str:
     """Le bozze al fornitore non le scrive l'assistente (Mattia, 3/10/2026): stanno
     gia' pronte in Score Fornitori, e ci si rimanda solo chi quella scheda la vede."""
     riga = "- Non scrivere messaggi o bozze per trattare con un fornitore e non offrirti di farlo"
-    score = pagine is None or ("prezzi" in pagine and f"{_TAB_OFF_PREFIX}prezzi_score" not in pagine)
-    if not score:
+    if not _vede_score(pagine):
         return riga + "."
     return (riga + ": se il cliente te li chiede, digli che li trova pronti, con i suoi acquisti, "
             f"in Osservatorio → Score Fornitori{dove}.")
+
+
+import re as _re_chat
+
+_CHIEDE_BOZZA = _re_chat.compile(
+    r"\b(bozz[ae]|e-?mail|mail|messaggi[oa]?|lettera|whatsapp|trattativ[ae]|trattare|negoziare"
+    r"|scriv\w*\s+(a|al|allo|alla|ai|agli))\b",
+    _re_chat.IGNORECASE,
+)
+
+
+def _rimando_score(domanda: str, reply: str, pagine, dove: str = "") -> str:
+    """La regola del prompt non basta: il 5/10/2026, a «ho bisogno che scrivi una
+    bozza per un fornitore», la chat ha risposto «non scrivo bozze» senza dire dove
+    sono. Se la domanda chiede di scrivere a un fornitore e la risposta non nomina
+    Score Fornitori, il rimando lo aggiunge il codice."""
+    if not reply or not _vede_score(pagine) or "score fornitori" in reply.lower():
+        return reply
+    if "fornitor" not in (domanda or "").lower() or not _CHIEDE_BOZZA.search(domanda):
+        return reply
+    return (reply.rstrip() + "\n\nLe bozze per trattare con un fornitore le trovi gia' pronte, "
+            f"con i tuoi acquisti, in Osservatorio → Score Fornitori{dove}.")
 
 
 def _build_chat_system_prompt(
@@ -3809,14 +3834,30 @@ def _build_chat_system_prompt(
         "cliente vede sotto la tua risposta. Non dire mai che la cifra e' registrata: riepiloga "
         "cosa stai per registrare e digli di premere Conferma.\n"
         f"- {_divisione_iva}\n"
-        "- Le date relative (\"ieri\", \"sabato scorso\") calcolale da oggi e scrivi nella "
-        "risposta il giorno per esteso.\n"
+        "- Il personale ha tre voci: lordo (gli stipendi), ore extra e chiamata. Registra solo "
+        "quelle che il cliente nomina e non chiedere le altre.\n"
     ) if _cifre_dettate else ""
     _riga_spesa = (
         "- Se il cliente ti chiede di registrare una SPESA o un acquisto (\"latte 20 euro\", "
         "\"altri costi F&B di settembre\") usa proponi_spesa: va nelle Spese dell'Agenda, mai "
         "nel personale. Dalla voce scegli tu la categoria; l'IVA solo se la nomina lui.\n"
+        "- Per una spesa bastano cosa e quanto (il giorno, se non lo dice, e' oggi): se manca "
+        "qualcosa chiedi solo quello, senza nominare l'IVA o la categoria, e non chiedere di "
+        "dividerla fra 10%, 22% e senza IVA, che vale solo per gli incassi. Se nomina "
+        "l'aliquota, anche il 4% o il 5%, passala allo strumento.\n"
     ) if cifre_dettate and _pag_agenda else ""
+    # Comuni a tutte le registrazioni: anche un sotto-utente con l'Agenda e senza
+    # Margini deve calcolare «ieri» da oggi (rilievo del revisore sulla D1).
+    _riga_domande = (
+        "- Per preparare una registrazione chiedi solo cio' che manca davvero, UNA domanda alla "
+        "volta, e mai cio' che il cliente ha gia' detto in questa conversazione. Appena hai il "
+        "necessario prepara subito la card, senza chiedere \"confermi?\" a parole: la conferma "
+        "e' il pulsante Conferma.\n"
+        "- Se quello che vuole registrare non e' fra questi strumenti, diglielo: non usarne mai "
+        "uno che non c'entra.\n"
+        "- Le date relative (\"ieri\", \"stamattina\", \"sabato scorso\") calcolale da oggi e "
+        "scrivi nella risposta il giorno per esteso.\n"
+    ) if _cifre_dettate or _riga_spesa else ""
     _riga_bozza = _riga_trattativa(_pagine_set, "") + "\n"
     _detta_fatturato = (
         ", oppure di dettarti qui il fatturato del mese: prepari tu la registrazione."
@@ -4283,7 +4324,7 @@ Regole per gli strumenti:
 - Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
 - Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
 - Per appuntamenti e impegni in agenda ("cosa ho oggi", "appuntamenti di questa settimana") usa query_appuntamenti.
-{_riga_coperti}{_riga_cifre}{_riga_spesa}{_riga_bozza}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
+{_riga_coperti}{_riga_cifre}{_riga_spesa}{_riga_domande}{_riga_bozza}- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
 
@@ -4341,7 +4382,7 @@ NON inventare benchmark diversi da questi."""
     # Fase 3: si rimanda alla Home del locale solo se quella Home mostra la card
     # (lo stesso client che la mostra lo dichiara anche qui).
     _riga_cifre_catena = (
-        "\n- Se il cliente ti detta una cifra da registrare (incasso, personale, fatturato), "
+        "\n- Se il cliente ti detta una cifra da registrare (incasso, spesa, personale, fatturato), "
         f"qui non si registra: spiega che basta aprire la Home di quel {_singolo_pv} e dirla li'."
     ) if cifre_dettate else ""
     _riga_bozza_catena = "\n" + _riga_trattativa(
@@ -5711,6 +5752,10 @@ def _chat_esegui_tool_catena(
     tags=["Chat"],
     dependencies=[Depends(_verify_worker_key)],
 )
+def _ultima_domanda(body: ChatRequest) -> str:
+    return next((m.content for m in reversed(body.messages) if m.role == "user"), "")
+
+
 def chat_ai(
     body: ChatRequest,
     authorization: Optional[str] = Header(None),
@@ -5926,6 +5971,10 @@ def chat_ai(
         except Exception as exc:
             logger.warning("chat catena: tracking costi fallito (non blocca): %s", exc)
         logger.info("chat_ai[catena]: user=%s domande_oggi=%d", user.get("email"), domande_oggi)
+        reply = _rimando_score(
+            _ultima_domanda(body), reply, _normalize_pagine(user.get("pagine_abilitate")),
+            f", aprendo quel {'punto vendita' if settore_chat == SETTORE_RETAIL else 'locale'}",
+        )
         return ChatResponse(
             reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
             domande_oggi=domande_oggi,
@@ -5972,6 +6021,8 @@ def chat_ai(
     reply, _prompt_tok, _completion_tok = _chat_loop_openai(
         client, messages, tools, _esegui_tool, log_ctx="chat[sede]",
     )
+    reply = _rimando_score(
+        _ultima_domanda(body), reply, _normalize_pagine(user.get("pagine_abilitate")))
 
     # Tracking costi monetari nel ledger AI (fail-safe: non blocca la risposta).
     # Alimenta il ledger dei consumi AI (pannello admin), come la categorizzazione.

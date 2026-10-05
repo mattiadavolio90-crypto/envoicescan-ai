@@ -351,6 +351,15 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   il messaggio della card dopo la Conferma (`MESSAGGIO_SPESA_REGISTRATA`). La
   rotta accetta `margini` o `agenda` (`permessi_rotte.py`), poi controlla la
   pagina del tipo (`PAGINA_PER_TIPO`).
+- **Come chiede** (fase D3, 05/10/2026, dalla conversazione del latte):
+  `_riga_domande`, presente se c'e' almeno uno strumento `proponi_*` — UNA
+  domanda alla volta, mai cio' che e' gia' stato detto, card subito senza
+  «confermi?» a parole, mai uno strumento che non c'entra, date relative da oggi
+  (prima stava solo fra le regole di Margini: il sotto-utente con la sola Agenda
+  non l'aveva). Per la spesa bastano cosa e quanto: niente IVA ne' categoria
+  nella domanda, niente divisione 10/22/senza IVA (e' degli incassi). Il
+  personale: solo le voci nominate. Provato col modello vero sulle frasi degli
+  screen (9 su 9 «premi Conferma», contro 5 «puoi confermare?» su 9 prima).
 - Test: `tests/test_sql_assistente_registra.py`, `tests/test_sql_chat_proposte.py`
   (Postgres vero, due clienti), `tests/test_chat_proposte_prompt.py`,
   `tests/test_home_chat_frontend.py`, `tests/test_assistente_registra_validazioni.py`,
@@ -368,12 +377,19 @@ card e campo della risposta sono stati tolti.
   trattare con un fornitore e non si offre di farlo. A chi vede Osservatorio →
   Score Fornitori (pagina `prezzi` senza `tab_off_prezzi_score`, o nessuna
   restrizione) dice che li trova pronti li'; in catena «aprendo quel locale».
+- **Il rimando lo garantisce il codice** (fase D3, 05/10/2026). A «ho bisogno
+  che scrivi una bozza per un fornitore» il modello ha risposto «non scrivo
+  bozze» senza nominare Score, con la regola nel prompt. `_rimando_score` guarda
+  l'ultima domanda (`_ultima_domanda`): se nomina un fornitore e chiede di
+  scrivergli (`_CHIEDE_BOZZA`: bozza, mail, messaggio, lettera, trattare, «scrivo
+  al…») e la risposta non nomina Score Fornitori, aggiunge la frase. Solo a chi
+  vede la scheda (`_vede_score`, la stessa condizione del prompt).
 - **Dove sta la bozza.** `_bozza_trattativa` in `services/routers/prezzi.py`,
   resa da `prezzi/score-tab.tsx` con il `CopyButton` comune
   (`components/ui/copy-button.tsx`).
 - Una conversazione salvata prima del 3/10 con delle bozze: `parseConversazione`
   le scarta (si tengono solo i campi noti).
-- Test: `tests/test_chat_bozza_prompt.py`.
+- Test: `tests/test_chat_bozza_prompt.py`, `tests/test_chat_rimando_score.py`.
 
 ## 6. Il system prompt (`_build_chat_system_prompt`)
 
@@ -526,6 +542,11 @@ reale del cliente.
 ---
 
 ## Changelog rilevante
+
+- **5/10/2026 (piano assistente consulente, fase D3; non ancora pushato al
+  momento della nota)** — regole su come chiede nelle registrazioni (§5.4) e
+  rimando a Score Fornitori garantito dal codice (§5.5); la catena nomina anche
+  la spesa fra le cifre che non registra.
 
 - **3/10/2026 (piano assistente consulente, fase A; non ancora pushato al
   momento della nota)** — bozze al fornitore spente (§5.5): via lo strumento

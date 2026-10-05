@@ -156,3 +156,72 @@ def test_gli_incassi_hanno_solo_10_22_e_senza_iva(nome):
     """Mattia, 5/10/2026: niente 4/5% sugli incassi."""
     par = _parametri(nome)
     assert set(par["properties"]) - {"data", "anno", "mese"} == {"iva10", "senza_iva", "iva22"}
+
+
+# ─── Fase D3: come si chiede (la conversazione del latte, screen 1-2) ───────
+#
+# «inseriamo una spesa di stamattina» → la chat chiedeva la divisione fra 10%,
+# 22% e senza IVA (quella degli incassi); «latte 20€» → chiedeva l'IVA; poi
+# «e' food? generica o di un fornitore?», poi «Confermi?» a parole, e solo dopo
+# «ok» la card. Le regole sotto sono quelle che quella conversazione ha violato.
+
+UNA_DOMANDA = "UNA domanda alla volta, e mai cio' che il cliente ha gia' detto in questa conversazione"
+NIENTE_CONFERMI = "senza chiedere \"confermi?\" a parole: la conferma e' il pulsante Conferma"
+DATE = "Le date relative (\"ieri\", \"stamattina\", \"sabato scorso\") calcolale da oggi"
+SPESA_SENZA_DOMANDE = (
+    "Per una spesa bastano cosa e quanto (il giorno, se non lo dice, e' oggi): se manca "
+    "qualcosa chiedi solo quello, senza nominare l'IVA o la categoria, e non chiedere di "
+    "dividerla fra 10%, 22% e senza IVA, che vale solo per gli incassi."
+)
+TRE_VOCI = "Il personale ha tre voci: lordo (gli stipendi), ore extra e chiamata."
+NON_CENTRA = "non usarne mai uno che non c'entra"
+
+
+def test_le_regole_del_latte_ci_sono(monkeypatch):
+    p = _prompt(monkeypatch)
+    for regola in (UNA_DOMANDA, NIENTE_CONFERMI, DATE, SPESA_SENZA_DOMANDE, TRE_VOCI, NON_CENTRA):
+        assert regola in p, regola
+    assert "anche il 4% o il 5%, passala allo strumento" in p
+
+
+def test_le_regole_comuni_stanno_dopo_quelle_degli_strumenti(monkeypatch):
+    """Una volta sola, fra gli strumenti e la regola delle bozze."""
+    p = _prompt(monkeypatch)
+    assert p.count(UNA_DOMANDA) == 1 and p.count(DATE) == 1
+    assert p.index(REGOLA_SPESA) < p.index(UNA_DOMANDA) < p.index("Non scrivere messaggi o bozze")
+
+
+def test_con_la_sola_agenda_le_date_relative_ci_sono(monkeypatch):
+    """Rilievo (a) del revisore sulla D1: il sotto-utente con l'Agenda e senza
+    Margini ha la spesa, e la regola su «ieri» stava solo fra quelle di Margini."""
+    solo_agenda = dict(USER, pagine_abilitate={"analisi_fatture": True, "agenda": True})
+    p = _prompt(monkeypatch, user=solo_agenda)
+    assert DATE in p and UNA_DOMANDA in p and SPESA_SENZA_DOMANDE in p
+    assert TRE_VOCI not in p
+
+
+def test_con_i_soli_margini_niente_regola_della_spesa_ma_le_comuni_si(monkeypatch):
+    p = _prompt(monkeypatch, user=dict(USER, pagine_abilitate={"margini": True}))
+    assert UNA_DOMANDA in p and DATE in p and TRE_VOCI in p
+    assert SPESA_SENZA_DOMANDE not in p
+
+
+def test_senza_strumenti_nessuna_regola_su_come_chiedere(monkeypatch):
+    for p in (
+        _prompt(monkeypatch, cifre=False),
+        _prompt(monkeypatch, user=dict(USER, pagine_abilitate={"analisi_fatture": True})),
+    ):
+        for regola in (UNA_DOMANDA, NIENTE_CONFERMI, DATE, SPESA_SENZA_DOMANDE, TRE_VOCI):
+            assert regola not in p, regola
+
+
+def test_la_spesa_accetta_il_4_che_il_cliente_ha_detto():
+    """«iva 4% compreso»: la chat rispondeva che il 4% non e' gestito."""
+    spesa = next(t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == "proponi_spesa")
+    assert {4, 5} <= set(spesa["function"]["parameters"]["properties"]["iva"]["enum"])
+
+
+def test_la_catena_nomina_anche_la_spesa(monkeypatch):
+    """Rilievo (b) del revisore sulla D1."""
+    p = _prompt_catena(monkeypatch, SETTORE_RISTORAZIONE)
+    assert "una cifra da registrare (incasso, spesa, personale, fatturato)" in p
