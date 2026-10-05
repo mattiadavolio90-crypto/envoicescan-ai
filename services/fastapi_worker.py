@@ -5745,6 +5745,10 @@ def _chat_esegui_tool_catena(
     return _chat_esegui_tool_gruppo(nome, args, authorization)
 
 
+def _ultima_domanda(body: ChatRequest) -> str:
+    return next((m.content for m in reversed(body.messages) if m.role == "user"), "")
+
+
 @app.post(
     "/api/chat",
     response_model=ChatResponse,
@@ -5752,10 +5756,6 @@ def _chat_esegui_tool_catena(
     tags=["Chat"],
     dependencies=[Depends(_verify_worker_key)],
 )
-def _ultima_domanda(body: ChatRequest) -> str:
-    return next((m.content for m in reversed(body.messages) if m.role == "user"), "")
-
-
 def chat_ai(
     body: ChatRequest,
     authorization: Optional[str] = Header(None),
