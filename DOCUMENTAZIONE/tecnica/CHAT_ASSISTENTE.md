@@ -381,9 +381,10 @@ card e campo della risposta sono stati tolti.
   che scrivi una bozza per un fornitore» il modello ha risposto «non scrivo
   bozze» senza nominare Score, con la regola nel prompt. `_rimando_score` guarda
   l'ultima domanda (`_ultima_domanda`): se nomina un fornitore e chiede di
-  scrivergli (`_CHIEDE_BOZZA`: bozza, lettera, trattare, «scrivo al…»; mail e
-  messaggio solo dopo un verbo come «scrivi» o «prepara», perche' «qual e' la
-  mail del fornitore?» e' una domanda di informazione) e la risposta non nomina
+  scrivergli (`_CHIEDE_BOZZA`: bozza, lettera, trattare, «cosa dire», «scrivo
+  al…»; mail e messaggio solo a tre parole al massimo da un verbo come «scrivi»,
+  «prepara», «manda», «invia», «rispondi», perche' «qual e' la mail del
+  fornitore?» e' una domanda di informazione) e la risposta non nomina
   Score Fornitori, aggiunge la frase. Solo a chi
   vede la scheda (`_vede_score`, la stessa condizione del prompt).
 - **Dove sta la bozza.** `_bozza_trattativa` in `services/routers/prezzi.py`,

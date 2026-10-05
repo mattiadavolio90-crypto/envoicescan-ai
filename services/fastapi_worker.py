@@ -3701,11 +3701,13 @@ def _riga_trattativa(pagine, dove: str) -> str:
 import re as _re_chat
 
 # «mail» e «messaggio» da soli sono anche domande di sola informazione («qual e' la
-# mail del fornitore?», «mi ha mandato una mail»): contano solo dopo un verbo
-# che chiede di scrivere.
+# mail del fornitore?», «mi ha mandato una mail»): contano solo a poche parole da
+# un verbo che chiede di scriverla o mandarla («mandami», «mandato» restano fuori).
 _CHIEDE_BOZZA = _re_chat.compile(
-    r"\b(bozz[ae]|lettera|trattare|negoziare|scriv\w*\s+(a|al|allo|alla|ai|agli))\b"
-    r"|\b(scriv\w*|prepar\w*|redig\w*|fammi|fai)\b[^.?!]*\b(e-?mail|mail|messaggi[oa]?|whatsapp)\b",
+    r"\b(bozz[ae]|lettera|trattare|negoziare|cosa\s+(dire|scrivere)"
+    r"|scriv\w*\s+(a|al|allo|alla|ai|agli))\b"
+    r"|\b(scriv\w*|prepar\w*|redig\w*|compon\w*|rispond\w*|invi\w*|manda|mandare|mandargli"
+    r"|fammi|fai|aiutami\s+con)(\W+\w+){0,3}?\W+(e-?mail|mail|messaggi[oa]?|whatsapp)\b",
     _re_chat.IGNORECASE,
 )
 
