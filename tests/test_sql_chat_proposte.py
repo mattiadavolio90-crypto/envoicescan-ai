@@ -174,32 +174,6 @@ def test_le_tre_voci_dettate_e_la_loro_conferma(scenario, modello):
     assert _personale_del_mese(scenario, a.ids["sede1"]) == (7320.0, 688.0, 150.0)
 
 
-# ─── Incassi al 4% e al 5% ────────────────────────────────────────────────────
-def test_incasso_col_4_si_registra_senza_iva(scenario, modello):
-    a = scenario.a
-    modello["chiamate"] = [("proponi_incasso", {**INCASSO, "iva4": 208, "iva5": 105})]
-    [proposta] = _chat(scenario).json()["proposte"]
-    assert (proposta["altri_ricavi_noiva"], proposta["iva4"], proposta["iva5"]) == (840, 208, 105)
-    assert modello["letti"][0]["iva_ridotta"] == {"al_4%": {"detto": 208, "senza_iva": 200},
-                                                  "al_5%": {"detto": 105, "senza_iva": 100}}
-    assert _giorno(scenario, a.ids["sede1"]) is None, "lo strumento ha scritto"
-    assert _conferma(scenario, proposta).status_code == 200
-    assert _giorno(scenario, a.ids["sede1"])[:2] == (1800.0, 840.0)
-
-
-def test_fatturato_del_mese_col_5_si_registra_senza_iva(scenario, modello):
-    modello["chiamate"] = [("proponi_fatturato_mese", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month,
-                                                       "iva10": 30000, "senza_iva": 2000, "iva5": 1050})]
-    [proposta] = _chat(scenario).json()["proposte"]
-    assert (proposta["altri_ricavi_noiva"], proposta["iva5"]) == (3000, 1050)
-    assert _conferma(scenario, proposta).status_code == 200
-    assert scenario.conn.execute(
-        "SELECT altri_ricavi_noiva::float FROM public.ricavi_modalita_mensile "
-        "WHERE ristorante_id = %s AND anno = %s AND mese = %s",
-        (scenario.a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
-    ).fetchone() == (3000.0,)
-
-
 def test_fatturato_del_mese_e_la_sua_conferma(scenario, modello):
     modello["chiamate"] = [("proponi_fatturato_mese", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month,
                                                        "iva10": 30000, "senza_iva": 2000, "iva22": 500})]

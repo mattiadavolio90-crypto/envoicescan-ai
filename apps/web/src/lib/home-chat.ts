@@ -1,4 +1,4 @@
-import { ALIQUOTE_IVA_COSTI, nettoDaLordo } from "@/lib/iva-costi";
+import { ALIQUOTE_IVA_COSTI } from "@/lib/iva-costi";
 
 // Chat dell'assistente — logica pura. Dal 28/9/2026 la conversazione vive nel
 // riquadro del briefing della Home (components/home/conversazione-assistente.tsx),
@@ -318,10 +318,6 @@ export type PropostaCifra = {
   costo_personale_extra?: number | null;
   costo_personale_chiamata?: number | null;
   restano?: Record<string, number> | null;
-  /** Incassi al 4% e al 5% com'erano detti (lordi): sono gia' in
-   *  `altri_ricavi_noiva`, senza IVA. Solo per la card. */
-  iva4?: number | null;
-  iva5?: number | null;
   /** Cio' che la card mostra come «risulta …»; null = nessun valore. */
   precedente?: Record<string, number> | null;
   /** Spesa extra (fase D): `importo` com'e' stato detto, `iva_inclusa` l'aliquota
@@ -381,8 +377,6 @@ export function propostaValida(x: unknown): x is PropostaCifra {
   if (p.sede_nome != null && typeof p.sede_nome !== "string") return false;
   for (const k of VOCI_PERSONALE) if (p[k] != null && !importo(p[k])) return false;
   if (p.restano != null && !valoriValidi(p.restano)) return false;
-  if (p.iva4 != null && !importo(p.iva4)) return false;
-  if (p.iva5 != null && !importo(p.iva5)) return false;
   if (p.tipo === "spesa_extra") return spesaValida(p);
   if (p.tipo === "incasso_giorno") {
     return typeof p.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.data) && totaleIncasso(p as PropostaCifra) > 0;
@@ -513,20 +507,12 @@ export function testoCard(p: PropostaCifra, annoCorrente: number): TestoCard {
         fatturato_iva22: p.precedente.fatturato_iva22 ?? 0,
       })
     : null;
-  // Il 4% e il 5% sono gia' dentro «Senza IVA», tolta l'IVA: la card lo dice,
-  // o il totale non torna con la cifra detta.
-  const ridotte = ([[4, p.iva4], [5, p.iva5]] as const)
-    .filter(([, v]) => v != null && v > 0)
-    .map(([aliquota, v]) => `${euro(v as number)} al ${aliquota}% (${euro(nettoDaLordo(v as number, aliquota))} senza IVA)`);
   return {
     titolo: p.tipo === "incasso_giorno" ? `Incasso di ${quando}` : `Fatturato di ${quando}`,
     sede,
     righe,
     totale: euro(totaleIncasso(p)),
-    nota: [
-      ridotte.length ? `In «Senza IVA» ci sono anche ${ridotte.join(" e ")}.` : null,
-      prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
-    ].filter(Boolean).join(" ") || null,
+    nota: prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
   };
 }
 

@@ -26000,28 +26000,6 @@
             ],
             "title": "Restano"
           },
-          "iva4": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iva4"
-          },
-          "iva5": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iva5"
-          },
           "categoria": {
             "anyOf": [
               {
@@ -26100,7 +26078,7 @@
           "ristorante_id"
         ],
         "title": "PropostaCifra",
-        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome`, `restano`, `iva4`, `iva5`,\n`importo_netto` e `doppione` servono solo a scrivere la card. `restano`: le\nvoci del personale gia' registrate e non dettate; `iva4`/`iva5`: gli incassi\nlordi a quelle aliquote, gia' sommati senza IVA in `altri_ricavi_noiva`."
+        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome`, `restano`, `importo_netto`\ne `doppione` servono solo a scrivere la card. `restano`: le voci del personale\ngia' registrate e non dettate."
       },
       "RankingPV": {
         "properties": {

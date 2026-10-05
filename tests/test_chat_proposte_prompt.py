@@ -152,7 +152,7 @@ def test_lo_strumento_del_personale_offre_le_tre_voci_e_nessuna_e_obbligatoria()
 
 
 @pytest.mark.parametrize("nome", ["proponi_incasso", "proponi_fatturato_mese"])
-def test_gli_incassi_offrono_il_4_e_il_5_facoltativi(nome):
+def test_gli_incassi_hanno_solo_10_22_e_senza_iva(nome):
+    """Mattia, 5/10/2026: niente 4/5% sugli incassi."""
     par = _parametri(nome)
-    assert set(fw._assistente.ALIQUOTE_RIDOTTE) <= set(par["properties"])
-    assert not set(fw._assistente.ALIQUOTE_RIDOTTE) & set(par["required"])
+    assert set(par["properties"]) - {"data", "anno", "mese"} == {"iva10", "senza_iva", "iva22"}

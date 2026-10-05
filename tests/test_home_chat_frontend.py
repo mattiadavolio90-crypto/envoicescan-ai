@@ -517,7 +517,7 @@ def test_proposta_del_worker_valida(p):
     {"precedente": {"fatturato_iva10": "700"}}, {"precedente": [1]},
     {"sede_nome": 3}, {"costo_personale_extra": -5},
     {"costo_personale_chiamata": -5}, {"costo_personale_chiamata": "37"},
-    {"iva4": -1}, {"iva5": "105"}, {"restano": {"costo_dipendenti": -1}}, {"restano": [450]},
+    {"restano": {"costo_dipendenti": -1}}, {"restano": [450]},
 ], ids=lambda m: ",".join(f"{k}={v!r}" for k, v in m.items()))
 def test_proposta_incasso_malformata_scartata(modifica):
     assert _chiama("propostaValida", [{**PROPOSTA, **modifica}]) is False
@@ -602,12 +602,6 @@ def test_le_voci_dettate_entrano_nella_conferma(voci):
     assert {k: out[k] for k in voci} == voci
 
 
-def test_il_4_e_il_5_non_entrano_nella_conferma():
-    """Sono gia' dentro `altri_ricavi_noiva`, senza IVA: la Conferma non li rimanda."""
-    out = _chiama("corpoConferma", [{**PROPOSTA, "iva4": 208, "iva5": 105, "altri_ricavi_noiva": 840}])
-    assert "iva4" not in out and "iva5" not in out and out["altri_ricavi_noiva"] == 840
-
-
 # ─── Cosa dice la card ────────────────────────────────────────────────────────
 def test_testo_card_incasso_con_divisione_e_totale():
     t = _chiama("testoCard", [PROPOSTA, 2026])
@@ -677,20 +671,6 @@ def test_testo_card_due_voci_una_sola_gia_presente():
     p = {**PERSONALE, "costo_personale_extra": 500, "restano": None,
          "precedente": {"costo_dipendenti": 0, "costo_personale_extra": 300}}
     assert _chiama("testoCard", [p, 2026])["nota"] == "Risulta già ore extra 300,00\u00a0€: lo sostituisco."
-
-
-def test_testo_card_incasso_col_4_dice_cosa_c_e_nel_senza_iva():
-    p = {**PROPOSTA, "altri_ricavi_noiva": 540 + 200 + 100, "iva4": 208, "iva5": 105}
-    t = _chiama("testoCard", [p, 2026])
-    assert t["righe"] == [["Al 10%", "1.800,00\u00a0€"], ["Senza IVA", "840,00\u00a0€"]]
-    assert t["totale"] == "2.640,00\u00a0€"
-    assert t["nota"] == ("In «Senza IVA» ci sono anche 208,00\u00a0€ al 4% (200,00\u00a0€ senza IVA) "
-                         "e 105,00\u00a0€ al 5% (100,00\u00a0€ senza IVA).")
-    con_prima = _chiama("testoCard", [{**PROPOSTA, "iva4": 20, "altri_ricavi_noiva": 559.23,
-                                       "precedente": {"fatturato_iva10": 700}}, 2026])
-    assert con_prima["nota"] == ("In «Senza IVA» ci sono anche 20,00\u00a0€ al 4% (19,23\u00a0€ senza IVA). "
-                                 "Risulta già 700,00\u00a0€: lo sostituisco.")
-    assert _chiama("testoCard", [{**PROPOSTA, "iva4": 0, "iva5": None}, 2026])["nota"] is None
 
 
 def test_senza_nome_della_sede_niente_riga_vuota():
@@ -862,21 +842,6 @@ def test_personale_a_tre_voci_dal_worker_al_client_e_ritorno():
     t = _chiama("testoCard", [p, 2026])
     assert t["righe"] == [["Ore extra", "688,00 €"]]
     assert "7.320,00 € di lordo e 37,00 € di chiamata" in t["nota"]
-
-
-@pytest.mark.parametrize("lordo", [20, 208, 99.99, 1234.56, 0.01])
-@pytest.mark.parametrize("aliquota", [4, 5])
-def test_il_netto_del_4_e_del_5_sulla_card_e_quello_registrato(lordo, aliquota):
-    """La nota della card scorpora col conto del client: deve dare il netto che il
-    worker ha sommato in `altri_ricavi_noiva`, al centesimo."""
-    from services.routers import assistente as A
-
-    importi, _, ridotte = A._importi_dettati({"iva10": 0, "senza_iva": 0, f"iva{aliquota}": lordo}, None)
-    p = {**PROPOSTA, **importi, **ridotte}
-    nota = _chiama("testoCard", [p, 2026])["nota"]
-    netto = _chiama("testoCard", [{**PROPOSTA, "altri_ricavi_noiva": importi["altri_ricavi_noiva"]}, 2026])["righe"][1][1]
-    assert f"({netto} senza IVA)" in nota
-
 
 
 def test_la_conferma_del_personale_dichiara_sempre_le_tre_voci():

@@ -334,11 +334,9 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   sessionStorage riceve 409 se il lordo era gia' registrato; con lordo a zero e
   le voci azzerate nel frattempo puo' riscrivere l'extra che mostrava (caso
   accettato, finestra del solo deploy).
-- **Incassi al 4% e al 5%** (fase D2): `iva4` / `iva5` di `proponi_incasso` e
-  `proponi_fatturato_mese`, lordi. Non hanno colonna: come l'import email di
-  cassa si scorporano (`netto_da_lordo`) e il netto si somma in
-  `altri_ricavi_noiva` (`ALIQUOTE_RIDOTTE`, `_importi_dettati`). La Conferma
-  non cambia; `PropostaCifra.iva4` / `iva5` servono alla nota della card.
+- **Incassi: solo 10%, 22% e senza IVA** (Mattia, 5/10/2026). Il 4/5% dettato
+  sugli incassi, fatto nella D2, e' stato tolto: era una lettura mia del piano,
+  non una richiesta. Le aliquote 4/5/10/22 restano sui costi (spesa extra).
 - **Spesa extra** (fase D1 del piano consulente, 04/10/2026): `proponi_spesa`
   (pagina `agenda`, come il form `ws_spese_crea`) prepara una riga di
   `spese_extra` — categoria scelta dal modello fra `CATEGORIE_SPESA`, tipo

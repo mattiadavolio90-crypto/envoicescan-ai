@@ -5383,9 +5383,7 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                 "DETTATO (es. 'ieri ho incassato 2.340: 1.800 al 10% e 540 senza IVA'). NON "
                 "registra: mostra al cliente una card con il pulsante Conferma. Servono la "
                 "parte al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
-                "chiediglielo prima. Solo cifre dette dal cliente, mai stime tue. Una parte "
-                "al 4% o al 5% che il cliente nomina va in iva4/iva5, lorda: si registra "
-                "senza IVA."
+                "chiediglielo prima. Solo cifre dette dal cliente, mai stime tue."
             ),
             "parameters": {
                 "type": "object",
@@ -5394,8 +5392,6 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                     "iva10": {"type": "number", "description": "Incasso lordo al 10% in euro (0 se non c'e')"},
                     "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
                     "iva22": {"type": "number", "description": "Incasso lordo al 22% in euro (0 se non c'e')"},
-                    "iva4": {"type": "number", "description": "Incasso lordo al 4% in euro, solo se il cliente lo nomina"},
-                    "iva5": {"type": "number", "description": "Incasso lordo al 5% in euro, solo se il cliente lo nomina"},
                 },
                 "required": ["data", "iva10", "senza_iva"],
             },
@@ -5437,8 +5433,7 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                 "80.000'). NON registra: mostra una card con il pulsante Conferma. Se il mese "
                 "ha gia' incassi giorno per giorno lo strumento lo rifiuta. Servono la parte "
                 "al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
-                "chiediglielo prima. Una parte al 4% o al 5% che il cliente nomina va in "
-                "iva4/iva5, lorda: si registra senza IVA."
+                "chiediglielo prima."
             ),
             "parameters": {
                 "type": "object",
@@ -5448,8 +5443,6 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                     "iva10": {"type": "number", "description": "Fatturato lordo al 10% in euro (0 se non c'e')"},
                     "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
                     "iva22": {"type": "number", "description": "Fatturato lordo al 22% in euro (0 se non c'e')"},
-                    "iva4": {"type": "number", "description": "Fatturato lordo al 4% in euro, solo se il cliente lo nomina"},
-                    "iva5": {"type": "number", "description": "Fatturato lordo al 5% in euro, solo se il cliente lo nomina"},
                 },
                 "required": ["anno", "mese", "iva10", "senza_iva"],
             },

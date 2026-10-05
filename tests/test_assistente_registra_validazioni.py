@@ -362,49 +362,12 @@ def test_una_voce_negativa_e_400_anche_accanto_a_una_valida(campo):
     assert _codice(A.valida_personale, _body(tipo="personale_mese", costo_dipendenti=1000, **{campo: -1})) == 400
 
 
-# ─── Incassi al 4% e al 5%: scorporati nella parte senza IVA ──────────────────
-@pytest.mark.parametrize("extra,altri", [
-    ({"iva4": 208}, 300.0 + 200.0),
-    ({"iva5": 105}, 300.0 + 100.0),
-    ({"iva4": 104, "iva5": 210}, 300.0 + 100.0 + 200.0),
-    ({"iva4": 20}, 300.0 + 19.23),
-    ({"iva4": 0, "iva5": None}, 300.0),
-])
-def test_il_4_e_il_5_si_sommano_senza_iva(extra, altri):
-    importi, errore, ridotte = A._importi_dettati({"iva10": 1000, "senza_iva": 300, **extra}, None)
-    assert errore == {}
-    assert importi == {"fatturato_iva10": 1000.0, "altri_ricavi_noiva": altri, "fatturato_iva22": 0.0}
-    assert ridotte == {k: float(v) for k, v in extra.items() if v}
-
-
-def test_senza_4_e_5_gli_importi_restano_quelli_detti():
-    assert A._importi_dettati({"iva10": 1000, "senza_iva": 300.5, "iva22": 40}, "retail") == (
-        {"fatturato_iva10": 1000.0, "altri_ricavi_noiva": 300.5, "fatturato_iva22": 40.0}, {}, {})
-
-
-@pytest.mark.parametrize("arg", ["iva4", "iva5"])
-def test_il_4_o_il_5_in_testo_si_rifiuta(arg):
-    assert A._importi_dettati({"iva10": 1000, "senza_iva": 0, arg: "1.040"}, None) == (None, A._IMPORTO_IN_TESTO, {})
-
-
-@pytest.mark.parametrize("args", [
-    {"iva10": 1000, "senza_iva": 0, "iva4": -10},
-    {"iva10": 1000, "senza_iva": 0, "iva5": float("nan")},
-    {"iva10": 1000, "senza_iva": -100, "iva4": 208},
-])
-def test_il_4_o_il_5_non_validi_sono_400(args):
-    assert _codice(A._importi_dettati, args, None) == 400
-
-
-def test_senza_divisione_si_chiede_anche_col_4():
-    importi, errore, _ = A._importi_dettati({"iva4": 208}, None)
-    assert importi is None and errore["errore"] == "divisione IVA mancante"
-
-
-def test_al_modello_il_4_dice_quanto_si_registra():
-    assert A._ridotte_al_modello({"iva4": 20.0})["iva_ridotta"] == {"al_4%": {"detto": 20.0, "senza_iva": 19.23}}
-    assert A._ridotte_al_modello({}) == {}
-
+# ─── Incassi: solo 10%, 22% e senza IVA ───────────────────────────────────────
+def test_gli_incassi_non_hanno_il_4_e_il_5():
+    """Mattia, 5/10/2026: il 4/5% sugli incassi non esiste. Un argomento in piu'
+    del modello non cambia gli importi."""
+    assert A._importi_dettati({"iva10": 1000, "senza_iva": 300, "iva4": 208, "iva5": 105}, None) == (
+        {"fatturato_iva10": 1000.0, "altri_ricavi_noiva": 300.0, "fatturato_iva22": 0.0}, {})
 
 
 # ─── La rilettura dopo un update senza righe guarda le stesse voci ────────────
