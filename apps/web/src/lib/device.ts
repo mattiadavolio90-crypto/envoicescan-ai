@@ -1,12 +1,37 @@
 // Rilevamento dispositivo per decidere vista mobile (/m) vs app desktop completa.
 // Regola: i TABLET (schermi grandi) usano sempre l'app desktop, indipendentemente
-// dalla larghezza/orientamento; solo i TELEFONI vanno su /m. Cosi' ruotare un
-// tablet o usarlo in Split View non lo butta mai sulla PWA mobile.
+// dalla larghezza/orientamento; i TELEFONI usano SOLO /m (Mattia, 5/10/2026: da
+// telefono, iPhone o Android, i clienti hanno solo la versione mobile). Cosi'
+// ruotare un tablet o usarlo in Split View non lo butta mai sulla PWA mobile, e un
+// telefono non resta mai sulla vista desktop.
 
 const PHONE_MAX_WIDTH = 768;
+// Il lato corto dello schermo di un telefono: i piu' grandi stanno sui 440px, il
+// tablet piu' piccolo (iPad mini) sui 744.
+const LATO_CORTO_TELEFONO = 600;
+
+function isPhoneUserAgent(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /iphone|ipod/i.test(ua) || (/android/i.test(ua) && /mobile/i.test(ua));
+}
+
+// Il telefono vero, comunque si presenti. Con «Richiedi sito desktop» un iPhone
+// manda lo user agent di un Mac (e col touch sembrava un iPad), un Android quello
+// di un PC Linux: lo schermo, pero', resta quello di un telefono. Un cliente su
+// iPhone e' rimasto cosi' sulla vista desktop, senza la barra in basso (5/10/2026).
+export function isPhoneDevice(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (isPhoneUserAgent()) return true;
+  const nav = navigator as Navigator & { maxTouchPoints?: number };
+  const schermo = window.screen;
+  const latoCorto = Math.min(schermo?.width ?? 0, schermo?.height ?? 0);
+  return (nav.maxTouchPoints ?? 0) > 0 && latoCorto > 0 && latoCorto < LATO_CORTO_TELEFONO;
+}
 
 export function isTabletDevice(): boolean {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (isPhoneDevice()) return false;
   const ua = navigator.userAgent;
 
   // iPad esplicito (Safari < iPadOS 13).
@@ -22,41 +47,11 @@ export function isTabletDevice(): boolean {
   return false;
 }
 
-function isPhoneUserAgent(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  return /iphone|ipod/i.test(ua) || (/android/i.test(ua) && /mobile/i.test(ua));
-}
-
-// True solo per i TELEFONI: schermo stretto e/o UA telefono, ma mai per i tablet.
+// True per i telefoni e per le finestre strette di un computer, mai per i tablet.
 export function isPhoneViewport(): boolean {
   if (typeof window === "undefined") return false;
   if (isTabletDevice()) return false;
-  return window.innerWidth < PHONE_MAX_WIDTH || isPhoneUserAgent();
-}
-
-export const PREF_DESKTOP = "oneflux_forza_desktop";
-
-// Chi ha chiesto esplicitamente la versione desktop non va piu' rimbalzato su
-// /m, nemmeno quando la finestra e' stretta. Senza questa memoria il link
-// "Versione desktop" non funzionerebbe affatto: si atterra su /dashboard con la
-// finestra ancora sotto soglia e MobileRedirect rispedisce subito indietro.
-export function preferisceDesktop(): boolean {
-  try {
-    return localStorage.getItem(PREF_DESKTOP) === "1";
-  } catch {
-    // Modalita' privata / storage negato: nessuna preferenza, non bloccare.
-    return false;
-  }
-}
-
-export function impostaPreferenzaDesktop(attiva: boolean): void {
-  try {
-    if (attiva) localStorage.setItem(PREF_DESKTOP, "1");
-    else localStorage.removeItem(PREF_DESKTOP);
-  } catch {
-    /* storage negato: la scelta vale per la sola navigazione corrente */
-  }
+  return window.innerWidth < PHONE_MAX_WIDTH || isPhoneDevice();
 }
 
 // Se la decisione per questa pagina e' stata presa davvero, cioe' se va
@@ -73,50 +68,47 @@ export function decisionePresa(isPhone: boolean | undefined | null): boolean {
   return isPhone === true || isPhone === false;
 }
 
+// La vista mobile e' quella giusta per questo dispositivo, ORA. Unico punto di
+// verita' per il login.
+export function serviVistaMobile(): boolean {
+  return isPhoneViewport();
+}
+
 // Se rimbalzare su /m la pagina `pathname`.
 //
-// Nasce da una misura del 23/09/2026: `isPhoneViewport()` decide SOLO sulla
-// larghezza (il touch non entra mai in gioco fuori da iPad/Android), quindi un
-// PC fisso senza touch con la finestra affiancata sotto i 768px veniva spostato
-// su /m a meta' lavoro — e da /m non esisteva alcun ritorno. Il redirect resta
-// per i telefoni veri, ma solo come SCELTA DELLA PORTA D'INGRESSO: chi e' gia'
-// dentro una pagina desktop non viene piu' strappato via da un ridimensionamento.
-// Le due transizioni della preferenza desktop, estratte dal menu di /m perche'
-// li' vivevano in un .tsx e nessun test poteva vederle: invertire i due
-// booleani non faceva fallire niente, e l'effetto e' visibile — chi fa logout
-// da /m resterebbe bloccato sulla vista desktop al rientro (rilievo della
-// re-review del 23/09/2026).
-export function scegliVersioneDesktop(): void {
-  impostaPreferenzaDesktop(true);
-}
-
-// Il logout azzera la scelta: la prossima persona che entra su questo
-// dispositivo riparte dal rilevamento automatico.
-export function dimenticaPreferenzaAlLogout(): void {
-  impostaPreferenzaDesktop(false);
-}
-
-// La vista mobile e' quella giusta per questo utente, ORA: telefono e nessuna
-// richiesta esplicita di desktop. Unico punto di verita' per il login, cosi' la
-// preferenza non va ricontrollata a ogni chiamante (e dimenticata in uno).
-export function serviVistaMobile(): boolean {
-  return isPhoneViewport() && !preferisceDesktop();
-}
-
+// Il telefono vero rimbalza SEMPRE: non c'e' piu' una «Versione desktop» da
+// scegliere (la scelta restava memorizzata e da desktop non c'era un tasto per
+// tornare indietro). La finestra stretta di un computer rimbalza solo
+// all'INGRESSO: misurato il 23/09/2026, chi la affiancava mentre lavorava finiva
+// su /m a meta' operazione, senza ritorno.
 export function deveRimbalzareSuMobile(opts: {
   isPhone: boolean | undefined;
+  telefonoVero: boolean;
   pathname: string;
   giaDentro: boolean;
-  preferisceDesktop: boolean;
 }): boolean {
   // `undefined` = rilevamento non ancora avvenuto (primo render). NON e'
   // "non e' un telefono": vedi `decisionePresa`.
   if (opts.isPhone !== true) return false;
-  if (opts.preferisceDesktop) return false;
-  if (opts.giaDentro) return false;
   if (opts.pathname.startsWith("/admin")) return false;
   // Confronto sul SEGMENTO, non sul prefisso: `startsWith("/m")` matcherebbe
   // anche `/margini`.
   if (opts.pathname === "/m" || opts.pathname.startsWith("/m/")) return false;
-  return true;
+  if (opts.telefonoVero) return true;
+  return !opts.giaDentro;
+}
+
+// L'effetto di MobileRedirect a ogni render: estratto qui perche' nel .tsx
+// nessun test lo vedeva. `decisoPer` e' il ref del componente: per lo stesso
+// pathname una finestra stretta decide una volta sola; il telefono vero no.
+export function rimbalzoAlRender(
+  decisoPer: { current: string | null },
+  isPhone: boolean | undefined,
+  pathname: string,
+): boolean {
+  // Finche' il rilevamento non e' avvenuto non si decide e non si consuma nulla.
+  if (!decisionePresa(isPhone)) return false;
+  const giaDentro = decisoPer.current === pathname;
+  decisoPer.current = pathname;
+  return deveRimbalzareSuMobile({ isPhone, telefonoVero: isPhoneDevice(), pathname, giaDentro });
 }

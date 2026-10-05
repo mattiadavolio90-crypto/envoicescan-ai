@@ -1,19 +1,20 @@
 """La scelta fra app desktop e PWA /m, eseguita sul modulo vero con node.
 
-Perche' esiste: il 23/09/2026 `apps/web/src/lib/device.ts` non aveva alcun test.
-La misura di quel giorno ha mostrato che `isPhoneViewport()` decide SOLO sulla
-larghezza della finestra — `maxTouchPoints` non entra mai in gioco fuori da
-iPad e Android — quindi un PC fisso **senza touch** con la finestra affiancata
-sotto i 768px veniva spostato su /m a meta' lavoro, senza alcun modo di tornare
-indietro (da /m non c'era un link al desktop, e riallargare non bastava perche'
-/m e' escluso dal redirect stesso).
+Perche' esiste: il 23/09/2026 `apps/web/src/lib/device.ts` non aveva alcun test,
+e un PC con la finestra affiancata sotto i 768px finiva su /m a meta' lavoro.
 
-Il fix non tocca la soglia: i telefoni veri devono continuare ad andare su /m.
-Sposta il rimbalzo all'INGRESSO e aggiunge una via d'uscita memorizzata.
+Il 5/10/2026 la regola e' cambiata (Mattia): **da telefono, iPhone o Android, i
+clienti hanno solo la versione mobile**. Un cliente su iPhone era rimasto sulla
+vista desktop, senza la barra in basso: o aveva scelto «Versione desktop» (scelta
+memorizzata, e dal desktop non c'era un tasto per tornare), o Safari chiedeva il
+«sito desktop» e l'iPhone, con lo user agent di un Mac e il touch, passava per un
+iPad. La scelta non c'e' piu', e il telefono si riconosce anche dallo schermo.
 """
 import json
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -25,6 +26,7 @@ MODULO = "lib/device"
 def _json(v):
     """Le opzioni viaggiano come letterale JS dentro l'espressione."""
     return json.dumps(v)
+
 
 UA_WINDOWS = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -38,15 +40,34 @@ UA_IPAD = (
     "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
     "(KHTML, like Gecko) Version/17.0 Safari/604.1"
 )
+# iPadOS 13+ E iPhone con «Richiedi sito desktop»: lo stesso user agent di un Mac.
+UA_MAC = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+)
+UA_ANDROID = (
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+)
+UA_ANDROID_TABLET = (
+    "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
+# Chrome Android in «Sito desktop»: lo user agent di un PC Linux.
+UA_LINUX = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
 
-# `localStorage` non esiste in node: lo stub e' un vero oggetto con stato, non un
-# mock generoso — `impostaPreferenzaDesktop` deve poterci scrivere e rileggere.
+# `screen` e' quello del dispositivo (lato corto e lungo), `w` la finestra. Il
+# vecchio `localStorage` resta, con la preferenza desktop di chi l'aveva scelta:
+# non deve contare piu'.
 _AMBIENTE = """
 Object.defineProperty(globalThis, "navigator", {
   value: { userAgent: input.ua, maxTouchPoints: input.touch },
   configurable: true, writable: true,
 });
-globalThis.window = { innerWidth: input.w };
+globalThis.window = { innerWidth: input.w, screen: input.screen };
 const _store = new Map(Object.entries(input.storage ?? {}));
 globalThis.localStorage = {
   getItem: (k) => (_store.has(k) ? _store.get(k) : null),
@@ -55,226 +76,147 @@ globalThis.localStorage = {
 };
 """
 
+DESKTOP = {"ua": UA_WINDOWS, "touch": 0, "w": 1400, "screen": {"width": 1920, "height": 1080}}
+IPHONE = {"ua": UA_IPHONE, "touch": 5, "w": 390, "screen": {"width": 390, "height": 844}}
 
-def _esegui(espressione, ua=UA_WINDOWS, touch=0, w=1400, storage=None, richiede=()):
+
+def _esegui(espressione, ua=UA_WINDOWS, touch=0, w=1400, screen=None, storage=None, richiede=()):
     return esegui_ts(
         MODULO,
         _AMBIENTE + espressione,
-        {"ua": ua, "touch": touch, "w": w, "storage": storage or {}},
+        {"ua": ua, "touch": touch, "w": w, "screen": screen if screen is not None else {"width": 1920, "height": 1080},
+         "storage": storage or {}},
         richiede=richiede,
     )
 
 
-def test_il_telefono_vero_va_ancora_su_mobile():
-    """Il fix non deve spegnere il comportamento per cui /m esiste."""
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_IPHONE, touch=5, w=390,
-        richiede=("serviVistaMobile",),
-    ) is True
+def _mobile(**disp):
+    return _esegui("emit(m.serviVistaMobile());", richiede=("serviVistaMobile",), **disp)
 
 
-def test_il_tablet_resta_su_desktop():
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_IPAD, touch=5, w=810,
-        richiede=("serviVistaMobile",),
-    ) is False
+# ─── Chi e' un telefono ───────────────────────────────────────────────────────
+@pytest.mark.parametrize("disp", [
+    IPHONE,
+    {"ua": UA_ANDROID, "touch": 5, "w": 412, "screen": {"width": 412, "height": 915}},
+    # «Richiedi sito desktop»: iPhone con lo user agent di un Mac e la finestra
+    # larga 980 (il viewport desktop di Safari). Prima passava per un iPad.
+    {"ua": UA_MAC, "touch": 5, "w": 980, "screen": {"width": 390, "height": 844}},
+    {"ua": UA_MAC, "touch": 5, "w": 980, "screen": {"width": 440, "height": 956}},
+    # Lo stesso in orizzontale: conta il lato corto.
+    {"ua": UA_MAC, "touch": 5, "w": 980, "screen": {"width": 844, "height": 390}},
+    # Android in «Sito desktop»: lo user agent di un PC Linux.
+    {"ua": UA_LINUX, "touch": 5, "w": 980, "screen": {"width": 412, "height": 915}},
+], ids=["iphone", "android", "iphone-sito-desktop", "iphone-pro-max-sito-desktop",
+        "iphone-sito-desktop-orizzontale", "android-sito-desktop"])
+def test_il_telefono_va_su_mobile_comunque_si_presenti(disp):
+    assert _mobile(**disp) is True
 
 
-def test_desktop_senza_touch_con_finestra_stretta_non_viene_strappato_via():
-    """Il caso misurato: NON e' un problema dei 2-in-1, il touch non c'entra.
-
-    A parita' di larghezza, `maxTouchPoints` 0 e 10 danno lo stesso esito: e' la
-    sola larghezza a decidere. Per questo il presidio gira su un desktop senza
-    touch — se qualcuno "risolvesse" guardando il touch, questo test resterebbe
-    rosso e direbbe perche'.
-    """
-    opts = {
-        "isPhone": True,       # finestra < 768: isPhoneViewport() dice gia' true
-        "pathname": "/margini",
-        "giaDentro": True,     # stava gia' lavorando qui: ha solo ridimensionato
-        "preferisceDesktop": False,
-    }
-    assert _esegui(
-        f"emit(m.deveRimbalzareSuMobile({_json(opts)}));",
-        touch=0, w=700,
-        richiede=("deveRimbalzareSuMobile",),
-    ) is False
+@pytest.mark.parametrize("disp", [
+    DESKTOP,
+    {"ua": UA_IPAD, "touch": 5, "w": 810, "screen": {"width": 810, "height": 1080}},
+    # Split View: la finestra e' stretta, ma e' un iPad (la guardia isTabletDevice).
+    {"ua": UA_IPAD, "touch": 5, "w": 700, "screen": {"width": 810, "height": 1080}},
+    {"ua": UA_MAC, "touch": 5, "w": 700, "screen": {"width": 1024, "height": 1366}},
+    # iPad mini, il tablet piu' piccolo.
+    {"ua": UA_MAC, "touch": 5, "w": 700, "screen": {"width": 744, "height": 1133}},
+    {"ua": UA_ANDROID_TABLET, "touch": 10, "w": 700, "screen": {"width": 800, "height": 1280}},
+    # Portatile col touch: schermo da computer.
+    {"ua": UA_WINDOWS, "touch": 10, "w": 1400, "screen": {"width": 1366, "height": 768}},
+    # Il Mac vero non ha touch.
+    {"ua": UA_MAC, "touch": 0, "w": 1400, "screen": {"width": 1440, "height": 900}},
+], ids=["desktop", "ipad", "ipad-split-view", "ipados-mac", "ipad-mini", "tablet-android",
+        "portatile-touch", "mac"])
+def test_tablet_e_computer_restano_su_desktop(disp):
+    assert _mobile(**disp) is False
 
 
-def test_l_ingresso_su_una_pagina_desktop_da_telefono_rimbalza_ancora():
-    """La controprova del test sopra: all'ingresso il rimbalzo deve restare."""
-    opts = {
-        "isPhone": True,
-        "pathname": "/margini",
-        "giaDentro": False,
-        "preferisceDesktop": False,
-    }
-    assert _esegui(
-        f"emit(m.deveRimbalzareSuMobile({_json(opts)}));",
-        touch=0, w=700,
-        richiede=("deveRimbalzareSuMobile",),
-    ) is True
+def test_il_lato_corto_del_telefono_e_600_non_uno_qualunque():
+    """Il caso va scelto dove i due mondi divergono: sotto e sopra la soglia, con
+    lo user agent di un Mac (iPad o iPhone in «sito desktop») e la finestra larga."""
+    mac = {"ua": UA_MAC, "touch": 5, "w": 980}
+    assert _mobile(**mac, screen={"width": 599, "height": 900}) is True
+    assert _mobile(**mac, screen={"width": 600, "height": 900}) is False
 
 
-def test_la_scelta_versione_desktop_sopravvive_al_redirect():
-    """Senza memoria il link "Versione desktop" non funzionerebbe affatto.
-
-    Si atterra su /dashboard con la finestra ancora stretta e il redirect
-    rispedisce su /m: il giro completo, non solo la scrittura della preferenza.
-    """
-    esito = _esegui(
-        """
-        m.impostaPreferenzaDesktop(true);
-        emit(m.deveRimbalzareSuMobile({
-          isPhone: true, pathname: "/dashboard",
-          giaDentro: false, preferisceDesktop: m.preferisceDesktop(),
-        }));
-        """,
-        touch=0, w=700,
-        richiede=("impostaPreferenzaDesktop", "preferisceDesktop", "deveRimbalzareSuMobile"),
-    )
-    assert esito is False
+def test_lo_schermo_piccolo_senza_touch_non_e_un_telefono():
+    """Un monitor piccolo di un computer non e' un telefono: serve anche il touch."""
+    assert _mobile(ua=UA_WINDOWS, touch=0, w=980, screen={"width": 500, "height": 800}) is False
 
 
-def test_chi_ha_scelto_desktop_non_torna_su_m_rientrando_dal_login():
-    """Il buco trovato per mutazione (M5), il caso che conta di piu'.
-
-    `defaultNext()` del login usa `serviVistaMobile()`: se quella ignorasse la
-    preferenza, la scelta "Versione desktop" durerebbe una sessione sola e al
-    rientro si finirebbe di nuovo su /m — con la stessa sensazione di prima del
-    fix. Il caso e' un TELEFONO vero, non una finestra stretta: e' l'unico in
-    cui la preferenza deve battere il rilevamento.
-    """
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_IPHONE, touch=5, w=390,
-        storage={"oneflux_forza_desktop": "1"},
-        richiede=("serviVistaMobile",),
-    ) is False
+def test_senza_dati_sullo_schermo_si_decide_dal_resto():
+    assert _mobile(ua=UA_MAC, touch=5, w=980, screen={}) is False
+    assert _mobile(ua=UA_IPHONE, touch=5, w=390, screen={}) is True
 
 
-def test_il_logout_riporta_alla_scelta_automatica():
-    esito = _esegui(
-        """
-        m.impostaPreferenzaDesktop(false);
-        emit({ pref: m.preferisceDesktop(), mobile: m.serviVistaMobile() });
-        """,
-        ua=UA_IPHONE, touch=5, w=390,
-        storage={"oneflux_forza_desktop": "1"},
-        richiede=("impostaPreferenzaDesktop", "preferisceDesktop", "serviVistaMobile"),
-    )
-    assert esito == {"pref": False, "mobile": True}
+def test_la_finestra_stretta_di_un_computer_e_ancora_mobile_all_ingresso():
+    """La soglia dei 768 resta: un caso sopra e uno sotto, senza touch."""
+    assert _mobile(ua=UA_WINDOWS, touch=0, w=768) is False
+    assert _mobile(ua=UA_WINDOWS, touch=0, w=767) is True
 
 
-def test_storage_negato_non_blocca_l_app():
-    """Modalita' privata: `localStorage` puo' lanciare. Non deve propagare."""
-    esito = esegui_ts(
-        MODULO,
-        """
-        Object.defineProperty(globalThis, "navigator", {
-          value: { userAgent: input.ua, maxTouchPoints: 0 },
-          configurable: true, writable: true,
-        });
-        globalThis.window = { innerWidth: 390 };
-        globalThis.localStorage = {
-          getItem: () => { throw new Error("storage negato"); },
-          setItem: () => { throw new Error("storage negato"); },
-          removeItem: () => { throw new Error("storage negato"); },
-        };
-        m.impostaPreferenzaDesktop(true);
-        emit(m.preferisceDesktop());
-        """,
-        {"ua": UA_IPHONE},
-        richiede=("preferisceDesktop", "impostaPreferenzaDesktop"),
-    )
-    assert esito is False
+def test_la_vecchia_preferenza_desktop_non_conta_piu():
+    """Il cliente bloccato: aveva scelto «Versione desktop» dal menu di /m. Al
+    prossimo accesso il telefono torna su mobile da solo."""
+    assert _mobile(**IPHONE, storage={"oneflux_forza_desktop": "1"}) is True
 
 
-def test_admin_e_m_restano_esclusi_dal_rimbalzo():
+# ─── Quando rimbalzare ────────────────────────────────────────────────────────
+def _rimbalza(**opts):
+    base = {"isPhone": True, "telefonoVero": False, "pathname": "/margini", "giaDentro": False}
+    return _esegui(f"emit(m.deveRimbalzareSuMobile({_json({**base, **opts})}));",
+                   richiede=("deveRimbalzareSuMobile",))
+
+
+def test_il_telefono_vero_rimbalza_anche_se_e_gia_dentro():
+    assert _rimbalza(telefonoVero=True, giaDentro=True) is True
+
+
+def test_la_finestra_stretta_di_un_computer_rimbalza_solo_all_ingresso():
+    """Il caso del 23/09: chi restringe la finestra mentre lavora non viene strappato via."""
+    assert _rimbalza(giaDentro=True) is False
+    assert _rimbalza(giaDentro=False) is True
+
+
+@pytest.mark.parametrize("pathname,atteso", [
+    ("/admin/utenti", False), ("/m", False), ("/m/diario", False), ("/margini", True),
+])
+def test_admin_e_m_restano_esclusi_dal_rimbalzo(pathname, atteso):
     """/admin e' solo desktop, /m e' gia' mobile: rimbalzarli sarebbe un ciclo.
+    `/margini` e' qui apposta: `startsWith("/m")` lo matcherebbe."""
+    assert _rimbalza(telefonoVero=True, pathname=pathname) is atteso
 
-    `/margini` e' qui apposta: `startsWith("/m")` lo matcherebbe, e il confronto
-    per segmento e' gia' costato un giro (vedi commento nel sorgente).
-    """
-    def rimbalza(pathname):
-        return _esegui(
-            f"emit(m.deveRimbalzareSuMobile({_json({'isPhone': True, 'pathname': pathname, 'giaDentro': False, 'preferisceDesktop': False})}));",
-            touch=0, w=700,
-            richiede=("deveRimbalzareSuMobile",),
-        )
 
-    assert rimbalza("/admin/utenti") is False
-    assert rimbalza("/m") is False
-    assert rimbalza("/m/diario") is False
-    assert rimbalza("/margini") is True
+@pytest.mark.parametrize("indeterminato", [None, False])
+def test_rilevamento_indeterminato_o_negativo_non_rimbalza(indeterminato):
+    """Difesa per un chiamante che salti `decisionePresa`: anche col telefono vero."""
+    assert _rimbalza(isPhone=indeterminato, telefonoVero=True) is False
 
 
 # ── La SEQUENZA dei render, non la singola decisione ────────────────────────
-#
-# I test sopra provano `deveRimbalzareSuMobile` come funzione pura, passando
-# `giaDentro` a mano. Il difetto trovato dalla review del 23/09/2026 non viveva
-# li': viveva nell'ACCUMULO di stato fra un render e l'altro. `useIsMobile()`
-# torna `!!isMobile` e al primo render vale sempre `false` (lo stato parte da
-# `undefined`), quindi la decisione veniva segnata come presa su un falso e al
-# secondo render — quello col valore vero — il rimbalzo non scattava piu'.
+# Il difetto della review del 23/09/2026 viveva nell'accumulo di stato fra un
+# render e l'altro: al primo render il rilevamento e' indeterminato.
 
-_SEQUENZA = """
-Object.defineProperty(globalThis, "navigator", {
-  value: { userAgent: input.ua, maxTouchPoints: input.touch },
-  configurable: true, writable: true,
-});
-globalThis.window = { innerWidth: input.w };
-const _store = new Map(Object.entries(input.storage ?? {}));
-globalThis.localStorage = {
-  getItem: (k) => (_store.has(k) ? _store.get(k) : null),
-  setItem: (k, v) => _store.set(k, String(v)),
-  removeItem: (k) => _store.delete(k),
-};
-
-// Riproduce l'effect di MobileRedirect su piu' render successivi.
-let decisoPer = null;
+_SEQUENZA = _AMBIENTE + """
+// L'effetto vero di MobileRedirect su piu' render successivi, col suo ref.
+const decisoPer = { current: null };
 let rimbalzi = 0;
 for (const isPhone of input.renders) {
-  if (!m.decisionePresa(isPhone)) continue;
-  const giaDentro = decisoPer === input.pathname;
-  decisoPer = input.pathname;
-  if (m.deveRimbalzareSuMobile({
-    isPhone, pathname: input.pathname,
-    giaDentro, preferisceDesktop: m.preferisceDesktop(),
-  })) rimbalzi++;
+  if (m.rimbalzoAlRender(decisoPer, isPhone, input.pathname)) rimbalzi++;
 }
 emit(rimbalzi);
 """
 
 
-def _rimbalzi(renders, ua=UA_IPHONE, touch=5, w=390, pathname="/margini", storage=None):
+def _rimbalzi(renders, disp=IPHONE, pathname="/margini"):
     return esegui_ts(
-        MODULO,
-        _SEQUENZA,
-        {"ua": ua, "touch": touch, "w": w, "pathname": pathname,
-         "renders": renders, "storage": storage or {}},
-        richiede=("decisionePresa", "deveRimbalzareSuMobile", "preferisceDesktop"),
+        MODULO, _SEQUENZA, {**disp, "pathname": pathname, "renders": renders, "storage": {}},
+        richiede=("rimbalzoAlRender",),
     )
 
 
 def test_il_telefono_rimbalza_anche_col_primo_render_indeterminato():
-    """Il blocco della review: `undefined` poi `true` e' la sequenza REALE.
-
-    Prima del fix dava 0 rimbalzi — i telefoni veri restavano sulla vista
-    desktop, cioe' la regressione che il lavoro dichiarava di non introdurre.
-    """
     assert _rimbalzi([None, True]) == 1
-
-
-def test_il_ridimensionamento_dopo_l_ingresso_non_rimbalza_di_nuovo():
-    """La ragione per cui il ref esiste: si decide una volta sola.
-
-    Desktop che restringe la finestra mentre lavora: il primo render sa gia'
-    che non e' un telefono, i successivi non devono strapparlo via.
-    """
-    assert _rimbalzi([False, True, True], ua=UA_WINDOWS, touch=0, w=700) == 0
 
 
 def test_render_indeterminati_ripetuti_non_consumano_la_decisione():
@@ -282,92 +224,17 @@ def test_render_indeterminati_ripetuti_non_consumano_la_decisione():
     assert _rimbalzi([None, None, True]) == 1
 
 
-def test_il_tablet_in_split_view_non_finisce_su_mobile():
-    """Uccide il mutante RM1 della review: la guardia `isTabletDevice()`.
-
-    Il caso va scelto dove i due mondi DIVERGONO. A 810px `810 < 768` e' gia'
-    false, quindi togliere la guardia non cambierebbe nulla: il test passerebbe
-    anche sul codice rotto. In Split View (700px) la guardia e' l'unica cosa che
-    tiene l'iPad sull'app completa — ed e' la regola scritta in cima a device.ts.
-    """
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_IPAD, touch=5, w=700,
-        richiede=("serviVistaMobile",),
-    ) is False
-
-    UA_IPADOS_MAC = (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
-        "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
-    )
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_IPADOS_MAC, touch=5, w=700,
-        richiede=("serviVistaMobile",),
-    ) is False
+def test_il_telefono_rimasto_su_una_pagina_desktop_rimbalza_a_ogni_render():
+    assert _rimbalzi([True, True]) == 2
 
 
-def test_la_soglia_dei_telefoni_e_768_non_una_qualunque():
-    """Uccide il mutante RM2: soglia allargata (es. `<= 1400`).
-
-    Senza un caso SOPRA la soglia su un dispositivo non-telefono, allargarla
-    resterebbe invisibile: un desktop a schermo pieno finirebbe su /m.
-    """
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_WINDOWS, touch=0, w=1400,
-        richiede=("serviVistaMobile",),
-    ) is False
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_WINDOWS, touch=0, w=768,
-        richiede=("serviVistaMobile",),
-    ) is False
-    assert _esegui(
-        "emit(m.serviVistaMobile());",
-        ua=UA_WINDOWS, touch=0, w=767,
-        richiede=("serviVistaMobile",),
-    ) is True
+def test_il_ridimensionamento_dopo_l_ingresso_non_rimbalza_di_nuovo():
+    """Desktop che restringe la finestra mentre lavora: si decide una volta sola."""
+    assert _rimbalzi([False, True, True], disp={**DESKTOP, "w": 700}) == 0
 
 
-def test_la_funzione_da_sola_non_rimbalza_su_un_rilevamento_indeterminato():
-    """Difesa in profondita' per un chiamante che salti `decisionePresa`.
-
-    Nel flusso vero MobileRedirect filtra prima, quindi qui `isPhone` e' sempre
-    booleano e `!opts.isPhone` e `opts.isPhone !== true` coincidono (il mutante
-    che li scambia sopravvive, ed e' ridondanza, non un buco). Il giorno in cui
-    un secondo chiamante chiamasse la funzione senza filtrare, `undefined` non
-    deve valere "e' un telefono".
-    """
-    for indeterminato in ("null", "undefined"):
-        assert _esegui(
-            f"""emit(m.deveRimbalzareSuMobile({{
-              isPhone: {indeterminato}, pathname: "/margini",
-              giaDentro: false, preferisceDesktop: false,
-            }}));""",
-            touch=0, w=390,
-            richiede=("deveRimbalzareSuMobile",),
-        ) is False
-
-
-def test_le_due_transizioni_della_preferenza_vanno_in_direzioni_opposte():
-    """Estratte dal .tsx perche' li' nessun test le vedeva.
-
-    Invertire i due booleani non faceva fallire niente, e l'effetto e' visibile:
-    chi fa logout da /m resterebbe bloccato sulla vista desktop al rientro, e
-    chi chiede la versione desktop verrebbe rispedito su /m. Si asseriscono
-    ENTRAMBE le transizioni, non la sola chiamata (rilievo della re-review del
-    23/09/2026).
-    """
-    esito = _esegui(
-        """
-        m.scegliVersioneDesktop();
-        const dopoScelta = m.preferisceDesktop();
-        m.dimenticaPreferenzaAlLogout();
-        const dopoLogout = m.preferisceDesktop();
-        emit({ dopoScelta, dopoLogout });
-        """,
-        ua=UA_IPHONE, touch=5, w=390,
-        richiede=("scegliVersioneDesktop", "dimenticaPreferenzaAlLogout", "preferisceDesktop"),
-    )
-    assert esito == {"dopoScelta": True, "dopoLogout": False}
+def test_la_finestra_stretta_rimbalza_all_ingresso_anche_col_primo_render_indeterminato():
+    """Il caso dove il primo render indeterminato conta davvero: il telefono vero
+    rimbalza comunque, la finestra stretta di un computer solo se l'indeterminato
+    non ha gia' «consumato» l'ingresso (il difetto del 23/09)."""
+    assert _rimbalzi([None, True], disp={**DESKTOP, "w": 700}) == 1

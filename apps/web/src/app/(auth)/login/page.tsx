@@ -19,9 +19,7 @@ import { primaPaginaAbilitata } from "@/lib/sotto-utente";
 // "Installa ONEFLUX". Atterrando direttamente su /m con un vero page load,
 // l'evento arriva mentre il listener di /m e' gia' montato.
 // I TABLET (iPad/Android tablet) vanno sempre su desktop: schermo grande, app
-// completa (vedi lib/device.ts). Chi ha scelto "Versione desktop" dal menu di
-// /m resta su desktop anche rientrando dal login, altrimenti la scelta durerebbe
-// una sessione sola.
+// completa (vedi lib/device.ts).
 function defaultNext(): string {
   if (serviVistaMobile()) return "/m";
   return "/dashboard";

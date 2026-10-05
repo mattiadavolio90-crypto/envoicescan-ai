@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical, LogOut, MapPin, Check, Building2, Monitor } from "lucide-react";
+import { MoreVertical, LogOut, MapPin, Check, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
-import { scegliVersioneDesktop, dimenticaPreferenzaAlLogout } from "@/lib/device";
 
 function writeViewCookie(v: "chain" | "pv") {
   if (typeof document === "undefined") return;
@@ -92,20 +91,8 @@ export function HeaderMenu() {
     }
   }
 
-  // Via d'uscita da /m verso l'app completa. Senza memorizzare la scelta il
-  // link non funzionerebbe: con la finestra ancora stretta MobileRedirect
-  // rispedirebbe subito su /m. Full reload (non router.push) perche' si cambia
-  // layout, come per il login.
-  function vaiAlDesktop() {
-    scegliVersioneDesktop();
-    window.location.href = "/dashboard";
-  }
-
   async function logout() {
     try {
-      // Il logout chiude anche la preferenza desktop: la prossima persona che
-      // entra su questo dispositivo riparte dalla scelta automatica.
-      dimenticaPreferenzaAlLogout();
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");
       router.refresh();
@@ -172,14 +159,6 @@ export function HeaderMenu() {
             <DropdownMenuSeparator />
           </>
         )}
-        <DropdownMenuItem onClick={vaiAlDesktop} className="flex items-center gap-2 py-2.5">
-          <Monitor className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex flex-1 flex-col leading-tight">
-            <span className="text-sm font-medium">Versione desktop</span>
-            <span className="text-xs text-muted-foreground">App completa</span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
           <LogOut className="size-4" />
           Esci

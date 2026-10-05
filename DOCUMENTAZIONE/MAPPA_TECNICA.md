@@ -57,7 +57,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | Devi toccare… | Vai in… |
 |---|---|
 | Una pagina che il cliente vede | `apps/web/src/app/(app)/<pagina>/` |
-| Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive |
+| Il mobile | `apps/web/src/app/(mobile)/m/` — è un **sottoinsieme separato**, non responsive — dal 5/10/2026 **i telefoni usano solo /m** (anche con «sito desktop» di Safari/Chrome; niente più «Versione desktop»), i tablet l'app completa: regola in `apps/web/src/lib/device.ts` |
 | Una chiamata API dal frontend | `apps/web/src/app/api/**/route.ts` (176 route, solo proxy — `git ls-files`, 29/09/2026) |
 | Logica di business | `services/*.py` |
 | Un endpoint del worker | `services/routers/*.py` (15 router) |
