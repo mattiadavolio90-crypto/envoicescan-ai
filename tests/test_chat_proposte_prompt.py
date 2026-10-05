@@ -8,6 +8,8 @@ la catena rimanda al locale.
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+import pytest
+
 import services.fastapi_worker as fw
 from config.constants import SETTORE_RETAIL, SETTORE_RISTORAZIONE
 from tests.test_chat_settore_retail import USER, _Settembre, _kpi_mock, _sb
@@ -134,3 +136,23 @@ def test_le_regole_nominano_solo_strumenti_che_esistono():
         assert fw._CHAT_TOOL_FLAG[nome] == fw._assistente.PAGINA_PER_TIPO[tipo]
         assert nome not in fw._CHAT_TOOLS_SEDE_IN_CATENA
     assert fw._CHAT_TOOL_FLAG["proponi_spesa"] == "agenda"
+
+
+def _parametri(nome):
+    [t] = [t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == nome]
+    return t["function"]["parameters"]
+
+
+def test_lo_strumento_del_personale_offre_le_tre_voci_e_nessuna_e_obbligatoria():
+    """Fase D2: il modello deve poter dettare le sole ore extra. Una voce obbligatoria
+    lo costringerebbe a inventarla (o a passare 0)."""
+    par = _parametri("proponi_personale")
+    assert set(fw._assistente.VOCI_PERSONALE) <= set(par["properties"])
+    assert set(par["required"]) == {"anno", "mese"}
+
+
+@pytest.mark.parametrize("nome", ["proponi_incasso", "proponi_fatturato_mese"])
+def test_gli_incassi_offrono_il_4_e_il_5_facoltativi(nome):
+    par = _parametri(nome)
+    assert set(fw._assistente.ALIQUOTE_RIDOTTE) <= set(par["properties"])
+    assert not set(fw._assistente.ALIQUOTE_RIDOTTE) & set(par["required"])

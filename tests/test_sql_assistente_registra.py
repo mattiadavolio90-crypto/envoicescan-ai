@@ -570,7 +570,114 @@ def test_il_personale_mostra_anche_l_extra_e_la_chiamata_per_la_card(scenario):
     )
     letto = A.leggi_personale(scenario.sb, a.ids["sede1"], OGGI.year, OGGI.month)
     assert letto.attuale == {"costo_dipendenti": 8000.0}
-    assert letto.info == {"costo_personale_extra": 450.5, "costo_personale_chiamata": 37.0}
+    assert letto.info == {"costo_dipendenti": 8000.0, "costo_personale_extra": 450.5,
+                          "costo_personale_chiamata": 37.0}
+
+
+# ─── Fase D2: le voci del personale dettate, una per una ──────────────────────
+def _tre_voci(sc, sede):
+    return _riga(sc, "SELECT costo_dipendenti::float, costo_personale_extra::float, "
+                     "costo_personale_chiamata::float FROM public.margini_mensili "
+                     "WHERE ristorante_id = %s AND anno = %s AND mese = %s", sede, OGGI.year, OGGI.month)
+
+
+def _mese_con(sc, a, dip=0, extra=0, chiamata=0):
+    sc.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti, "
+        "costo_personale_extra, costo_personale_chiamata) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (a.ids["user_id"], a.ids["sede1"], OGGI.year, OGGI.month, dip, extra, chiamata),
+    )
+
+
+def test_le_sole_ore_extra_non_toccano_lordo_e_chiamata(scenario):
+    a = scenario.a
+    _mese_con(scenario, a, dip=7320, chiamata=37)
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], costo_dipendenti=None, costo_personale_extra=688))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["valori"] == {"anno": OGGI.year, "mese": OGGI.month, "costo_personale_extra": 688.0}
+    assert _tre_voci(scenario, a.ids["sede1"]) == (7320.0, 688.0, 37.0)
+
+
+def test_la_sola_chiamata_su_un_mese_senza_riga_la_crea(scenario):
+    a = scenario.a
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], costo_dipendenti=None, costo_personale_chiamata=150))
+    assert resp.status_code == 200, resp.text
+    assert _tre_voci(scenario, a.ids["sede1"]) == (0.0, 0.0, 150.0)
+
+
+def test_tre_voci_insieme_col_loro_precedente(scenario):
+    a = scenario.a
+    _mese_con(scenario, a, dip=7000, extra=200)
+    voci = {"costo_dipendenti": 7320, "costo_personale_extra": 688, "costo_personale_chiamata": 150}
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], **voci))
+    assert resp.status_code == 409
+    attuale = resp.json()["detail"]["attuale"]
+    assert attuale == {"costo_dipendenti": 7000.0, "costo_personale_extra": 200.0, "costo_personale_chiamata": 0.0}
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], **voci, precedente=attuale))
+    assert resp.status_code == 200, resp.text
+    assert _tre_voci(scenario, a.ids["sede1"]) == (7320.0, 688.0, 150.0)
+
+
+def test_una_voce_non_dettata_cambiata_nel_frattempo_non_e_un_conflitto(scenario):
+    """Il «risulta …» e la condizione dell'update stanno sulle voci dettate: se nel
+    frattempo qualcuno ha scritto la chiamata, le ore extra si registrano lo stesso
+    e la chiamata resta la sua."""
+    a = scenario.a
+    _mese_con(scenario, a, dip=7320, extra=100)
+    from services.routers import assistente as A
+    letto = A.leggi_personale(scenario.sb, a.ids["sede1"], OGGI.year, OGGI.month, ("costo_personale_extra",))
+    scenario.conn.execute("UPDATE public.margini_mensili SET costo_personale_chiamata = 99 "
+                          "WHERE ristorante_id = %s AND anno = %s AND mese = %s",
+                          (a.ids["sede1"], OGGI.year, OGGI.month))
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], costo_dipendenti=None, costo_personale_extra=688,
+                                               precedente=letto.attuale))
+    assert resp.status_code == 200, resp.text
+    assert _tre_voci(scenario, a.ids["sede1"]) == (7320.0, 688.0, 99.0)
+
+
+def test_la_voce_dettata_cambiata_nel_frattempo_e_409(scenario):
+    a = scenario.a
+    _mese_con(scenario, a, dip=7320, extra=100)
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], costo_dipendenti=None, costo_personale_extra=688,
+                                               precedente={"costo_personale_extra": 50}))
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["attuale"] == {"costo_personale_extra": 100.0}
+    assert _tre_voci(scenario, a.ids["sede1"]) == (7320.0, 100.0, 0.0)
+
+
+def test_uno_zero_dettato_non_cancella_la_voce(scenario):
+    a = scenario.a
+    _mese_con(scenario, a, dip=7320, extra=100, chiamata=37)
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], costo_dipendenti=0, costo_personale_extra=688,
+                                               costo_personale_chiamata=0, precedente={"costo_personale_extra": 100}))
+    assert resp.status_code == 200, resp.text
+    assert _tre_voci(scenario, a.ids["sede1"]) == (7320.0, 688.0, 37.0)
+
+
+def test_card_della_fase_c_rimasta_aperta_non_scrive_alla_cieca(scenario):
+    """Una card della C ancora in sessionStorage porta le ore extra come «restano»
+    (stesso nome di campo, che ora vuol dire «dettate»): la Conferma la ferma col
+    409 invece di scrivere, e il cliente rivede i valori di adesso."""
+    a = scenario.a
+    _mese_con(scenario, a, dip=8000, extra=450)
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], costo_personale_extra=450,
+                                               precedente={"costo_dipendenti": 8000}))
+    assert resp.status_code == 409
+    assert _tre_voci(scenario, a.ids["sede1"]) == (8000.0, 450.0, 0.0)
+
+
+@pytest.mark.parametrize("voci", [
+    {"costo_dipendenti": None},
+    {"costo_dipendenti": 0, "costo_personale_extra": 0},
+    {"costo_dipendenti": 1000, "costo_personale_chiamata": -1},
+    {"costo_dipendenti": 200_000, "costo_personale_extra": 100_000.01},
+], ids=["nessuna", "tutte-zero", "negativa", "somma-fuori-scala"])
+def test_voci_del_personale_non_valide_sono_400(scenario, voci):
+    a = scenario.a
+    resp = _registra(scenario, a, **_personale(a.ids["sede1"], **voci))
+    assert resp.status_code == 400, resp.text
+    assert _riga(scenario, "SELECT count(*) FROM public.margini_mensili WHERE ristorante_id = %s "
+                           "AND anno = %s AND mese = %s", a.ids["sede1"], OGGI.year, OGGI.month) == (0,)
 
 
 # ─── Dopo la scrittura ────────────────────────────────────────────────────────

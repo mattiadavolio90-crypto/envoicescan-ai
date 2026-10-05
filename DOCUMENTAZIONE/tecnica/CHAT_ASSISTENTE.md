@@ -319,11 +319,21 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   `propostaValida`, `testoCard`, `esitoConferma`, `corpoConferma`) vive sulla
   voce della risposta in sessionStorage. Una Conferma ripetuta riceve 409 con
   `attuale` uguale al dettato: il client la legge come registrata.
-- **Personale in tre voci** (fase C, 04/10/2026): in Margini il personale e'
-  Lordo + Ore extra + Chiamata. `proponi_personale` scrive ancora solo il Lordo
-  (`costo_dipendenti`): la card dice «Lordo» e cita le ore extra e la chiamata
-  gia' registrate, che restano (`PropostaCifra.costo_personale_extra` /
-  `costo_personale_chiamata`, solo testo). Lo strumento a tre voci e' della fase D.
+- **Personale in tre voci** (fase C, 04/10/2026; strumento fase D2): in Margini
+  il personale e' Lordo + Ore extra + Chiamata. `proponi_personale` prende
+  `importo` (lordo), `ore_extra`, `chiamata` e scrive **solo le voci dettate**
+  (`CAMPI_PERSONALE`, `valida_personale`; uno zero vale «non detta», il tetto
+  sulla somma). Sulla proposta `costo_dipendenti` / `costo_personale_extra` /
+  `costo_personale_chiamata` sono le voci dettate; `restano` (solo card) quelle
+  gia' registrate che non si toccano. `precedente` e la condizione dell'update
+  stanno sulle sole voci dettate (`leggi_personale(..., campi)`): una voce non
+  dettata cambiata nel frattempo non e' un conflitto. Una card della fase C
+  rimasta in sessionStorage riceve 409 (mai una scrittura alla cieca).
+- **Incassi al 4% e al 5%** (fase D2): `iva4` / `iva5` di `proponi_incasso` e
+  `proponi_fatturato_mese`, lordi. Non hanno colonna: come l'import email di
+  cassa si scorporano (`netto_da_lordo`) e il netto si somma in
+  `altri_ricavi_noiva` (`ALIQUOTE_RIDOTTE`, `_importi_dettati`). La Conferma
+  non cambia; `PropostaCifra.iva4` / `iva5` servono alla nota della card.
 - **Spesa extra** (fase D1 del piano consulente, 04/10/2026): `proponi_spesa`
   (pagina `agenda`, come il form `ws_spese_crea`) prepara una riga di
   `spese_extra` — categoria scelta dal modello fra `CATEGORIE_SPESA`, tipo
@@ -340,8 +350,8 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   pagina del tipo (`PAGINA_PER_TIPO`).
 - Test: `tests/test_sql_assistente_registra.py`, `tests/test_sql_chat_proposte.py`
   (Postgres vero, due clienti), `tests/test_chat_proposte_prompt.py`,
-  `tests/test_home_chat_frontend.py`, `tests/test_assistente_spesa_extra.py`,
-  `tests/test_spesa_extra_card_frontend.py`.
+  `tests/test_home_chat_frontend.py`, `tests/test_assistente_registra_validazioni.py`,
+  `tests/test_assistente_spesa_extra.py`, `tests/test_spesa_extra_card_frontend.py`.
 
 ### 5.5 Bozze al fornitore: le scrive Score, non l'assistente (dal 3/10/2026)
 

@@ -109,9 +109,11 @@ def test_personale_con_extra_e_la_sua_conferma(scenario, modello):
                                                   "importo": 12000})]
     [proposta] = _chat(scenario).json()["proposte"]
     assert (proposta["tipo"], proposta["costo_dipendenti"], proposta["costo_personale_extra"]) == \
-        ("personale_mese", 12000, 450)
-    assert modello["letti"][0]["extra_gia_registrati"] == 450
+        ("personale_mese", 12000, None)
+    assert proposta["restano"] == {"costo_personale_extra": 450}
+    assert modello["letti"][0]["restano_gia_registrate"] == {"ore_extra": 450}
     assert _conferma(scenario, proposta).status_code == 200
+    assert _personale_del_mese(scenario, a.ids["sede1"]) == (12000.0, 450.0, 0.0)
 
 
 def test_personale_con_la_sola_chiamata_e_la_sua_conferma_la_lascia(scenario, modello):
@@ -124,15 +126,78 @@ def test_personale_con_la_sola_chiamata_e_la_sua_conferma_la_lascia(scenario, mo
                                                   "importo": 1000})]
     [proposta] = _chat(scenario).json()["proposte"]
     assert (proposta["costo_dipendenti"], proposta["costo_personale_extra"], proposta["costo_personale_chiamata"]) == \
-        (1000, None, 37)
-    assert modello["letti"][0]["chiamata_gia_registrata"] == 37
-    assert "extra_gia_registrati" not in modello["letti"][0]
+        (1000, None, None)
+    assert proposta["restano"] == {"costo_personale_chiamata": 37}
+    assert modello["letti"][0]["restano_gia_registrate"] == {"chiamata": 37}
     assert _conferma(scenario, proposta).status_code == 200
-    assert scenario.conn.execute(
+    assert _personale_del_mese(scenario, a.ids["sede1"]) == (1000.0, 0.0, 37.0)
+
+
+def _personale_del_mese(sc, sede):
+    return sc.conn.execute(
         "SELECT costo_dipendenti::float, costo_personale_extra::float, costo_personale_chiamata::float "
         "FROM public.margini_mensili WHERE ristorante_id = %s AND anno = %s AND mese = %s",
-        (a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
-    ).fetchone() == (1000.0, 0.0, 37.0)
+        (sede, MESE_SCORSO.year, MESE_SCORSO.month),
+    ).fetchone()
+
+
+def test_le_sole_ore_extra_dettate_lasciano_il_lordo(scenario, modello):
+    """Fase D2: «le ore extra di agosto sono 688» non tocca il lordo gia' scritto."""
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti) "
+        "VALUES (%s, %s, %s, %s, 7320)", (a.ids["user_id"], a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+    )
+    modello["chiamate"] = [("proponi_personale", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month,
+                                                  "ore_extra": 688})]
+    [proposta] = _chat(scenario).json()["proposte"]
+    assert (proposta["costo_dipendenti"], proposta["costo_personale_extra"]) == (None, 688)
+    assert proposta["precedente"] is None and proposta["restano"] == {"costo_dipendenti": 7320}
+    assert _personale_del_mese(scenario, a.ids["sede1"]) == (7320.0, 0.0, 0.0), "lo strumento ha scritto"
+    assert _conferma(scenario, proposta).status_code == 200
+    assert _personale_del_mese(scenario, a.ids["sede1"]) == (7320.0, 688.0, 0.0)
+
+
+def test_le_tre_voci_dettate_e_la_loro_conferma(scenario, modello):
+    a = scenario.a
+    scenario.conn.execute(
+        "INSERT INTO public.margini_mensili (user_id, ristorante_id, anno, mese, costo_dipendenti, "
+        "costo_personale_extra) VALUES (%s, %s, %s, %s, 7000, 200)",
+        (a.ids["user_id"], a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+    )
+    modello["chiamate"] = [("proponi_personale", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month,
+                                                  "importo": 7320, "ore_extra": 688, "chiamata": 150})]
+    [proposta] = _chat(scenario).json()["proposte"]
+    assert proposta["precedente"] == {"costo_dipendenti": 7000, "costo_personale_extra": 200,
+                                      "costo_personale_chiamata": 0}
+    assert _conferma(scenario, proposta).status_code == 200
+    assert _personale_del_mese(scenario, a.ids["sede1"]) == (7320.0, 688.0, 150.0)
+
+
+# ─── Incassi al 4% e al 5% ────────────────────────────────────────────────────
+def test_incasso_col_4_si_registra_senza_iva(scenario, modello):
+    a = scenario.a
+    modello["chiamate"] = [("proponi_incasso", {**INCASSO, "iva4": 208, "iva5": 105})]
+    [proposta] = _chat(scenario).json()["proposte"]
+    assert (proposta["altri_ricavi_noiva"], proposta["iva4"], proposta["iva5"]) == (840, 208, 105)
+    assert modello["letti"][0]["iva_ridotta"] == {"al_4%": {"detto": 208, "senza_iva": 200},
+                                                  "al_5%": {"detto": 105, "senza_iva": 100}}
+    assert _giorno(scenario, a.ids["sede1"]) is None, "lo strumento ha scritto"
+    assert _conferma(scenario, proposta).status_code == 200
+    assert _giorno(scenario, a.ids["sede1"])[:2] == (1800.0, 840.0)
+
+
+def test_fatturato_del_mese_col_5_si_registra_senza_iva(scenario, modello):
+    modello["chiamate"] = [("proponi_fatturato_mese", {"anno": MESE_SCORSO.year, "mese": MESE_SCORSO.month,
+                                                       "iva10": 30000, "senza_iva": 2000, "iva5": 1050})]
+    [proposta] = _chat(scenario).json()["proposte"]
+    assert (proposta["altri_ricavi_noiva"], proposta["iva5"]) == (3000, 1050)
+    assert _conferma(scenario, proposta).status_code == 200
+    assert scenario.conn.execute(
+        "SELECT altri_ricavi_noiva::float FROM public.ricavi_modalita_mensile "
+        "WHERE ristorante_id = %s AND anno = %s AND mese = %s",
+        (scenario.a.ids["sede1"], MESE_SCORSO.year, MESE_SCORSO.month),
+    ).fetchone() == (3000.0,)
 
 
 def test_fatturato_del_mese_e_la_sua_conferma(scenario, modello):

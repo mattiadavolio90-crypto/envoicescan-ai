@@ -491,9 +491,11 @@ PROPOSTA = {
     "anno": None, "mese": None, "costo_dipendenti": None, "costo_personale_extra": None,
     "costo_personale_chiamata": None,
 }
+# Fase D: le voci del personale sulla proposta sono le DETTATE; `restano` quelle
+# gia' registrate che non si toccano.
 PERSONALE = {**PROPOSTA, "tipo": "personale_mese", "data": None, "anno": 2026, "mese": 8,
              "fatturato_iva10": 0, "altri_ricavi_noiva": 0, "costo_dipendenti": 12000,
-             "costo_personale_extra": 450, "costo_personale_chiamata": 37}
+             "restano": {"costo_personale_extra": 450, "costo_personale_chiamata": 37}}
 FATTURATO = {**PROPOSTA, "tipo": "fatturato_mese", "data": None, "anno": 2026, "mese": 8,
              "fatturato_iva10": 30000, "altri_ricavi_noiva": 2000, "fatturato_iva22": 500}
 
@@ -515,6 +517,7 @@ def test_proposta_del_worker_valida(p):
     {"precedente": {"fatturato_iva10": "700"}}, {"precedente": [1]},
     {"sede_nome": 3}, {"costo_personale_extra": -5},
     {"costo_personale_chiamata": -5}, {"costo_personale_chiamata": "37"},
+    {"iva4": -1}, {"iva5": "105"}, {"restano": {"costo_dipendenti": -1}}, {"restano": [450]},
 ], ids=lambda m: ",".join(f"{k}={v!r}" for k, v in m.items()))
 def test_proposta_incasso_malformata_scartata(modifica):
     assert _chiama("propostaValida", [{**PROPOSTA, **modifica}]) is False
@@ -584,18 +587,25 @@ def test_card_non_array_o_su_voce_del_cliente_si_toglie_la_voce_resta():
 
 def test_la_conferma_rimanda_la_proposta_senza_i_campi_della_card():
     out = _chiama("corpoConferma", [{**PERSONALE, "user_id": "altro", "extra": 1}])
-    assert out == {k: v for k, v in PERSONALE.items()
-                   if k not in ("sede_nome", "costo_personale_extra", "costo_personale_chiamata")}
-    assert "costo_personale_chiamata" not in out
+    assert out == {k: v for k, v in PERSONALE.items() if k not in ("sede_nome", "restano")}
+    assert "restano" not in out
 
 
-def test_la_sola_chiamata_non_entra_nella_conferma():
-    """La Conferma scrive solo il lordo: la chiamata e' una nota della card."""
-    p = {**PERSONALE, "costo_personale_extra": None, "costo_personale_chiamata": 37}
+@pytest.mark.parametrize("voci", [
+    {"costo_dipendenti": None, "costo_personale_extra": None, "costo_personale_chiamata": 37},
+    {"costo_dipendenti": 7320, "costo_personale_extra": 688, "costo_personale_chiamata": 150},
+], ids=["sola-chiamata", "tre-voci"])
+def test_le_voci_dettate_entrano_nella_conferma(voci):
+    p = {**PERSONALE, **voci, "restano": None}
     assert _chiama("propostaValida", [p]) is True
     out = _chiama("corpoConferma", [p])
-    assert "costo_personale_chiamata" not in out
-    assert out["costo_dipendenti"] == 12000
+    assert {k: out[k] for k in voci} == voci
+
+
+def test_il_4_e_il_5_non_entrano_nella_conferma():
+    """Sono gia' dentro `altri_ricavi_noiva`, senza IVA: la Conferma non li rimanda."""
+    out = _chiama("corpoConferma", [{**PROPOSTA, "iva4": 208, "iva5": 105, "altri_ricavi_noiva": 840}])
+    assert "iva4" not in out and "iva5" not in out and out["altri_ricavi_noiva"] == 840
 
 
 # ─── Cosa dice la card ────────────────────────────────────────────────────────
@@ -627,29 +637,60 @@ def test_testo_card_fatturato_del_mese():
     assert t["totale"] == "32.500,00\u00a0€"
 
 
-def test_testo_card_personale_con_extra_chiamata_e_precedente():
+def test_testo_card_personale_col_lordo_precedente_e_le_voci_che_restano():
     t = _chiama("testoCard", [{**PERSONALE, "precedente": {"costo_dipendenti": 8000}}, 2026])
     assert t["titolo"] == "Costo del personale di agosto 2026"
     assert t["righe"] == [["Lordo", "12.000,00\u00a0€"]]
     assert t["totale"] is None
     assert t["nota"] == ("Risulta già 8.000,00\u00a0€: lo sostituisco. Più 450,00\u00a0€ di ore extra "
                          "e 37,00\u00a0€ di chiamata già registrati, che restano.")
-    senza = _chiama("testoCard", [{**PERSONALE, "costo_personale_extra": None,
-                                   "costo_personale_chiamata": None}, 2026])
-    assert senza["nota"] is None
+    assert _chiama("testoCard", [{**PERSONALE, "restano": None}, 2026])["nota"] is None
 
 
-def test_testo_card_personale_con_la_sola_chiamata():
-    t = _chiama("testoCard", [{**PERSONALE, "costo_dipendenti": 1000, "costo_personale_extra": 0,
-                               "costo_personale_chiamata": 37}, 2026])
+def test_testo_card_personale_con_la_sola_chiamata_che_resta():
+    t = _chiama("testoCard", [{**PERSONALE, "costo_dipendenti": 1000,
+                               "restano": {"costo_personale_chiamata": 37}}, 2026])
     assert t["righe"] == [["Lordo", "1.000,00\u00a0€"]]
     assert t["nota"] == "Più 37,00\u00a0€ di chiamata già registrati, che restano."
 
 
-def test_testo_card_personale_con_le_sole_ore_extra():
-    t = _chiama("testoCard", [{**PERSONALE, "costo_dipendenti": 1000, "costo_personale_extra": 200,
-                               "costo_personale_chiamata": 0}, 2026])
-    assert t["nota"] == "Più 200,00\u00a0€ di ore extra già registrati, che restano."
+def test_testo_card_personale_con_le_tre_voci_dettate():
+    p = {**PERSONALE, "costo_dipendenti": 7320, "costo_personale_extra": 688.5, "costo_personale_chiamata": 150,
+         "restano": None, "precedente": {"costo_dipendenti": 7000, "costo_personale_extra": 200,
+                                         "costo_personale_chiamata": 0}}
+    t = _chiama("testoCard", [p, 2026])
+    assert t["righe"] == [["Lordo", "7.320,00\u00a0€"], ["Ore extra", "688,50\u00a0€"], ["Chiamata", "150,00\u00a0€"]]
+    assert t["totale"] == "8.158,50\u00a0€"
+    assert t["nota"] == "Risulta già lordo 7.000,00\u00a0€ e ore extra 200,00\u00a0€: li sostituisco."
+
+
+def test_testo_card_delle_sole_ore_extra_col_lordo_che_resta():
+    p = {**PERSONALE, "costo_dipendenti": None, "costo_personale_extra": 688,
+         "restano": {"costo_dipendenti": 7320}}
+    t = _chiama("testoCard", [p, 2026])
+    assert t["righe"] == [["Ore extra", "688,00\u00a0€"]]
+    assert t["totale"] is None
+    assert t["nota"] == "Più 7.320,00\u00a0€ di lordo già registrati, che restano."
+
+
+def test_testo_card_due_voci_una_sola_gia_presente():
+    p = {**PERSONALE, "costo_personale_extra": 500, "restano": None,
+         "precedente": {"costo_dipendenti": 0, "costo_personale_extra": 300}}
+    assert _chiama("testoCard", [p, 2026])["nota"] == "Risulta già ore extra 300,00\u00a0€: lo sostituisco."
+
+
+def test_testo_card_incasso_col_4_dice_cosa_c_e_nel_senza_iva():
+    p = {**PROPOSTA, "altri_ricavi_noiva": 540 + 200 + 100, "iva4": 208, "iva5": 105}
+    t = _chiama("testoCard", [p, 2026])
+    assert t["righe"] == [["Al 10%", "1.800,00\u00a0€"], ["Senza IVA", "840,00\u00a0€"]]
+    assert t["totale"] == "2.640,00\u00a0€"
+    assert t["nota"] == ("In «Senza IVA» ci sono anche 208,00\u00a0€ al 4% (200,00\u00a0€ senza IVA) "
+                         "e 105,00\u00a0€ al 5% (100,00\u00a0€ senza IVA).")
+    con_prima = _chiama("testoCard", [{**PROPOSTA, "iva4": 20, "altri_ricavi_noiva": 559.23,
+                                       "precedente": {"fatturato_iva10": 700}}, 2026])
+    assert con_prima["nota"] == ("In «Senza IVA» ci sono anche 20,00\u00a0€ al 4% (19,23\u00a0€ senza IVA). "
+                                 "Risulta già 700,00\u00a0€: lo sostituisco.")
+    assert _chiama("testoCard", [{**PROPOSTA, "iva4": 0, "iva5": None}, 2026])["nota"] is None
 
 
 def test_senza_nome_della_sede_niente_riga_vuota():
@@ -679,7 +720,8 @@ def test_valore_cambiato_mostra_il_nuovo_e_chiede_una_conferma_nuova():
     (PROPOSTA, {"fatturato_iva10": 1800, "altri_ricavi_noiva": 540, "fatturato_iva22": 0}),
     (PROPOSTA, {"fatturato_iva10": 1800.004, "altri_ricavi_noiva": 540, "fatturato_iva22": 0}),
     (PERSONALE, {"costo_dipendenti": 12000}),
-], ids=["incasso", "al-centesimo", "personale"])
+    ({**PERSONALE, "costo_personale_extra": 500}, {"costo_dipendenti": 12000, "costo_personale_extra": 500}),
+], ids=["incasso", "al-centesimo", "personale", "personale-due-voci"])
 def test_conferma_ripetuta_e_registrata(proposta, attuale):
     """La seconda Conferma della stessa cifra (pagina ricaricata, risposta persa,
     scheda duplicata): il server dice 409 col valore uguale al dettato. Non e'
@@ -692,7 +734,8 @@ def test_conferma_ripetuta_e_registrata(proposta, attuale):
     (PROPOSTA, {"fatturato_iva10": 1800, "altri_ricavi_noiva": 0, "fatturato_iva22": 0}),
     (PROPOSTA, {"fatturato_iva10": 1800, "altri_ricavi_noiva": 540, "fatturato_iva22": 10}),
     (PERSONALE, {"costo_dipendenti": 8000}),
-], ids=["senza-iva-diverso", "22-diverso", "personale-diverso"])
+    ({**PERSONALE, "costo_personale_extra": 500}, {"costo_dipendenti": 12000, "costo_personale_extra": 0}),
+], ids=["senza-iva-diverso", "22-diverso", "personale-diverso", "personale-seconda-voce-diversa"])
 def test_uguale_solo_in_parte_resta_cambiato(proposta, attuale):
     out = _esito(409, {"detail": {"motivo": "valore_cambiato", "attuale": attuale}}, _card(proposta))
     assert out["stato"] == "cambiata"
@@ -783,3 +826,53 @@ def test_al_worker_non_va_la_bozza():
     voci = [{"role": "assistant", "content": "Ecco", "vista": "sede:r-1", "bozze": [BOZZA]}]
     assert _chiama("codaPerVista", [voci, {"chiave": "sede:r-1", "contesto": "sede"}]) == \
         [{"role": "assistant", "content": "Ecco"}]
+
+
+# ─── Fase D2: parita' worker → client → worker ────────────────────────────────
+def test_personale_a_tre_voci_dal_worker_al_client_e_ritorno():
+    """La proposta vera del worker (voci dettate + `restano`) passa dal client e la
+    Conferma che ne esce rivalida alle stesse voci: `restano` non diventa dettato."""
+    from datetime import date
+
+    from services.routers import assistente as A
+
+    class _Sb:
+        def table(self, _):
+            return self
+
+        def select(self, _):
+            return self
+
+        def eq(self, *_):
+            return self
+
+        def limit(self, _):
+            return self
+
+        def execute(self):
+            return type("R", (), {"data": [{"id": 1, "costo_dipendenti": 7320, "costo_personale_extra": 0,
+                                            "costo_personale_chiamata": 37}]})()
+
+    proposta, _ = A._proponi_personale({"anno": 2026, "mese": 9, "ore_extra": 688}, _Sb(), "r-1", "X",
+                                       date(2026, 10, 4))
+    p = proposta.model_dump()
+    assert _chiama("propostaValida", [p]) is True
+    corpo = _chiama("corpoConferma", [p])
+    assert A.valida_personale(A.RegistraRequest(**corpo)) == {"costo_personale_extra": 688.0}
+    t = _chiama("testoCard", [p, 2026])
+    assert t["righe"] == [["Ore extra", "688,00 €"]]
+    assert "7.320,00 € di lordo e 37,00 € di chiamata" in t["nota"]
+
+
+@pytest.mark.parametrize("lordo", [20, 208, 99.99, 1234.56, 0.01])
+@pytest.mark.parametrize("aliquota", [4, 5])
+def test_il_netto_del_4_e_del_5_sulla_card_e_quello_registrato(lordo, aliquota):
+    """La nota della card scorpora col conto del client: deve dare il netto che il
+    worker ha sommato in `altri_ricavi_noiva`, al centesimo."""
+    from services.routers import assistente as A
+
+    importi, _, ridotte = A._importi_dettati({"iva10": 0, "senza_iva": 0, f"iva{aliquota}": lordo}, None)
+    p = {**PROPOSTA, **importi, **ridotte}
+    nota = _chiama("testoCard", [p, 2026])["nota"]
+    netto = _chiama("testoCard", [{**PROPOSTA, "altri_ricavi_noiva": importi["altri_ricavi_noiva"]}, 2026])["righe"][1][1]
+    assert f"({netto} senza IVA)" in nota

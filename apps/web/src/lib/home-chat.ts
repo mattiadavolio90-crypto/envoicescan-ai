@@ -1,4 +1,4 @@
-import { ALIQUOTE_IVA_COSTI } from "@/lib/iva-costi";
+import { ALIQUOTE_IVA_COSTI, nettoDaLordo } from "@/lib/iva-costi";
 
 // Chat dell'assistente — logica pura. Dal 28/9/2026 la conversazione vive nel
 // riquadro del briefing della Home (components/home/conversazione-assistente.tsx),
@@ -312,9 +312,16 @@ export type PropostaCifra = {
   fatturato_iva10: number;
   altri_ricavi_noiva: number;
   fatturato_iva22: number;
+  /** Personale (fase D): le voci dettate, le sole che si scrivono; null = non
+   *  dettata. `restano`: le voci gia' registrate che non si toccano. */
   costo_dipendenti?: number | null;
   costo_personale_extra?: number | null;
   costo_personale_chiamata?: number | null;
+  restano?: Record<string, number> | null;
+  /** Incassi al 4% e al 5% com'erano detti (lordi): sono gia' in
+   *  `altri_ricavi_noiva`, senza IVA. Solo per la card. */
+  iva4?: number | null;
+  iva5?: number | null;
   /** Cio' che la card mostra come «risulta …»; null = nessun valore. */
   precedente?: Record<string, number> | null;
   /** Spesa extra (fase D): `importo` com'e' stato detto, `iva_inclusa` l'aliquota
@@ -351,6 +358,17 @@ function valoriValidi(x: unknown): x is Record<string, number> {
   return !!x && typeof x === "object" && !Array.isArray(x) && Object.values(x).every(importo);
 }
 
+const VOCI_PERSONALE = ["costo_dipendenti", "costo_personale_extra", "costo_personale_chiamata"] as const;
+type VocePersonale = (typeof VOCI_PERSONALE)[number];
+const NOME_VOCE: Record<VocePersonale, string> = {
+  costo_dipendenti: "Lordo", costo_personale_extra: "Ore extra", costo_personale_chiamata: "Chiamata",
+};
+
+// Le voci del personale dettate, nell'ordine di Margini.
+function vociDettate(p: Pick<PropostaCifra, VocePersonale>): [VocePersonale, number][] {
+  return VOCI_PERSONALE.filter((k) => p[k] != null).map((k) => [k, p[k] as number]);
+}
+
 // Arriva dal worker o da sessionStorage: in entrambi i casi si controlla prima
 // di mostrarla, perche' Conferma la rimanda al server cosi' com'e'.
 export function propostaValida(x: unknown): x is PropostaCifra {
@@ -361,14 +379,16 @@ export function propostaValida(x: unknown): x is PropostaCifra {
   if (!importo(p.fatturato_iva10) || !importo(p.altri_ricavi_noiva) || !importo(p.fatturato_iva22)) return false;
   if (p.precedente != null && !valoriValidi(p.precedente)) return false;
   if (p.sede_nome != null && typeof p.sede_nome !== "string") return false;
-  if (p.costo_personale_extra != null && !importo(p.costo_personale_extra)) return false;
-  if (p.costo_personale_chiamata != null && !importo(p.costo_personale_chiamata)) return false;
+  for (const k of VOCI_PERSONALE) if (p[k] != null && !importo(p[k])) return false;
+  if (p.restano != null && !valoriValidi(p.restano)) return false;
+  if (p.iva4 != null && !importo(p.iva4)) return false;
+  if (p.iva5 != null && !importo(p.iva5)) return false;
   if (p.tipo === "spesa_extra") return spesaValida(p);
   if (p.tipo === "incasso_giorno") {
     return typeof p.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.data) && totaleIncasso(p as PropostaCifra) > 0;
   }
   if (!intero(p.anno) || !intero(p.mese) || p.mese < 1 || p.mese > 12) return false;
-  if (p.tipo === "personale_mese") return importo(p.costo_dipendenti) && p.costo_dipendenti > 0;
+  if (p.tipo === "personale_mese") return vociDettate(p as PropostaCifra).some(([, v]) => v > 0);
   return totaleIncasso(p as PropostaCifra) > 0;
 }
 
@@ -422,7 +442,8 @@ export function totaleIncasso(p: Pick<PropostaCifra, "fatturato_iva10" | "altri_
 // Solo i campi di RegistraRequest: la proposta puo' venire da sessionStorage.
 const CAMPI_CONFERMA = [
   "tipo", "ristorante_id", "data", "anno", "mese",
-  "fatturato_iva10", "altri_ricavi_noiva", "fatturato_iva22", "costo_dipendenti", "precedente",
+  "fatturato_iva10", "altri_ricavi_noiva", "fatturato_iva22",
+  "costo_dipendenti", "costo_personale_extra", "costo_personale_chiamata", "precedente",
   "categoria", "descrizione", "importo", "iva_inclusa", "id_proposta",
 ] as const;
 
@@ -436,7 +457,7 @@ function giaCosi(p: PropostaCifra, attuale: Record<string, number>): boolean {
   if (p.tipo === "spesa_extra") return false;
   const dettati: Record<string, number> =
     p.tipo === "personale_mese"
-      ? { costo_dipendenti: p.costo_dipendenti ?? 0 }
+      ? Object.fromEntries(vociDettate(p))
       : { fatturato_iva10: p.fatturato_iva10, altri_ricavi_noiva: p.altri_ricavi_noiva, fatturato_iva22: p.fatturato_iva22 };
   return Object.entries(dettati).every(([k, v]) => Math.abs(v - (attuale[k] ?? 0)) < 0.005);
 }
@@ -475,25 +496,7 @@ export function testoCard(p: PropostaCifra, annoCorrente: number): TestoCard {
   if (p.tipo === "spesa_extra") return testoSpesa(p, sede, annoCorrente);
   const quando =
     p.tipo === "incasso_giorno" ? giornoInChiaro(p.data ?? "", annoCorrente) : `${MESI[(p.mese ?? 1) - 1]} ${p.anno}`;
-  if (p.tipo === "personale_mese") {
-    const extra = p.costo_personale_extra ?? 0;
-    const chiamata = p.costo_personale_chiamata ?? 0;
-    const prima = p.precedente?.costo_dipendenti;
-    const restano = [
-      extra > 0 ? `${euro(extra)} di ore extra` : null,
-      chiamata > 0 ? `${euro(chiamata)} di chiamata` : null,
-    ].filter(Boolean);
-    return {
-      titolo: `Costo del personale di ${quando}`,
-      sede,
-      righe: [["Lordo", euro(p.costo_dipendenti ?? 0)]],
-      totale: null,
-      nota: [
-        prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
-        restano.length ? `Più ${restano.join(" e ")} già registrati, che restano.` : null,
-      ].filter(Boolean).join(" ") || null,
-    };
-  }
+  if (p.tipo === "personale_mese") return testoPersonale(p, sede, quando);
   const righe: [string, string][] = [
     ["Al 10%", euro(p.fatturato_iva10)],
     ["Senza IVA", euro(p.altri_ricavi_noiva)],
@@ -506,12 +509,43 @@ export function testoCard(p: PropostaCifra, annoCorrente: number): TestoCard {
         fatturato_iva22: p.precedente.fatturato_iva22 ?? 0,
       })
     : null;
+  // Il 4% e il 5% sono gia' dentro «Senza IVA», tolta l'IVA: la card lo dice,
+  // o il totale non torna con la cifra detta.
+  const ridotte = ([[4, p.iva4], [5, p.iva5]] as const)
+    .filter(([, v]) => v != null && v > 0)
+    .map(([aliquota, v]) => `${euro(v as number)} al ${aliquota}% (${euro(nettoDaLordo(v as number, aliquota))} senza IVA)`);
   return {
     titolo: p.tipo === "incasso_giorno" ? `Incasso di ${quando}` : `Fatturato di ${quando}`,
     sede,
     righe,
     totale: euro(totaleIncasso(p)),
-    nota: prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
+    nota: [
+      ridotte.length ? `In «Senza IVA» ci sono anche ${ridotte.join(" e ")}.` : null,
+      prima != null ? `Risulta già ${euro(prima)}: lo sostituisco.` : null,
+    ].filter(Boolean).join(" ") || null,
+  };
+}
+
+// Le sole voci dettate: le altre restano come sono e la card le nomina.
+function testoPersonale(p: PropostaCifra, sede: string | null, quando: string): TestoCard {
+  const dettate = vociDettate(p);
+  const unaSola = dettate.length === 1;
+  const prima = dettate
+    .map(([k]) => [k, p.precedente?.[k] ?? 0] as const)
+    .filter(([, v]) => v > 0)
+    .map(([k, v]) => (unaSola ? euro(v) : `${NOME_VOCE[k].toLowerCase()} ${euro(v)}`));
+  const restano = VOCI_PERSONALE.filter((k) => (p.restano?.[k] ?? 0) > 0).map(
+    (k) => `${euro(p.restano?.[k] ?? 0)} di ${NOME_VOCE[k].toLowerCase()}`,
+  );
+  return {
+    titolo: `Costo del personale di ${quando}`,
+    sede,
+    righe: dettate.map(([k, v]) => [NOME_VOCE[k], euro(v)]),
+    totale: unaSola ? null : euro(Math.round(dettate.reduce((s, [, v]) => s + v, 0) * 100) / 100),
+    nota: [
+      prima.length ? `Risulta già ${prima.join(" e ")}: ${prima.length === 1 ? "lo" : "li"} sostituisco.` : null,
+      restano.length ? `Più ${restano.join(" e ")} già registrati, che restano.` : null,
+    ].filter(Boolean).join(" ") || null,
   };
 }
 

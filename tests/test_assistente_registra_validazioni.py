@@ -74,7 +74,8 @@ def test_il_tetto_vale_sul_totale_non_sul_singolo_importo():
 def test_personale_mancante_zero_o_oltre_il_tetto_e_400():
     for valore in (None, 0, A.TETTO_PERSONALE_MESE + 0.01, float("nan")):
         assert _codice(A.valida_personale, _body(tipo="personale_mese", costo_dipendenti=valore)) == 400
-    assert A.valida_personale(_body(tipo="personale_mese", costo_dipendenti=A.TETTO_PERSONALE_MESE)) == A.TETTO_PERSONALE_MESE
+    assert A.valida_personale(_body(tipo="personale_mese", costo_dipendenti=A.TETTO_PERSONALE_MESE)) == \
+        {"costo_dipendenti": A.TETTO_PERSONALE_MESE}
 
 
 # ─── Gli argomenti del modello ────────────────────────────────────────────────
@@ -202,40 +203,204 @@ def test_leggi_personale_chiede_e_porta_anche_la_chiamata():
     letto = A.leggi_personale(sb, "rid", 2026, 9)
     assert "costo_personale_chiamata" in sb.select_chiesta
     assert letto.attuale == {"costo_dipendenti": 1000.0}
-    assert letto.info == {"costo_personale_extra": 200.0, "costo_personale_chiamata": 37.0}
+    assert letto.grezzo == {"costo_dipendenti": 1000}
+    assert letto.info == {"costo_dipendenti": 1000.0, "costo_personale_extra": 200.0,
+                          "costo_personale_chiamata": 37.0}
+
+
+def test_leggi_personale_sulle_voci_dettate():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 1000, "costo_personale_extra": None,
+                  "costo_personale_chiamata": 37})
+    letto = A.leggi_personale(sb, "rid", 2026, 9, ("costo_personale_extra", "costo_personale_chiamata"))
+    assert letto.attuale == {"costo_personale_extra": 0.0, "costo_personale_chiamata": 37.0}
+    assert letto.grezzo == {"costo_personale_extra": None, "costo_personale_chiamata": 37}
+
+
+def test_leggi_personale_voci_dettate_a_zero_e_nessun_valore():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 1000, "costo_personale_extra": 0,
+                  "costo_personale_chiamata": None})
+    letto = A.leggi_personale(sb, "rid", 2026, 9, ("costo_personale_extra", "costo_personale_chiamata"))
+    assert letto.attuale is None and letto.id == "7"
 
 
 def test_leggi_personale_chiamata_null_vale_zero():
     sb = _SbMese({"id": 7, "costo_dipendenti": 1000, "costo_personale_extra": None,
                   "costo_personale_chiamata": None})
     assert A.leggi_personale(sb, "rid", 2026, 9).info == {
-        "costo_personale_extra": 0.0, "costo_personale_chiamata": 0.0}
+        "costo_dipendenti": 1000.0, "costo_personale_extra": 0.0, "costo_personale_chiamata": 0.0}
 
 
-def test_proposta_personale_con_la_sola_chiamata_registrata():
+OGGI_P = date(2026, 10, 4)
+
+
+def test_proposta_personale_col_solo_lordo_e_la_chiamata_che_resta():
     sb = _SbMese({"id": 7, "costo_dipendenti": 0, "costo_personale_extra": 0,
                   "costo_personale_chiamata": 37})
     proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "importo": 1000}, sb,
-                                                "rid", "NAVIGLI", date(2026, 10, 4))
+                                                "rid", "NAVIGLI", OGGI_P)
     assert (proposta.costo_dipendenti, proposta.costo_personale_extra, proposta.costo_personale_chiamata) == \
-        (1000.0, None, 37.0)
-    assert al_modello["chiamata_gia_registrata"] == 37.0
-    assert "extra_gia_registrati" not in al_modello
+        (1000.0, None, None)
+    assert proposta.restano == {"costo_personale_chiamata": 37.0}
+    assert al_modello["si_registra"] == {"lordo": 1000.0}
+    assert al_modello["restano_gia_registrate"] == {"chiamata": 37.0}
 
 
-def test_proposta_personale_con_extra_e_chiamata_le_tiene_distinte():
-    sb = _SbMese({"id": 7, "costo_dipendenti": 0, "costo_personale_extra": 200,
-                  "costo_personale_chiamata": 37})
-    proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "importo": 1000}, sb,
-                                                "rid", None, date(2026, 10, 4))
-    assert (proposta.costo_personale_extra, proposta.costo_personale_chiamata) == (200.0, 37.0)
-    assert (al_modello["extra_gia_registrati"], al_modello["chiamata_gia_registrata"]) == (200.0, 37.0)
+def test_proposta_personale_con_le_tre_voci_dettate():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 7000, "costo_personale_extra": 200,
+                  "costo_personale_chiamata": 0})
+    proposta, al_modello = A._proponi_personale(
+        {"anno": 2026, "mese": 9, "importo": 7320, "ore_extra": 688, "chiamata": 150}, sb, "rid", None, OGGI_P)
+    assert (proposta.costo_dipendenti, proposta.costo_personale_extra, proposta.costo_personale_chiamata) == \
+        (7320.0, 688.0, 150.0)
+    assert proposta.precedente == {"costo_dipendenti": 7000.0, "costo_personale_extra": 200.0,
+                                   "costo_personale_chiamata": 0.0}
+    assert proposta.restano is None and "restano_gia_registrate" not in al_modello
+    assert al_modello["si_registra"] == {"lordo": 7320.0, "ore_extra": 688.0, "chiamata": 150.0}
+
+
+def test_proposta_delle_sole_ore_extra_lascia_il_lordo():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 7320, "costo_personale_extra": 0,
+                  "costo_personale_chiamata": 0})
+    proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "ore_extra": 688}, sb,
+                                                "rid", None, OGGI_P)
+    assert (proposta.costo_dipendenti, proposta.costo_personale_extra) == (None, 688.0)
+    assert proposta.precedente is None and al_modello["valore_attuale"] == "nessun valore"
+    assert proposta.restano == {"costo_dipendenti": 7320.0}
+
+
+def test_una_voce_a_zero_dal_modello_non_si_scrive():
+    """Il modello che passa 0 per la voce non detta non la cancella."""
+    sb = _SbMese({"id": 7, "costo_dipendenti": 7320, "costo_personale_extra": 0,
+                  "costo_personale_chiamata": 0})
+    proposta, _ = A._proponi_personale({"anno": 2026, "mese": 9, "importo": 0, "ore_extra": 688, "chiamata": 0},
+                                       sb, "rid", None, OGGI_P)
+    assert (proposta.costo_dipendenti, proposta.costo_personale_extra, proposta.costo_personale_chiamata) == \
+        (None, 688.0, None)
+
+
+@pytest.mark.parametrize("args", [
+    {"anno": 2026, "mese": 9},
+    {"anno": 2026, "mese": 9, "importo": 0, "ore_extra": 0},
+    {"anno": 2026, "mese": 9, "ore_extra": -5},
+    {"anno": 2026, "mese": 9, "importo": 200_000, "ore_extra": 100_000.01},
+])
+def test_proposta_personale_senza_voci_valide_e_un_errore(args):
+    sb = _SbMese({"id": 7, "costo_dipendenti": 0})
+    proposta, al_modello = A.proponi("proponi_personale", args, user={"id": "u"}, sb=_SbSede(sb),
+                                     ristorante_id=RID_P, sede_nome=None)
+    assert proposta is None
+    assert al_modello["errore"] in ("L'importo deve essere maggiore di zero", "Importo fuori scala: controlla la cifra",
+                                    "Importo non valido: costo_personale_extra")
+
+
+def test_la_stessa_strada_con_una_voce_valida_propone():
+    """Controprova del test sopra: la sede finta non e' la ragione del rifiuto."""
+    proposta, _ = A.proponi("proponi_personale", {"anno": 2026, "mese": 9, "chiamata": 37}, user={"id": "u"},
+                            sb=_SbSede(_SbMese({"id": 7, "costo_dipendenti": 0})), ristorante_id=RID_P,
+                            sede_nome=None)
+    assert proposta is not None and proposta.costo_personale_chiamata == 37.0
+
+
+@pytest.mark.parametrize("arg", ["importo", "ore_extra", "chiamata"])
+def test_proposta_personale_con_importo_in_testo(arg):
+    assert A._proponi_personale({"anno": 2026, "mese": 9, arg: "1.000"}, _SbMese(None), "rid", None, OGGI_P) == \
+        (None, A._IMPORTO_IN_TESTO)
+
+
+def test_proposta_personale_gia_cosi():
+    sb = _SbMese({"id": 7, "costo_dipendenti": 7320, "costo_personale_extra": 688,
+                  "costo_personale_chiamata": 0})
+    proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "ore_extra": 688}, sb,
+                                                "rid", None, OGGI_P)
+    assert proposta is None and al_modello == {"gia_registrato": True, "valore_attuale": {"ore_extra": 688.0}}
 
 
 def test_proposta_personale_senza_extra_ne_chiamata():
     sb = _SbMese({"id": 7, "costo_dipendenti": 0, "costo_personale_extra": 0,
                   "costo_personale_chiamata": 0})
     proposta, al_modello = A._proponi_personale({"anno": 2026, "mese": 9, "importo": 1000}, sb,
-                                                "rid", None, date(2026, 10, 4))
-    assert (proposta.costo_personale_extra, proposta.costo_personale_chiamata) == (None, None)
-    assert "chiamata_gia_registrata" not in al_modello
+                                                "rid", None, OGGI_P)
+    assert (proposta.costo_personale_extra, proposta.costo_personale_chiamata, proposta.restano) == \
+        (None, None, None)
+    assert "restano_gia_registrate" not in al_modello
+
+
+RID_P = "6f1c3a52-0000-4000-8000-0000000000aa"
+
+
+class _SbSede:
+    """La sede esiste (sede_scrivibile) e margini_mensili e' quella di `mese`."""
+
+    def __init__(self, mese):
+        self.mese = mese
+
+    def table(self, nome):
+        if nome == "ristoranti":
+            return _SbMese({"id": RID_P})
+        return self.mese
+
+
+# ─── Il valore dettato vs le voci della Conferma ──────────────────────────────
+@pytest.mark.parametrize("kw,atteso", [
+    ({"costo_personale_extra": 500}, {"costo_personale_extra": 500.0}),
+    ({"costo_dipendenti": 0, "costo_personale_chiamata": 37.004}, {"costo_personale_chiamata": 37.0}),
+    ({"costo_dipendenti": 7320, "costo_personale_extra": 688, "costo_personale_chiamata": 150},
+     {"costo_dipendenti": 7320.0, "costo_personale_extra": 688.0, "costo_personale_chiamata": 150.0}),
+])
+def test_valida_personale_tiene_le_sole_voci_dette(kw, atteso):
+    assert A.valida_personale(_body(tipo="personale_mese", **kw)) == atteso
+
+
+def test_il_tetto_del_personale_vale_sulla_somma_delle_voci():
+    assert A.valida_personale(_body(tipo="personale_mese", costo_dipendenti=200_000, costo_personale_extra=100_000))
+    assert _codice(A.valida_personale, _body(tipo="personale_mese", costo_dipendenti=200_000,
+                                             costo_personale_extra=100_000.01)) == 400
+
+
+@pytest.mark.parametrize("campo", ["costo_personale_extra", "costo_personale_chiamata"])
+def test_una_voce_negativa_e_400_anche_accanto_a_una_valida(campo):
+    assert _codice(A.valida_personale, _body(tipo="personale_mese", costo_dipendenti=1000, **{campo: -1})) == 400
+
+
+# ─── Incassi al 4% e al 5%: scorporati nella parte senza IVA ──────────────────
+@pytest.mark.parametrize("extra,altri", [
+    ({"iva4": 208}, 300.0 + 200.0),
+    ({"iva5": 105}, 300.0 + 100.0),
+    ({"iva4": 104, "iva5": 210}, 300.0 + 100.0 + 200.0),
+    ({"iva4": 20}, 300.0 + 19.23),
+    ({"iva4": 0, "iva5": None}, 300.0),
+])
+def test_il_4_e_il_5_si_sommano_senza_iva(extra, altri):
+    importi, errore, ridotte = A._importi_dettati({"iva10": 1000, "senza_iva": 300, **extra}, None)
+    assert errore == {}
+    assert importi == {"fatturato_iva10": 1000.0, "altri_ricavi_noiva": altri, "fatturato_iva22": 0.0}
+    assert ridotte == {k: float(v) for k, v in extra.items() if v}
+
+
+def test_senza_4_e_5_gli_importi_restano_quelli_detti():
+    assert A._importi_dettati({"iva10": 1000, "senza_iva": 300.5, "iva22": 40}, "retail") == (
+        {"fatturato_iva10": 1000.0, "altri_ricavi_noiva": 300.5, "fatturato_iva22": 40.0}, {}, {})
+
+
+@pytest.mark.parametrize("arg", ["iva4", "iva5"])
+def test_il_4_o_il_5_in_testo_si_rifiuta(arg):
+    assert A._importi_dettati({"iva10": 1000, "senza_iva": 0, arg: "1.040"}, None) == (None, A._IMPORTO_IN_TESTO, {})
+
+
+@pytest.mark.parametrize("args", [
+    {"iva10": 1000, "senza_iva": 0, "iva4": -10},
+    {"iva10": 1000, "senza_iva": 0, "iva5": float("nan")},
+    {"iva10": 1000, "senza_iva": -100, "iva4": 208},
+])
+def test_il_4_o_il_5_non_validi_sono_400(args):
+    assert _codice(A._importi_dettati, args, None) == 400
+
+
+def test_senza_divisione_si_chiede_anche_col_4():
+    importi, errore, _ = A._importi_dettati({"iva4": 208}, None)
+    assert importi is None and errore["errore"] == "divisione IVA mancante"
+
+
+def test_al_modello_il_4_dice_quanto_si_registra():
+    assert A._ridotte_al_modello({"iva4": 20.0})["iva_ridotta"] == {"al_4%": {"detto": 20.0, "senza_iva": 19.23}}
+    assert A._ridotte_al_modello({}) == {}

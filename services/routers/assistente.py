@@ -83,6 +83,8 @@ GIORNI_INDIETRO_INCASSO = 60
 MESI_INDIETRO = 12  # il mese corrente e i 12 prima
 
 CAMPI_INCASSO = ("fatturato_iva10", "altri_ricavi_noiva", "fatturato_iva22")
+# Le tre voci del personale di Margini (fase C): lordo, ore extra, chiamata.
+CAMPI_PERSONALE = ("costo_dipendenti", "costo_personale_extra", "costo_personale_chiamata")
 # La spesa extra si scrive dall'Agenda (`/api/workspace/spese`): chi non la vede
 # non la registra nemmeno dalla chat.
 PAGINA_PER_TIPO = {
@@ -106,7 +108,10 @@ class RegistraRequest(BaseModel):
     fatturato_iva10: float = 0.0
     altri_ricavi_noiva: float = 0.0
     fatturato_iva22: float = 0.0
+    # Personale: le voci dettate; None = non dettata, resta com'e'.
     costo_dipendenti: Optional[float] = None
+    costo_personale_extra: Optional[float] = None
+    costo_personale_chiamata: Optional[float] = None
     # Il valore mostrato sulla card come «risulta …»; None = nessun valore.
     precedente: Optional[Dict[str, float]] = None
     # Spesa extra: `importo` com'e' stato detto, `iva_inclusa` l'aliquota da
@@ -147,13 +152,17 @@ def valida_importi_incasso(body: RegistraRequest, tetto: float) -> Dict[str, flo
     return valori
 
 
-def valida_personale(body: RegistraRequest) -> float:
-    v = _importo("costo_dipendenti", body.costo_dipendenti)
-    if v <= 0:
+def valida_personale(body: RegistraRequest) -> Dict[str, float]:
+    """Le voci dettate, le sole che si scrivono. Uno zero vale «non detta»: un
+    modello che passa 0 per la voce che il cliente non ha nominato non deve
+    cancellarla (azzerare una voce si fa dal modulo di Margini)."""
+    valori = {c: _importo(c, getattr(body, c)) for c in CAMPI_PERSONALE if getattr(body, c) is not None}
+    dettato = {c: v for c, v in valori.items() if v > 0}
+    if not dettato:
         raise HTTPException(status_code=400, detail="L'importo deve essere maggiore di zero")
-    if v > TETTO_PERSONALE_MESE:
+    if sum(dettato.values()) > TETTO_PERSONALE_MESE:
         raise HTTPException(status_code=400, detail="Importo fuori scala: controlla la cifra")
-    return v
+    return dettato
 
 
 def valida_giorno(testo: Optional[str], oggi: date) -> date:
@@ -357,7 +366,11 @@ def leggi_fatturato_mese(sb, rid: str, anno: int, mese: int) -> Letto:
     return Letto(mod_id, a_mano, grezzo, fonte="margini" if a_mano else None)
 
 
-def leggi_personale(sb, rid: str, anno: int, mese: int) -> Letto:
+def leggi_personale(sb, rid: str, anno: int, mese: int,
+                    campi: Tuple[str, ...] = ("costo_dipendenti",)) -> Letto:
+    """`attuale` e `grezzo` sulle sole voci dettate (`campi`): l'update si
+    condiziona a quelle, e una voce non dettata cambiata nel frattempo non e' un
+    conflitto. `info` porta tutte e tre le voci, per il «restano» della card."""
     resp = (
         sb.table("margini_mensili")
         .select("id, costo_dipendenti, costo_personale_extra, costo_personale_chiamata")
@@ -370,15 +383,14 @@ def leggi_personale(sb, rid: str, anno: int, mese: int) -> Letto:
     if not resp.data:
         return Letto(None, None, {})
     riga = resp.data[0]
-    # La riga del mese nasce col trigger dei ricavi e `costo_dipendenti` ha
-    # default 0: zero vuol dire «non registrato», come per l'avviso del briefing.
-    valore = _num(riga.get("costo_dipendenti"))
+    # La riga del mese nasce col trigger dei ricavi e le voci hanno default 0:
+    # zero vuol dire «non registrato», come per l'avviso del briefing.
+    valori = {c: _num(riga.get(c)) for c in campi}
     return Letto(
         str(riga["id"]),
-        {"costo_dipendenti": valore} if valore > 0 else None,
-        {"costo_dipendenti": riga.get("costo_dipendenti")},
-        info={"costo_personale_extra": _num(riga.get("costo_personale_extra")),
-              "costo_personale_chiamata": _num(riga.get("costo_personale_chiamata"))},
+        valori if sum(valori.values()) > 0 else None,
+        {c: riga.get(c) for c in campi},
+        info={c: _num(riga.get(c)) for c in CAMPI_PERSONALE},
     )
 
 
@@ -463,20 +475,20 @@ def _registra_fatturato_mese(sb, user, rid: str, body: RegistraRequest) -> Dict[
 
 def _registra_personale(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
     anno, mese = valida_mese(body.anno, body.mese, _oggi())
-    valore = valida_personale(body)
-    letto = leggi_personale(sb, rid, anno, mese)
+    dettato = valida_personale(body)
+    campi = tuple(dettato)
+    letto = leggi_personale(sb, rid, anno, mese, campi)
     if not _uguali(body.precedente, letto.attuale):
         raise _conflitto("valore_cambiato", letto.attuale)
-    dettato = {"costo_dipendenti": valore}
-    rileggi = lambda: leggi_personale(sb, rid, anno, mese)  # noqa: E731
+    rileggi = lambda: leggi_personale(sb, rid, anno, mese, campi)  # noqa: E731
     if letto.id:
         _aggiorna(sb, "margini_mensili", letto, rid,
-                  {"costo_dipendenti": valore, "updated_at": _adesso()}, dettato, rileggi)
+                  {**dettato, "updated_at": _adesso()}, dettato, rileggi)
     else:
         _inserisci(sb, "margini_mensili",
                    {"user_id": str(user["id"]), "ristorante_id": rid, "anno": anno, "mese": mese,
-                    "costo_dipendenti": valore}, dettato, rileggi)
-    return {"anno": anno, "mese": mese, "costo_dipendenti": valore}
+                    **dettato}, dettato, rileggi)
+    return {"anno": anno, "mese": mese, **dettato}
 
 
 def _registra_spesa(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
@@ -558,9 +570,10 @@ _MESI = ("", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "lugl
 
 class PropostaCifra(BaseModel):
     """Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra
-    (il frontend lo rimanda cosi' com'e'); `sede_nome`, `costo_personale_extra`,
-    `costo_personale_chiamata`, `importo_netto` e `doppione` servono solo a
-    scrivere la card."""
+    (il frontend lo rimanda cosi' com'e'); `sede_nome`, `restano`, `iva4`, `iva5`,
+    `importo_netto` e `doppione` servono solo a scrivere la card. `restano`: le
+    voci del personale gia' registrate e non dettate; `iva4`/`iva5`: gli incassi
+    lordi a quelle aliquote, gia' sommati senza IVA in `altri_ricavi_noiva`."""
     tipo: TipoRegistra
     ristorante_id: str
     sede_nome: Optional[str] = None
@@ -574,6 +587,9 @@ class PropostaCifra(BaseModel):
     precedente: Optional[Dict[str, float]] = None
     costo_personale_extra: Optional[float] = None
     costo_personale_chiamata: Optional[float] = None
+    restano: Optional[Dict[str, float]] = None
+    iva4: Optional[float] = None
+    iva5: Optional[float] = None
     categoria: Optional[str] = None
     descrizione: Optional[str] = None
     importo: Optional[float] = None
@@ -643,16 +659,34 @@ def proponi(nome: str, args: Dict[str, Any], *, user: Dict[str, Any], sb,
                                 "di' al cliente di riprovare fra poco"}
 
 
-def _importi_dettati(args: Dict[str, Any], settore: Optional[str]) -> Tuple[Optional[Dict[str, float]], Dict[str, Any]]:
-    """(importi, None) oppure (None, cio' che legge il modello)."""
+# Il 4% e il 5% non hanno una colonna: come fa l'import email di cassa
+# (`worker/email_queue_processor.py`) si scorporano e il netto va nella parte
+# senza IVA, che a valle e' sempre letta come gia' netta.
+ALIQUOTE_RIDOTTE = {"iva4": 4, "iva5": 5}
+
+
+def _importi_dettati(args: Dict[str, Any], settore: Optional[str]
+                     ) -> Tuple[Optional[Dict[str, float]], Dict[str, Any], Dict[str, float]]:
+    """(importi, {}, lordi al 4/5%) oppure (None, cio' che legge il modello, {})."""
     # «2.340» come stringa diventerebbe 2,34: il punto delle migliaia non si indovina.
-    if any(isinstance(args.get(k), str) for k in ("iva10", "senza_iva", "iva22")):
-        return None, _IMPORTO_IN_TESTO
+    if any(isinstance(args.get(k), str) for k in ("iva10", "senza_iva", "iva22", *ALIQUOTE_RIDOTTE)):
+        return None, _IMPORTO_IN_TESTO, {}
     iva10, senza_iva = _numero(args, "iva10"), _numero(args, "senza_iva")
     if iva10 is None or senza_iva is None:
-        return None, _chiedi_divisione(settore)
-    return {"fatturato_iva10": iva10, "altri_ricavi_noiva": senza_iva,
-            "fatturato_iva22": _numero(args, "iva22") or 0.0}, {}
+        return None, _chiedi_divisione(settore), {}
+    ridotte = {k: _importo(k, _numero(args, k)) for k in ALIQUOTE_RIDOTTE if _numero(args, k) is not None}
+    ridotte = {k: v for k, v in ridotte.items() if v > 0}
+    altri = _importo("senza_iva", senza_iva) + sum(netto_da_lordo(v, ALIQUOTE_RIDOTTE[k]) for k, v in ridotte.items())
+    return {"fatturato_iva10": iva10, "altri_ricavi_noiva": round(altri, 2),
+            "fatturato_iva22": _numero(args, "iva22") or 0.0}, {}, ridotte
+
+
+def _ridotte_al_modello(ridotte: Dict[str, float]) -> Dict[str, Any]:
+    if not ridotte:
+        return {}
+    return {"iva_ridotta": {f"al_{ALIQUOTE_RIDOTTE[k]}%": {"detto": v, "senza_iva": netto_da_lordo(v, ALIQUOTE_RIDOTTE[k])}
+                            for k, v in ridotte.items()},
+            "nota_iva": "il 4% e il 5% si registrano senza IVA, sommati nella parte senza IVA: diglielo."}
 
 
 _IMPORTO_IN_TESTO = {
@@ -675,7 +709,7 @@ def _gia_cosi(attuale: Optional[Dict[str, float]], dettato: Dict[str, float]) ->
 
 
 def _proponi_incasso(args, sb, rid, sede_nome, oggi, settore):
-    importi, errore = _importi_dettati(args, settore)
+    importi, errore, ridotte = _importi_dettati(args, settore)
     if importi is None:
         return None, errore
     giorno = valida_giorno(args.get("data"), oggi)
@@ -689,13 +723,14 @@ def _proponi_incasso(args, sb, rid, sede_nome, oggi, settore):
     if _gia_cosi(attuale, valori):
         return None, {"gia_registrato": True, "valore_attuale": attuale}
     proposta = PropostaCifra(tipo="incasso_giorno", ristorante_id=rid, sede_nome=sede_nome,
-                             data=giorno.isoformat(), precedente=attuale, **valori)
+                             data=giorno.isoformat(), precedente=attuale, **valori, **ridotte)
     return proposta, {"proposta_pronta": True, "giorno": giorno.isoformat(), **valori,
+                      **_ridotte_al_modello(ridotte),
                       "valore_attuale": attuale or "nessun valore", "istruzione": _PRONTA}
 
 
 def _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi, settore):
-    importi, errore = _importi_dettati(args, settore)
+    importi, errore, ridotte = _importi_dettati(args, settore)
     if importi is None:
         return None, errore
     anno, mese = valida_mese(_intero(args, "anno"), _intero(args, "mese"), oggi)
@@ -709,33 +744,42 @@ def _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi, settore):
     if _gia_cosi(letto.attuale, valori):
         return None, {"gia_registrato": True, "valore_attuale": letto.attuale}
     proposta = PropostaCifra(tipo="fatturato_mese", ristorante_id=rid, sede_nome=sede_nome,
-                             anno=anno, mese=mese, precedente=letto.attuale, **valori)
+                             anno=anno, mese=mese, precedente=letto.attuale, **valori, **ridotte)
     return proposta, {"proposta_pronta": True, "mese": f"{_MESI[mese]} {anno}", **valori,
+                      **_ridotte_al_modello(ridotte),
                       "valore_attuale": letto.attuale or "nessun valore", "istruzione": _PRONTA}
 
 
+# Gli argomenti dello strumento → le voci di Margini. Il modello legge i nomi
+# dello strumento, non quelli delle colonne.
+VOCI_PERSONALE = {"importo": "costo_dipendenti", "ore_extra": "costo_personale_extra",
+                  "chiamata": "costo_personale_chiamata"}
+_NOME_VOCE = {"costo_dipendenti": "lordo", "costo_personale_extra": "ore_extra",
+              "costo_personale_chiamata": "chiamata"}
+
+
+def _voci_in_chiaro(valori: Optional[Dict[str, float]]) -> Any:
+    return {_NOME_VOCE[c]: v for c, v in valori.items()} if valori else "nessun valore"
+
+
 def _proponi_personale(args, sb, rid, sede_nome, oggi):
-    if isinstance(args.get("importo"), str):
+    if any(isinstance(args.get(a), str) for a in VOCI_PERSONALE):
         return None, _IMPORTO_IN_TESTO
     anno, mese = valida_mese(_intero(args, "anno"), _intero(args, "mese"), oggi)
     corpo = RegistraRequest(tipo="personale_mese", ristorante_id=rid, anno=anno, mese=mese,
-                            costo_dipendenti=_numero(args, "importo"))
-    valore = valida_personale(corpo)
-    letto = leggi_personale(sb, rid, anno, mese)
-    extra = (letto.info or {}).get("costo_personale_extra") or 0.0
-    chiamata = (letto.info or {}).get("costo_personale_chiamata") or 0.0
-    if _gia_cosi(letto.attuale, {"costo_dipendenti": valore}):
-        return None, {"gia_registrato": True, "valore_attuale": letto.attuale}
+                            **{col: _numero(args, a) for a, col in VOCI_PERSONALE.items()})
+    dettato = valida_personale(corpo)
+    letto = leggi_personale(sb, rid, anno, mese, tuple(dettato))
+    if _gia_cosi(letto.attuale, dettato):
+        return None, {"gia_registrato": True, "valore_attuale": _voci_in_chiaro(letto.attuale)}
+    restano = {c: v for c, v in (letto.info or {}).items() if c not in dettato and v > 0} or None
     proposta = PropostaCifra(tipo="personale_mese", ristorante_id=rid, sede_nome=sede_nome,
-                             anno=anno, mese=mese, costo_dipendenti=valore, precedente=letto.attuale,
-                             costo_personale_extra=extra or None,
-                             costo_personale_chiamata=chiamata or None)
-    al_modello = {"proposta_pronta": True, "mese": f"{_MESI[mese]} {anno}", "costo_dipendenti": valore,
-                  "valore_attuale": letto.attuale or "nessun valore", "istruzione": _PRONTA}
-    if extra:
-        al_modello["extra_gia_registrati"] = extra
-    if chiamata:
-        al_modello["chiamata_gia_registrata"] = chiamata
+                             anno=anno, mese=mese, precedente=letto.attuale, restano=restano, **dettato)
+    al_modello = {"proposta_pronta": True, "mese": f"{_MESI[mese]} {anno}",
+                  "si_registra": _voci_in_chiaro(dettato),
+                  "valore_attuale": _voci_in_chiaro(letto.attuale), "istruzione": _PRONTA}
+    if restano:
+        al_modello["restano_gia_registrate"] = _voci_in_chiaro(restano)
     return proposta, al_modello
 
 

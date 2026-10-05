@@ -5383,7 +5383,9 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                 "DETTATO (es. 'ieri ho incassato 2.340: 1.800 al 10% e 540 senza IVA'). NON "
                 "registra: mostra al cliente una card con il pulsante Conferma. Servono la "
                 "parte al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
-                "chiediglielo prima. Solo cifre dette dal cliente, mai stime tue."
+                "chiediglielo prima. Solo cifre dette dal cliente, mai stime tue. Una parte "
+                "al 4% o al 5% che il cliente nomina va in iva4/iva5, lorda: si registra "
+                "senza IVA."
             ),
             "parameters": {
                 "type": "object",
@@ -5392,6 +5394,8 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                     "iva10": {"type": "number", "description": "Incasso lordo al 10% in euro (0 se non c'e')"},
                     "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
                     "iva22": {"type": "number", "description": "Incasso lordo al 22% in euro (0 se non c'e')"},
+                    "iva4": {"type": "number", "description": "Incasso lordo al 4% in euro, solo se il cliente lo nomina"},
+                    "iva5": {"type": "number", "description": "Incasso lordo al 5% in euro, solo se il cliente lo nomina"},
                 },
                 "required": ["data", "iva10", "senza_iva"],
             },
@@ -5403,18 +5407,23 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             "name": "proponi_personale",
             "description": (
                 "Prepara la registrazione del COSTO DEL PERSONALE DI UN MESE dettato dal "
-                "cliente (es. 'il personale di settembre e' 12.000'). NON registra: mostra "
-                "una card con il pulsante Conferma. Solo la cifra detta dal cliente. Mai per "
-                "un acquisto o una spesa (latte, merce, una riparazione): quella e' proponi_spesa."
+                "cliente, nelle tre voci di Margini: lordo (importo), ore extra, chiamata "
+                "(es. 'il personale di settembre e' 12.000, piu' 800 di ore extra'). NON "
+                "registra: mostra una card con il pulsante Conferma. Passa solo le voci che "
+                "il cliente ha detto: le altre restano come sono. Una cifra sola senza voce "
+                "e' il lordo. Mai per un acquisto o una spesa (latte, merce, una "
+                "riparazione): quella e' proponi_spesa."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "anno": {"type": "integer", "description": "Anno es. 2026"},
                     "mese": {"type": "integer", "description": "Numero del mese 1-12"},
-                    "importo": {"type": "number", "description": "Costo del personale del mese in euro"},
+                    "importo": {"type": "number", "description": "Lordo (stipendi ordinari) del mese in euro"},
+                    "ore_extra": {"type": "number", "description": "Ore extra del mese in euro, solo se dette"},
+                    "chiamata": {"type": "number", "description": "Personale a chiamata del mese in euro, solo se detto"},
                 },
-                "required": ["anno", "mese", "importo"],
+                "required": ["anno", "mese"],
             },
         },
     },
@@ -5428,7 +5437,8 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                 "80.000'). NON registra: mostra una card con il pulsante Conferma. Se il mese "
                 "ha gia' incassi giorno per giorno lo strumento lo rifiuta. Servono la parte "
                 "al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
-                "chiediglielo prima."
+                "chiediglielo prima. Una parte al 4% o al 5% che il cliente nomina va in "
+                "iva4/iva5, lorda: si registra senza IVA."
             ),
             "parameters": {
                 "type": "object",
@@ -5438,6 +5448,8 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                     "iva10": {"type": "number", "description": "Fatturato lordo al 10% in euro (0 se non c'e')"},
                     "senza_iva": {"type": "number", "description": "Parte senza IVA in euro (0 se non c'e')"},
                     "iva22": {"type": "number", "description": "Fatturato lordo al 22% in euro (0 se non c'e')"},
+                    "iva4": {"type": "number", "description": "Fatturato lordo al 4% in euro, solo se il cliente lo nomina"},
+                    "iva5": {"type": "number", "description": "Fatturato lordo al 5% in euro, solo se il cliente lo nomina"},
                 },
                 "required": ["anno", "mese", "iva10", "senza_iva"],
             },
