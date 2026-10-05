@@ -1743,6 +1743,20 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Revisore 🟢 su ogni passo. **Residui:** costi di gruppo in catena (decisione 1,
 >   fuori finche' un cliente non li usa); uscita dall'impersonazione su `/m`;
 >   `window.screen` col «sito desktop» da verificare su un iPhone vero.
+> - **05/10/2026, `84946121` `9754e9c8` `75005bc1` — piano consulente, ritocchi dopo
+>   il deploy della D.** **Fatto:** tabella Margini con le voci dei totali in
+>   azzurro e contorno azzurro leggero su tabella e Analisi visiva (hover a
+>   sottolineatura: l'opacita' scendeva a 3,96:1 nel chiaro). Dopo la prova del
+>   latte Mattia ha **rivisto la decisione 3**: le spese a mano si registrano con
+>   la cifra pagata, IVA compresa (senza fattura l'IVA non si scarica): tolto lo
+>   scorporo da modulo Spese, worker e assistente, via `utils/iva.py` e
+>   `lib/iva-costi.ts`. **Trovato:** la prima riga di prompt faceva chiedere «mi
+>   confermi che hai pagato 20 €?» su «iva 4% compreso» e una domanda confusa su
+>   «piu' IVA»: riscritta finche' il modello vero non ha dato 20/20. Sul live
+>   nessuna spesa salvata al netto (ultima del 25/09): niente da pulire.
+>   **Prove:** mutazione 11/11; suite `-m "not sql"` 17.991, `-m sql` 1.030 + 2
+>   instabili della coda (verdi da soli); revisore 🟢 su tutti e tre.
+>   **Residui:** il modulo spese di `/m` non ha la riga «IVA compresa» (fase I).
 
 ---
 
