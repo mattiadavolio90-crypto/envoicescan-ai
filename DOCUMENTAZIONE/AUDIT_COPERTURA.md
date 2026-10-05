@@ -1724,6 +1724,25 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   live); etichette della cascata («Spese Generali + Personale», «1° Margine» in
 >   demo) non allineate alla tabella; strumento a tre voci dell'assistente (fase D).
 >   **Non pushato.**
+> - **04-05/10/2026, `f8d83322`..`2c2a32f1` — piano consulente, fase D
+>   (l'assistente registra tutto): chiusa.** **Fatto:** D1 `proponi_spesa` → riga di
+>   `spese_extra` (IVA scorporata se nominata, nel MOL con «Recupera»); D2
+>   `proponi_personale` a tre voci, si scrivono solo quelle dettate, Conferma che le
+>   dichiara tutte (senza: 400 «ricarica»); D3 regole su come chiede (una domanda
+>   alla volta, niente «confermi?», spesa «cosa e quanto», date relative anche con
+>   la sola Agenda) e rimando a Score Fornitori garantito dal codice
+>   (`_rimando_score`). Correzioni del 5/10 dalle prove di Mattia: incassi solo
+>   10/22/senza IVA (il 4/5% della D2 tolto), telefono sempre su `/m` (anche col
+>   «sito desktop», tolta «Versione desktop»), colori della tabella Margini.
+>   **Trovato:** in D3 un helper inserito fra `@app.post("/api/chat")` e `chat_ai`
+>   rubava la rotta (test verdi, visto dall'`operationId` OpenAPI): corretto, presidio
+>   `test_rotte_endpoint_non_privati.py`. **Prove:** mutazione D1 35/35, D2 37/37 +
+>   5/5, mobile e colori uccisi tutti, D3 16/16 + 1/1 + 3/3; prova col modello vero
+>   sulle frasi del latte (9/9 «premi Conferma», prima 5/9 «puoi confermare?»);
+>   suite `-m "not sql"` e `-m sql` alla D2 (17.968 + 1.036, 2 instabili della coda).
+>   Revisore 🟢 su ogni passo. **Residui:** costi di gruppo in catena (decisione 1,
+>   fuori finche' un cliente non li usa); uscita dall'impersonazione su `/m`;
+>   `window.screen` col «sito desktop» da verificare su un iPhone vero.
 
 ---
 
