@@ -52,7 +52,7 @@ type EditableField =
 
 type Section = "ricavi" | "fb" | "spese" | "personale" | "margine";
 
-type ValueColor = "white" | "sign" | "totale";
+type ValueColor = "white" | "sign";
 
 type Aspetto = {
   label: string;
@@ -61,7 +61,6 @@ type Aspetto = {
   section: Section;
   isMetric?: boolean;
   isMolMargin?: boolean;
-  labelColor?: string;                 // classe tailwind per la prima colonna
   valueColor: ValueColor;              // colore dei valori nelle celle
 };
 
@@ -71,22 +70,22 @@ type RowDef = RigaMargini & Aspetto;
 // RIGHE_MARGINI (lib/margini-aggregati), che un test esegue. Il Record sulle
 // chiavi obbliga a dare un aspetto a ogni riga della struttura.
 const ASPETTO: Record<ChiaveRigaMargini, Aspetto> = {
-  fatturato_netto:          { label: "Incasso",               type: "computed", section: "ricavi", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  fatturato_netto:          { label: "Incasso",               type: "computed", section: "ricavi", isMetric: true, valueColor: "white" },
   fatturato_iva10:          { label: "Ricavi IVA 10%",        type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   fatturato_iva22:          { label: "Ricavi IVA 22%",        type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   altri_ricavi_noiva:       { label: "Altri ricavi (no IVA)", type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
-  costi_fb_totali:          { label: "Spese F&B",             type: "computed", section: "fb", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  costi_fb_totali:          { label: "Spese F&B",             type: "computed", section: "fb", isMetric: true, valueColor: "white" },
   costi_fb_auto:            { label: "Costi F&B (Fatture)",   type: "input-readonly", section: "fb", valueColor: "white" },
   altri_costi_fb:           { label: "Altri Costi F&B",       type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
-  primo_margine:            { label: "Margine F&B",           type: "computed", section: "margine", isMetric: true, labelColor: "text-primary-text", valueColor: "sign" },
-  costi_spese_totali:       { label: "Spese generali",        type: "computed", section: "spese", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  primo_margine:            { label: "Margine F&B",           type: "computed", section: "margine", isMetric: true, valueColor: "sign" },
+  costi_spese_totali:       { label: "Spese generali",        type: "computed", section: "spese", isMetric: true, valueColor: "white" },
   costi_spese_auto:         { label: "Spese Gen. (Fatture)",  type: "input-readonly", section: "spese", valueColor: "white" },
   altri_costi_spese:        { label: "Altre Spese Generali",  type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
-  costi_personale:          { label: "Costo personale",       type: "computed", section: "personale", isMetric: true, labelColor: "text-primary-text", valueColor: "totale" },
+  costi_personale:          { label: "Costo personale",       type: "computed", section: "personale", isMetric: true, valueColor: "white" },
   costo_dipendenti:         { label: "Lordo",                 type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
   costo_personale_extra:    { label: "Ore extra",             type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "white" },
   costo_personale_chiamata: { label: "Chiamata",              type: "input-editable", field: "costo_personale_chiamata", section: "personale", valueColor: "white" },
-  mol:                      { label: "Guadagno finale (MOL)", type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-primary-text", valueColor: "sign" },
+  mol:                      { label: "Guadagno finale (MOL)", type: "computed", section: "margine", isMetric: true, isMolMargin: true, valueColor: "sign" },
 };
 
 const ROWS: RowDef[] = RIGHE_MARGINI.map((r) => ({ ...r, ...ASPETTO[r.key] }));
@@ -121,9 +120,9 @@ function valueColorCls(vc: ValueColor, raw: number, incompleto = false): string 
       ? "text-negativo"
       : "text-muted-foreground";
   }
-  // Le righe "= Totale" sono dati calcolati senza giudizio: il blu del brand,
-  // nella versione che si legge. Il giudizio (segno) resta a margine e MOL.
-  if (vc === "totale") return "text-primary-text";
+  // I totali dei gruppi sono dati senza giudizio: nel colore del testo, in
+  // grassetto. Il colore resta solo dove c'e' un giudizio, Margine F&B e MOL
+  // (Mattia, 5/10/2026: a gruppi chiusi la tabella era tutta azzurra).
   return ""; // white = foreground
 }
 
@@ -304,7 +303,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
             <p><strong className="text-foreground">Voci modificabili</strong> — cliccale per inserire un valore.</p>
             <p className="pl-3">· <strong className="text-foreground">Costo personale</strong>: tre voci che si sommano — <em>Lordo</em>, <em>Ore extra</em> e <em>Chiamata</em>. Clicca la cella del mese, anche sul totale a gruppo chiuso, per <strong className="text-foreground">recuperarle dal tab Agenda → Personale</strong> (turni o stipendi del mese) oppure scriverle a mano.</p>
             <p className="pl-3">· <strong className="text-foreground">Altre Spese / Altri Costi F&amp;B</strong>: recupera dal tab <strong className="text-foreground">Agenda → Spese</strong> o inserisci un importo a mano.</p>
-            <p><strong className="text-foreground">Totali colorati</strong>: calcolati in automatico dalle voci del loro gruppo.</p>
+            <p><strong className="text-foreground">Totali in grassetto</strong>: calcolati in automatico dalle voci del loro gruppo. Il colore resta solo su <em>Margine F&amp;B</em> e <em>Guadagno finale (MOL)</em>: verde se positivo, rosso se negativo.</p>
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
             <p>Usa <strong className="text-foreground">Totale / Media</strong> per vedere la somma del periodo o la media mensile, e <strong className="text-foreground">Carica ricavi</strong> per inserire gli incassi.</p>
@@ -456,9 +455,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                           ? "bg-[color-mix(in_oklab,var(--primary)5%,var(--color-card))] text-base"
                           : "bg-card"
                       } ${
-                        isMetric
-                          ? `font-bold ${row.labelColor ?? ""}`
-                          : row.labelColor ?? "text-muted-foreground"
+                        isMetric ? "font-bold" : "text-muted-foreground"
                       }`}
                     >
                       <EtichettaRiga row={row} espansi={espansi} onAlterna={alterna} />
@@ -564,7 +561,7 @@ function EtichettaRiga({
     >
       <ChevronRight
         aria-hidden="true"
-        className={`size-3.5 shrink-0 transition-transform ${aperto ? "rotate-90" : ""}`}
+        className={`size-3.5 shrink-0 text-primary-text transition-transform ${aperto ? "rotate-90" : ""}`}
       />
       {row.label}
     </button>
@@ -628,7 +625,7 @@ function Cell({
             {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
             <Pencil className="size-3 opacity-0 group-hover/cella:opacity-40 transition-opacity" />
           </span>
-          {pct && <span className={`block text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</span>}
+          {pct && <span className="block text-[11px] tabular-nums text-muted-foreground">{pct}</span>}
         </button>
       </td>
     );
@@ -649,7 +646,7 @@ function Cell({
             {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
             <Pencil className="size-3 opacity-0 group-hover/cella:opacity-40 transition-opacity" />
           </span>
-          {pct && <span className="block text-[11px] tabular-nums opacity-70">{pct}</span>}
+          {pct && <span className="block text-[11px] tabular-nums text-muted-foreground">{pct}</span>}
         </button>
       </td>
     );
@@ -681,7 +678,7 @@ function Cell({
         {display}
         {showLock && <Lock className="size-3 opacity-30" />}
       </div>
-      {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
+      {pct && <div className="text-[11px] tabular-nums text-muted-foreground">{pct}</div>}
     </td>
   );
 }
@@ -752,7 +749,7 @@ function EditableCell({
         }`}
       />
       {pct && (
-        <div className="px-3 pb-1.5 text-right text-[11px] tabular-nums opacity-70">{pct}</div>
+        <div className="px-3 pb-1.5 text-right text-[11px] tabular-nums text-muted-foreground">{pct}</div>
       )}
     </td>
   );
@@ -783,7 +780,7 @@ function TotalCell({
   return (
     <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 ${padY} tabular-nums border-l-2 border-r border-primary align-middle`}>
       <div className={`tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>{display}</div>
-      {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
+      {pct && <div className="text-[11px] tabular-nums text-muted-foreground">{pct}</div>}
     </td>
   );
 }
@@ -857,7 +854,7 @@ function MobileMeseView({
                 row={row}
                 espansi={espansi}
                 onAlterna={onAlterna}
-                className={`text-sm ${isMetric ? `font-semibold ${row.labelColor ?? ""}` : row.labelColor ?? ""}`}
+                className={`text-sm ${isMetric ? "font-semibold" : ""}`}
               />
               {isPersonale && !isTotal ? (
                 <button
@@ -885,7 +882,7 @@ function MobileMeseView({
               ) : (
                 <span className={`text-sm shrink-0 text-right tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>
                   {raw === 0 ? "—" : formatEuro(raw)}
-                  {pct && <span className="block text-[10px] opacity-65">{pct}</span>}
+                  {pct && <span className="block text-[10px] text-muted-foreground">{pct}</span>}
                 </span>
               )}
             </div>

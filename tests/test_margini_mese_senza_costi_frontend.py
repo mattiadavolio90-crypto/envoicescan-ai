@@ -172,13 +172,24 @@ def test_mese_completo_negativo_resta_rosso():
     assert _colore("sign", -26988.0, False) == "text-negativo"
 
 
-def test_le_righe_totale_non_cambiano_colore():
-    """`valueColor: "totale"` e' il blu del brand: dato calcolato, nessun giudizio.
+def _aspetto() -> dict:
+    """Le righe della tabella `ASPETTO` di calcolo-tab.tsx: chiave → testo della riga."""
+    import re
+    src = _TABELLA.read_text(encoding="utf-8")
+    blocco = src[src.index("const ASPETTO"):src.index("const ROWS")]
+    return dict(re.findall(r"^\s+(\w+):\s+(\{.*\}),\s*$", blocco, re.M))
 
-    Spegnerlo sui mesi incompleti sarebbe un danno: «= Fatturato Netto» resta un
-    fatturato vero anche quando le fatture dei costi mancano.
-    """
-    assert _colore("totale", 444234.0, True) == "text-primary-text"
+
+def test_il_colore_resta_solo_su_margine_e_mol():
+    """Mattia, 5/10/2026: a gruppi chiusi la tabella era tutta azzurra, nomi e
+    numeri. I totali dei gruppi vanno nel colore del testo; verde/rosso solo su
+    Margine F&B e MOL; nessuna etichetta colorata."""
+    righe = _aspetto()
+    assert len(righe) == 16
+    con_giudizio = {k for k, r in righe.items() if 'valueColor: "sign"' in r}
+    assert con_giudizio == {"primo_margine", "mol"}
+    assert all('valueColor: "white"' in r for k, r in righe.items() if k not in con_giudizio)
+    assert not any("labelColor" in r or "primary" in r for r in righe.values())
 
 
 def test_le_righe_bianche_non_cambiano_colore():
