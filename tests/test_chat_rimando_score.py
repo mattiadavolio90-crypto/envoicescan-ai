@@ -44,6 +44,14 @@ def test_la_frase_di_mattia_riceve_il_rimando():
     "componi una email per il fornitore",
     "aiutami con una mail per il fornitore",
     "mi scrivi cosa dire al fornitore?",
+    "mandagli una mail al fornitore",
+    "mandale un messaggio, al fornitore del vino",
+    "inviagli una mail, e' il fornitore della carne",
+    "come rispondo al fornitore?",
+    "che cosa dico al fornitore?",
+    "mi prepari una mail per il fornitore?",
+    "voglio chiedere uno sconto al fornitore",
+    "come tratto col fornitore del pesce?",
 ])
 def test_altri_modi_di_chiederla(domanda):
     assert fw._rimando_score(domanda, "Non posso.", CON_SCORE).endswith(RIMANDO + ".")
@@ -64,6 +72,15 @@ def test_altri_modi_di_chiederla(domanda):
     "fai vedere le fatture del fornitore che mi ha scritto una mail",
     "prepara un report sul fornitore che ha mandato la mail",
     "fai un riepilogo del fornitore, ho ricevuto la sua mail ieri",
+    # Terzo giro del revisore (5/10): radici troppo larghe
+    "il fornitore mi ha inviato una mail",
+    "inviami un messaggio quando arriva la fattura del fornitore",
+    "mi invii la mail del fornitore?",
+    "il fornitore non risponde alle mail",
+    "il fornitore ha preparato una mail con il listino",
+    "fai vedere le mail del fornitore",
+    "cosa mi sai dire del fornitore della carne?",
+    "mi manca la lettera di vettura del fornitore",
 ])
 def test_le_altre_domande_restano_come_sono(domanda):
     assert fw._rimando_score(domanda, "Risposta.", CON_SCORE) == "Risposta."

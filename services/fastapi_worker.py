@@ -3701,13 +3701,22 @@ def _riga_trattativa(pagine, dove: str) -> str:
 import re as _re_chat
 
 # «mail» e «messaggio» da soli sono anche domande di sola informazione («qual e' la
-# mail del fornitore?», «mi ha mandato una mail»): contano solo a poche parole da
-# un verbo che chiede di scriverla o mandarla («mandami», «mandato» restano fuori).
+# mail del fornitore?», «mi ha mandato/inviato una mail», «non risponde alle mail»):
+# contano solo a tre parole al massimo da un verbo che CHIEDE di scrivere o mandare,
+# e i verbi sono elencati forma per forma (imperativo, infinito, «mi scrivi»), mai
+# per radice: `invi\w*` prendeva anche «inviato» e «inviami».
+_VERBI_SCRIVI = (
+    r"scrivi|scrivere|scrivimi|scrivigli|scrivile|scriverne|prepara|preparare|preparami"
+    r"|preparagli|prepari|redigi|redigere|componi|comporre|rispondi|rispondere|rispondigli"
+    r"|rispondile|invia|inviare|inviagli|inviale|manda|mandare|mandagli|mandale|mandargli"
+    r"|fammi|mi\s+fai|aiutami\s+con"
+)
 _CHIEDE_BOZZA = _re_chat.compile(
-    r"\b(bozz[ae]|lettera|trattare|negoziare|cosa\s+(dire|scrivere)"
-    r"|scriv\w*\s+(a|al|allo|alla|ai|agli))\b"
-    r"|\b(scriv\w*|prepar\w*|redig\w*|compon\w*|rispond\w*|invi\w*|manda|mandare|mandargli"
-    r"|fammi|fai|aiutami\s+con)(\W+\w+){0,3}?\W+(e-?mail|mail|messaggi[oa]?|whatsapp)\b",
+    r"\b(bozz[ae]|lettera(?!\s+di\s+vettura)|trattare|negoziare|tratto\s+(col|con)"
+    r"|(chiedere|chiedo|chiedergli)\s+(uno\s+|lo\s+)?sconto"
+    r"|(cosa|che\s+cosa)\s+(dire|scrivere|dico|scrivo)\s+(a|al|allo|alla|ai|agli)"
+    r"|(scrivo|scrivi|scrivere|scrivergli|rispondo|rispondere)\s+(a|al|allo|alla|ai|agli))\b"
+    rf"|\b({_VERBI_SCRIVI})(\W+\w+){{0,3}}?\W+(e-?mail|mail|messaggi[oa]?|whatsapp)\b",
     _re_chat.IGNORECASE,
 )
 
