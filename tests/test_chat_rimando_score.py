@@ -47,6 +47,12 @@ def test_altri_modi_di_chiederla(domanda):
     "scrivimi una bozza di menu",
     "inserisci latte 20 euro",
     "",
+    # Dal revisore (5/10): domande di sola informazione
+    "il fornitore mi ha mandato una mail col listino nuovo, i prezzi sono saliti?",
+    "qual e' la mail del fornitore del pesce?",
+    "ho in corso una trattativa col fornitore della carne: quanto ho speso quest'anno?",
+    "quanti messaggi di errore ci sono sulle fatture del fornitore X?",
+    "mandami un messaggio quando arriva la fattura del fornitore",
 ])
 def test_le_altre_domande_restano_come_sono(domanda):
     assert fw._rimando_score(domanda, "Risposta.", CON_SCORE) == "Risposta."
