@@ -126,6 +126,11 @@ function valueColorCls(vc: ValueColor, raw: number, incompleto = false): string 
   return ""; // white = foreground
 }
 
+// Contorno azzurro «retroilluminato» di tabella e Analisi visiva (Mattia, 5/10):
+// bordo primary tenue + alone diffuso dello stesso colore, in entrambi i temi.
+const BORDO_LUMINOSO =
+  "border border-primary/40 shadow-[0_0_18px_-6px_color-mix(in_oklab,var(--primary)55%,transparent)]";
+
 const ANNO_MESE_CORRENTE = (() => {
   const d = new Date();
   return { anno: d.getFullYear(), mese: d.getMonth() + 1 };
@@ -303,7 +308,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
             <p><strong className="text-foreground">Voci modificabili</strong> — cliccale per inserire un valore.</p>
             <p className="pl-3">· <strong className="text-foreground">Costo personale</strong>: tre voci che si sommano — <em>Lordo</em>, <em>Ore extra</em> e <em>Chiamata</em>. Clicca la cella del mese, anche sul totale a gruppo chiuso, per <strong className="text-foreground">recuperarle dal tab Agenda → Personale</strong> (turni o stipendi del mese) oppure scriverle a mano.</p>
             <p className="pl-3">· <strong className="text-foreground">Altre Spese / Altri Costi F&amp;B</strong>: recupera dal tab <strong className="text-foreground">Agenda → Spese</strong> o inserisci un importo a mano.</p>
-            <p><strong className="text-foreground">Totali in grassetto</strong>: calcolati in automatico dalle voci del loro gruppo. Il colore resta solo su <em>Margine F&amp;B</em> e <em>Guadagno finale (MOL)</em>: verde se positivo, rosso se negativo, grigio nei mesi senza costi caricati.</p>
+            <p><strong className="text-foreground">Totali in azzurro</strong>: calcolati in automatico dalle voci del loro gruppo. Il colore resta solo su <em>Margine F&amp;B</em> e <em>Guadagno finale (MOL)</em>: verde se positivo, rosso se negativo, grigio nei mesi senza costi caricati.</p>
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
             <p>Usa <strong className="text-foreground">Totale / Media</strong> per vedere la somma del periodo o la media mensile, e <strong className="text-foreground">Carica ricavi</strong> per inserire gli incassi.</p>
@@ -370,19 +375,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
       )}
 
       {/* Tabella trasposta — desktop */}
-      {/* Rilievo della card (deciso con Mattia il 23/09).
-          Nasceva come rimedio locale a un difetto del TEMA: in chiaro
-          `--background` e `--card` erano lo stesso `oklch(1 0 0)` e la tabella
-          era bianca su bianco, separata dalla pagina solo dal bordo. Quel
-          difetto e' stato corretto alla radice lo stesso giorno (fondo a
-          0.985, presidiato in `test_globals_css_contrasto.py`), quindi ombra e
-          anello non sono piu' l'unico stacco: RAFFORZANO quello del tema, come
-          gia' fanno popover e dropdown (`shadow-lg ring-1 ring-foreground/10`).
-          Restano per scelta, non per necessita'.
-          `dark:shadow-none`: al buio lo stacco lo da' la differenza di tinta
-          (card 0.205 su fondo 0.145) e un'ombra nera non si vede — per vederla
-          andrebbe esagerata. */}
-      <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden shadow-sm ring-1 ring-foreground/5 dark:shadow-none dark:ring-0">
+      <div className={`hidden md:block rounded-lg bg-card overflow-hidden ${BORDO_LUMINOSO}`}>
         <div className="overflow-x-auto" ref={scrollerRef}>
           <table className="w-full table-auto text-[15px] border-collapse">
             <colgroup>
@@ -455,7 +448,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                           ? "bg-[color-mix(in_oklab,var(--primary)5%,var(--color-card))] text-base"
                           : "bg-card"
                       } ${
-                        isMetric ? "font-bold" : "text-muted-foreground"
+                        isMetric ? "font-bold text-primary-text" : "text-muted-foreground"
                       }`}
                     >
                       <EtichettaRiga row={row} espansi={espansi} onAlterna={alterna} />
@@ -832,7 +825,7 @@ function MobileMeseView({
         </select>
       </div>
 
-      <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
+      <div className={`rounded-lg bg-card divide-y divide-border overflow-hidden ${BORDO_LUMINOSO}`}>
         {righe.map((row, ri) => {
           const raw = rowVal(row, current);
           const isMetric = row.isMetric;
@@ -854,7 +847,7 @@ function MobileMeseView({
                 row={row}
                 espansi={espansi}
                 onAlterna={onAlterna}
-                className={`text-sm ${isMetric ? "font-semibold" : ""}`}
+                className={`text-sm ${isMetric ? "font-semibold text-primary-text" : ""}`}
               />
               {isPersonale && !isTotal ? (
                 <button
@@ -989,7 +982,7 @@ function AnalisiVisiva({
   const molColor = coloreDaCommento(data.commenti, "MOL");
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-5">
+    <div className={`rounded-lg bg-card p-4 space-y-5 ${BORDO_LUMINOSO}`}>
       <h3 className="text-base font-semibold flex items-center gap-1.5">
         <BarChart3 className="size-4 text-primary" />
         Analisi visiva
