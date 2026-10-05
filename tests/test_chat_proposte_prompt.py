@@ -173,15 +173,20 @@ SPESA_SENZA_DOMANDE = (
     "qualcosa chiedi solo quello, senza nominare l'IVA o la categoria, e non chiedere di "
     "dividerla fra 10%, 22% e senza IVA, che vale solo per gli incassi."
 )
+SPESA_LORDA = (
+    "L'importo e' quello pagato, IVA compresa: una spesa senza fattura non scarica l'IVA, "
+    "quindi non scorporarla."
+)
+PIU_IVA = "Se invece dice \"piu' IVA\" fai una sola domanda, questa: \"Quanto hai pagato in tutto, IVA compresa?\""
 TRE_VOCI = "Il personale ha tre voci: lordo (gli stipendi), ore extra e chiamata."
 NON_CENTRA = "non usarne mai uno che non c'entra"
 
 
 def test_le_regole_del_latte_ci_sono(monkeypatch):
     p = _prompt(monkeypatch)
-    for regola in (UNA_DOMANDA, NIENTE_CONFERMI, DATE, SPESA_SENZA_DOMANDE, TRE_VOCI, NON_CENTRA):
+    for regola in (UNA_DOMANDA, NIENTE_CONFERMI, DATE, SPESA_SENZA_DOMANDE, SPESA_LORDA, PIU_IVA, TRE_VOCI, NON_CENTRA):
         assert regola in p, regola
-    assert "anche il 4% o il 5%, passala allo strumento" in p
+    assert "passala allo strumento" not in p
 
 
 def test_le_regole_comuni_stanno_dopo_quelle_degli_strumenti(monkeypatch):
@@ -215,10 +220,12 @@ def test_senza_strumenti_nessuna_regola_su_come_chiedere(monkeypatch):
             assert regola not in p, regola
 
 
-def test_la_spesa_accetta_il_4_che_il_cliente_ha_detto():
-    """«iva 4% compreso»: la chat rispondeva che il 4% non e' gestito."""
+def test_lo_strumento_della_spesa_non_ha_l_iva():
+    """Mattia, 5/10: la spesa si registra com'e' stata pagata, IVA compresa. Un
+    campo `iva` nello schema inviterebbe il modello a scorporarla."""
     spesa = next(t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == "proponi_spesa")
-    assert {4, 5} <= set(spesa["function"]["parameters"]["properties"]["iva"]["enum"])
+    assert set(spesa["function"]["parameters"]["properties"]) == {"data", "descrizione", "categoria", "importo"}
+    assert "IVA compresa" in spesa["function"]["description"]
 
 
 def test_la_catena_nomina_anche_la_spesa(monkeypatch):

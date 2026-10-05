@@ -3854,11 +3854,14 @@ def _build_chat_system_prompt(
     _riga_spesa = (
         "- Se il cliente ti chiede di registrare una SPESA o un acquisto (\"latte 20 euro\", "
         "\"altri costi F&B di settembre\") usa proponi_spesa: va nelle Spese dell'Agenda, mai "
-        "nel personale. Dalla voce scegli tu la categoria; l'IVA solo se la nomina lui.\n"
+        "nel personale. Dalla voce scegli tu la categoria.\n"
         "- Per una spesa bastano cosa e quanto (il giorno, se non lo dice, e' oggi): se manca "
         "qualcosa chiedi solo quello, senza nominare l'IVA o la categoria, e non chiedere di "
-        "dividerla fra 10%, 22% e senza IVA, che vale solo per gli incassi. Se nomina "
-        "l'aliquota, anche il 4% o il 5%, passala allo strumento.\n"
+        "dividerla fra 10%, 22% e senza IVA, che vale solo per gli incassi. L'importo e' "
+        "quello pagato, IVA compresa: una spesa senza fattura non scarica l'IVA, quindi non "
+        "scorporarla. Se dice che l'IVA e' compresa (\"iva 4% compreso\", \"iva inclusa\") la "
+        "cifra detta e' gia' quella pagata: prepara subito la card. Se invece dice \"piu' "
+        "IVA\" fai una sola domanda, questa: \"Quanto hai pagato in tutto, IVA compresa?\"\n"
     ) if cifre_dettate and _pag_agenda else ""
     # Comuni a tutte le registrazioni: anche un sotto-utente con l'Agenda e senza
     # Margini deve calcolare «ieri» da oggi (rilievo del revisore sulla D1).
@@ -5510,11 +5513,11 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             "description": (
                 "Prepara la registrazione di una SPESA EXTRA dettata dal cliente: un acquisto "
                 "o un costo fuori dalle fatture (es. 'ho comprato latte per 20 euro', 'altri "
-                "costi F&B di settembre 300', 'idraulico 150 con IVA al 22%'). Va nelle Spese "
-                "dell'Agenda. NON registra: mostra una card con il pulsante Conferma. La "
-                "categoria la scegli tu dalla voce (latte -> LATTICINI); chiedila solo se "
-                "davvero non si capisce. Se il cliente non nomina l'IVA l'importo si registra "
-                "com'e': non chiederla."
+                "costi F&B di settembre 300', 'idraulico 150'). Va nelle Spese dell'Agenda. "
+                "NON registra: mostra una card con il pulsante Conferma. La categoria la "
+                "scegli tu dalla voce (latte -> LATTICINI); chiedila solo se davvero non si "
+                "capisce. L'importo e' quello pagato, IVA compresa: non scorporarla e non "
+                "chiederla."
             ),
             "parameters": {
                 "type": "object",
@@ -5522,9 +5525,7 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                     "data": {"type": "string", "description": "Giorno della spesa YYYY-MM-DD"},
                     "descrizione": {"type": "string", "description": "Cosa e' stato comprato o pagato, in poche parole (es. 'Latte')"},
                     "categoria": {"type": "string", "enum": list(_assistente.CATEGORIE_SPESA)},
-                    "importo": {"type": "number", "description": "Importo in euro come l'ha detto il cliente"},
-                    "iva": {"type": "integer", "enum": [0, 4, 5, 10, 22],
-                            "description": "Aliquota IVA COMPRESA nell'importo, se il cliente la dice; 0 o assente = senza IVA"},
+                    "importo": {"type": "number", "description": "Importo pagato in euro, IVA compresa, come l'ha detto il cliente"},
                 },
                 "required": ["data", "descrizione", "categoria", "importo"],
             },

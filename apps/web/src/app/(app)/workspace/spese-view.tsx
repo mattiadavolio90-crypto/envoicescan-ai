@@ -19,7 +19,6 @@ import {
 import { parseNumeroIt } from "@/lib/format";
 import { csvSpese, nomeFileSpese, puoEsportareSpese } from "@/lib/spese-export";
 import { formatEuro } from "@/lib/format";
-import { ALIQUOTE_IVA_COSTI, aliquotaDaScelta, nettoDaLordo } from "@/lib/iva-costi";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -86,7 +85,6 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
   const [importo, setImporto] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [note, setNote] = useState("");
-  const [iva, setIva] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -96,13 +94,10 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
       setImporto(spesa?.importo ? String(spesa.importo).replace(".", ",") : "");
       setDescrizione(spesa?.descrizione ?? "");
       setNote(spesa?.note ?? "");
-      setIva("");
     }
   }, [open, spesa, dataDefault]);
 
   const importoNum = parseNumeroIt(importo);
-  const aliquota = aliquotaDaScelta(iva);
-  const netto = aliquota !== null && !isNaN(importoNum) ? nettoDaLordo(importoNum, aliquota) : null;
   // Il tipo non si sceglie piu': lo deriva la categoria (stessa regola del backend).
   // Sulle voci storiche senza categoria si mostra il tipo gia' salvato.
   const tipo: TipoSpesa = categoria ? tipoDaCategoria(categoria) : (spesa?.tipo ?? "generale");
@@ -118,7 +113,6 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
         tipo,
         categoria,
         importo: importoNum,
-        iva_inclusa: aliquota,
         descrizione: descrizione.trim(),
         note: note.trim() || null,
       };
@@ -130,8 +124,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
-      const salvata = spesa ? "Spesa aggiornata" : "Spesa aggiunta";
-      toast.success(netto !== null ? `${salvata}: ${fmtEuro(netto)} al netto dell'IVA` : salvata);
+      toast.success(spesa ? "Spesa aggiornata" : "Spesa aggiunta");
       onSaved();
       onClose();
     } catch (e: unknown) {
@@ -196,24 +189,10 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
             </div>
           </div>
 
-          {/* IVA: se l'importo la comprende si salva il netto, come le fatture */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">L&apos;importo comprende l&apos;IVA?</label>
-            <select
-              value={iva}
-              onChange={e => setIva(e.target.value)}
-              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">No, è già senza IVA</option>
-              {ALIQUOTE_IVA_COSTI.map(a => <option key={a} value={String(a)}>Sì, IVA {a}%</option>)}
-            </select>
-            {netto !== null && (
-              <p className="text-[11px] text-muted-foreground mt-1.5">
-                Si registra al netto:{" "}
-                <span className="font-semibold text-foreground tabular-nums">{fmtEuro(netto)}</span>
-              </p>
-            )}
-          </div>
+          {/* Niente scorporo (Mattia, 5/10): senza fattura l'IVA non si scarica, e' costo */}
+          <p className="-mt-2 text-[11px] text-muted-foreground">
+            Scrivi quanto hai pagato, IVA compresa: senza fattura l&apos;IVA è un costo.
+          </p>
 
           {/* Descrizione */}
           <div>

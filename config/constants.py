@@ -31,11 +31,6 @@ COMPETENZA_AUTO_ABILITA = True       # Abilita/disabilita il suggerimento automa
 IVA_DIVISORE_10 = 1.10   # Aliquota 10%: ristorazione e somministrazione
 IVA_DIVISORE_22 = 1.22   # Aliquota 22%: ordinaria (alcolici, servizi)
 
-# Aliquote ammesse quando un COSTO inserito a mano e' detto IVA inclusa: si salva
-# il netto, come le fatture (Mattia, 3/10/2026). Gemella di ALIQUOTE_IVA_COSTI in
-# apps/web/src/lib/iva-costi.ts — legate da tests/test_iva_costi.py.
-ALIQUOTE_IVA_COSTI = (4, 5, 10, 22)
-
 
 # ============================================================
 # REGEX PRECOMPILATE (OTTIMIZZAZIONE PERFORMANCE)

@@ -724,16 +724,17 @@ def _spese(sc, sede):
     ).fetchall()
 
 
-def test_la_spesa_si_scrive_al_netto_con_l_id_della_proposta(scenario):
+def test_la_spesa_si_scrive_con_la_cifra_pagata_e_l_id_della_proposta(scenario):
+    """`iva_inclusa` lo manda solo una card di prima del 5/10: si ignora."""
     a = scenario.a
     corpo = _spesa(a.ids["sede2"], iva_inclusa=4)
     resp = _registra(scenario, a, **corpo)
     assert resp.status_code == 200, resp.text
     assert _spese(scenario, a.ids["sede2"]) == [
-        (corpo["id_proposta"], IERI, "fb", "LATTICINI", "Latte", 19.23, a.ids["user_id"])
+        (corpo["id_proposta"], IERI, "fb", "LATTICINI", "Latte", 20.0, a.ids["user_id"])
     ]
     assert _spese(scenario, a.ids["sede1"]) == []
-    assert resp.json()["valori"]["importo"] == 19.23
+    assert resp.json()["valori"]["importo"] == 20.0
 
 
 def test_la_spesa_non_tocca_i_margini_del_mese(scenario):
@@ -758,7 +759,7 @@ def test_recupera_dal_tab_spese_trova_la_spesa_registrata(scenario):
         return resp.json()["totale_fb"], resp.json()["totale_generale"]
 
     fb, generale = recupera()
-    assert _registra(scenario, a, **_spesa(a.ids["sede1"], giorno=giorno, importo=110, iva_inclusa=10)).status_code == 200
+    assert _registra(scenario, a, **_spesa(a.ids["sede1"], giorno=giorno, importo=100)).status_code == 200
     assert _registra(scenario, a, **_spesa(a.ids["sede1"], giorno=giorno, categoria="UTENZE E LOCALI",
                                            descrizione="Idraulico", importo=50)).status_code == 200
     assert recupera() == (round(fb + 100, 2), round(generale + 50, 2))
@@ -808,7 +809,7 @@ def test_sotto_utente_con_margini_senza_agenda_non_registra_la_spesa(scenario):
 
 
 @pytest.mark.parametrize("campo,valore", [
-    ("categoria", "Da Classificare"), ("importo", 0), ("iva_inclusa", 7), ("descrizione", " "),
+    ("categoria", "Da Classificare"), ("importo", 0), ("descrizione", " "),
     ("id_proposta", "x"), ("data", (OGGI + timedelta(days=1)).isoformat()),
 ])
 def test_spesa_non_valida_e_400_e_non_scrive(scenario, campo, valore):

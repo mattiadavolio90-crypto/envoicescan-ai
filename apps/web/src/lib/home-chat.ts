@@ -1,4 +1,3 @@
-import { ALIQUOTE_IVA_COSTI } from "@/lib/iva-costi";
 
 // Chat dell'assistente — logica pura. Dal 28/9/2026 la conversazione vive nel
 // riquadro del briefing della Home (components/home/conversazione-assistente.tsx),
@@ -320,15 +319,12 @@ export type PropostaCifra = {
   restano?: Record<string, number> | null;
   /** Cio' che la card mostra come «risulta …»; null = nessun valore. */
   precedente?: Record<string, number> | null;
-  /** Spesa extra (fase D): `importo` com'e' stato detto, `iva_inclusa` l'aliquota
-   *  da scorporare (null = senza IVA), `importo_netto` cio' che si registra.
+  /** Spesa extra (fase D): `importo` com'e' stato pagato, IVA compresa (5/10).
    *  `id_proposta` diventa l'id della spesa: la Conferma ripetuta non la raddoppia. */
   categoria?: string | null;
   descrizione?: string | null;
   importo?: number | null;
-  iva_inclusa?: number | null;
   id_proposta?: string | null;
-  importo_netto?: number | null;
   doppione?: boolean;
 };
 
@@ -393,8 +389,7 @@ function testoPieno(x: unknown): x is string {
 function spesaValida(p: Record<string, unknown>): boolean {
   if (typeof p.data !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.data)) return false;
   if (!testoPieno(p.categoria) || !testoPieno(p.descrizione) || !testoPieno(p.id_proposta)) return false;
-  if (!importo(p.importo) || p.importo <= 0 || !importo(p.importo_netto) || p.importo_netto <= 0) return false;
-  if (p.iva_inclusa != null && !(ALIQUOTE_IVA_COSTI as readonly number[]).includes(p.iva_inclusa as number)) return false;
+  if (!importo(p.importo) || p.importo <= 0) return false;
   return p.doppione === undefined || typeof p.doppione === "boolean";
 }
 
@@ -438,7 +433,7 @@ const CAMPI_CONFERMA = [
   "tipo", "ristorante_id", "data", "anno", "mese",
   "fatturato_iva10", "altri_ricavi_noiva", "fatturato_iva22",
   "costo_dipendenti", "costo_personale_extra", "costo_personale_chiamata", "precedente",
-  "categoria", "descrizione", "importo", "iva_inclusa", "id_proposta",
+  "categoria", "descrizione", "importo", "id_proposta",
 ] as const;
 
 // Il personale dichiara sempre le tre voci (null = non dettata): il server
@@ -543,13 +538,8 @@ function testoSpesa(p: PropostaCifra, sede: string | null, annoCorrente: number)
   const righe: [string, string][] = [
     ["Voce", p.descrizione ?? ""],
     ["Categoria", p.categoria ?? ""],
+    ["Importo", euro(p.importo ?? 0)],
   ];
-  if (p.iva_inclusa != null) {
-    righe.push([`Con IVA ${p.iva_inclusa}%`, euro(p.importo ?? 0)]);
-    righe.push(["Si registra senza IVA", euro(p.importo_netto ?? 0)]);
-  } else {
-    righe.push(["Importo", euro(p.importo_netto ?? 0)]);
-  }
   return {
     titolo: `Spesa extra di ${giornoInChiaro(p.data ?? "", annoCorrente)}`,
     sede,

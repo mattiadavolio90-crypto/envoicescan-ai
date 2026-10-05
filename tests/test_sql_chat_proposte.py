@@ -403,20 +403,20 @@ def _spese_latte(sc, sede):
 
 def test_la_spesa_proposta_non_scrive_e_la_conferma_la_registra(scenario, modello):
     a = scenario.a
-    modello["chiamate"] = [("proponi_spesa", dict(SPESA, iva=4))]
+    modello["chiamate"] = [("proponi_spesa", dict(SPESA, iva=4))]  # campo tolto il 5/10: si ignora
     resp = _chat(scenario)
     assert resp.status_code == 200, resp.text
     [proposta] = resp.json()["proposte"]
     assert proposta["tipo"] == "spesa_extra"
-    assert (proposta["importo"], proposta["iva_inclusa"], proposta["importo_netto"]) == (20, 4, 19.23)
+    assert proposta["importo"] == 20 and "iva_inclusa" not in proposta and "importo_netto" not in proposta
     assert proposta["doppione"] is False
     letto = modello["letti"][0]
-    assert letto["proposta_pronta"] is True and letto["si_registra"] == 19.23
+    assert letto["proposta_pronta"] is True and letto["si_registra"] == 20.0
     assert "Recupera dal tab Spese" in letto["istruzione"]
     assert _spese_latte(scenario, a.ids["sede1"]) == [], "lo strumento ha scritto"
 
     assert _conferma(scenario, proposta).status_code == 200
-    assert _spese_latte(scenario, a.ids["sede1"]) == [("fb", "LATTICINI", 19.23)]
+    assert _spese_latte(scenario, a.ids["sede1"]) == [("fb", "LATTICINI", 20.0)]
     personale = scenario.conn.execute(
         "SELECT coalesce(sum(costo_dipendenti), 0)::float FROM public.margini_mensili WHERE ristorante_id = %s",
         (a.ids["sede1"],),
@@ -427,13 +427,6 @@ def test_la_spesa_proposta_non_scrive_e_la_conferma_la_registra(scenario, modell
         "SELECT coalesce(sum(costo_dipendenti), 0)::float FROM public.margini_mensili WHERE ristorante_id = %s",
         (a.ids["sede1"],),
     ).fetchone()[0] == personale
-
-
-def test_senza_iva_nominata_la_spesa_resta_com_e(scenario, modello):
-    modello["chiamate"] = [("proponi_spesa", SPESA)]
-    [proposta] = _chat(scenario).json()["proposte"]
-    assert (proposta["iva_inclusa"], proposta["importo_netto"]) == (None, 20.0)
-    assert modello["letti"][0]["iva_scorporata"] == "nessuna"
 
 
 def test_una_spesa_uguale_gia_presente_e_segnalata_sulla_card(scenario, modello):
@@ -453,7 +446,6 @@ def test_due_spese_diverse_sono_due_card(scenario, modello):
 
 @pytest.mark.parametrize("args,motivo", [
     (dict(SPESA, categoria="PERSONALE"), "Categoria non valida"),
-    (dict(SPESA, iva=7), "aliquota IVA non valida"),
     (dict(SPESA, importo="20,00"), "importo passato come testo"),
     (dict(SPESA, descrizione=""), "Manca la descrizione"),
 ])

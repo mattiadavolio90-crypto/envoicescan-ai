@@ -1,6 +1,6 @@
 """Fase D1 del piano consulente: la spesa extra dettata all'assistente.
 
-Le regole pure (giorno, categoria, IVA, importo, id della proposta) e la Conferma
+Le regole pure (giorno, categoria, importo, id della proposta) e la Conferma
 ripetuta. Il percorso intero su Postgres vero sta in
 `test_sql_assistente_registra.py` e `test_sql_chat_proposte.py`.
 """
@@ -42,15 +42,17 @@ def test_giorno_della_spesa_fuori_finestra_o_malformato_e_400(testo):
 
 
 # ─── La riga che si scrive ────────────────────────────────────────────────────
-def test_senza_iva_dichiarata_si_registra_l_importo_com_e():
+def test_si_registra_l_importo_pagato():
     riga = A.valida_spesa(_spesa(), OGGI)
     assert riga == {"id": ID, "data_spesa": "2026-01-05", "tipo": "fb", "categoria": "LATTICINI",
                     "descrizione": "Latte", "importo": 20.0}
 
 
-@pytest.mark.parametrize("aliquota,netto", [(4, 19.23), (5, 19.05), (10, 18.18), (22, 16.39)])
-def test_con_iva_dichiarata_si_registra_il_netto(aliquota, netto):
-    assert A.valida_spesa(_spesa(iva_inclusa=aliquota), OGGI)["importo"] == netto
+@pytest.mark.parametrize("aliquota", [4, 10, 22])
+def test_l_iva_di_un_client_vecchio_non_si_scorpora(aliquota):
+    """Mattia, 5/10: una spesa senza fattura non scarica l'IVA, che e' costo. Una
+    card aperta prima del deploy manda ancora `iva_inclusa`: si ignora."""
+    assert A.valida_spesa(_spesa(iva_inclusa=aliquota), OGGI)["importo"] == 20.0
 
 
 def test_la_categoria_decide_il_tipo():
@@ -80,8 +82,6 @@ def test_il_tetto_e_ammesso():
     ("importo", None),
     ("importo", float("nan")),
     ("importo", A.TETTO_SPESA + 0.01),
-    ("iva_inclusa", 7),
-    ("iva_inclusa", 0),
     ("id_proposta", None),
     ("id_proposta", "non-un-uuid"),
     ("data", "2026-01-06"),
@@ -94,20 +94,6 @@ def test_le_categorie_offerte_al_modello_sono_quelle_che_la_conferma_accetta():
     for categoria in A.CATEGORIE_SPESA:
         assert A.valida_spesa(_spesa(categoria=categoria), OGGI)["categoria"] == categoria
     assert len(A.CATEGORIE_SPESA) == len(set(A.CATEGORIE_SPESA)) == 29
-
-
-# ─── L'aliquota detta al modello ──────────────────────────────────────────────
-@pytest.mark.parametrize("args,attesa", [
-    ({}, None), ({"iva": None}, None), ({"iva": 0}, None), ({"iva": 4}, 4), ({"iva": 22.0}, 22),
-])
-def test_aliquota_detta(args, attesa):
-    assert A._aliquota_detta(args) == (attesa, None)
-
-
-@pytest.mark.parametrize("iva", [7, 4.5, True, "dieci"])
-def test_aliquota_detta_non_valida_e_un_errore_per_il_modello(iva):
-    aliquota, errore = A._aliquota_detta({"iva": iva})
-    assert aliquota is None and errore["errore"] == "aliquota IVA non valida"
 
 
 # ─── Due spese diverse sono due card ──────────────────────────────────────────
@@ -123,7 +109,6 @@ def test_la_stessa_spesa_due_volte_e_una_card_sola():
 
 @pytest.mark.parametrize("campo,valore", [
     ("descrizione", "Panna"), ("importo", 21.0), ("categoria", "SALUMI"), ("data", "2026-01-04"),
-    ("iva_inclusa", 4),
 ])
 def test_spese_diverse_sono_card_diverse(campo, valore):
     assert A.chiave_proposta(_proposta()) != A.chiave_proposta(_proposta(**{campo: valore}))
@@ -173,11 +158,11 @@ def oggi(monkeypatch):
 
 def test_la_spesa_si_inserisce_con_l_id_della_proposta(oggi):
     sb = _Sb()
-    valori = A._registra_spesa(sb, {"id": "u-1"}, "r-1", _spesa(iva_inclusa=4))
+    valori = A._registra_spesa(sb, {"id": "u-1"}, "r-1", _spesa())
     [riga] = sb.tabella.inserite
     assert riga["id"] == ID and riga["ristorante_id"] == "r-1" and riga["user_id"] == "u-1"
     assert valori == {"data_spesa": "2026-01-05", "tipo": "fb", "categoria": "LATTICINI",
-                      "descrizione": "Latte", "importo": 19.23}
+                      "descrizione": "Latte", "importo": 20.0}
 
 
 def test_conferma_ripetuta_sulla_stessa_spesa_e_un_successo(oggi):
@@ -192,3 +177,12 @@ def test_conferma_ripetuta_sulla_stessa_spesa_e_un_successo(oggi):
 ])
 def test_insert_fallito_senza_la_stessa_spesa_e_500(oggi, righe):
     assert _codice(A._registra_spesa, _Sb(righe, fallisce=True), {"id": "u-1"}, "r-1", _spesa()) == 500
+
+
+# ─── La proposta del modello: l'IVA detta non si scorpora ─────────────────────
+def test_la_proposta_registra_la_cifra_pagata_anche_se_il_modello_passa_l_iva():
+    args = {"data": "2026-01-05", "descrizione": "Idraulico", "categoria": "UTENZE E LOCALI",
+            "importo": 150, "iva": 22}
+    proposta, al_modello = A._proponi_spesa(args, _Sb(), "r-1", "CASATI 14", OGGI)
+    assert proposta.importo == 150 and al_modello["si_registra"] == 150.0
+    assert "iva_inclusa" not in proposta.model_dump() and "importo_netto" not in proposta.model_dump()

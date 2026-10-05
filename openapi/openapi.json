@@ -20002,17 +20002,6 @@
               }
             ],
             "title": "Categoria"
-          },
-          "iva_inclusa": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iva Inclusa"
           }
         },
         "type": "object",
@@ -25231,17 +25220,6 @@
               }
             ],
             "title": "Categoria"
-          },
-          "iva_inclusa": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iva Inclusa"
           }
         },
         "type": "object",
@@ -26033,17 +26011,6 @@
             ],
             "title": "Importo"
           },
-          "iva_inclusa": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iva Inclusa"
-          },
           "id_proposta": {
             "anyOf": [
               {
@@ -26054,17 +26021,6 @@
               }
             ],
             "title": "Id Proposta"
-          },
-          "importo_netto": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Importo Netto"
           },
           "doppione": {
             "type": "boolean",
@@ -26078,7 +26034,7 @@
           "ristorante_id"
         ],
         "title": "PropostaCifra",
-        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome`, `restano`, `importo_netto`\ne `doppione` servono solo a scrivere la card. `restano`: le voci del personale\ngia' registrate e non dettate."
+        "description": "Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra\n(il frontend lo rimanda cosi' com'e'); `sede_nome`, `restano` e `doppione`\nservono solo a scrivere la card. `restano`: le voci del personale\ngia' registrate e non dettate."
       },
       "RankingPV": {
         "properties": {
@@ -26268,17 +26224,6 @@
               }
             ],
             "title": "Importo"
-          },
-          "iva_inclusa": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iva Inclusa"
           },
           "id_proposta": {
             "anyOf": [

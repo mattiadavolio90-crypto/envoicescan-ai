@@ -30,7 +30,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from config.constants import (
-    ALIQUOTE_IVA_COSTI,
     CATEGORIE_FOOD_BEVERAGE,
     CATEGORIE_SPESE_GENERALI,
     SETTORE_RETAIL,
@@ -38,7 +37,6 @@ from config.constants import (
 from config.logger_setup import get_logger
 from services import sotto_utenti_service as _su
 from services.routers.workspace import _tipo_da_categoria, _valida_categoria_spesa
-from utils.iva import netto_da_lordo
 
 logger = get_logger("router_assistente")
 
@@ -114,13 +112,12 @@ class RegistraRequest(BaseModel):
     costo_personale_chiamata: Optional[float] = None
     # Il valore mostrato sulla card come «risulta …»; None = nessun valore.
     precedente: Optional[Dict[str, float]] = None
-    # Spesa extra: `importo` com'e' stato detto, `iva_inclusa` l'aliquota da
-    # scorporare (None = gia' senza IVA). `id_proposta` diventa l'id della riga:
-    # una Conferma ripetuta non scrive una seconda spesa.
+    # Spesa extra: `importo` com'e' stato pagato, IVA compresa (Mattia, 5/10: una
+    # spesa senza fattura non scarica l'IVA, che e' costo). `id_proposta` diventa
+    # l'id della riga: una Conferma ripetuta non scrive una seconda spesa.
     categoria: Optional[str] = None
     descrizione: Optional[str] = None
     importo: Optional[float] = None
-    iva_inclusa: Optional[int] = None
     id_proposta: Optional[str] = None
 
 
@@ -205,7 +202,7 @@ def valida_giorno_spesa(testo: Optional[str], oggi: date) -> date:
 def valida_spesa(body: RegistraRequest, oggi: date) -> Dict[str, Any]:
     """La riga di `spese_extra` che la Conferma inserisce, con le regole del form
     dell'Agenda (`ws_spese_crea`): categoria ammessa e tipo derivato da lei,
-    descrizione obbligatoria, importo salvato al netto dell'IVA dichiarata."""
+    descrizione obbligatoria, importo salvato com'e' stato pagato."""
     giorno = valida_giorno_spesa(body.data, oggi)
     categoria = _valida_categoria_spesa(body.categoria or "")
     descrizione = (body.descrizione or "").strip()
@@ -218,18 +215,12 @@ def valida_spesa(body: RegistraRequest, oggi: date) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="L'importo deve essere maggiore di zero")
     if detto > TETTO_SPESA:
         raise HTTPException(status_code=400, detail="Importo fuori scala: controlla la cifra")
-    if body.iva_inclusa is None:
-        netto = detto
-    elif body.iva_inclusa in ALIQUOTE_IVA_COSTI:
-        netto = netto_da_lordo(detto, body.iva_inclusa)
-    else:
-        raise HTTPException(status_code=400, detail="Aliquota IVA non valida (4, 5, 10 o 22)")
     try:
         id_riga = str(uuid.UUID(str(body.id_proposta)))
     except (ValueError, TypeError, AttributeError):
         raise HTTPException(status_code=400, detail="Proposta non valida")
     return {"id": id_riga, "data_spesa": giorno.isoformat(), "tipo": _tipo_da_categoria(categoria),
-            "categoria": categoria, "descrizione": descrizione, "importo": netto}
+            "categoria": categoria, "descrizione": descrizione, "importo": detto}
 
 
 def _uguali(precedente: Optional[Dict[str, float]], attuale: Optional[Dict[str, float]]) -> bool:
@@ -579,8 +570,8 @@ _MESI = ("", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "lugl
 
 class PropostaCifra(BaseModel):
     """Una card con Conferma. I campi sono il corpo di POST /api/assistente/registra
-    (il frontend lo rimanda cosi' com'e'); `sede_nome`, `restano`, `importo_netto`
-    e `doppione` servono solo a scrivere la card. `restano`: le voci del personale
+    (il frontend lo rimanda cosi' com'e'); `sede_nome`, `restano` e `doppione`
+    servono solo a scrivere la card. `restano`: le voci del personale
     gia' registrate e non dettate."""
     tipo: TipoRegistra
     ristorante_id: str
@@ -599,9 +590,7 @@ class PropostaCifra(BaseModel):
     categoria: Optional[str] = None
     descrizione: Optional[str] = None
     importo: Optional[float] = None
-    iva_inclusa: Optional[int] = None
     id_proposta: Optional[str] = None
-    importo_netto: Optional[float] = None
     doppione: bool = False
 
 
@@ -609,7 +598,7 @@ def chiave_proposta(p: PropostaCifra) -> Tuple[str, Any]:
     """Due proposte sulla stessa cifra nella stessa risposta: vale l'ultima. Due
     spese diverse nello stesso giorno sono due card."""
     if p.tipo == "spesa_extra":
-        return (p.tipo, (p.data, p.categoria, (p.descrizione or "").lower(), p.importo, p.iva_inclusa))
+        return (p.tipo, (p.data, p.categoria, (p.descrizione or "").lower(), p.importo))
     return (p.tipo, p.data if p.tipo == "incasso_giorno" else (p.anno, p.mese))
 
 
@@ -776,30 +765,14 @@ _PRONTA_SPESA = (
 )
 
 
-def _aliquota_detta(args: Dict[str, Any]) -> Tuple[Optional[int], Optional[Dict[str, Any]]]:
-    """(aliquota o None, errore per il modello). 0 o assente = importo senza IVA."""
-    if args.get("iva") is None:
-        return None, None
-    aliquota = _intero(args, "iva")
-    if aliquota == 0:
-        return None, None
-    if aliquota in ALIQUOTE_IVA_COSTI:
-        return aliquota, None
-    return None, {"errore": "aliquota IVA non valida",
-                  "cosa_fare": "Le aliquote sono 4, 5, 10 o 22; 0 se l'importo e' senza IVA."}
-
-
 def _proponi_spesa(args, sb, rid, sede_nome, oggi):
     if isinstance(args.get("importo"), str):
         return None, _IMPORTO_IN_TESTO
-    aliquota, errore = _aliquota_detta(args)
-    if errore:
-        return None, errore
     corpo = RegistraRequest(
         tipo="spesa_extra", ristorante_id=rid, data=args.get("data"),
         categoria=str(args.get("categoria") or "").strip().upper(),
         descrizione=args.get("descrizione"), importo=_numero(args, "importo"),
-        iva_inclusa=aliquota, id_proposta=str(uuid.uuid4()),
+        id_proposta=str(uuid.uuid4()),
     )
     riga = valida_spesa(corpo, oggi)
     simili = (
@@ -816,11 +789,10 @@ def _proponi_spesa(args, sb, rid, sede_nome, oggi):
     proposta = PropostaCifra(
         tipo="spesa_extra", ristorante_id=rid, sede_nome=sede_nome, data=riga["data_spesa"],
         categoria=riga["categoria"], descrizione=riga["descrizione"], importo=corpo.importo,
-        iva_inclusa=aliquota, id_proposta=riga["id"], importo_netto=riga["importo"], doppione=doppione,
+        id_proposta=riga["id"], doppione=doppione,
     )
     al_modello = {"proposta_pronta": True, "giorno": riga["data_spesa"], "descrizione": riga["descrizione"],
                   "categoria": riga["categoria"], "si_registra": riga["importo"],
-                  "iva_scorporata": f"{aliquota}%" if aliquota else "nessuna",
                   "istruzione": _PRONTA_SPESA}
     if doppione:
         al_modello["attenzione"] = ("c'e' gia' una spesa uguale in questo giorno: confermando se ne "

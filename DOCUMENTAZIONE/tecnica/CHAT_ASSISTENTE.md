@@ -336,12 +336,14 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   accettato, finestra del solo deploy).
 - **Incassi: solo 10%, 22% e senza IVA** (Mattia, 5/10/2026). Il 4/5% dettato
   sugli incassi, fatto nella D2, e' stato tolto: era una lettura mia del piano,
-  non una richiesta. Le aliquote 4/5/10/22 restano sui costi (spesa extra).
+  non una richiesta. Sulle spese l'IVA non si scorpora piu' (vedi sotto).
 - **Spesa extra** (fase D1 del piano consulente, 04/10/2026): `proponi_spesa`
   (pagina `agenda`, come il form `ws_spese_crea`) prepara una riga di
   `spese_extra` — categoria scelta dal modello fra `CATEGORIE_SPESA`, tipo
-  derivato da lei (`_tipo_da_categoria`), importo al netto se il cliente nomina
-  l'IVA (4/5/10/22, `utils/iva.py::netto_da_lordo`), com'e' se non la nomina.
+  derivato da lei (`_tipo_da_categoria`), importo **com'e' stato pagato, IVA
+  compresa**: lo scorporo (4/5/10/22) e' stato tolto il 5/10/2026 su decisione di
+  Mattia, perche' una spesa senza fattura non scarica l'IVA. Lo strumento non ha
+  piu' il campo `iva`; se il cliente dice «piu' IVA» il modello chiede il totale.
   Anche «altri costi F&B / spese generali del mese» passano da qui, mai dalla
   cella di Margini: la cella si sovrascrive al primo «Recupera dal tab Spese».
   Una spesa si aggiunge (niente `precedente`): `id_proposta` diventa l'id della

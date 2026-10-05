@@ -213,10 +213,10 @@ e basta.
 ### `spese_extra` — Spese non da fattura (Agenda → Spese)
 
 Voci scritte a mano: `data_spesa`, `categoria` (fra le canoniche; il `tipo`
-`fb`/`generale` ne deriva lato router), `importo` **al netto dell'IVA**: se nel
-modulo si dice che l'importo la comprende (4/5/10/22%, campo `iva_inclusa` delle
-rotte `/api/workspace/spese`) il worker salva il netto (`utils/iva.py`); l'aliquota
-non si salva. **Non entrano nel MOL da sole**: le porta nelle celle
+`fb`/`generale` ne deriva lato router), `importo` **com'e' stato pagato, IVA
+compresa** (Mattia, 5/10/2026: senza fattura l'IVA non si scarica ed e' costo; lo
+scorporo del 3/10 e' stato tolto, e un `iva_inclusa` mandato da un client vecchio
+si ignora). **Non entrano nel MOL da sole**: le porta nelle celle
 `altri_costi_fb`/`altri_costi_spese` il pulsante «Recupera dal tab Spese» di
 Margini (`get_costo_spese_da_voci`), che sovrascrive la cella — confermato da
 Mattia il 3/10/2026.
