@@ -123,10 +123,12 @@ def test_il_telefono_va_su_mobile_comunque_si_presenti(disp):
     {"ua": UA_ANDROID_TABLET, "touch": 10, "w": 700, "screen": {"width": 800, "height": 1280}},
     # Portatile col touch: schermo da computer.
     {"ua": UA_WINDOWS, "touch": 10, "w": 1400, "screen": {"width": 1366, "height": 768}},
+    # 2-in-1 Windows da 10" al 150%: schermo piccolo in px CSS, ma non e' un telefono.
+    {"ua": UA_WINDOWS, "touch": 10, "w": 853, "screen": {"width": 853, "height": 533}},
     # Il Mac vero non ha touch.
     {"ua": UA_MAC, "touch": 0, "w": 1400, "screen": {"width": 1440, "height": 900}},
 ], ids=["desktop", "ipad", "ipad-split-view", "ipados-mac", "ipad-mini", "tablet-android",
-        "portatile-touch", "mac"])
+        "portatile-touch", "2in1-windows-150", "mac"])
 def test_tablet_e_computer_restano_su_desktop(disp):
     assert _mobile(**disp) is False
 

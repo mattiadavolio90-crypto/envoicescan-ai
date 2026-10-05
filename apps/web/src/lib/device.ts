@@ -23,6 +23,9 @@ function isPhoneUserAgent(): boolean {
 export function isPhoneDevice(): boolean {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   if (isPhoneUserAgent()) return true;
+  // Un telefono in «sito desktop» si presenta come Mac o Linux, mai Windows: un
+  // 2-in-1 Windows da 10" al 150% ha lo schermo di 853x533 e il touch.
+  if (/windows/i.test(navigator.userAgent)) return false;
   const nav = navigator as Navigator & { maxTouchPoints?: number };
   const schermo = window.screen;
   const latoCorto = Math.min(schermo?.width ?? 0, schermo?.height ?? 0);
