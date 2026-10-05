@@ -404,3 +404,33 @@ def test_senza_divisione_si_chiede_anche_col_4():
 def test_al_modello_il_4_dice_quanto_si_registra():
     assert A._ridotte_al_modello({"iva4": 20.0})["iva_ridotta"] == {"al_4%": {"detto": 20.0, "senza_iva": 19.23}}
     assert A._ridotte_al_modello({}) == {}
+
+
+
+# ─── La rilettura dopo un update senza righe guarda le stesse voci ────────────
+def test_la_rilettura_della_conferma_a_piu_voci_legge_le_voci_dettate(monkeypatch):
+    """Dopo un update che non trova la riga, `_gia_registrato` rilegge: se rileggesse
+    il solo lordo, una Conferma a due voci gia' scritta diventerebbe un 409."""
+    letture = []
+    letto = A.Letto("7", {"costo_dipendenti": 7000.0, "costo_personale_extra": 0.0},
+                    {"costo_dipendenti": 7000, "costo_personale_extra": 0})
+
+    def _leggi(sb, rid, anno, mese, campi=("costo_dipendenti",)):
+        letture.append(campi)
+        if len(letture) == 1:
+            return letto
+        return A.Letto("7", {c: {"costo_dipendenti": 7320.0, "costo_personale_extra": 688.0}[c] for c in campi}, {})
+
+    monkeypatch.setattr(A, "leggi_personale", _leggi)
+    monkeypatch.setattr(A, "_oggi", lambda: date(2026, 10, 4))
+    body = A.RegistraRequest(tipo="personale_mese", ristorante_id="r", anno=2026, mese=9,
+                             costo_dipendenti=7320, costo_personale_extra=688, costo_personale_chiamata=None,
+                             precedente=letto.attuale)
+    valori = A._registra_personale(_SbFinto(), {"id": "u"}, "r", body)
+    assert valori == {"anno": 2026, "mese": 9, "costo_dipendenti": 7320.0, "costo_personale_extra": 688.0}
+    assert letture == [("costo_dipendenti", "costo_personale_extra")] * 2
+
+
+def test_senza_le_tre_voci_dichiarate_la_conferma_chiede_di_ricaricare():
+    body = A.RegistraRequest(tipo="personale_mese", ristorante_id="r", anno=2026, mese=9, costo_dipendenti=7320)
+    assert _codice(A._registra_personale, None, {"id": "u"}, "r", body) == 400

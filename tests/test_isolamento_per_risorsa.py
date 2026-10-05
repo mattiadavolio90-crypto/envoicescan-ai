@@ -582,7 +582,7 @@ RICETTE: List[Ricetta] = [
        "fatturato_iva10": 1000, "altri_ricavi_noiva": 100}),
     R("POST", "/api/assistente/registra",
       {"tipo": "personale_mese", "ristorante_id": "$altro.sede1", "anno": _OGGI.year, "mese": _OGGI.month,
-       "costo_dipendenti": 5000}),
+       "costo_dipendenti": 5000, "costo_personale_extra": None, "costo_personale_chiamata": None}),
     R("POST", "/api/assistente/registra",
       {"tipo": "fatturato_mese", "ristorante_id": "$altro.sede1", "anno": _MESE_SCORSO.year,
        "mese": _MESE_SCORSO.month, "fatturato_iva10": 30000, "altri_ricavi_noiva": 2000}),

@@ -447,8 +447,12 @@ const CAMPI_CONFERMA = [
   "categoria", "descrizione", "importo", "iva_inclusa", "id_proposta",
 ] as const;
 
+// Il personale dichiara sempre le tre voci (null = non dettata): il server
+// rifiuta la Conferma che non le ha, cioe' quella del client di prima.
 export function corpoConferma(p: PropostaCifra): Record<string, unknown> {
-  return Object.fromEntries(CAMPI_CONFERMA.filter((k) => k in p).map((k) => [k, p[k]]));
+  const corpo = Object.fromEntries(CAMPI_CONFERMA.filter((k) => k in p).map((k) => [k, p[k]]));
+  if (p.tipo === "personale_mese") for (const k of VOCI_PERSONALE) corpo[k] = p[k] ?? null;
+  return corpo;
 }
 
 // I campi che la Conferma scrive, come il server li confronta (al centesimo).

@@ -473,7 +473,16 @@ def _registra_fatturato_mese(sb, user, rid: str, body: RegistraRequest) -> Dict[
     return {"anno": anno, "mese": mese, **valori}
 
 
+# Il client dichiara sempre le tre voci (None = non dettata). Il JavaScript di
+# prima della fase D2, in una scheda aperta da prima del deploy, manda il solo
+# lordo: scriverebbe quello, e la sua card direbbe che le ore extra dettate
+# «restano». Meglio un «ricarica» che una voce persa in silenzio.
+_RICARICA = "Ricarica la pagina e dettami di nuovo il personale"
+
+
 def _registra_personale(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
+    if not set(CAMPI_PERSONALE) <= body.model_fields_set:
+        raise HTTPException(status_code=400, detail=_RICARICA)
     anno, mese = valida_mese(body.anno, body.mese, _oggi())
     dettato = valida_personale(body)
     campi = tuple(dettato)

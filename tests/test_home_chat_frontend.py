@@ -876,3 +876,14 @@ def test_il_netto_del_4_e_del_5_sulla_card_e_quello_registrato(lordo, aliquota):
     nota = _chiama("testoCard", [p, 2026])["nota"]
     netto = _chiama("testoCard", [{**PROPOSTA, "altri_ricavi_noiva": importi["altri_ricavi_noiva"]}, 2026])["righe"][1][1]
     assert f"({netto} senza IVA)" in nota
+
+
+
+def test_la_conferma_del_personale_dichiara_sempre_le_tre_voci():
+    """Anche se la proposta arriva senza le chiavi (sessionStorage, serializzazione
+    diversa): il server rifiuta il corpo che non le ha."""
+    p = {k: v for k, v in PERSONALE.items() if k not in ("costo_personale_extra", "costo_personale_chiamata")}
+    out = _chiama("corpoConferma", [p])
+    assert (out["costo_dipendenti"], out["costo_personale_extra"], out["costo_personale_chiamata"]) == (12000, None, None)
+    incasso = _chiama("corpoConferma", [{k: v for k, v in PROPOSTA.items() if not k.startswith("costo_")}])
+    assert not any(k.startswith("costo_") for k in incasso)

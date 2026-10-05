@@ -90,8 +90,7 @@ def test_la_sede_di_un_altro_cliente_e_404_e_non_scrive(scenario, tipo):
     prima = scenario.impronta(b)
     corpo = {
         "incasso_giorno": _incasso(b.ids["sede1"]),
-        "personale_mese": {"tipo": tipo, "ristorante_id": b.ids["sede1"], "anno": OGGI.year,
-                           "mese": OGGI.month, "costo_dipendenti": 9000},
+        "personale_mese": _personale(b.ids["sede1"], costo_dipendenti=9000),
         "fatturato_mese": {"tipo": tipo, "ristorante_id": b.ids["sede1"], "anno": MESE_SCORSO.year,
                            "mese": MESE_SCORSO.month, "fatturato_iva10": 30000},
     }[tipo]
@@ -235,7 +234,7 @@ def test_limiti_del_periodo_sono_ammessi(scenario):
 # ─── Personale di un mese ─────────────────────────────────────────────────────
 def _personale(sede, anno=OGGI.year, mese=OGGI.month, **extra):
     return {"tipo": "personale_mese", "ristorante_id": sede, "anno": anno, "mese": mese,
-            "costo_dipendenti": 12000, **extra}
+            "costo_dipendenti": 12000, "costo_personale_extra": None, "costo_personale_chiamata": None, **extra}
 
 
 def _margini(sc, sede, anno, mese):
@@ -816,3 +815,21 @@ def test_spesa_non_valida_e_400_e_non_scrive(scenario, campo, valore):
     a = scenario.a
     assert _registra(scenario, a, **_spesa(a.ids["sede1"], **{campo: valore})).status_code == 400
     assert _spese(scenario, a.ids["sede1"]) == []
+
+
+def test_la_conferma_del_client_di_prima_della_d2_e_rifiutata(scenario):
+    """Una scheda aperta da prima del deploy manda il solo lordo anche quando il
+    worker nuovo ha proposto le ore extra: si chiede di ricaricare, non si scrive
+    il lordo lasciando indietro le ore extra."""
+    from services.routers import assistente as A
+
+    a = scenario.a
+    corpo = {k: v for k, v in _personale(a.ids["sede1"]).items()
+             if k not in ("costo_personale_extra", "costo_personale_chiamata")}
+    resp = _registra(scenario, a, **corpo)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == A._RICARICA
+    assert _riga(scenario, "SELECT count(*) FROM public.margini_mensili WHERE ristorante_id = %s "
+                           "AND anno = %s AND mese = %s", a.ids["sede1"], OGGI.year, OGGI.month) == (0,)
+    resp = _registra(scenario, a, **{**corpo, "costo_personale_extra": None})
+    assert resp.status_code == 400, "basta una voce mancante"

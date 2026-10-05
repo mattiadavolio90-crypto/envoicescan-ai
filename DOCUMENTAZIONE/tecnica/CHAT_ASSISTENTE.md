@@ -327,8 +327,13 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   `costo_personale_chiamata` sono le voci dettate; `restano` (solo card) quelle
   gia' registrate che non si toccano. `precedente` e la condizione dell'update
   stanno sulle sole voci dettate (`leggi_personale(..., campi)`): una voce non
-  dettata cambiata nel frattempo non e' un conflitto. Una card della fase C
-  rimasta in sessionStorage riceve 409 (mai una scrittura alla cieca).
+  dettata cambiata nel frattempo non e' un conflitto. La Conferma del personale
+  dichiara sempre le tre voci (`corpoConferma`, null = non dettata): senza, 400
+  «ricarica» (`_RICARICA`) — e' il client di prima della D2, che scriverebbe il
+  solo lordo perdendo le ore extra proposte. Una card della fase C rimasta in
+  sessionStorage riceve 409 se il lordo era gia' registrato; con lordo a zero e
+  le voci azzerate nel frattempo puo' riscrivere l'extra che mostrava (caso
+  accettato, finestra del solo deploy).
 - **Incassi al 4% e al 5%** (fase D2): `iva4` / `iva5` di `proponi_incasso` e
   `proponi_fatturato_mese`, lordi. Non hanno colonna: come l'import email di
   cassa si scorporano (`netto_da_lordo`) e il netto si somma in
