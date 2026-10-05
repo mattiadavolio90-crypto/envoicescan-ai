@@ -439,7 +439,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                   >
                     {/* Le righe di DETTAGLIO vanno in grigio e rientrate sotto la
                         loro testata; testate, Margine F&B e MOL restano piene. A
-                        gruppi chiusi la colonna mostra sei righe scure — le
+                        gruppi chiusi la colonna mostra sei righe azzurre — le
                         quattro testate, il margine e il MOL — che disegnano la
                         struttura del conto economico. */}
                     <td
@@ -550,7 +550,7 @@ function EtichettaRiga({
       onClick={() => onAlterna(gruppo)}
       aria-expanded={aperto}
       title={aperto ? `Chiudi il dettaglio di ${row.label}` : `Apri il dettaglio di ${row.label}`}
-      className={`inline-flex items-center gap-1.5 text-left rounded outline-none focus-visible:ring-1 focus-visible:ring-primary hover:opacity-80 transition-opacity ${className}`}
+      className={`inline-flex items-center gap-1.5 text-left rounded outline-none focus-visible:ring-1 focus-visible:ring-primary hover:underline underline-offset-4 ${className}`}
     >
       <ChevronRight
         aria-hidden="true"
