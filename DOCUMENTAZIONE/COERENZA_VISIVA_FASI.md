@@ -777,7 +777,8 @@ elencate nei commit. Le più importanti:
   emerald→positivo: riportato a blu, perché non è un giudizio. È il difetto
   tipico di questa fase: il riscrittore vede la famiglia, non il significato.
 - **Tabella dei margini**: righe di input neutre, righe «= Totale» in blu
-  leggibile, margine e MOL dal segno; `SECTION_CONFIG` e la legenda a chip
+  leggibile (dal 5/10/2026 nel colore del testo in grassetto, percentuali grigie,
+  azzurra solo la freccetta del gruppo), margine e MOL dal segno; `SECTION_CONFIG` e la legenda a chip
   **rimossi** (spiegavano colori che non ci sono più). È un pezzo del §4b
   anticipato: senza il colore, la gerarchia la fanno grassetto e separatori
   già presenti.

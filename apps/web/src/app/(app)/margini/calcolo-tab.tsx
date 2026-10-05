@@ -303,7 +303,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
             <p><strong className="text-foreground">Voci modificabili</strong> — cliccale per inserire un valore.</p>
             <p className="pl-3">· <strong className="text-foreground">Costo personale</strong>: tre voci che si sommano — <em>Lordo</em>, <em>Ore extra</em> e <em>Chiamata</em>. Clicca la cella del mese, anche sul totale a gruppo chiuso, per <strong className="text-foreground">recuperarle dal tab Agenda → Personale</strong> (turni o stipendi del mese) oppure scriverle a mano.</p>
             <p className="pl-3">· <strong className="text-foreground">Altre Spese / Altri Costi F&amp;B</strong>: recupera dal tab <strong className="text-foreground">Agenda → Spese</strong> o inserisci un importo a mano.</p>
-            <p><strong className="text-foreground">Totali in grassetto</strong>: calcolati in automatico dalle voci del loro gruppo. Il colore resta solo su <em>Margine F&amp;B</em> e <em>Guadagno finale (MOL)</em>: verde se positivo, rosso se negativo.</p>
+            <p><strong className="text-foreground">Totali in grassetto</strong>: calcolati in automatico dalle voci del loro gruppo. Il colore resta solo su <em>Margine F&amp;B</em> e <em>Guadagno finale (MOL)</em>: verde se positivo, rosso se negativo, grigio nei mesi senza costi caricati.</p>
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
             <p>Usa <strong className="text-foreground">Totale / Media</strong> per vedere la somma del periodo o la media mensile, e <strong className="text-foreground">Carica ricavi</strong> per inserire gli incassi.</p>
