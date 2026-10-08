@@ -1935,7 +1935,8 @@ def _build_snapshot(
             temi.append('rientro_assenza')
         if buona_notizia is not None:
             _pbn = buona_notizia.get('payload') or {}
-            temi.append(f"buona_notizia:{_pbn.get('tipo') or ''}")
+            if _pbn.get('tipo'):
+                temi.append(f"buona_notizia:{_pbn['tipo']}")
             if (_pbn.get('fatture_ieri') or {}).get('n_fatture'):
                 temi.append('buona_notizia:fatture_arrivate')
         temi += [str(n.get('topic_key') or '') for n in osservazioni]

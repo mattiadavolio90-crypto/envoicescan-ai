@@ -873,10 +873,10 @@ def test_senza_temi_le_domande_di_sempre():
 
 
 def test_le_domande_seguono_l_ordine_del_briefing():
-    out = _domande(["buona_notizia:incasso_ieri", "mese_chiuso", "price_alert"])
+    out = _domande(["buona_notizia:incasso_ieri", "mese_chiuso", "appuntamento_imminente"])
     assert out == ["Com'è andato l'incasso del mese finora?",
                    "Quali categorie hanno pesato di più il mese scorso?",
-                   "Quali prodotti sono rincarati di più?",
+                   "Che appuntamenti ho oggi?",
                    "Qual è il mio food cost?"]
 
 
@@ -887,17 +887,19 @@ def test_una_domanda_gia_fra_le_fisse_non_si_ripete():
 
 
 def test_al_massimo_quattro():
-    temi = ["buona_notizia:mol_mese", "mese_chiuso", "prezzo_sceso", "price_alert",
-            "scadenza_superata", "appuntamento_imminente"]
-    assert len(_domande(temi)) == 4
-    assert _domande(temi)[:4] == ["Come si è chiuso il mese scorso?",
-                                  "Quali categorie hanno pesato di più il mese scorso?",
-                                  "Dove posso risparmiare sugli acquisti?",
-                                  "Quali prodotti sono rincarati di più?"]
+    temi = ["buona_notizia:mol_mese", "mese_chiuso", "coperti_anomalia",
+            "appuntamento_imminente", "scadenza_superata"]
+    assert _domande(temi) == ["Come si è chiuso il mese scorso?",
+                              "Quali categorie hanno pesato di più il mese scorso?",
+                              "Come vanno i coperti questo mese?",
+                              "Che appuntamenti ho oggi?"]
 
 
 def test_i_temi_senza_domanda_si_saltano():
-    assert _domande(["uncategorized_rows", "fatture_mancanti", "upload_failed"]) == FISSE_PV
+    """Senza uno strumento che risponda, niente domanda: rincari e ribassi non
+    hanno ancora chi li elenchi (revisore, 8/10)."""
+    assert _domande(["uncategorized_rows", "fatture_mancanti", "upload_failed",
+                     "price_alert", "prezzo_sceso"]) == FISSE_PV
 
 
 def test_registrare_solo_dove_c_e_la_conferma():
@@ -921,7 +923,7 @@ def test_ogni_tema_della_tabella_esiste_nel_worker():
     """Un refuso nella chiave e la domanda non compare mai, in silenzio."""
     import services.daily_briefing_service as dbs
     chiavi = esegui_ts(MODULO, "emit([...Object.keys(m.DOMANDE_PER_TEMA), ...Object.keys(m.DOMANDE_PER_REGISTRARE)]);")
-    assert len(chiavi) >= 15
+    assert len(chiavi) >= 14
     tipi_buona = {"mol_mese", "perdita_in_calo", "incasso_ieri", "fatture_arrivate"}
     for k in chiavi:
         if k.startswith("buona_notizia:"):

@@ -144,7 +144,9 @@ export function suggerimentiPer(
 // ogni domanda deve avere uno strumento dell'assistente che la sappia
 // rispondere. `registra` = la vista sa confermare le cifre dettate (card
 // «Conferma»): sul telefono non ancora (fase I), quindi niente «Voglio
-// inserire…». I posti liberi si riempiono con le domande fisse.
+// inserire…». I posti liberi si riempiono con le domande fisse. Rincari e
+// ribassi non hanno ancora una domanda: nessuno strumento elenca gli avvisi
+// prezzi (revisore, 8/10), arriva con gli strumenti delle pagine della fase F.
 export const DOMANDE_PER_TEMA: Record<string, string> = {
   "buona_notizia:mol_mese": "Come si è chiuso il mese scorso?",
   "buona_notizia:perdita_in_calo": "Come si è chiuso il mese scorso?",
@@ -153,8 +155,6 @@ export const DOMANDE_PER_TEMA: Record<string, string> = {
   andamento_incasso: "Com'è andato l'incasso del mese finora?",
   mese_chiuso: "Quali categorie hanno pesato di più il mese scorso?",
   food_cost_alto: "Quali categorie pesano di più sul food cost?",
-  prezzo_sceso: "Dove posso risparmiare sugli acquisti?",
-  price_alert: "Quali prodotti sono rincarati di più?",
   scadenza_superata: "Cosa devo pagare?",
   scadenza_imminente: "Cosa devo pagare?",
   coperti_anomalia: "Come vanno i coperti questo mese?",

@@ -118,3 +118,8 @@ def test_il_telefono_non_ha_piu_le_domande_scritte_nel_componente():
     m = _n(_M_CHAT)
     assert "constSUGGERIMENTI" not in m
     assert "suggerimenti.map(" in m
+
+
+def test_buona_notizia_senza_tipo_non_e_un_tema():
+    snap = dbs._build_snapshot([_rec("buona_notizia", "success"), SCAD])
+    assert snap["temi"] == ["scadenza_superata"]
