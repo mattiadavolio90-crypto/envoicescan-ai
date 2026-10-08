@@ -6568,6 +6568,22 @@ def _briefing_buona_notizia(
         if kpi is not None and kpi.get("mol") is not None:
             pm, pa = (mese_usato - 1, anno_usato) if mese_usato > 1 else (12, anno_usato - 1)
             p_margini, p_fb, p_sp = _dati(pa)
+
+            def _un_mese_di_ferie() -> bool:
+                # Fase F (8/10/2026): come la card «I tuoi conti» (home_kpi), un
+                # mese con l'incasso fuori norma non si confronta e non fa da
+                # confronto. Settembre contro un agosto di ferie e' «molto meglio»
+                # solo perche' agosto era chiuso; la card dice «nessun confronto
+                # con agosto» e il briefing non puo' festeggiare. Ultimo controllo
+                # delle condizioni: legge gli anni di riferimento solo se il resto
+                # direbbe la buona notizia.
+                noti = {a: v[0] for a, v in _cache_anno.items() if v[0]}
+                return any(
+                    _incasso_fuori_norma_sede(
+                        user_id, ristorante_id, supabase_client, a, m, oggi, noti,
+                    ) is True
+                    for a, m in ((anno_usato, mese_usato), (pa, pm))
+                )
             kpi_prec = _kpi_periodo(p_margini, p_fb, p_sp, pm)
             mol_curr = float(kpi["mol"])
             if kpi_prec.get("has_data") and kpi_prec.get("mol") is not None:
@@ -6590,7 +6606,8 @@ def _briefing_buona_notizia(
                 # reale e' quello del ramo "perdita in calo", sotto.
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
                         and _mesi_confrontabili(kpi, kpi_prec)
-                        and not _salute_indice_rosso(ristorante_id, supabase_client)):
+                        and not _salute_indice_rosso(ristorante_id, supabase_client)
+                        and not _un_mese_di_ferie()):
                     delta_pct = round((mol_curr - mol_prec) / abs(mol_prec) * 100, 1)
                     return {
                         "id": f"buona-notizia-mol-{anno_usato}-{mese_usato:02d}",
@@ -6615,7 +6632,8 @@ def _briefing_buona_notizia(
                 # vada bene. Decisione Mattia: segnalarlo come spinta.
                 if (mol_curr < 0 and mol_prec < 0 and mol_curr > mol_prec
                         and _mesi_confrontabili(kpi, kpi_prec)
-                        and not _salute_indice_rosso(ristorante_id, supabase_client)):
+                        and not _salute_indice_rosso(ristorante_id, supabase_client)
+                        and not _un_mese_di_ferie()):
                     return {
                         "id": f"buona-notizia-perdita-{anno_usato}-{mese_usato:02d}",
                         "topic_key": "buona_notizia",
@@ -6978,14 +6996,16 @@ def _incasso_fuori_norma_sede(
     margini_noti: Optional[Dict[int, dict]] = None,
 ) -> Optional[bool]:
     """`_incasso_fuori_norma` leggendo gli anni che servono. `margini_noti`
-    ({anno: margini gia' fusi}) evita di rileggere cio' che il chiamante ha.
+    ({anno: margini gia' fusi}) evita di rileggere cio' che il chiamante ha, e
+    si arricchisce degli anni letti qui: chi giudica due mesi passa lo stesso
+    dizionario e il secondo giudizio non rilegge l'anno prima.
     Un errore di lettura torna None: non giudicabile, non «nella norma»."""
-    noti = margini_noti or {}
+    noti = {} if margini_noti is None else margini_noti
 
     def _margini(a: int) -> dict:
-        if a in noti:
-            return noti[a]
-        return _margini_fusi(user_id, ristorante_id, supabase_client, a)
+        if a not in noti:
+            noti[a] = _margini_fusi(user_id, ristorante_id, supabase_client, a)
+        return noti[a]
 
     try:
         netti = _netti_mensili(_margini, _anni_riferimento_incasso(anno, mese, oggi))

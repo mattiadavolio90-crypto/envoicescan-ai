@@ -184,6 +184,10 @@ applica vince), e ritorna `None` se nessuna → briefing to-do puro.
 Il MOL è ricalcolato con la **stessa fonte/logica di `home_kpi`** (`_kpi_periodo`
 + margini_mensili + costi auto da fatture), così la card "I tuoi conti" e
 l'apertura del briefing **non si contraddicono mai** (stesso numero, stessa %).
+Vale anche per i mesi di **ferie** (8/10/2026): se il mese chiuso o quello di
+confronto ha l'incasso fuori norma (`_incasso_fuori_norma_sede`), la card non
+mostra frecce (`confronto_escluso`) e `_briefing_buona_notizia` non festeggia né
+il MOL in crescita né la perdita in calo.
 
 **Rendering testo:** `_buona_notizia_bullet` (per l'AI) e `_buona_notizia_frase`
 (template), entrambi in `daily_briefing_service.py`. Distinguono per

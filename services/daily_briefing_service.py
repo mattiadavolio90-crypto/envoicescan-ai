@@ -164,7 +164,9 @@ logger = get_logger('daily_briefing')
 #               un mese con l'incasso molto sotto i mesi vicini (ferie: OVERTIME
 #               agosto 2026 al 95,3%). Senza bump lo snapshot di oggi
 #               continuerebbe a dare l'allarme fino al TTL.
-_BRIEFING_CODE_VERSION = 30
+#   31 (08/10): fase F. La buona notizia del MOL (giorni 1-7 e ultimo del mese)
+#               non confronta con un mese di ferie, come la card «I tuoi conti».
+_BRIEFING_CODE_VERSION = 31
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

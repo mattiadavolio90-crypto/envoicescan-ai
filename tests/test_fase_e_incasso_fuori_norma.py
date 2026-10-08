@@ -560,3 +560,107 @@ def test_giudica_gli_incassi_inseriti_a_mese_intero():
                       side_effect=lambda _sb, _rid, anni: {k: v for k, v in overrides.items() if k[0] in anni}):
         assert fw._incasso_fuori_norma_sede(UID, RID, _sb_vuoto(), 2026, 8, OGGI) is True
         assert fw._incasso_fuori_norma_sede(UID, RID, _sb_vuoto(), 2026, 7, OGGI) is False
+
+
+# ── La buona notizia del MOL (fase F, 8/10/2026) ──────────────────────────
+# La card «I tuoi conti» non confronta con un mese di ferie; il briefing dei
+# giorni 1-7 avrebbe festeggiato «settembre meglio di agosto» contro l'agosto
+# chiuso di OVERTIME. BRIEFING_HOME.md promette che non si contraddicono.
+# Ogni caso «tace» ha numeri con cui, senza la regola, la notizia uscirebbe:
+# un mese di ferie in perdita fermerebbe gia' `mol_prec > 0` da solo.
+
+INIZIO_NOVEMBRE = date(2026, 11, 3)
+INIZIO_SETTEMBRE = date(2026, 9, 3)
+
+
+def _margini_mol(agosto_netto=None):
+    """OVERTIME con personale: senza, `_mesi_confrontabili` zittirebbe tutto e
+    il test non vedrebbe la regola nuova."""
+    return _margini_con_costi(agosto_netto)
+
+
+def _mese_chiuso_ma_in_utile(margini, fb, mese, netto=15000.0):
+    """Un mese di ferie con poco incasso e pochi costi: MOL positivo (7.000)
+    ma sotto i mesi vicini."""
+    margini[mese] = {"altri_ricavi_noiva": netto, "costo_dipendenti": 4000.0,
+                     "altri_costi_spese": 1000.0}
+    fb[mese] = 3000.0
+
+
+def _buona_notizia(oggi, margini, fb=None):
+    with _patch_fonti(margini, fb), \
+         patch.object(fw, "_oggi_rome", return_value=oggi), \
+         patch.object(fw, "_salute_indice_rosso", return_value=False):
+        return fw._briefing_buona_notizia(UID, RID, _sb_vuoto())
+
+
+def test_buona_notizia_settembre_non_festeggia_contro_agosto_di_ferie():
+    """Inizio ottobre: settembre (MOL 10.556) contro un agosto chiuso ma in
+    utile (7.000): senza la regola «settembre in crescita»."""
+    margini, fb = _margini_mol(), dict(FB_OVERTIME)
+    _mese_chiuso_ma_in_utile(margini, fb, 8)
+    assert _buona_notizia(OGGI.replace(day=3), margini, fb) is None
+
+
+def test_buona_notizia_settembre_contro_agosto_normale_resta():
+    """Stesso locale, agosto aperto (26.000, MOL 9.259): settembre va meglio e
+    lo si dice. Senza questo caso i test che tacciono resterebbero verdi con la
+    buona notizia sempre spenta."""
+    out = _buona_notizia(OGGI.replace(day=3), _margini_mol(agosto_netto=26000.0))
+    assert out is not None and out["payload"]["tipo"] == "mol_mese"
+    assert out["payload"]["mese"] == "settembre" and out["payload"]["mese_prec"] == "agosto"
+
+
+def test_buona_notizia_non_festeggia_un_mese_di_ferie_contro_il_precedente():
+    """Il mese mostrato e' quello di ferie: «la perdita e' scesa» ad agosto
+    misurerebbe la chiusura (meno costi), non il locale. Luglio -21.410,
+    agosto -11.005."""
+    margini = _margini_mol()
+    margini[7]["costo_dipendenti"] = 40000.0
+    margini[8]["costo_dipendenti"] = 9000.0
+    assert _buona_notizia(INIZIO_SETTEMBRE, margini) is None
+
+
+def test_buona_notizia_perdita_in_calo_su_mesi_normali_resta():
+    """Il ramo «perdita in calo» con agosto aperto: la regola nuova non lo
+    spegne."""
+    margini = _margini_mol(agosto_netto=29000.0)
+    margini[7]["costo_dipendenti"] = 40000.0
+    margini[8]["costo_dipendenti"] = 30000.0
+    out = _buona_notizia(INIZIO_SETTEMBRE, margini)
+    assert out is not None and out["payload"]["tipo"] == "perdita_in_calo"
+
+
+def test_buona_notizia_non_festeggia_un_ottobre_contro_settembre_di_ferie():
+    """Il mese di confronto e' quello fuori norma, su un mese diverso da agosto
+    perche' la regola non sia scritta su un mese: ottobre (MOL 16.714) contro un
+    settembre chiuso ma in utile (7.000)."""
+    margini, fb = _margini_mol(agosto_netto=29000.0), dict(FB_OVERTIME)
+    _mese_chiuso_ma_in_utile(margini, fb, 9)
+    margini[10] = {"altri_ricavi_noiva": 30000.0, "costo_dipendenti": 9000.0,
+                   "altri_costi_spese": 2500.0}
+    assert _buona_notizia(INIZIO_NOVEMBRE, margini, fb) is None
+
+
+def test_fuori_norma_sede_arricchisce_i_margini_del_chiamante():
+    """home_kpi e la buona notizia giudicano due mesi: il secondo giudizio non
+    rilegge l'anno che il primo ha gia' letto (febbraio-giugno: l'anno prima)."""
+    carica = MagicMock(side_effect=lambda _u, _r, a: _margini_overtime() if a == 2026 else {})
+    noti = {}
+    with patch("services.margine_service.carica_margini_anno", carica), \
+         patch.object(fw, "_merge_override_mensile", side_effect=lambda m, *_a: m):
+        fw._incasso_fuori_norma_sede(UID, RID, _sb_vuoto(), 2026, 3, OGGI, noti)
+        fw._incasso_fuori_norma_sede(UID, RID, _sb_vuoto(), 2026, 2, OGGI, noti)
+    assert sorted(noti) == [2025, 2026]
+    assert sorted(c.args[2] for c in carica.call_args_list) == [2025, 2026]
+
+
+def test_buona_notizia_senza_storia_resta_come_prima():
+    """Sede con due soli mesi: non giudicabile (None) non e' «ferie». La
+    notizia esce come prima, come l'osservazione del food cost."""
+    margini = {
+        8: {"altri_ricavi_noiva": 26000.0, "costo_dipendenti": 8800.0, "altri_costi_spese": 2400.0},
+        9: {"altri_ricavi_noiva": 31285.0, "costo_dipendenti": 8900.0, "altri_costi_spese": 2450.0},
+    }
+    out = _buona_notizia(OGGI.replace(day=3), margini)
+    assert out is not None and out["payload"]["tipo"] == "mol_mese"

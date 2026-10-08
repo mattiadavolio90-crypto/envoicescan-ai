@@ -94,11 +94,16 @@ contano per il "tutto a posto".
      mese prima**, la Salute non è rossa **e** i due mesi sono confrontabili:
      **entrambi** con fatturato, con i costi presenti **e** con il costo del
      personale inserito (altrimenti sarebbe un "+X%" falso: dal 25/9/2026, un
-     agosto senza stipendi non è un agosto andato meglio);
+     agosto senza stipendi non è un agosto andato meglio). Dall'8/10/2026 nessuno
+     dei due mesi può essere un mese di **ferie** (incasso sotto i 3/4 dei mesi
+     vicini, la regola della fase E §4-bis): settembre «molto meglio» di un agosto
+     chiuso misura la chiusura, e la card «I tuoi conti» in quel caso dice
+     «nessun confronto con agosto»;
   2. altrimenti **perdita in calo** (in rosso ma meno del mese prima), con la
      stessa condizione sui due mesi. Fino al 23/9/2026 diceva «la perdita è
      scesa a € 9.380» su due mesi **senza incassi**: la "perdita" era la somma
-     dei costi, e il "miglioramento" era che ne erano stati inseriti meno;
+     dei costi, e il "miglioramento" era che ne erano stati inseriti meno. Anche
+     qui niente mesi di ferie: un agosto chiuso «perde meno» perché costa meno;
   3. altrimenti **incasso di ieri** (solo di ieri; più vecchio = silenzio),
      con lo scontrino medio se si scosta ≥10% dalla media, e il confronto con la
      media dello stesso giorno della settimana quando c'è abbastanza storico;
