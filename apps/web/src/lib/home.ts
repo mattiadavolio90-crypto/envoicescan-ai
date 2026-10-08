@@ -110,6 +110,11 @@ export type HomeKpi = {
   // true = il mese ha ricavi ma zero costi (food + spese): MOL e food cost non
   // sono reali. La card lo spiega e nasconde le variazioni "in meglio".
   costi_mancanti?: boolean;
+  // Mese di ferie: il mese mostrato (incasso_fuori_norma) o quello di confronto
+  // (confronto_escluso, es. "agosto") ha incassato molto meno dei vicini. Le
+  // variazioni arrivano a null; la card dice perche'.
+  incasso_fuori_norma?: boolean;
+  confronto_escluso?: string | null;
   // Sparkline andamento MOL dei mesi con dati dell'anno corrente (vuoto se <2 punti).
   mol_mensile: { mese: number; mol: number }[];
   mol_mensile_anno: number | null;

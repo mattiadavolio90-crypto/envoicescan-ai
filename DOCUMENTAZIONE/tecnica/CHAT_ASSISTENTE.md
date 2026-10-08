@@ -486,6 +486,12 @@ pagina Catena chiama lo stesso endpoint e non paga quelle letture) mettono
 giudica mai: e' parziale, non di ferie. La nota sta **nel dato**: con la sola
 riga del prompt, col modello vero, la catena diceva ancora «problema grave» 2
 volte su 3; con la nota 0 su 10.
+La card «I tuoi conti» della Home (desktop e `/m`, stesso `KpiBlock`) segue la
+stessa regola: un mese di ferie non si confronta e non fa da confronto. Le
+variazioni arrivano a `null`; se il mese mostrato è fuori norma la card ha un
+avviso ambra e il MOL in giallo (`tintContiPV`), se lo è il mese di confronto
+`confronto_escluso` dice quale («nessun confronto con agosto»). L'8/10/2026
+settembre di OVERTIME mostrava «fatturato +428%» in verde contro agosto chiuso.
 
 **Catena, stesso mese stesso numero.** `gruppo_margini_coperti` accetta `mese`
 (anno in corso) e porta `food_cost_perc` per sede e per il gruppo, con la formula
@@ -574,7 +580,8 @@ reale del cliente.
 - **8/10/2026 (piano assistente consulente, fase E; non ancora pushato al
   momento della nota)** — numeri coerenti in catena (§7): mese fuori dal solito
   (ferie) senza allarme sul food cost, `gruppo_margini_coperti` con `mese` e
-  `food_cost_perc`, il periodo detto sempre.
+  `food_cost_perc`, il periodo detto sempre. Poi la card «I tuoi conti» della
+  Home: niente frecce contro un mese di ferie, avviso sul mese di ferie.
 
 - **5/10/2026 (piano assistente consulente, fase D3; non ancora pushato al
   momento della nota)** — regole su come chiede nelle registrazioni (§5.4) e

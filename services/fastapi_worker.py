@@ -2928,6 +2928,10 @@ class HomeKpiResponse(BaseModel):
     # vicini (ferie, chiusura, incasso non completo): il suo food cost non e' un
     # allarme. Mai sul mese in corso, che e' parziale per definizione.
     incasso_fuori_norma: bool = False
+    # Il mese di confronto (es. "agosto") aveva un incasso fuori norma: le
+    # variazioni sono a None e la card dice perche' non confronta. Settembre
+    # contro un agosto di ferie dava «fatturato +428%» in verde (8/10/2026).
+    confronto_escluso: Optional[str] = None
     # Sparkline andamento MOL dei mesi dell'ANNO CORRENTE con dati (da gennaio
     # all'ultimo mese completo). Vuoto se un solo mese (niente linea da disegnare).
     mol_mensile: List[MolMensilePoint] = []
@@ -9569,10 +9573,23 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
 
     # Sul mese in corso non si legge niente: la Home lo mostra solo se i sei mesi
     # prima non hanno dati, quindi il giudizio sarebbe comunque None.
+    noti = {a: v[0] for a, v in cache_anni.items() if v[0]}
     fuori_norma = (not mese_in_corso) and _incasso_fuori_norma_sede(
-        user_id, ristorante_id, sb, anno_usato, mese_usato, oggi,
-        {a: v[0] for a, v in cache_anni.items() if v[0]},
+        user_id, ristorante_id, sb, anno_usato, mese_usato, oggi, noti,
     ) is True
+    # Un mese di ferie non si confronta e non fa da confronto: le frecce
+    # misurerebbero la chiusura, non l'andamento del locale. Senza confronto
+    # (`confronto_label` None) non c'e' niente da escludere: la guardia evita
+    # la lettura e un «nessun confronto con» su un mese senza dati ma con un
+    # netto positivo (componenti negative che si compensano).
+    confronto_escluso = None
+    if confronto_label and not fuori_norma and _incasso_fuori_norma_sede(
+        user_id, ristorante_id, sb, cmp_anno, cmp_mese, oggi, noti,
+    ) is True:
+        confronto_escluso = _MESI_IT[cmp_mese].lower()
+    if fuori_norma or confronto_escluso:
+        confronto_label = None
+        fatturato_delta = food_cost_delta = personale_delta = spese_delta = mol_delta = None
 
     resp = HomeKpiResponse(
         periodo_label=(
@@ -9593,6 +9610,7 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         mol_delta_pct=mol_delta,
         costi_mancanti=bool(kpi.get("costi_mancanti")),
         incasso_fuori_norma=fuori_norma,
+        confronto_escluso=confronto_escluso,
         mol_mensile=mol_mensile,
         mol_mensile_anno=anno_usato if mol_mensile else None,
     )

@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Minus, TriangleAlert } from "lucide-react";
 import { type HomeKpi } from "@/lib/home";
 import { tintContiPV } from "@/lib/catena-confronti";
 import { formatEuro } from "@/lib/format";
-import { tintaTrend } from "@/lib/home-kpi";
+import { avvisoIncassoFuoriNorma, tintaTrend, testoConfronto } from "@/lib/home-kpi";
 import { costoMerceLabel, type Settore } from "@/lib/categorie-spesa";
 import { SALUTE_TINT } from "@/lib/salute-tint";
 import { cn } from "@/lib/utils";
@@ -70,6 +70,8 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
    */
   const tint = SALUTE_TINT[tintContiPV(kpi)];
   const molAttendibile = !kpi.costi_mancanti;
+  const confronto = testoConfronto(kpi);
+  const avvisoFerie = avvisoIncassoFuoriNorma(kpi, costoMerceLabel(settore).toLowerCase());
 
   return (
     <CardHome titolo="I tuoi conti" meta={kpi.periodo_label}>
@@ -83,7 +85,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
             {formatEuro(kpi.mol)}
           </span>
           <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
+            {confronto && <span>{confronto}</span>}
             {/* MOL negativo -> trend neutro (mai verde): "meno in perdita" non e'
                 una vittoria. Stessa cosa coi costi mancanti: il delta confronta
                 un margine gonfiato con uno vero. */}
@@ -108,6 +110,13 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
             Si aggiorna da solo appena arrivano.
           </span>
         </Link>
+      )}
+
+      {avvisoFerie && (
+        <p className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
+          <TriangleAlert className="mt-px size-3.5 shrink-0" />
+          <span>{avvisoFerie}</span>
+        </p>
       )}
 
       <div className="grid grid-cols-2 gap-2">

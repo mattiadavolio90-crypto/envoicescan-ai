@@ -12,6 +12,8 @@ separati e coperti uno per uno.
 """
 
 
+import pytest
+
 from tests.helpers_ts import esegui_ts
 
 MODULO = "lib/home-kpi"
@@ -181,3 +183,34 @@ def test_voce_senza_ok_non_e_a_posto():
 
 def test_voci_assenti_non_rompono_la_card():
     assert _chiama("vociCompletezza", [None]) == {"daSistemare": [], "aPosto": []}
+
+
+# ─── I mesi di ferie (fase E del piano consulente, 8/10/2026) ──────────────
+#
+# Il worker azzera le frecce quando il mese mostrato o quello di confronto ha
+# un incasso fuori norma (ferie): la card deve dire perche'.
+
+def test_confronto_con_un_mese_di_ferie_dice_perche_manca():
+    out = _chiama("testoConfronto", [{"confronto_label": None, "confronto_escluso": "agosto"}])
+    assert out == "nessun confronto con agosto: incasso fuori dal solito"
+
+
+def test_confronto_normale_resta_l_etichetta_del_worker():
+    assert _chiama("testoConfronto", [{"confronto_label": "vs agosto"}]) == "vs agosto"
+    assert _chiama("testoConfronto", [{"confronto_label": None, "confronto_escluso": None}]) is None
+
+
+def test_avviso_mese_di_ferie():
+    out = _chiama("avvisoIncassoFuoriNorma",
+                  [{"incasso_fuori_norma": True, "periodo_label": "Agosto"}, "food cost"])
+    assert out.startswith("Nel mese di agosto l'incasso è stato molto più basso del solito")
+    assert "il food cost e il margine di questo mese non sono un allarme" in out
+
+
+@pytest.mark.parametrize("valore", [False, None, "true", 1])
+def test_avviso_solo_col_booleano_vero(valore):
+    """Un worker vecchio (campo assente) o un valore strano: nessun avviso."""
+    kpi = {"periodo_label": "Agosto"}
+    if valore is not None:
+        kpi["incasso_fuori_norma"] = valore
+    assert _chiama("avvisoIncassoFuoriNorma", [kpi, "food cost"]) is None

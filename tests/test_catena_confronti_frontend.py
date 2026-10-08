@@ -723,6 +723,17 @@ def test_tint_pv_campo_assente_non_e_giallo():
     assert _chiama("tintContiPV", [{"mol": -1000.0}]) == "rosso"
 
 
+def test_tint_pv_giallo_sul_mese_di_ferie():
+    """OVERTIME agosto 2026: MOL -12.334 EUR col locale chiuso per ferie.
+    Decisione di Mattia (8/10): nessun allarme, quindi niente rosso."""
+    assert _chiama("tintContiPV", [{"mol": -12334.0, "incasso_fuori_norma": True}]) == "giallo"
+
+
+def test_tint_pv_mese_di_ferie_solo_col_booleano_vero():
+    assert _chiama("tintContiPV", [{"mol": -12334.0, "incasso_fuori_norma": False}]) == "rosso"
+    assert _chiama("tintContiPV", [{"mol": -12334.0, "incasso_fuori_norma": "true"}]) == "rosso"
+
+
 # ─── metricaPrincipaleConti ───────────────────────────────────────────────
 #
 # Fase 5 (9/9/2026): il MOL e' il numero grande della card "I conti del gruppo"

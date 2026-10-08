@@ -23512,6 +23512,17 @@
             "title": "Incasso Fuori Norma",
             "default": false
           },
+          "confronto_escluso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confronto Escluso"
+          },
           "mol_mensile": {
             "items": {
               "$ref": "#/components/schemas/MolMensilePoint"

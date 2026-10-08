@@ -255,10 +255,10 @@ def test_query_margini_non_segna_il_mese_in_corso():
     assert "incasso_fuori_norma" not in mesi["ottobre 2026"]
 
 
-def _home_kpi(oggi):
+def _home_kpi(oggi, margini=None):
     fw._HOME_KPI_CACHE.clear()
     try:
-        with _patch_fonti(_margini_overtime()), \
+        with _patch_fonti(_margini_overtime() if margini is None else margini), \
              patch.object(fw, "_resolve_user_from_token", return_value={"id": UID}), \
              patch.object(fw, "_get_supabase_client", return_value=_sb_vuoto()), \
              patch.object(fw, "_resolve_ristorante_id", return_value=RID), \
@@ -278,6 +278,61 @@ def test_home_kpi_non_segna_settembre_mostrato_a_ottobre():
     kpi = _home_kpi(OGGI)
     assert kpi.periodo_label == "Settembre"
     assert kpi.incasso_fuori_norma is False
+
+
+# Le frecce della card: un mese di ferie non si confronta e non fa da confronto.
+# L'8/10/2026 la Home di OVERTIME mostrava settembre «fatturato +428%» e «food
+# cost -65 punti» in verde contro un agosto chiuso per ferie.
+
+def _margini_con_costi(agosto_netto=None):
+    """Personale e spese diversi ogni mese: senza, le loro variazioni sarebbero
+    gia' None (confronto con zero) e il test non vedrebbe se restano."""
+    return {
+        m: {**r, "costo_dipendenti": 8000.0 + m * 100, "altri_costi_spese": 2000.0 + m * 50}
+        for m, r in _margini_overtime(agosto_netto).items()
+    }
+
+
+_DELTA = ("fatturato_delta_pct", "food_cost_delta_pp", "personale_delta_pct",
+          "spese_delta_pct", "mol_delta_pct")
+
+
+def test_home_kpi_settembre_non_si_confronta_con_agosto_di_ferie():
+    kpi = _home_kpi(OGGI, _margini_con_costi())
+    assert kpi.confronto_escluso == "agosto"
+    assert kpi.confronto_label is None
+    assert {d: getattr(kpi, d) for d in _DELTA} == dict.fromkeys(_DELTA)
+
+
+def test_home_kpi_agosto_di_ferie_non_ha_frecce():
+    """Il mese mostrato e' quello di ferie: la card lo spiega con l'avviso, e il
+    confronto con luglio misurerebbe la chiusura. `confronto_escluso` resta None:
+    il motivo e' il mese mostrato, non quello di confronto."""
+    kpi = _home_kpi(date(2026, 9, 10), _margini_con_costi())
+    assert kpi.confronto_label is None
+    assert kpi.confronto_escluso is None
+    assert {d: getattr(kpi, d) for d in _DELTA} == dict.fromkeys(_DELTA)
+
+
+def test_home_kpi_due_mesi_di_ferie_di_fila_un_solo_avviso():
+    """Luglio e agosto entrambi chiusi: mostrando agosto la card ha gia' l'avviso
+    sul mese; dire anche «nessun confronto con luglio» sarebbe un secondo
+    avviso sulla stessa cosa."""
+    margini = _margini_con_costi()
+    margini[7]["altri_ricavi_noiva"] = 6000.0
+    kpi = _home_kpi(date(2026, 9, 10), margini)
+    assert kpi.incasso_fuori_norma is True
+    assert kpi.confronto_escluso is None
+
+
+def test_home_kpi_mese_normale_conserva_le_frecce():
+    """Lo stesso locale con un agosto aperto: settembre si confronta come prima.
+    Senza questo caso i due test sopra resterebbero verdi con le frecce sempre
+    spente."""
+    kpi = _home_kpi(OGGI, _margini_con_costi(agosto_netto=29000.0))
+    assert kpi.confronto_label == "vs agosto"
+    assert kpi.confronto_escluso is None
+    assert all(getattr(kpi, d) is not None for d in _DELTA)
 
 
 def _kpi(fuori_norma):

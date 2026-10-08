@@ -298,8 +298,15 @@ export function tintConti(kpi: { mol: number; livello_dati?: string | null }): "
  * perche' la regola che applicano e' una sola — un MOL che non e' reale non si
  * colora come una vittoria — e separate divergerebbero.
  */
-export function tintContiPV(kpi: { mol: number; costi_mancanti?: boolean }): "verde" | "rosso" | "giallo" {
+export function tintContiPV(kpi: {
+  mol: number;
+  costi_mancanti?: boolean;
+  incasso_fuori_norma?: boolean;
+}): "verde" | "rosso" | "giallo" {
   if (kpi.costi_mancanti) return "giallo";
+  // Mese di ferie (8/10/2026): il MOL e' in perdita perche' il locale era
+  // chiuso, non perche' va male. Decisione di Mattia: nessun allarme.
+  if (kpi.incasso_fuori_norma === true) return "giallo";
   return kpi.mol >= 0 ? "verde" : "rosso";
 }
 

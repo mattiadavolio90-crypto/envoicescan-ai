@@ -50,6 +50,34 @@ export function tintaTrend(opts: {
   return { mostra: true, tinta, direzione };
 }
 
+/* ─── kpi-block.tsx: i mesi di ferie ─────────────────────────────────────── */
+
+// Un mese con l'incasso molto sotto i vicini (ferie, chiusura) non si giudica
+// e non fa da confronto: il worker azzera le variazioni e dice quale dei due
+// mesi e' fuori norma. L'8/10/2026 la Home di OVERTIME mostrava settembre
+// «fatturato +428%» e «food cost -65 punti» in verde contro un agosto chiuso.
+export function testoConfronto(kpi: {
+  confronto_label?: string | null;
+  confronto_escluso?: string | null;
+}): string | null {
+  if (kpi.confronto_escluso) {
+    return `nessun confronto con ${kpi.confronto_escluso}: incasso fuori dal solito`;
+  }
+  return kpi.confronto_label ?? null;
+}
+
+// `merce` arriva da costoMerceLabel gia' minuscola: "food cost" o "costo merce".
+export function avvisoIncassoFuoriNorma(
+  kpi: { incasso_fuori_norma?: boolean; periodo_label: string },
+  merce: string,
+): string | null {
+  if (kpi.incasso_fuori_norma !== true) return null;
+  return (
+    `Nel mese di ${kpi.periodo_label.toLowerCase()} l'incasso è stato molto più basso del solito ` +
+    `(ferie o incasso non completo): il ${merce} e il margine di questo mese non sono un allarme.`
+  );
+}
+
 /* ─── page.tsx: quale blocco mostrare ────────────────────────────────────── */
 
 export type StatoBlocchi = "worker-giu" | "vuoto" | "dati";
