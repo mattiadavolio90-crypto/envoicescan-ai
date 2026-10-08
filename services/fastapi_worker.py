@@ -1053,9 +1053,16 @@ def _get_supabase_client():
     if not url or not key:
         raise HTTPException(status_code=500, detail="Supabase non configurato (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).")
 
+    from services import _disattiva_http2
+
     cache_key = f"{url}::{key[:8]}"
     cached = _SUPABASE_CLIENT_CACHE.get(cache_key)
     if cached is not None:
+        # A ogni giro, come in services.get_supabase_client: PostgREST ricostruito
+        # rinasce http2=True. Su HTTP/2 i thread del threadpool condividono UNA
+        # connessione e la tabella hpack non e' thread-safe: l'8/10/2026 due GET
+        # parallele del tab Personale -> "deque mutated during iteration" -> 500.
+        _disattiva_http2(cached)
         return cached
 
     if SyncClientOptions is None:
@@ -1066,6 +1073,7 @@ def _get_supabase_client():
             storage_client_timeout=30,
         )
         client = create_client(url, key, options=options)
+    _disattiva_http2(client)
     _SUPABASE_CLIENT_CACHE[cache_key] = client
     return client
 

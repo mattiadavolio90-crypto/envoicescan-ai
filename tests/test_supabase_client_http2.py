@@ -187,3 +187,23 @@ def test_client_del_queue_worker_cachato(monkeypatch):
     assert primo is client_finto
     # e il trasporto e' stato portato su HTTP/1.1 come sul worker web
     assert pool._http2 is False
+
+
+def test_client_del_worker_web_su_http1(monkeypatch):
+    """Il worker FastAPI ha un SUO singleton (fastapi_worker._get_supabase_client,
+    usato da 13 router), rimasto su HTTP/2 dopo il fix dell'11/09. I thread del
+    threadpool vi condividevano una connessione e la tabella hpack non e'
+    thread-safe: l'8/10/2026 le due GET parallele del tab Personale davano
+    "deque mutated during iteration" -> 500 -> nomi sostituiti dagli id."""
+    from services import fastapi_worker as fw
+
+    monkeypatch.setattr(fw, "_SUPABASE_CLIENT_CACHE", {})
+    monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "SERVICE_ROLE_FAKE")
+
+    c = fw._get_supabase_client()
+    assert _pool(c)._http2 is False
+    assert c.postgrest.session.headers.get("apikey")
+
+    c._postgrest = None  # ricostruzione sugli eventi auth: rinasce http2=True
+    assert _pool(fw._get_supabase_client())._http2 is False

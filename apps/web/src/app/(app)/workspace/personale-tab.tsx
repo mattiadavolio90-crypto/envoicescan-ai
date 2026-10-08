@@ -97,6 +97,14 @@ const DIP_PALETTE = [
   { ring: "ring-grafico-5/60", bg: "bg-grafico-5/10" },
 ] as const;
 
+// Un errore del worker arriva come JSON valido ({detail}) senza `dipendenti`:
+// preso per buono, ogni nome ricadeva sul dipendente_id (8/10/2026).
+async function leggiJson(url: string) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(String(r.status));
+  return r.json();
+}
+
 function getDipColor(nomi: string[], nome: string) {
   const idx = nomi.indexOf(nome);
   return DIP_PALETTE[idx >= 0 ? idx % DIP_PALETTE.length : 0];
@@ -1008,8 +1016,8 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
     setLoading(true);
     try {
       const [rA, rD] = await Promise.all([
-        fetch("/api/workspace/dipendenti?attivo=true").then(r => r.json()),
-        fetch("/api/workspace/dipendenti?attivo=false").then(r => r.json()),
+        leggiJson("/api/workspace/dipendenti?attivo=true"),
+        leggiJson("/api/workspace/dipendenti?attivo=false"),
       ]);
       setAttivi(rA?.dipendenti ?? []);
       setDisattivati(rD?.dipendenti ?? []);
@@ -1351,8 +1359,8 @@ export function PersonaleTab() {
     setLoading(true);
     try {
       const [rG, rM] = await Promise.all([
-        fetch(`/api/workspace/personale?da=${d}&a=${f}&mensile=false`).then(r => r.json()),
-        fetch(`/api/workspace/personale?da=${d}&a=${f}&mensile=true`).then(r => r.json()),
+        leggiJson(`/api/workspace/personale?da=${d}&a=${f}&mensile=false`),
+        leggiJson(`/api/workspace/personale?da=${d}&a=${f}&mensile=true`),
       ]);
       const base: PersonaleResponse = rG ?? {};
       setRisposta({
