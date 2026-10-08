@@ -362,7 +362,8 @@ def _con_fatture_ieri(testo: str, payload: Dict[str, Any]) -> str:
     """Accoda le fatture arrivate ieri a MOL o incasso (fase F, 8/10/2026:
     Mattia le vuole «sempre»). Il tipo `fatture_arrivate` le dice gia' da solo."""
     fi = payload.get('fatture_ieri') or {}
-    frase = _fatture_arrivate_frase(fi) if fi else ""
+    # Senza la sua emoji: accodata, starebbe in mezzo alla frase (revisore, 8/10).
+    frase = _fatture_arrivate_frase(fi).removeprefix("\U0001F4E5").strip() if fi else ""
     if not testo or not frase:
         return testo
     return f"{testo} {frase}"

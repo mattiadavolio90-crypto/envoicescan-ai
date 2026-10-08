@@ -274,3 +274,16 @@ def test_senza_coda_il_testo_resta_quello_di_prima():
     assert dbs._buona_notizia_frase(INCASSO["payload"]) == \
         "Ieri (mercoledì) sono entrati € 497 di incasso."
     assert dbs._numeri_fatture_ieri(INCASSO) == []
+
+
+def test_il_confronto_con_oltre_sei_mesi_fa_non_e_un_ribasso():
+    """`calcola_alert` marca « ⚠️ >6m»: stagionalita', e il marcatore finiva
+    nel testo del cliente (revisore, 8/10)."""
+    righe = [_alert("POMODORO PELATI ⚠️ >6m", -12, -85), _alert("SALMONE", -6, -20)]
+    assert [r["nome"] for r in _ribassi(righe)] == ["SALMONE"]
+
+
+def test_la_coda_delle_fatture_non_ha_l_emoji_in_mezzo():
+    frase = dbs._buona_notizia_frase(_con_fatture(INCASSO)["payload"])
+    assert frase == ("Ieri (mercoledì) sono entrati € 497 di incasso. "
+                     "Ieri sono arrivate 3 fatture per € 2.400, già registrate.")

@@ -159,14 +159,22 @@ def _ribassi_prodotti(
     (stessa soglia % del cliente, stesso filtro di rilevanza, risparmio €/mese
     dall'impatto stimato), piu' la freschezza: l'acquisto col prezzo nuovo
     negli ultimi `_RIBASSI_GIORNI_FRESCHI` giorni. Fase F (8/10/2026),
-    decisione di Mattia: la buona notizia dei prezzi."""
+    decisione di Mattia: la buona notizia dei prezzi.
+
+    Fuori i confronti con un acquisto di oltre 6 mesi prima (`calcola_alert`
+    li marca con « ⚠️ >6m» nel nome): e' stagionalita', non un fornitore che
+    abbassa il prezzo, e il marcatore finiva nel testo del cliente (revisore,
+    8/10). Il giorno e' quello di Roma, come il resto del briefing."""
     if df_alert.empty:
         return []
-    oggi = (oggi if oggi is not None else pd.Timestamp.now()).normalize()
+    oggi = (oggi if oggi is not None
+            else pd.Timestamp.now(tz="Europe/Rome").tz_localize(None)).normalize()
     impatto = pd.to_numeric(df_alert["Impatto_Stimato"], errors="coerce").fillna(0)
     data = pd.to_datetime(df_alert["Data"], errors="coerce", utc=True).dt.tz_localize(None)
     fresco = data.notna() & (data >= oggi - pd.Timedelta(days=_RIBASSI_GIORNI_FRESCHI))
-    base = (df_alert["Aumento_Perc"] <= -soglia_perc_cliente) & (impatto < 0) & fresco
+    stagionale = df_alert["Prodotto"].astype(str).str.upper().str.strip().str.endswith("⚠️ >6M")
+    base = ((df_alert["Aumento_Perc"] <= -soglia_perc_cliente) & (impatto < 0) & fresco
+            & ~stagionale)
     df_r = _filtra_rilevanti(df_alert, base, prodotti_pareto, preferiti_keys)
     if df_r.empty:
         return []

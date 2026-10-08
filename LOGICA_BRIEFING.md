@@ -177,11 +177,12 @@ nella versione completa (§2), non in quella rapida.
   finora: food cost 28,8%, MOL di € 12.285.»
 
 - **Prezzi scesi** (dall'8/10/2026, decisione di Mattia): «🏷️ Prezzo sceso:
-  «SALMONE» di «ITTICA ROSSI» costa il 12% in meno, circa € 85 al mese». È lo
+  «SALMONE» di «ITTICA ROSSI» costa il 12,0% in meno, circa € 85 al mese». È lo
   specchio dell'alert prezzi: stessi prodotti (quelli che pesano sulla spesa, o i
   preferiti se il cliente ha scelto così), stessa soglia % del cliente, risparmio
   al mese stimato come il rincaro. In più l'acquisto col prezzo nuovo dev'essere
-  degli **ultimi 7 giorni**: oltre, sarebbe la stessa notizia ripetuta. Ne dice
+  degli **ultimi 7 giorni**: oltre, sarebbe la stessa notizia ripetuta; e
+  l'acquisto prima non può essere di oltre 6 mesi fa (sarebbe stagionalità). Ne dice
   **uno**, quello che fa risparmiare di più. Misurato l'8/10: da 0 a 2 ribassi
   per locale in due settimane, quasi tutti di pochi euro — **parlerà di rado**.
   Lascia acceso il "tutto a posto". I nomi di prodotto e fornitore non vanno
