@@ -1772,10 +1772,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   commit: sul mese in corso la catena segnava ogni sede «in ferie».
 >   **Prove:** 52 test nuovi, presidio catena = pagina = chat del PV sullo stesso
 >   mese; mutazione 34/34 (+1 equivalente motivato); suite `-m "not sql"` 18.043 +
->   58 skip; revisore 🟢 al secondo giro. **Residui:** la card dei conti della Home
->   mostra ancora in rosso il food cost di un mese di ferie (il campo
->   `incasso_fuori_norma` c'e', il frontend non lo usa); `mese` della catena solo
->   sull'anno in corso; una sede con meno di 3 mesi di storia resta com'era.
+>   58 skip; revisore 🟢 al secondo giro. **Residui:** `mese` della catena solo
+>   sull'anno in corso; una sede con meno di 3 mesi di storia resta com'era; la
+>   «buona notizia» del MOL nel briefing (giorni 1-7) non esclude ancora un mese
+>   di confronto di ferie (alla fase F, che tocca il briefing); `home_kpi` rilegge
+>   l'anno prima due volte fuori cache fra febbraio e giugno (2 query, bassa).
+> - **08/10/2026, `c0d71023` — residuo della fase E: la card dei conti della
+>   Home.** **Trovato** sul DB vero: settembre di OVERTIME «fatturato +428%» e
+>   «food cost -65 punti» in verde contro agosto chiuso (idem OFFSIDE e CASATI 14).
+>   **Fatto:** un mese di ferie non si confronta e non fa da confronto
+>   (`confronto_escluso`, variazioni a null), avviso ambra e MOL giallo sul mese
+>   di ferie; desktop e `/m` stesso `KpiBlock`. Cambiano solo quelle 3 sedi.
+>   **Prove:** 13 test nuovi; mutazione 17/18 (la guardia `confronto_label` evita
+>   una lettura); suite `-m "not sql"` 18.056 + 58 skip; revisore senza difetti.
 
 ---
 
