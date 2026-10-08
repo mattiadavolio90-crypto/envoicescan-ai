@@ -664,3 +664,37 @@ def test_buona_notizia_senza_storia_resta_come_prima():
     }
     out = _buona_notizia(OGGI.replace(day=3), margini)
     assert out is not None and out["payload"]["tipo"] == "mol_mese"
+
+
+def _gennaio_2027(dicembre_di_ferie):
+    """Gennaio 2027 (MOL 13.500) contro dicembre 2026: il mese di confronto sta
+    nell'anno prima. Senza questo caso giudicare (2027, 12) invece di
+    (2026, 12) restava verde (revisore, 8/10)."""
+    m26 = _margini_mol(agosto_netto=29000.0)
+    fb26 = dict(FB_OVERTIME)
+    for m in (10, 11, 12):
+        m26[m] = {"altri_ricavi_noiva": 30000.0, "costo_dipendenti": 9000.0,
+                  "altri_costi_spese": 2500.0}
+        fb26[m] = 9000.0
+    if dicembre_di_ferie:
+        _mese_chiuso_ma_in_utile(m26, fb26, 12)
+    m27 = {1: {"altri_ricavi_noiva": 30000.0, "costo_dipendenti": 9000.0,
+               "altri_costi_spese": 2500.0}}
+    fonti = {2026: (m26, fb26), 2027: (m27, {1: 5000.0})}
+    with patch.multiple(
+        "services.margine_service",
+        carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: fonti.get(a, ({}, {}))[0]),
+        calcola_costi_automatici_per_anno_sql=MagicMock(
+            side_effect=lambda _u, _r, a: (fonti.get(a, ({}, {}))[1], {})),
+    ), patch.object(fw, "_oggi_rome", return_value=date(2027, 2, 3)), \
+         patch.object(fw, "_salute_indice_rosso", return_value=False):
+        return fw._briefing_buona_notizia(UID, RID, _sb_vuoto())
+
+
+def test_buona_notizia_gennaio_non_festeggia_contro_dicembre_di_ferie():
+    assert _gennaio_2027(dicembre_di_ferie=True) is None
+
+
+def test_buona_notizia_gennaio_contro_dicembre_normale_resta():
+    out = _gennaio_2027(dicembre_di_ferie=False)
+    assert out is not None and out["payload"]["mese_prec"] == "dicembre"
