@@ -1798,6 +1798,28 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   committato di un'altra sessione); revisore 🟢. **Residuo accettato:** il
 >   filtro `if v[0]` sui margini di `_cache_anno` conta solo dopo un errore di
 >   lettura (un anno fallito si rilegge invece di valere vuoto): non presidiato.
+> - **08/10/2026, `98831717` + `2071033b` + `76625a8d` + `5abeb9c8` + `683f3424` +
+>   `bc160aca` — fase F, passi 2-6: briefing meno scarno e domande dal briefing.**
+>   **Misurato** prima (sola lettura): i briefing reali erano quasi solo dati
+>   mancanti; solo 4 sedi con fatture fresche; al giorno 7 le sedi SDI hanno il
+>   96-100% della merce del mese prima, CASATI 14 il 63-81%; ribassi recenti da 0
+>   a 2 per sede in due settimane. **Fatto** (decisioni di Mattia dell'8/10):
+>   osservazione `mese_chiuso` (giorni 1-15, food cost e MOL «con le fatture
+>   arrivate finora», verde solo su mese consolidato); `prezzo_sceso` (specchio
+>   dei rincari sullo stesso `calcola_alert`, 7 giorni, niente stagionali); fatture
+>   di ieri accodate a MOL e incasso; `BriefingResponse.temi` e
+>   `domandeDalBriefing` per Home del PV e `/m/chat` (le «Voglio inserire…» solo
+>   dove c'e' la Conferma). Solo PV: catena ed email invariate.
+>   `_BRIEFING_CODE_VERSION` 34. **Prove:** 3 file di test nuovi (41 + 37 + 14) e
+>   +9 in `test_home_chat_frontend`; mutazione 63/63 (sopravvissuti trovati e
+>   chiusi: soglia norma, caso «zero fatture» che passava per un KeyError);
+>   modello vero: «finora» perso 6/6 col solo prompt → regola + parola
+>   obbligatoria nel validatore, 6/6 tenuto; ribasso detto 3/4 (il quarto torna
+>   al template). Revisore: quattro giri, un blocco chiuso (domanda sui rincari
+>   senza strumento che risponda, tolta fino allo strumento degli avvisi).
+>   **Residui:** un sotto-utente senza Margini vede «Voglio inserire…»; con 4
+>   posti le domande delle card da fare possono restare fuori; `/m/chat` aspetta
+>   il briefing (fino a 12 s col worker in timeout).
 
 ---
 
