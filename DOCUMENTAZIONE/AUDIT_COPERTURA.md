@@ -1757,6 +1757,25 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Prove:** mutazione 11/11; suite `-m "not sql"` 17.991, `-m sql` 1.030 + 2
 >   instabili della coda (verdi da soli); revisore 🟢 su tutti e tre.
 >   **Residui:** il modulo spese di `/m` non ha la riga «IVA compresa» (fase I).
+> - **08/10/2026, `99870eac` `0d8bcddd` — piano consulente, fase E (numeri coerenti
+>   in catena).** **Fatto:** il food cost di un mese con l'incasso sotto i 3/4 dei
+>   mesi vicini (`_incasso_fuori_norma`: mediana dei ±6 mesi chiusi, almeno 3; mai
+>   il mese in corso) non da' piu' l'allarme: osservazione PV e catena, conti della
+>   Home nel prompt, `query_margini`, strumento di catena con la nota nel dato.
+>   `gruppo_margini_coperti` accetta `mese` dalla chat e porta `food_cost_perc`;
+>   il prompt di catena dice sempre il periodo. Briefing 30, segnali 5.
+>   **Trovato:** il 94,6% degli screen era OVERTIME ad agosto: non un incasso
+>   parziale, come diceva il piano, ma **ferie** (incasso a mese intero, 0,19 volte
+>   i mesi vicini; OFFSIDE 0,31 e CASATI 0,57 nello stesso mese). Mattia: nessun
+>   allarme. Col modello vero la sola riga del prompt lasciava «problema grave» 2
+>   volte su 3: con la nota nel dato 0 su 10. Il revisore ha bloccato il primo
+>   commit: sul mese in corso la catena segnava ogni sede «in ferie».
+>   **Prove:** 52 test nuovi, presidio catena = pagina = chat del PV sullo stesso
+>   mese; mutazione 34/34 (+1 equivalente motivato); suite `-m "not sql"` 18.043 +
+>   58 skip; revisore 🟢 al secondo giro. **Residui:** la card dei conti della Home
+>   mostra ancora in rosso il food cost di un mese di ferie (il campo
+>   `incasso_fuori_norma` c'e', il frontend non lo usa); `mese` della catena solo
+>   sull'anno in corso; una sede con meno di 3 mesi di storia resta com'era.
 
 ---
 
