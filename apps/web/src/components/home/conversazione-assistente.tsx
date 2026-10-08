@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  domandeDalBriefing,
   mostraSuggerimenti,
   suggerimentiPer,
   statoDomande,
@@ -23,8 +24,12 @@ export function ConversazioneAssistente({
   domandeOggiIniziali,
   lettoAlle,
   settore,
+  temi,
 }: {
   vista: Vista;
+  /** Di cosa ha parlato il briefing della sede: ne nascono le domande
+   *  proposte. Assente (catena, worker vecchio) = domande fisse. */
+  temi?: readonly string[];
   /** Settore dell'account: i negozi hanno domande proposte loro. */
   settore?: string | null;
   limiteGiorno: number;
@@ -61,7 +66,9 @@ export function ConversazioneAssistente({
       attesa={inCorso === vista.chiave ? testoAttesa(attesa) : null}
       suggerimenti={
         !esaurite && mostraSuggerimenti(voci, vista)
-          ? suggerimentiPer(vista.contesto, settore)
+          ? vista.contesto === "sede" && temi?.length
+            ? domandeDalBriefing(temi, settore, { registra: true })
+            : suggerimentiPer(vista.contesto, settore)
           : null
       }
       onSuggerimento={manda}

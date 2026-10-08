@@ -2792,6 +2792,11 @@ class BriefingResponse(BaseModel):
     dati_mancanti: List[str] = []
     azioni: List[BriefingAzione]
     generated_at: Optional[str] = None
+    # Di cosa ha parlato il briefing, in ordine (fase F, 8/10/2026): da qui la
+    # Home sceglie le domande proposte, che prima erano fisse e «non coerenti
+    # con il contesto del briefing» (Mattia, screen 8). Vuoto sugli snapshot
+    # vecchi: la Home torna alle domande fisse.
+    temi: List[str] = []
 
 
 class SaluteVoce(BaseModel):
@@ -8092,6 +8097,7 @@ def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[st
         dati_mancanti=list(snapshot.get("dati_mancanti") or []),
         azioni=azioni,
         generated_at=snapshot.get("generated_at"),
+        temi=[str(t) for t in (snapshot.get("temi") or [])],
     )
 
 

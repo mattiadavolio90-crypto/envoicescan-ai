@@ -852,3 +852,79 @@ def test_la_conferma_del_personale_dichiara_sempre_le_tre_voci():
     assert (out["costo_dipendenti"], out["costo_personale_extra"], out["costo_personale_chiamata"]) == (12000, None, None)
     incasso = _chiama("corpoConferma", [{k: v for k, v in PROPOSTA.items() if not k.startswith("costo_")}])
     assert not any(k.startswith("costo_") for k in incasso)
+
+
+# ─── Fase F (8/10/2026): domande proposte dal briefing ───────────────────────
+# Mattia, screen 8: «le domande sotto proposte non sono coerenti con il contesto
+# del briefing». Il worker dice di quali temi ha parlato (`BriefingResponse.temi`)
+# e la Home ne fa le domande; i posti liberi restano alle domande fisse.
+
+FISSE_PV = ["Qual è il mio food cost?", "Cosa devo pagare?", "Com'è andato il MOL?",
+            "Chi è il mio fornitore più caro?"]
+
+
+def _domande(temi, settore="ristorazione", registra=True):
+    return _chiama("domandeDalBriefing", [temi, settore, {"registra": registra}])
+
+
+def test_senza_temi_le_domande_di_sempre():
+    assert _domande([]) == FISSE_PV
+    assert _domande(None) == FISSE_PV
+
+
+def test_le_domande_seguono_l_ordine_del_briefing():
+    out = _domande(["buona_notizia:incasso_ieri", "mese_chiuso", "price_alert"])
+    assert out == ["Com'è andato l'incasso del mese finora?",
+                   "Quali categorie hanno pesato di più il mese scorso?",
+                   "Quali prodotti sono rincarati di più?",
+                   "Qual è il mio food cost?"]
+
+
+def test_una_domanda_gia_fra_le_fisse_non_si_ripete():
+    out = _domande(["scadenza_superata", "scadenza_imminente"])
+    assert out == ["Cosa devo pagare?", "Qual è il mio food cost?", "Com'è andato il MOL?",
+                   "Chi è il mio fornitore più caro?"]
+
+
+def test_al_massimo_quattro():
+    temi = ["buona_notizia:mol_mese", "mese_chiuso", "prezzo_sceso", "price_alert",
+            "scadenza_superata", "appuntamento_imminente"]
+    assert len(_domande(temi)) == 4
+    assert _domande(temi)[:4] == ["Come si è chiuso il mese scorso?",
+                                  "Quali categorie hanno pesato di più il mese scorso?",
+                                  "Dove posso risparmiare sugli acquisti?",
+                                  "Quali prodotti sono rincarati di più?"]
+
+
+def test_i_temi_senza_domanda_si_saltano():
+    assert _domande(["uncategorized_rows", "fatture_mancanti", "upload_failed"]) == FISSE_PV
+
+
+def test_registrare_solo_dove_c_e_la_conferma():
+    """Sul telefono la card «Conferma» arriva con la fase I: niente «Voglio
+    inserire…» che l'assistente non saprebbe registrare."""
+    temi = ["costo_personale_mancante", "fatturato_mancante", "incasso_mancante"]
+    assert _domande(temi, registra=True)[:3] == [
+        "Voglio inserire il costo del personale",
+        "Voglio inserire il fatturato del mese scorso",
+        "Voglio inserire l'incasso di ieri"]
+    assert _domande(temi, registra=False) == FISSE_PV
+
+
+def test_i_negozi_riempiono_con_le_loro_fisse():
+    out = _domande(["scadenza_superata"], settore="retail")
+    assert out == ["Cosa devo pagare?", "Qual è il mio costo merce?", "Com'è andato il MOL?",
+                   "Chi è il mio fornitore più caro?"]
+
+
+def test_ogni_tema_della_tabella_esiste_nel_worker():
+    """Un refuso nella chiave e la domanda non compare mai, in silenzio."""
+    import services.daily_briefing_service as dbs
+    chiavi = esegui_ts(MODULO, "emit([...Object.keys(m.DOMANDE_PER_TEMA), ...Object.keys(m.DOMANDE_PER_REGISTRARE)]);")
+    assert len(chiavi) >= 15
+    tipi_buona = {"mol_mese", "perdita_in_calo", "incasso_ieri", "fatture_arrivate"}
+    for k in chiavi:
+        if k.startswith("buona_notizia:"):
+            assert k.split(":", 1)[1] in tipi_buona, k
+        else:
+            assert k in dbs._TOPIC_PRIORITY, k

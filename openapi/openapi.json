@@ -21027,6 +21027,14 @@
               }
             ],
             "title": "Generated At"
+          },
+          "temi": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Temi",
+            "default": []
           }
         },
         "type": "object",

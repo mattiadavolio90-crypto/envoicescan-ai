@@ -171,7 +171,9 @@ logger = get_logger('daily_briefing')
 #               resterebbe senza fino al TTL.
 #   33 (08/10): fase F. Prezzi scesi (osservazione `prezzo_sceso`) e fatture
 #               arrivate ieri accanto a MOL e incasso.
-_BRIEFING_CODE_VERSION = 33
+#   34 (08/10): fase F. Lo snapshot dice di quali temi ha parlato (`temi`): la
+#               Home ne fa le domande proposte. Snapshot vecchi senza = fisse.
+_BRIEFING_CODE_VERSION = 34
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -1922,6 +1924,24 @@ def _build_snapshot(
     # notifications_fingerprint): e' una traccia diagnostica. A invalidare lo
     # snapshot quando cambiano le preferenze e' il POST /api/home/config, che
     # chiama invalidate_today_briefing esplicitamente.
+    # Di cosa parla il briefing, nell'ordine in cui lo dice: la Home ne fa le
+    # domande proposte (fase F). La buona notizia porta il suo tipo, perche'
+    # «MOL in crescita» e «incasso di ieri» chiedono domande diverse.
+    if onboarding is not None:
+        temi = ['onboarding']
+    else:
+        temi = []
+        if rientro is not None:
+            temi.append('rientro_assenza')
+        if buona_notizia is not None:
+            _pbn = buona_notizia.get('payload') or {}
+            temi.append(f"buona_notizia:{_pbn.get('tipo') or ''}")
+            if (_pbn.get('fatture_ieri') or {}).get('n_fatture'):
+                temi.append('buona_notizia:fatture_arrivate')
+        temi += [str(n.get('topic_key') or '') for n in osservazioni]
+    temi += [str(n.get('topic_key') or '') for n in selected]
+    temi = list(dict.fromkeys(t for t in temi if t))
+
     fingerprint = notifications_fingerprint(notifications)
     if topics_disabled:
         fingerprint += "|" + ",".join(sorted(str(t) for t in topics_disabled))
@@ -1943,6 +1963,7 @@ def _build_snapshot(
             and all(osservazione_positiva(n) for n in osservazioni)
         ),
         'dati_mancanti': dati_mancanti,
+        'temi': temi,
         'narrative': narrative,
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'notif_count': len(notifications),

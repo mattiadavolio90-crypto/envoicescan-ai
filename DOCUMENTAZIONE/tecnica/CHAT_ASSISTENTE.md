@@ -517,7 +517,7 @@ gennaio a oggi).
 | Cambiare la gestione "mese corrente vuoto" | coda di `_chat_query_costi` (`mese_non_ancora_caricato`) |
 | Cambiare il rate-limit | RPC `chat_usage_check_and_log` (DB) + `_chat_limite_per_piano` |
 | Cambiare timeout | `OpenAI(timeout=...)` (worker) + `CHAT_TIMEOUT_MS` (route.ts) |
-| Cambiare le domande proposte | `SUGGERIMENTI_SEDE` / `SUGGERIMENTI_CATENA` in `lib/home-chat.ts` |
+| Cambiare le domande proposte | Punto vendita (Home e `/m/chat`): `DOMANDE_PER_TEMA` / `DOMANDE_PER_REGISTRARE` in `lib/home-chat.ts` (`domandeDalBriefing`, dai `temi` del briefing, fase F 8/10/2026); i posti liberi e la catena: `SUGGERIMENTI_SEDE` / `SUGGERIMENTI_CATENA` |
 | Cambiare il feedback d'attesa | `testoAttesa` in `lib/home-chat.ts` + effetto in `assistente-provider.tsx` |
 | Cambiare quali messaggi si vedono o cosa si manda al backend | `vistaSede`, `vistaCatena`, `vociDellaVista`, `senzaVista`, `codaPerVista` in `lib/home-chat.ts` |
 | Cambiare cosa si puo' dettare, tetti, finestre | `services/routers/assistente.py` (`TETTO_*`, `GIORNI_INDIETRO_INCASSO`, `MESI_INDIETRO`, `proponi`) |

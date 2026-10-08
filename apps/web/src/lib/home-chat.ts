@@ -138,6 +138,53 @@ export function suggerimentiPer(
   return retail ? SUGGERIMENTI_SEDE_RETAIL : SUGGERIMENTI_SEDE;
 }
 
+// Le domande proposte nascono da cio' che il briefing ha appena detto (fase F,
+// 8/10/2026; Mattia, screen 8: «le domande sotto non sono coerenti con il
+// contesto del briefing»). `temi` arriva dal worker nell'ordine del briefing;
+// ogni domanda deve avere uno strumento dell'assistente che la sappia
+// rispondere. `registra` = la vista sa confermare le cifre dettate (card
+// «Conferma»): sul telefono non ancora (fase I), quindi niente «Voglio
+// inserire…». I posti liberi si riempiono con le domande fisse.
+export const DOMANDE_PER_TEMA: Record<string, string> = {
+  "buona_notizia:mol_mese": "Come si è chiuso il mese scorso?",
+  "buona_notizia:perdita_in_calo": "Come si è chiuso il mese scorso?",
+  "buona_notizia:incasso_ieri": "Com'è andato l'incasso del mese finora?",
+  "buona_notizia:fatture_arrivate": "Cosa ho comprato negli ultimi giorni?",
+  andamento_incasso: "Com'è andato l'incasso del mese finora?",
+  mese_chiuso: "Quali categorie hanno pesato di più il mese scorso?",
+  food_cost_alto: "Quali categorie pesano di più sul food cost?",
+  prezzo_sceso: "Dove posso risparmiare sugli acquisti?",
+  price_alert: "Quali prodotti sono rincarati di più?",
+  scadenza_superata: "Cosa devo pagare?",
+  scadenza_imminente: "Cosa devo pagare?",
+  coperti_anomalia: "Come vanno i coperti questo mese?",
+  appuntamento_imminente: "Che appuntamenti ho oggi?",
+};
+
+export const DOMANDE_PER_REGISTRARE: Record<string, string> = {
+  fatturato_mancante: "Voglio inserire il fatturato del mese scorso",
+  costo_personale_mancante: "Voglio inserire il costo del personale",
+  incasso_mancante: "Voglio inserire l'incasso di ieri",
+};
+
+export const MAX_DOMANDE_PROPOSTE = 4;
+
+export function domandeDalBriefing(
+  temi: readonly string[] | null | undefined,
+  settore: string | null | undefined,
+  opzioni: { registra: boolean },
+): string[] {
+  const out: string[] = [];
+  const aggiungi = (d: string | undefined) => {
+    if (d && !out.includes(d) && out.length < MAX_DOMANDE_PROPOSTE) out.push(d);
+  };
+  for (const t of temi ?? []) {
+    aggiungi(DOMANDE_PER_TEMA[t] ?? (opzioni.registra ? DOMANDE_PER_REGISTRARE[t] : undefined));
+  }
+  for (const d of suggerimentiPer("sede", settore)) aggiungi(d);
+  return out;
+}
+
 // Dove si trova il cliente quando scrive: una sede precisa o la vista catena.
 // `chiave` distingue le sedi fra loro (due locali non sono la stessa vista).
 export type Vista = { chiave: string; contesto: "sede" | "catena" };

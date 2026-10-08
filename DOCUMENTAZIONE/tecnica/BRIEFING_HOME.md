@@ -185,6 +185,12 @@ Il MOL è ricalcolato con la **stessa fonte/logica di `home_kpi`** (`_kpi_period
 + margini_mensili + costi auto da fatture), così la card "I tuoi conti" e
 l'apertura del briefing **non si contraddicono mai** (stesso numero, stessa %).
 
+**Temi del briefing** (8/10/2026): lo snapshot porta `temi`, di cosa ha parlato
+nell'ordine in cui lo dice (rientro, `buona_notizia:<tipo>`, osservazioni, card
+mostrate — non quelle tagliate oltre `_MAX_CARD`), esposto in `BriefingResponse.temi`.
+La Home del punto vendita e `/m/chat` ne fanno le domande proposte
+(`domandeDalBriefing` in `lib/home-chat.ts`); vuoto = domande fisse.
+
 **Fatture arrivate, sempre** (8/10/2026): `_briefing_buona_notizia` avvolge
 `_buona_notizia_principale` e, se l'apertura è MOL o incasso, accoda in
 `payload.fatture_ieri` le fatture di ieri (`_fatture_arrivate_ieri_sdi`); il testo

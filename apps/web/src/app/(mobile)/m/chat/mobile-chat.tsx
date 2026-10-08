@@ -8,14 +8,7 @@ import { Logo } from "@/components/brand/logo";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-const SUGGERIMENTI = [
-  "Qual è il mio food cost?",
-  "Cosa devo pagare?",
-  "Com'è andato il MOL?",
-  "Chi è il mio fornitore più caro?",
-];
-
-export function MobileChat() {
+export function MobileChat({ suggerimenti }: { suggerimenti: readonly string[] }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -81,7 +74,7 @@ export function MobileChat() {
               Chiedimi dei tuoi costi, fornitori, food cost, margini o scadenze.
             </p>
             <div className="mt-2 flex flex-col gap-2 self-stretch px-2">
-              {SUGGERIMENTI.map((s) => (
+              {suggerimenti.map((s) => (
                 <button
                   key={s}
                   type="button"

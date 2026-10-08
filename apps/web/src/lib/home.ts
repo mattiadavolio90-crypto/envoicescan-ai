@@ -30,6 +30,9 @@ export type Briefing = {
   dati_mancanti?: string[];
   azioni: BriefingAzione[];
   generated_at: string | null;
+  // Di cosa ha parlato il briefing, in ordine: ne nascono le domande proposte
+  // (`domandeDalBriefing`). Assente sui worker vecchi.
+  temi?: string[];
 };
 
 export type ConfigTopic = {

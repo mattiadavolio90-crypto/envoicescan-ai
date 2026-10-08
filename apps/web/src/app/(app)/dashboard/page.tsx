@@ -78,6 +78,7 @@ async function BriefingBlock() {
             domandeOggiIniziali={config?.chat_domande_oggi ?? 0}
             lettoAlle={Date.now()}
             settore={utente?.tipo_attivita}
+            temi={briefing.temi}
           />
         )
       }

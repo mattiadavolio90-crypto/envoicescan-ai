@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
-import { fetchConfig } from "@/lib/home";
+import { fetchBriefing, fetchConfig } from "@/lib/home";
+import { domandeDalBriefing } from "@/lib/home-chat";
+import { getCurrentUser } from "@/lib/auth";
 import { requireTabMobile } from "@/lib/page-guard";
 import { MobileChat } from "./mobile-chat";
 
@@ -11,5 +13,11 @@ export default async function MobileChatPage() {
   const chatEnabled = (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
   if (!chatEnabled) redirect("/m/briefing");
 
-  return <MobileChat />;
+  // Le domande proposte dal briefing di oggi, come in Home (fase F). Il
+  // telefono non ha ancora la «Conferma» delle cifre (fase I): niente domande
+  // per registrare. Briefing assente = le domande fisse di sempre.
+  const [briefing, utente] = await Promise.all([fetchBriefing(), getCurrentUser()]);
+  const suggerimenti = domandeDalBriefing(briefing?.temi, utente?.tipo_attivita, { registra: false });
+
+  return <MobileChat suggerimenti={suggerimenti} />;
 }
