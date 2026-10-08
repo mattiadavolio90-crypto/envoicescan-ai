@@ -10,6 +10,7 @@ import { EventoDialog } from "../workspace/diario-tab";
 import { tipoSpesaLabel, type Settore } from "@/lib/categorie-spesa";
 import { formatEuro } from "@/lib/format";
 import { MESI_LUNGHI } from "@/lib/mesi";
+import { leggiJson, sorgentiNonCaricate } from "@/lib/esito-caricamento";
 import {
   type Turno,
   type TipoGiorno,
@@ -100,6 +101,7 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
   const [giornoSel, setGiornoSel] = useState<string>(today);
   const [voci, setVoci] = useState<VoceAgenda[]>([]);
   const [loading, setLoading] = useState(false);
+  const [nonCaricate, setNonCaricate] = useState<string[]>([]);
   const [vista, setVista] = useState<Vista>("mese");
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   // filtri fonte attivi
@@ -112,10 +114,17 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
     const dN = `${mISO}-${String(giorniNelMese(a, m)).padStart(2, "0")}`;
     try {
       const [evRes, spRes, tuRes] = await Promise.allSettled([
-        fetch(`/api/workspace/diario?mese=${mISO}`).then(r => r.json()),
-        fetch(`/api/workspace/spese?da=${d0}&a=${dN}`).then(r => r.json()),
-        fetch(`/api/workspace/personale?da=${d0}&a=${dN}&mensile=false`).then(r => r.json()),
+        leggiJson<{ eventi?: EventoRaw[] }>(`/api/workspace/diario?mese=${mISO}`),
+        leggiJson<{ voci?: SpesaRaw[] }>(`/api/workspace/spese?da=${d0}&a=${dN}`),
+        leggiJson<{ turni?: Turno[]; dipendenti?: DipendenteRaw[] }>(`/api/workspace/personale?da=${d0}&a=${dN}&mensile=false`),
       ]);
+      // Una sorgente rigettata non e' una sorgente vuota: il mese sembrerebbe
+      // senza spese o senza turni mentre il worker non ha risposto.
+      setNonCaricate(sorgentiNonCaricate([
+        [FONTI.appuntamento.label, evRes],
+        [FONTI.spesa.label, spRes],
+        [FONTI.turno.label, tuRes],
+      ]));
 
       const out: VoceAgenda[] = [];
 
@@ -339,6 +348,13 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
           <button onClick={navSuccessivo} className="p-1 rounded hover:bg-muted">
             <ChevronRight className="size-4" />
           </button>
+        </div>
+      )}
+
+      {!loading && nonCaricate.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-negativo/40 bg-card px-4 py-2.5 text-sm">
+          <span>Non sono riuscito a caricare: {nonCaricate.join(", ")}. Il calendario qui sotto è incompleto.</span>
+          <Button variant="outline" size="sm" onClick={() => load(anno, mese)}>Riprova</Button>
         </div>
       )}
 

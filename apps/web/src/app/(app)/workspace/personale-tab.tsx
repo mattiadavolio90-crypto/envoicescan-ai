@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { parseDecimaleIt, parseDecimaleItOZero, parseNumeroIt, parseNumeroItOZero } from "@/lib/format";
 import { ripartisciOre, aggregaPerPersona, costoTurnoGiornaliero, componentiStipendio, dipendentiConStipendio, oreTurniPerDipendente, type OreSegnate, payloadMensile } from "@/lib/ore-turno";
 import { formatEuro } from "@/lib/format";
+import { leggiJson, statoLista } from "@/lib/esito-caricamento";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -96,14 +97,6 @@ const DIP_PALETTE = [
   { ring: "ring-grafico-4/60", bg: "bg-grafico-4/10" },
   { ring: "ring-grafico-5/60", bg: "bg-grafico-5/10" },
 ] as const;
-
-// Un errore del worker arriva come JSON valido ({detail}) senza `dipendenti`:
-// preso per buono, ogni nome ricadeva sul dipendente_id (8/10/2026).
-async function leggiJson(url: string) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(String(r.status));
-  return r.json();
-}
 
 function getDipColor(nomi: string[], nome: string) {
   const idx = nomi.indexOf(nome);
@@ -1011,17 +1004,22 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
   const [busy, setBusy] = useState(false);
   const [daDisattivare, setDaDisattivare] = useState<Dipendente | null>(null);
   const [daEliminare, setDaEliminare] = useState<Dipendente | null>(null);
+  const [elencoFallito, setElencoFallito] = useState(false);
 
   const carica = useCallback(async () => {
     setLoading(true);
     try {
       const [rA, rD] = await Promise.all([
-        leggiJson("/api/workspace/dipendenti?attivo=true"),
-        leggiJson("/api/workspace/dipendenti?attivo=false"),
+        leggiJson<{ dipendenti?: Dipendente[] }>("/api/workspace/dipendenti?attivo=true"),
+        leggiJson<{ dipendenti?: Dipendente[] }>("/api/workspace/dipendenti?attivo=false"),
       ]);
       setAttivi(rA?.dipendenti ?? []);
       setDisattivati(rD?.dipendenti ?? []);
+      setElencoFallito(false);
     } catch {
+      setAttivi([]);
+      setDisattivati([]);
+      setElencoFallito(true);
       toast.error("Errore caricamento dipendenti");
     } finally {
       setLoading(false);
@@ -1029,6 +1027,8 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
   }, []);
 
   useEffect(() => { if (open) { carica(); setEditId(null); setMostraDisattivati(false); } }, [open, carica]);
+
+  const statoDipendenti = statoLista({ caricamento: loading, caricamentoFallito: elencoFallito, righeCaricate: attivi.length + disattivati.length });
 
   function apriModifica(d: Dipendente) {
     setEditId(d.id);
@@ -1107,8 +1107,13 @@ export function GestioneDipendentiDialog({ open, onClose, onCambiato }: Gestione
           <DialogTitle>Gestisci dipendenti</DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? (
+          {statoDipendenti === "caricamento" ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Caricamento…</p>
+          ) : statoDipendenti === "guasto" ? (
+            <div className="py-8 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">Non sono riuscito a caricare i dipendenti.</p>
+              <Button variant="outline" size="sm" onClick={carica}>Riprova</Button>
+            </div>
           ) : attivi.length === 0 && disattivati.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               Nessun dipendente. Creane uno da &ldquo;Aggiungi turno&rdquo;.
@@ -1332,6 +1337,7 @@ export function PersonaleTab() {
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
   const [risposta, setRisposta] = useState<PersonaleResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [caricamentoFallito, setCaricamentoFallito] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTurno, setEditTurno] = useState<Turno | null>(null);
   const [dataDefault, setDataDefault] = useState(oggi);
@@ -1359,15 +1365,20 @@ export function PersonaleTab() {
     setLoading(true);
     try {
       const [rG, rM] = await Promise.all([
-        leggiJson(`/api/workspace/personale?da=${d}&a=${f}&mensile=false`),
-        leggiJson(`/api/workspace/personale?da=${d}&a=${f}&mensile=true`),
+        leggiJson<PersonaleResponse>(`/api/workspace/personale?da=${d}&a=${f}&mensile=false`),
+        leggiJson<PersonaleResponse>(`/api/workspace/personale?da=${d}&a=${f}&mensile=true`),
       ]);
       const base: PersonaleResponse = rG ?? {};
       setRisposta({
         ...base,
         turni: [...(rG?.turni ?? []), ...(rM?.turni ?? [])],
       });
+      setCaricamentoFallito(false);
     } catch {
+      // Via i dati della vista precedente: dopo un cambio mese resterebbero
+      // sotto l'etichetta del mese nuovo.
+      setRisposta(null);
+      setCaricamentoFallito(true);
       toast.error("Errore caricamento turni");
     } finally {
       setLoading(false);
@@ -1395,14 +1406,16 @@ export function PersonaleTab() {
   }
 
   async function elimina(t: Turno) {
-    await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
-    toast.success("Eliminato");
+    const res = await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" }).catch(() => null);
+    if (res?.ok) toast.success("Eliminato");
+    else toast.error("Eliminazione non riuscita");
     load(da, fine);
   }
 
   async function eliminaMensile(t: Turno) {
-    await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
-    toast.success("Mese eliminato");
+    const res = await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" }).catch(() => null);
+    if (res?.ok) toast.success("Mese eliminato");
+    else toast.error("Eliminazione non riuscita");
     load(da, fine);
   }
 
@@ -1431,6 +1444,7 @@ export function PersonaleTab() {
   }
 
   const turni = risposta?.turni ?? [];
+  const statoElenco = statoLista({ caricamento: loading, caricamentoFallito, righeCaricate: turni.length });
   const costiNoti = risposta?.costi_noti ?? {};
   const dipendenti = risposta?.dipendenti ?? [];
 
@@ -1546,11 +1560,11 @@ export function PersonaleTab() {
             <Download className="size-4 mr-1.5" />{esportandoExcel ? "Esporto…" : "Excel"}
           </Button>
 
-          <Button variant="outline" onClick={() => { setEditMensile(null); setDipendenteIdMensile(undefined); setMensileDialogOpen(true); }}>
+          <Button variant="outline" disabled={statoElenco === "guasto"} onClick={() => { setEditMensile(null); setDipendenteIdMensile(undefined); setMensileDialogOpen(true); }}>
             <CalendarDays className="size-4 mr-1.5" />Totale mensile
           </Button>
 
-          <Button onClick={() => { setEditTurno(null); setDataDefault(giornoDefaultDialogo); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
+          <Button disabled={statoElenco === "guasto"} onClick={() => { setEditTurno(null); setDataDefault(giornoDefaultDialogo); setDipendenteIdDefaultTurno(undefined); setDialogOpen(true); }}>
             <Plus className="size-4 mr-1.5" />Aggiungi turno
           </Button>
         </div>
@@ -1837,8 +1851,15 @@ export function PersonaleTab() {
         </div>
       )}
 
-      {loading ? (
+      {statoElenco === "caricamento" ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
+      ) : statoElenco === "guasto" ? (
+        <div className="py-12 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Non sono riuscito a caricare {fmtMese(meseBase)}.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => load(da, fine)}>Riprova</Button>
+        </div>
       ) : turni.length === 0 ? (
         <div className="py-12 text-center space-y-1.5">
           <p className="text-sm text-muted-foreground">

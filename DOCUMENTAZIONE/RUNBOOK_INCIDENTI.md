@@ -126,6 +126,18 @@ Nota: `ConnectionTerminated` su `login_attempts` (cleanup / `registra_tentativo`
 che in quel caso `controlla_rate_limit` ritorna `(False, 0)`: il lockout si apre
 proprio mentre il sistema è sotto stress.
 
+### 3bis. `RuntimeError: deque mutated during iteration` (hpack)
+
+Stessa famiglia, sintomo diverso: un 500 sporadico su una GET qualsiasi, con lo
+stack che passa da `httpcore/_sync/http2.py` e finisce in `hpack/table.py`. Le
+righe `HTTP Request: ... "HTTP/2 200 OK"` nel log del worker dicono che quel
+client parla ancora HTTP/2: i thread del threadpool FastAPI condividono una
+connessione e la tabella hpack non è thread-safe. L'8/10/2026 è capitato al
+singleton `_get_supabase_client` di `services/fastapi_worker.py`, rimasto fuori
+dal fix dell'11/09: due GET parallele del tab Personale, nomi dei dipendenti
+mostrati come id. Il rimedio è lo stesso `_disattiva_http2` (`services/__init__.py`)
+su ogni client condiviso; dopo il deploy le richieste devono risultare `HTTP/1.1`.
+
 ---
 
 ## 4. Coda ricavi bloccata (alert dedicato)

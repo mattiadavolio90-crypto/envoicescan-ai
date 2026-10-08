@@ -136,3 +136,30 @@ export function kpiValutabiliPerTrigger(kpi: StatoKpi | null | undefined): boole
   if (!kpi) return false;
   return !kpi.non_disponibile;
 }
+
+
+/**
+ * `fetch` + `json()` che fallisce sui non-2xx invece di restituire il body.
+ *
+ * Un 500 del worker arriva come JSON valido (`{detail}`): letto con
+ * `.then(r => r.json())` passava per una risposta senza i campi attesi, cioe'
+ * per un vuoto legittimo. L'8/10/2026 il tab Personale ha cosi' mostrato gli
+ * id dei dipendenti al posto dei nomi, marcandoli «disattivato».
+ */
+export async function leggiJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(url, init);
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  return r.json() as Promise<T>;
+}
+
+/**
+ * Le etichette delle sorgenti non arrivate, nell'ordine dato.
+ *
+ * Per le pagine che caricano piu' sorgenti con `Promise.allSettled`: una
+ * sorgente rigettata non e' una sorgente vuota, e la pagina deve poterlo dire.
+ */
+export function sorgentiNonCaricate(
+  esiti: ReadonlyArray<readonly [string, PromiseSettledResult<unknown>]>,
+): string[] {
+  return esiti.filter(([, e]) => e.status === "rejected").map(([nome]) => nome);
+}
