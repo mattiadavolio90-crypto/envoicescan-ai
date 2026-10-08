@@ -7105,8 +7105,11 @@ def _briefing_mese_chiuso(
     arrivate finora». Tace su un mese senza incasso o senza merce (il food cost
     sarebbe vuoto o 0%) e su un mese di ferie (fase E). Il MOL solo col
     personale inserito: senza e' gonfiato, e la riga dei dati mancanti lo chiede.
-    Il verso (severity) e' quello che legge il verde: food cost oltre la norma
-    o MOL negativo = warning.
+    Il verso (severity) e' quello che legge il verde: food cost oltre la norma,
+    MOL negativo o mese non ancora consolidato = warning. Consolidato come per
+    `_briefing_food_cost_alto`: e' gia' arrivata merce del mese dopo. Senza, il
+    food cost di chi carica a mano e' piu' basso del vero e reggerebbe un «tutto
+    in ordine» su un dato incompleto (revisore, 8/10).
     """
     from config.constants import KPI_SOGLIE
     from services.margine_service import calcola_costi_automatici_per_anno_sql
@@ -7123,6 +7126,9 @@ def _briefing_mese_chiuso(
                                  anno, mese, oggi, {anno: margini}) is True:
         return None
     soglia_norma = [s for (s, _e, _c) in KPI_SOGLIE["food_cost"]][1]
+    cfb_dopo = cfb if oggi.year == anno else calcola_costi_automatici_per_anno_sql(
+        user_id, ristorante_id, oggi.year)[0]
+    consolidato = float(cfb_dopo.get(oggi.month) or 0) > 0
     payload: Dict[str, Any] = {
         "mese": _MESI_IT_BRIEFING[mese],
         "anno": anno,
@@ -7130,7 +7136,8 @@ def _briefing_mese_chiuso(
     }
     if float(kpi.get("costo_personale") or 0) > 0:
         payload["mol"] = round(float(kpi.get("mol") or 0), 0)
-    negativo = float(fc) > soglia_norma or float(payload.get("mol", 0)) < 0
+    negativo = (float(fc) > soglia_norma or float(payload.get("mol", 0)) < 0
+                or not consolidato)
     chiave = f"mese-chiuso-{anno}-{mese:02d}"
     return {
         "id": chiave,

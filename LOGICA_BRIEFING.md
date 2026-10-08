@@ -165,7 +165,9 @@ nella versione completa (§2), non in quella rapida.
   food cost alto guarda due mesi fa). Tace senza incasso, senza merce o su un mese
   di **ferie**; senza personale dice solo il food cost. Se la buona notizia parla
   già del MOL di quel mese, la riga tiene solo il food cost (§5.1). Il "tutto a
-  posto" resta acceso con food cost fino al 33% e MOL positivo. Mai per i negozi.
+  posto" resta acceso solo con food cost fino al 33%, MOL non negativo **e** il
+  mese già consolidato (è arrivata merce del mese dopo): un food cost ancora
+  incompleto non regge un verde. Mai per i negozi.
   Solo nel punto vendita: catena ed email settimanale non la ricevono.
   *Come suona* (cifre di esempio): «📅 Settembre, con le fatture arrivate
   finora: food cost 28,8%, MOL di € 12.285.»
