@@ -82,7 +82,7 @@ def test_anche_all_ai_la_riga_arriva_senza_food_cost():
     settore non ci arrivasse, il modello riscriverebbe «food cost» a un negozio."""
     ricevuti = []
 
-    def _finta_ai(bullets, template, numeri):
+    def _finta_ai(bullets, template, numeri, parole=None):
         ricevuti.extend(bullets)
         return template
 

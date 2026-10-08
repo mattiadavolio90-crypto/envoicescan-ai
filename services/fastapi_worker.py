@@ -2975,6 +2975,8 @@ _CONFIG_TOPICS: List[tuple] = [
      "Il martedì ti dico se l'incasso delle ultime 4 settimane si è mosso di oltre il 10%."),
     ("food_cost_alto",           "Food cost alto",           False,
      "A cavallo fra un mese e l'altro ti dico se il food cost di un mese chiuso è sopra la norma del settore."),
+    ("mese_chiuso",              "Il mese appena chiuso",    False,
+     "Nei primi 15 giorni del mese ti riassumo food cost e MOL del mese appena chiuso."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
@@ -2985,7 +2987,7 @@ _CONFIG_TOPICS_BLOCCATI = frozenset(k for (k, _l, b, _d) in _CONFIG_TOPICS if b)
 # nel configuratore offrirebbe di accendere un avviso su un dato che non arriva
 # mai, e la sua CTA punterebbe a una tab che non puo' aprire.
 _TOPIC_OFF_PER_SETTORE: Dict[str, frozenset] = {
-    SETTORE_RETAIL: frozenset({"coperti_anomalia", "food_cost_alto"}),
+    SETTORE_RETAIL: frozenset({"coperti_anomalia", "food_cost_alto", "mese_chiuso"}),
 }
 
 # Le descrizioni che NOMINANO qualcosa che per il settore non esiste. La voce
@@ -7086,6 +7088,87 @@ def _briefing_food_cost_alto(
     }
 
 
+# Fino a che giorno del mese il briefing riassume il mese appena chiuso.
+_MESE_CHIUSO_ULTIMO_GIORNO = 15
+
+
+def _briefing_mese_chiuso(
+    user_id: str, ristorante_id: str, supabase_client, oggi,
+) -> Optional[Dict[str, Any]]:
+    """Il mese appena chiuso in una riga: food cost e MOL, anche se non e'
+    migliorato. Fase F (8/10/2026), Mattia: «briefing un po' scarno»; prima il
+    mese chiuso si diceva solo se il MOL cresceva (buona notizia, giorni 1-7).
+
+    Le fatture del mese possono ancora arrivare: misura dell'8/10, al giorno 7
+    le sedi con le fatture dallo SDI hanno il 96-100% della merce del mese
+    prima, CASATI 14 che carica a mano il 63-81%. La frase dice «con le fatture
+    arrivate finora». Tace su un mese senza incasso o senza merce (il food cost
+    sarebbe vuoto o 0%) e su un mese di ferie (fase E). Il MOL solo col
+    personale inserito: senza e' gonfiato, e la riga dei dati mancanti lo chiede.
+    Il verso (severity) e' quello che legge il verde: food cost oltre la norma
+    o MOL negativo = warning.
+    """
+    from config.constants import KPI_SOGLIE
+    from services.margine_service import calcola_costi_automatici_per_anno_sql
+    if oggi.day > _MESE_CHIUSO_ULTIMO_GIORNO:
+        return None
+    mese, anno = (12, oggi.year - 1) if oggi.month == 1 else (oggi.month - 1, oggi.year)
+    margini = _margini_fusi(user_id, ristorante_id, supabase_client, anno)
+    cfb, csp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, anno)
+    kpi = _kpi_periodo(margini, cfb, csp, mese)
+    fc = kpi.get("food_cost_pct")
+    if not fc or kpi.get("costi_mancanti"):
+        return None
+    if _incasso_fuori_norma_sede(user_id, ristorante_id, supabase_client,
+                                 anno, mese, oggi, {anno: margini}) is True:
+        return None
+    soglia_norma = [s for (s, _e, _c) in KPI_SOGLIE["food_cost"]][1]
+    payload: Dict[str, Any] = {
+        "mese": _MESI_IT_BRIEFING[mese],
+        "anno": anno,
+        "food_cost_pct": round(float(fc), 1),
+    }
+    if float(kpi.get("costo_personale") or 0) > 0:
+        payload["mol"] = round(float(kpi.get("mol") or 0), 0)
+    negativo = float(fc) > soglia_norma or float(payload.get("mol", 0)) < 0
+    chiave = f"mese-chiuso-{anno}-{mese:02d}"
+    return {
+        "id": chiave,
+        "topic_key": "mese_chiuso",
+        "source_type": "live",
+        "severity": "warning" if negativo else "success",
+        "title": "",
+        "body": "",
+        "action_page": "/margini",
+        "payload": payload,
+        "source_event_at": None,
+        "dedupe_key": chiave,
+    }
+
+
+def _briefing_osservazioni_pv(
+    user_id: str, ristorante_id: str, supabase_client, spenti: set,
+    oggi: Optional[date] = None,
+) -> List[Dict[str, Any]]:
+    """Le osservazioni della fase F (8/10/2026), solo nella Home del punto
+    vendita: fuori da `_briefing_osservazioni` perche' la catena e l'email
+    settimanale la chiamano e prenderebbero ogni riga nuova per ogni sede (la
+    fase G della catena va nel verso opposto: meno rumore)."""
+    out: List[Dict[str, Any]] = []
+    oggi = oggi or _oggi_rome()
+    if "mese_chiuso" not in spenti and oggi.day <= _MESE_CHIUSO_ULTIMO_GIORNO:
+        try:
+            from services.settore_service import settore_sede
+            settore = settore_sede(ristorante_id, supabase_client)
+            if "mese_chiuso" not in _TOPIC_OFF_PER_SETTORE.get(settore, frozenset()):
+                rec = _briefing_mese_chiuso(user_id, ristorante_id, supabase_client, oggi)
+                if rec is not None:
+                    out.append(rec)
+        except Exception as exc:
+            logger.warning("briefing osservazioni: mese chiuso fallito: %s", exc)
+    return out
+
+
 def _briefing_osservazioni(
     user_id: str, ristorante_id: str, supabase_client, spenti: set,
     oggi: Optional[date] = None,
@@ -8785,6 +8868,9 @@ def _briefing_raccogli_notifiche(
     if ristorante_id and includi_osservazioni:
         notifications.extend(
             _briefing_osservazioni(user_id, ristorante_id, supabase_client, spenti)
+        )
+        notifications.extend(
+            _briefing_osservazioni_pv(user_id, ristorante_id, supabase_client, spenti)
         )
 
     # Promemoria appuntamenti di oggi (Agenda). Importanza medio/bassa: in fondo

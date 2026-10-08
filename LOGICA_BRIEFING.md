@@ -154,7 +154,23 @@ nella versione completa (§2), non in quella rapida.
   le fatture di molte sedi sono ferme (simulato: 5 sedi il 3/8, nessuna il 2/9).
   Se ti sembra troppo, la leva è la soglia (§9).
 
-**Perché solo queste due** (misurato sul DB il 24/9): delle altre candidate
+- **Il mese appena chiuso** (dall'8/10/2026, decisione di Mattia: «briefing un
+  po' scarno»): **nei primi 15 giorni** del mese, una riga sul mese appena chiuso
+  con il food cost e, se il personale è inserito, il MOL — **anche se non è
+  migliorato** (la buona notizia lo dice solo se cresce). Dice «con le fatture
+  arrivate finora» perché il mese può essere ancora incompleto: misurato l'8/10,
+  al giorno 7 le sedi con le fatture automatiche hanno il 96-100% della merce del
+  mese prima, CASATI 14 che carica a mano il 63-81% — per chi carica a mano il
+  food cost dei primi giorni è **più basso del vero** (lo stesso motivo per cui il
+  food cost alto guarda due mesi fa). Tace senza incasso, senza merce o su un mese
+  di **ferie**; senza personale dice solo il food cost. Se la buona notizia parla
+  già del MOL di quel mese, la riga tiene solo il food cost (§5.1). Il "tutto a
+  posto" resta acceso con food cost fino al 33% e MOL positivo. Mai per i negozi.
+  Solo nel punto vendita: catena ed email settimanale non la ricevono.
+  *Come suona* (cifre di esempio): «📅 Settembre, con le fatture arrivate
+  finora: food cost 28,8%, MOL di € 12.285.»
+
+**Perché solo le prime due** (misurato sul DB il 24/9): delle altre candidate
 del piano nessuna diceva qualcosa di utile. Il fornitore che pesa più dell'80% di una
 categoria c'era su 7 sedi su 8 (quasi tutto bevande: rumore); nessun prodotto o
 categoria saliva da 3 mesi; le scadenze "accumulate" erano false perché metà
@@ -199,7 +215,7 @@ delle sedi non segna mai le fatture pagate; il MOL mese su mese è un'altalena.
 
 Ordine di importanza degli argomenti (dal più al meno urgente):
 
-> rientro → buona notizia → andamento incasso → food cost alto → upload fallito → upload ricavi fallito → alert prezzi →
+> rientro → buona notizia → andamento incasso → food cost alto → mese chiuso → upload fallito → upload ricavi fallito → alert prezzi →
 > righe da classificare → fatture mancanti → fatturato mancante → incasso mancante →
 > costo personale mancante → scadenze → anomalia coperti → appuntamenti
 
@@ -394,6 +410,7 @@ un'email spedita non si ritira.
 | Coperti e scontrino "stabili" sotto | 3% |
 | Food cost: norma / critico | fino al 33% / oltre il 38% |
 | Food cost: quando se ne parla | ultimo giorno del mese e primi 7 |
+| Mese appena chiuso in una riga: fino a che giorno | 15 |
 | Da quanti giorni senza fatture scatta l'avviso | 7 giorni |
 | Finestra "novita" da controllare | 7 giorni |
 | Quante voci arretrate prima di dirlo | 20 |

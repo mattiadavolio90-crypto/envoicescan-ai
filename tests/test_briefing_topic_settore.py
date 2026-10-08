@@ -42,7 +42,7 @@ def test_un_negozio_vede_tutti_gli_altri_topic():
     """Spegnere il topic sbagliato gli toglierebbe un avviso che gli serve."""
     attesi = [
         k for (k, _l, _b, _d) in fw._CONFIG_TOPICS
-        if k not in ("coperti_anomalia", "food_cost_alto")
+        if k not in ("coperti_anomalia", "food_cost_alto", "mese_chiuso")
     ]
     assert _chiavi(SETTORE_RETAIL) == attesi
     assert "andamento_incasso" in attesi

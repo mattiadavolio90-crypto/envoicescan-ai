@@ -166,7 +166,10 @@ logger = get_logger('daily_briefing')
 #               continuerebbe a dare l'allarme fino al TTL.
 #   31 (08/10): fase F. La buona notizia del MOL (giorni 1-7 e ultimo del mese)
 #               non confronta con un mese di ferie, come la card «I tuoi conti».
-_BRIEFING_CODE_VERSION = 31
+#   32 (08/10): fase F. Nei primi 15 giorni il mese appena chiuso in una riga
+#               (osservazione `mese_chiuso`): senza bump lo snapshot di oggi
+#               resterebbe senza fino al TTL.
+_BRIEFING_CODE_VERSION = 32
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -297,6 +300,7 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'buona_notizia':             0,   # 0. Apertura positiva (NON e' una card to-do)
     'andamento_incasso':         1,   #    Osservazioni da consulente: apertura, non card
     'food_cost_alto':            2,   #    (fase 4, vedi _OSSERVAZIONI)
+    'mese_chiuso':               3,   #    Il mese appena chiuso in una riga (fase F, 8/10)
     'upload_failed':            10,   # 1. Upload fatture fallito
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
     'price_alert':              20,   # 3. Alert prezzi
@@ -415,7 +419,7 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
 # dal worker. Stanno nell'apertura, dopo la buona notizia e prima di "Da sistemare
 # oggi": non sono compiti (niente card). Il verde "tutto a posto" lo lasciano acceso
 # solo se sono buone notizie: vedi osservazione_positiva.
-_OSSERVAZIONI = ('andamento_incasso', 'food_cost_alto')
+_OSSERVAZIONI = ('andamento_incasso', 'food_cost_alto', 'mese_chiuso')
 
 
 def osservazione_positiva(notif: Dict[str, Any]) -> bool:
@@ -481,6 +485,23 @@ def _food_cost_alto_frase(payload: Dict[str, Any]) -> str:
     return frase + "."
 
 
+def _mese_chiuso_frase(payload: Dict[str, Any]) -> str:
+    """Il mese appena chiuso: food cost e, col personale inserito, MOL. «Finora»
+    perche' nei primi 15 giorni le fatture del mese possono ancora arrivare."""
+    mese = str(payload.get('mese') or '')
+    fc = _pct_it(float(payload.get('food_cost_pct') or 0))
+    frase = (f"\U0001F4C5 {mese[:1].upper()}{mese[1:]}, con le fatture arrivate finora: "
+             f"food cost {fc}%")
+    mol = payload.get('mol')
+    if mol is not None:
+        mol = float(mol)
+        if mol < 0:
+            frase += f", MOL negativo di € {_euro_it(abs(mol))}"
+        else:
+            frase += f", MOL di € {_euro_it(mol)}"
+    return frase + "."
+
+
 def _numeri_obbligatori(osservazioni: List[Dict[str, Any]]) -> List[str]:
     """La cifra che la narrativa AI non puo' perdere, per ogni osservazione:
     lo scostamento dell'incasso e il food cost del mese."""
@@ -492,7 +513,19 @@ def _numeri_obbligatori(osservazioni: List[Dict[str, Any]]) -> List[str]:
             out.extend(_numeri_di(str(p['delta_pct'])))
         elif topic == 'food_cost_alto' and p.get('food_cost_pct') is not None:
             out.extend(_numeri_di(_pct_it(float(p['food_cost_pct']))))
+        elif topic == 'mese_chiuso' and p.get('food_cost_pct') is not None:
+            out.extend(_numeri_di(_pct_it(float(p['food_cost_pct']))))
+            if p.get('mol') is not None:
+                out.extend(_numeri_di(_euro_it(abs(float(p['mol'])))))
     return out
+
+
+def _parole_obbligatorie(osservazioni: List[Dict[str, Any]]) -> List[str]:
+    """Le parole che la narrativa AI non puo' perdere: «finora» della riga del
+    mese appena chiuso, che puo' essere ancora incompleto."""
+    if any(str(n.get('topic_key') or '') == 'mese_chiuso' for n in osservazioni or []):
+        return ['finora']
+    return []
 
 
 def _osservazione_frase(notif: Dict[str, Any]) -> str:
@@ -502,6 +535,8 @@ def _osservazione_frase(notif: Dict[str, Any]) -> str:
         return _andamento_incasso_frase(payload)
     if topic == 'food_cost_alto':
         return _food_cost_alto_frase(payload)
+    if topic == 'mese_chiuso':
+        return _mese_chiuso_frase(payload)
     return ""
 
 
@@ -1371,7 +1406,10 @@ _NARRATION_SYSTEM_PROMPT = (
     "le loro percentuali e i loro importi. Non contano nel limite delle 3 frasi. "
     "Se altre voci dicono che mancano dati di ALTRI mesi, non tacerle per "
     "prudenza (regola 3-sexies): riguardano periodi gia' completi. Non aggiungere "
-    "cause o consigli che la voce non contiene. "
+    "cause o consigli che la voce non contiene. La voce 📅 (il mese appena "
+    "chiuso) e' un'osservazione come le altre ma il mese puo' essere ancora "
+    "incompleto: riporta SEMPRE la precisazione «con le fatture arrivate finora» "
+    "(la parola «finora» deve restare). "
     "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋), apri con un saluto "
     "breve e pacato, senza enfasi. Se include un'offerta di aiuto, riportala UNA "
     "volta sola, gentile e senza insistere: mai una pressione ne' un rimprovero. "
@@ -1500,6 +1538,7 @@ def _numeri_di(testo: str) -> set:
 
 def _narrazione_e_valida(
     testo: str, bullets: List[str], obbligatori: Optional[List[str]] = None,
+    parole: Optional[List[str]] = None,
 ) -> tuple:
     """Controlla che la narrativa AI rispetti le regole ferree del prompt.
 
@@ -1512,6 +1551,10 @@ def _narrazione_e_valida(
          arrotondati). Sono quelli delle osservazioni da consulente: un modello
          che le salta renderebbe invisibile la parte del briefing che il codice
          ha deciso di dire.
+      4) PAROLE PERSE (fase F, 8/10/2026): le `parole` DEVONO comparire. La riga
+         del mese appena chiuso dice «con le fatture arrivate finora»: col solo
+         prompt il modello la toglieva 6 volte su 6, e un food cost di un mese
+         ancora incompleto diventava un dato definitivo.
     Un prompt senza validazione dell'output e' un auspicio, non un vincolo.
     """
     if not testo:
@@ -1549,11 +1592,16 @@ def _narrazione_e_valida(
         if not ({n, str(int(f)), str(int(f) + 1)} & numeri_testo):
             return False, f"numero obbligatorio assente: {n}"
 
+    for parola in (parole or []):
+        if parola.lower() not in basso:
+            return False, f"parola obbligatoria assente: {parola!r}"
+
     return True, ""
 
 
 def _narrate_with_ai(
     bullets: List[str], fallback: str, obbligatori: Optional[List[str]] = None,
+    parole: Optional[List[str]] = None,
 ) -> str:
     """Genera la narrativa con GPT a partire dai bullet deterministici.
 
@@ -1608,7 +1656,7 @@ def _narrate_with_ai(
 
         # Validazione: il testo viene confrontato con i bullet ANONIMI, cioe' con
         # quello che il modello ha davvero ricevuto (i nomi veri non ci sono ancora).
-        valida, motivo = _narrazione_e_valida(text, anon, obbligatori)
+        valida, motivo = _narrazione_e_valida(text, anon, obbligatori, parole)
         if not valida:
             logger.warning("narrazione AI scartata (%s), uso il template", motivo)
             return fallback
@@ -1670,6 +1718,17 @@ def _build_snapshot(
         seen_topics[t] for t in sorted(_OSSERVAZIONI, key=lambda k: _TOPIC_PRIORITY[k])
         if t in seen_topics and t not in spenti
     ]
+    # Il MOL dello stesso mese lo possiede la buona notizia (§5.1 di
+    # LOGICA_BRIEFING: chi possiede un'informazione la dice una volta sola): la
+    # riga del mese chiuso tiene solo il food cost.
+    _pb = (buona_notizia or {}).get('payload') or {}
+    if _pb.get('tipo') in ('mol_mese', 'perdita_in_calo'):
+        osservazioni = [
+            {**n, 'payload': {k: v for k, v in (n.get('payload') or {}).items() if k != 'mol'}}
+            if n.get('topic_key') == 'mese_chiuso'
+            and (n.get('payload') or {}).get('mese') == _pb.get('mese') else n
+            for n in osservazioni
+        ]
 
     # Solo topic noti (presenti nella gerarchia), non spenti, E azionabili/utili.
     # Le aperture sono escluse qui: sono narrativa, non to-do.
@@ -1793,6 +1852,7 @@ def _build_snapshot(
         narrative = _narrate_with_ai(
             bullets_ai, template_narrative,
             [] if onboarding is not None else _numeri_obbligatori(osservazioni),
+            [] if onboarding is not None else _parole_obbligatorie(osservazioni),
         )
     else:
         narrative = template_narrative

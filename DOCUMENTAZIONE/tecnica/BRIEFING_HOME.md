@@ -210,6 +210,7 @@ il fast-path che la Home aspetta non le calcola (E7).
 |---|---|---|
 | `andamento_incasso` | **Solo il martedì** | Incasso delle ultime 4 settimane lun-dom contro le 4 prima; ≥ 20 giorni con incasso in **ciascuna** finestra; parla da ±10%. Coperti e scontrino medio solo se inseriti ≥ 20 giorni per finestra; sotto ±3% si dicono «stabili» |
 | `food_cost_alto` | Finestra MOL (ultimo giorno + primi 7) | Mese di **due mesi prima** del mese di riferimento, solo se **consolidato** (fatture di merce del mese dopo già arrivate), food cost > 33% (`KPI_SOGLIE`, `<=` 33 è norma), «critico» oltre 38. Dice anche gli euro sopra il 33%. **Mai per i negozi** (`_TOPIC_OFF_PER_SETTORE`) |
+| `mese_chiuso` | Giorni 1-15 (`_MESE_CHIUSO_ULTIMO_GIORNO`) | Fase F, 8/10/2026. Mese appena chiuso: food cost e, col personale, MOL. Tace senza incasso, senza merce (`costi_mancanti`) o con `_incasso_fuori_norma_sede` True. `warning` oltre il 33% o con MOL negativo, altrimenti `success`. Se la buona notizia è `mol_mese`/`perdita_in_calo` sullo stesso mese, `_build_snapshot` toglie il MOL dalla riga. Prodotta da `_briefing_osservazioni_pv`, **solo PV**: `_briefing_osservazioni` è chiamata anche da catena ed email settimanale. Mai per i negozi |
 
 **Perché proprio queste due** — misura sul DB live del 24/9, prima del codice.
 Dei cinque candidati del piano gli altri non reggevano: food cost *sul mese* e
@@ -233,7 +234,11 @@ utenze a settembre non consolida agosto.
 **La narrativa AI non può perderle.** Il riscrittore riceve i bullet (📊, 🍽️) e
 una regola apposita (3-ter-bis), ma un prompt non è una garanzia: il validatore
 (`_narrazione_e_valida`, parametro `obbligatori`) scarta il testo se manca la
-percentuale dell'osservazione (anche arrotondata) e si ricade sul template.
+percentuale dell'osservazione (anche arrotondata) e si ricade sul template. Dalla fase F
+(8/10/2026) anche una **parola**: con la riga `mese_chiuso` il testo deve contenere
+«finora» (`_parole_obbligatorie`, parametro `parole`) — col solo prompt il modello
+vero la toglieva 6 volte su 6, con la regola nel prompt e il controllo 6 su 6 la
+tiene.
 
 Presidio: `tests/test_briefing_osservazioni_consulente.py` (serie di incasso
 vere anonimizzate, confini delle soglie, cablaggio async/sync, settore,
