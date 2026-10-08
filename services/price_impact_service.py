@@ -46,6 +46,11 @@ _SOGLIA_PERC_DEFAULT = 5.0
 # Numero massimo di alert mostrati in Home ("solo i 2-3 col maggior impatto").
 _MAX_ALERT = 3
 
+# Ribassi (fase F, 8/10/2026): un prezzo sceso e' una notizia solo se l'acquisto
+# col prezzo nuovo e' recente. Misurato l'8/10: da 0 a 2 ribassi per sede in due
+# settimane; oltre una settimana il briefing ripeterebbe la stessa notizia.
+_RIBASSI_GIORNI_FRESCHI = 7
+
 
 def _filtra_finestra(df: pd.DataFrame, giorni: int) -> pd.DataFrame:
     """Restringe il DataFrame agli ultimi `giorni` (per DataDocumento)."""
@@ -125,11 +130,64 @@ def _pref_match_key(descrizione: str, fornitore: str) -> str:
     return f"{d}|{f}"
 
 
+def _filtra_rilevanti(
+    df_alert: pd.DataFrame,
+    base: pd.Series,
+    prodotti_pareto: set,
+    preferiti_keys: Optional[set],
+) -> pd.DataFrame:
+    """Tiene le righe di `calcola_alert` che passano `base` e il filtro di
+    rilevanza: preferiti del cliente se li ha scelti, se no la fascia Pareto."""
+    if preferiti_keys is not None:
+        match = df_alert.apply(
+            lambda r: _pref_match_key(r["Prodotto"], r.get("Fornitore") or "") in preferiti_keys,
+            axis=1,
+        )
+        return df_alert[base & match]
+    chiave_pareto = df_alert["Prodotto"].map(_pareto_key)
+    return df_alert[base & chiave_pareto.isin(prodotti_pareto)]
+
+
+def _ribassi_prodotti(
+    df_alert: pd.DataFrame,
+    soglia_perc_cliente: float,
+    prodotti_pareto: set,
+    preferiti_keys: Optional[set] = None,
+    oggi: Optional[pd.Timestamp] = None,
+) -> List[Dict[str, Any]]:
+    """Prezzi SCESI sui prodotti che pesano: lo specchio di `_alert_prodotti`
+    (stessa soglia % del cliente, stesso filtro di rilevanza, risparmio €/mese
+    dall'impatto stimato), piu' la freschezza: l'acquisto col prezzo nuovo
+    negli ultimi `_RIBASSI_GIORNI_FRESCHI` giorni. Fase F (8/10/2026),
+    decisione di Mattia: la buona notizia dei prezzi."""
+    if df_alert.empty:
+        return []
+    oggi = (oggi if oggi is not None else pd.Timestamp.now()).normalize()
+    impatto = pd.to_numeric(df_alert["Impatto_Stimato"], errors="coerce").fillna(0)
+    data = pd.to_datetime(df_alert["Data"], errors="coerce", utc=True).dt.tz_localize(None)
+    fresco = data.notna() & (data >= oggi - pd.Timedelta(days=_RIBASSI_GIORNI_FRESCHI))
+    base = (df_alert["Aumento_Perc"] <= -soglia_perc_cliente) & (impatto < 0) & fresco
+    df_r = _filtra_rilevanti(df_alert, base, prodotti_pareto, preferiti_keys)
+    if df_r.empty:
+        return []
+    df_r = df_r.sort_values("Impatto_Stimato", ascending=True)
+    return [
+        {
+            "nome": str(r["Prodotto"]),
+            "fornitore": str(r.get("Fornitore") or ""),
+            "ribasso_pct": round(abs(float(r["Aumento_Perc"])), 1),
+            "risparmio_mese": round(abs(float(r["Impatto_Stimato"])), 0),
+        }
+        for _, r in df_r.head(_MAX_ALERT).iterrows()
+    ]
+
+
 def _alert_prodotti(
     df: pd.DataFrame,
     soglia_perc_cliente: float,
     prodotti_pareto: set,
     preferiti_keys: Optional[set] = None,
+    df_alert: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
     """Aumenti su PRODOTTI food&beverage rilevanti per il cliente.
 
@@ -144,23 +202,15 @@ def _alert_prodotti(
       cliente ha messo a preferito (stella in pagina Prezzi). Se la lista e' vuota,
       nessun prodotto entra (restano solo i tag, gestiti altrove). Decisione Mattia.
     """
-    df_alert = calcola_alert(df, soglia_minima=_SOGLIA_PERC_CANDIDATO)
+    if df_alert is None:
+        df_alert = calcola_alert(df, soglia_minima=_SOGLIA_PERC_CANDIDATO)
     if df_alert.empty:
         return []
 
     impatto = pd.to_numeric(df_alert["Impatto_Stimato"], errors="coerce").fillna(0)
     base = (df_alert["Aumento_Perc"] >= soglia_perc_cliente) & (impatto > 0)
-
-    if preferiti_keys is not None:
-        # Modalita' solo preferiti: filtra sulla coppia (prodotto, fornitore).
-        match = df_alert.apply(
-            lambda r: _pref_match_key(r["Prodotto"], r.get("Fornitore") or "") in preferiti_keys,
-            axis=1,
-        )
-        df_alert = df_alert[base & match]
-    else:
-        chiave_pareto = df_alert["Prodotto"].map(_pareto_key)
-        df_alert = df_alert[base & chiave_pareto.isin(prodotti_pareto)]
+    # Modalita' solo preferiti: filtra sulla coppia (prodotto, fornitore).
+    df_alert = _filtra_rilevanti(df_alert, base, prodotti_pareto, preferiti_keys)
     if df_alert.empty:
         return []
 
@@ -356,9 +406,10 @@ def calcola_alert_prezzi_impatto(
           "count": int,                 # quanti alert rilevanti
           "alerts": [ {tipo,nome,fornitore,aumento_pct,impatto_mese}, ... ],
           "top": {...} | None,          # l'alert col maggior impatto
+          "ribassi": [ {nome,fornitore,ribasso_pct,risparmio_mese}, ... ],
         }
     """
-    vuoto = {"count": 0, "alerts": [], "top": None}
+    vuoto = {"count": 0, "alerts": [], "top": None, "ribassi": []}
 
     try:
         # force_refresh=False: la Home apre questo motore ad ogni caricamento; con
@@ -393,14 +444,19 @@ def calcola_alert_prezzi_impatto(
     # configuratore) oppure Pareto automatico (default AI-first). In modalita'
     # preferiti, se non ce ne sono, _alert_prodotti restituisce vuoto e restano
     # solo i tag (decisione Mattia: niente fallback al Pareto).
+    # Un solo calcolo per rincari e ribassi: `calcola_alert` li da' entrambi.
+    df_alert = calcola_alert(df_periodo, soglia_minima=_SOGLIA_PERC_CANDIDATO)
     if _leggi_solo_preferiti(ristorante_id, supabase_client):
         preferiti_keys = _carica_preferiti_keys(ristorante_id, supabase_client)
-        prodotti = _alert_prodotti(df_periodo, soglia_perc, set(), preferiti_keys=preferiti_keys)
+        prodotti_pareto: set = set()
     else:
         # Fascia Pareto dei prodotti che pesano davvero sulla spesa food: i
         # marginali (limoni & co.) restano fuori anche se rincarano molto.
+        preferiti_keys = None
         prodotti_pareto = _prodotti_pareto(df_periodo)
-        prodotti = _alert_prodotti(df_periodo, soglia_perc, prodotti_pareto)
+    prodotti = _alert_prodotti(df_periodo, soglia_perc, prodotti_pareto,
+                               preferiti_keys=preferiti_keys, df_alert=df_alert)
+    ribassi = _ribassi_prodotti(df_alert, soglia_perc, prodotti_pareto, preferiti_keys)
 
     tag = _alert_tag(user_id, ristorante_id, df, soglia_perc)
 
@@ -412,4 +468,5 @@ def calcola_alert_prezzi_impatto(
         "count": len(tutti),
         "alerts": tutti,
         "top": tutti[0] if tutti else None,
+        "ribassi": ribassi,
     }

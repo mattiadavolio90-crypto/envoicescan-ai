@@ -169,7 +169,9 @@ logger = get_logger('daily_briefing')
 #   32 (08/10): fase F. Nei primi 15 giorni il mese appena chiuso in una riga
 #               (osservazione `mese_chiuso`): senza bump lo snapshot di oggi
 #               resterebbe senza fino al TTL.
-_BRIEFING_CODE_VERSION = 32
+#   33 (08/10): fase F. Prezzi scesi (osservazione `prezzo_sceso`) e fatture
+#               arrivate ieri accanto a MOL e incasso.
+_BRIEFING_CODE_VERSION = 33
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -301,6 +303,7 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'andamento_incasso':         1,   #    Osservazioni da consulente: apertura, non card
     'food_cost_alto':            2,   #    (fase 4, vedi _OSSERVAZIONI)
     'mese_chiuso':               3,   #    Il mese appena chiuso in una riga (fase F, 8/10)
+    'prezzo_sceso':              4,   #    Un fornitore ha abbassato un prezzo (fase F, 8/10)
     'upload_failed':            10,   # 1. Upload fatture fallito
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
     'price_alert':              20,   # 3. Alert prezzi
@@ -355,7 +358,29 @@ def _euro_it_cent(valore: float) -> str:
     return s.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
+def _con_fatture_ieri(testo: str, payload: Dict[str, Any]) -> str:
+    """Accoda le fatture arrivate ieri a MOL o incasso (fase F, 8/10/2026:
+    Mattia le vuole «sempre»). Il tipo `fatture_arrivate` le dice gia' da solo."""
+    fi = payload.get('fatture_ieri') or {}
+    frase = _fatture_arrivate_frase(fi) if fi else ""
+    if not testo or not frase:
+        return testo
+    return f"{testo} {frase}"
+
+
+def _numeri_fatture_ieri(buona: Optional[Dict[str, Any]]) -> List[str]:
+    """L'importo delle fatture di ieri accodate: l'AI non puo' perderlo."""
+    fi = ((buona or {}).get('payload') or {}).get('fatture_ieri') or {}
+    if not fi.get('n_fatture'):
+        return []
+    return sorted(_numeri_di(_euro_it(float(fi.get('importo') or 0))))
+
+
 def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
+    return _con_fatture_ieri(_buona_notizia_bullet_base(payload), payload)
+
+
+def _buona_notizia_bullet_base(payload: Dict[str, Any]) -> str:
     """Bullet deterministico dell'apertura positiva (MOL in crescita o incasso ieri).
 
     Numeri gia' corretti dal backend: l'AI li riscrivera' solo in tono. Nessun
@@ -419,7 +444,7 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
 # dal worker. Stanno nell'apertura, dopo la buona notizia e prima di "Da sistemare
 # oggi": non sono compiti (niente card). Il verde "tutto a posto" lo lasciano acceso
 # solo se sono buone notizie: vedi osservazione_positiva.
-_OSSERVAZIONI = ('andamento_incasso', 'food_cost_alto', 'mese_chiuso')
+_OSSERVAZIONI = ('andamento_incasso', 'food_cost_alto', 'mese_chiuso', 'prezzo_sceso')
 
 
 def osservazione_positiva(notif: Dict[str, Any]) -> bool:
@@ -502,6 +527,24 @@ def _mese_chiuso_frase(payload: Dict[str, Any]) -> str:
     return frase + "."
 
 
+def _prezzo_sceso_frase(payload: Dict[str, Any]) -> str:
+    """Il ribasso piu' utile su un prodotto che pesa. Nomi fra «» perche'
+    `_anonymize_bullets` li riconosca e non li mandi all'AI."""
+    nome = str(payload.get('nome') or '').strip()
+    if not nome:
+        return ""
+    forn = str(payload.get('fornitore') or '').strip()
+    pct = _pct_it(float(payload.get('ribasso_pct') or 0))
+    frase = f"\U0001F3F7️ Prezzo sceso: «{nome}»"
+    if forn:
+        frase += f" di «{forn}»"
+    frase += f" costa il {pct}% in meno"
+    risparmio = float(payload.get('risparmio_mese') or 0)
+    if risparmio >= 1:
+        frase += f", circa € {_euro_it(risparmio)} al mese"
+    return frase + "."
+
+
 def _numeri_obbligatori(osservazioni: List[Dict[str, Any]]) -> List[str]:
     """La cifra che la narrativa AI non puo' perdere, per ogni osservazione:
     lo scostamento dell'incasso e il food cost del mese."""
@@ -517,6 +560,8 @@ def _numeri_obbligatori(osservazioni: List[Dict[str, Any]]) -> List[str]:
             out.extend(_numeri_di(_pct_it(float(p['food_cost_pct']))))
             if p.get('mol') is not None:
                 out.extend(_numeri_di(_euro_it(abs(float(p['mol'])))))
+        elif topic == 'prezzo_sceso' and p.get('ribasso_pct') is not None:
+            out.extend(_numeri_di(_pct_it(float(p['ribasso_pct']))))
     return out
 
 
@@ -537,6 +582,8 @@ def _osservazione_frase(notif: Dict[str, Any]) -> str:
         return _food_cost_alto_frase(payload)
     if topic == 'mese_chiuso':
         return _mese_chiuso_frase(payload)
+    if topic == 'prezzo_sceso':
+        return _prezzo_sceso_frase(payload)
     return ""
 
 
@@ -1160,6 +1207,10 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
 
 
 def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
+    return _con_fatture_ieri(_buona_notizia_frase_base(payload), payload)
+
+
+def _buona_notizia_frase_base(payload: Dict[str, Any]) -> str:
     """Frase narrativa (template) per l'apertura positiva. Niente confronti
     fuorvianti: l'incasso e' pura eco del dato di ieri."""
     tipo = str(payload.get('tipo') or '')
@@ -1399,8 +1450,9 @@ _NARRATION_SYSTEM_PROMPT = (
     "l'importo cosi' come dati, e NIENT'ALTRO — in particolare non aggiungere le "
     "righe da controllare, che sono gia' una voce a se' piu' sotto con la sua "
     "card: dirle due volte e' la ripetizione che questa istruzione evita. "
-    "3-ter-bis) Le voci 📊 (incasso delle ultime settimane contro le precedenti) "
-    "e 🍽️ (food cost di un mese chiuso) sono OSSERVAZIONI sull'andamento, "
+    "3-ter-bis) Le voci 📊 (incasso delle ultime settimane contro le precedenti), "
+    "🍽️ (food cost di un mese chiuso) e 🏷️ (un prezzo sceso, con la sua "
+    "percentuale) sono OSSERVAZIONI sull'andamento, "
     "calcolate su periodi completi: fanno parte dell'andamento, vanno dette "
     "SEMPRE, dopo l'eventuale buona notizia e prima delle cose da sistemare, con "
     "le loro percentuali e i loro importi. Non contano nel limite delle 3 frasi. "
@@ -1458,6 +1510,13 @@ def _anonymize_bullets(bullets: List[str]) -> tuple:
         # li riconosco dall'emoji 📈 iniziale. Limitare a questi evita di
         # anonimizzare per sbaglio parole comuni dopo un em-dash in altri bullet
         # (es. "… — controlla.").
+        if b.lstrip().startswith("\U0001F3F7"):
+            # Prezzi scesi (fase F): prodotto e fornitore stanno fra «».
+            for nome in _re.findall(r'«([^»]+)»', b):
+                counter += 1
+                ph = f"<<P{counter}>>"
+                mapping[ph] = nome
+                b = b.replace(f"«{nome}»", f"«{ph}»", 1)
         if b.lstrip().startswith("\U0001F4C8"):
             # Cattura il nome dopo l'em-dash: '— <Nome> +NN%' oppure '— <Nome>.'
             # (a fine stringa). Vale per prodotti e categorie: stesso delimitatore.
@@ -1851,7 +1910,8 @@ def _build_snapshot(
         # entrano): pretenderne i numeri scarterebbe ogni narrativa.
         narrative = _narrate_with_ai(
             bullets_ai, template_narrative,
-            [] if onboarding is not None else _numeri_obbligatori(osservazioni),
+            [] if onboarding is not None
+            else _numeri_obbligatori(osservazioni) + _numeri_fatture_ieri(buona_notizia),
             [] if onboarding is not None else _parole_obbligatorie(osservazioni),
         )
     else:

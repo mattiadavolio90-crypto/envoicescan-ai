@@ -184,6 +184,12 @@ applica vince), e ritorna `None` se nessuna → briefing to-do puro.
 Il MOL è ricalcolato con la **stessa fonte/logica di `home_kpi`** (`_kpi_periodo`
 + margini_mensili + costi auto da fatture), così la card "I tuoi conti" e
 l'apertura del briefing **non si contraddicono mai** (stesso numero, stessa %).
+
+**Fatture arrivate, sempre** (8/10/2026): `_briefing_buona_notizia` avvolge
+`_buona_notizia_principale` e, se l'apertura è MOL o incasso, accoda in
+`payload.fatture_ieri` le fatture di ieri (`_fatture_arrivate_ieri_sdi`); il testo
+le aggiunge con `_con_fatture_ieri` e l'importo è obbligatorio per l'AI
+(`_numeri_fatture_ieri`).
 Vale anche per i mesi di **ferie** (8/10/2026): se il mese chiuso o quello di
 confronto ha l'incasso fuori norma (`_incasso_fuori_norma_sede`), la card non
 mostra frecce (`confronto_escluso`) e `_briefing_buona_notizia` non festeggia né
@@ -211,6 +217,7 @@ il fast-path che la Home aspetta non le calcola (E7).
 | `andamento_incasso` | **Solo il martedì** | Incasso delle ultime 4 settimane lun-dom contro le 4 prima; ≥ 20 giorni con incasso in **ciascuna** finestra; parla da ±10%. Coperti e scontrino medio solo se inseriti ≥ 20 giorni per finestra; sotto ±3% si dicono «stabili» |
 | `food_cost_alto` | Finestra MOL (ultimo giorno + primi 7) | Mese di **due mesi prima** del mese di riferimento, solo se **consolidato** (fatture di merce del mese dopo già arrivate), food cost > 33% (`KPI_SOGLIE`, `<=` 33 è norma), «critico» oltre 38. Dice anche gli euro sopra il 33%. **Mai per i negozi** (`_TOPIC_OFF_PER_SETTORE`) |
 | `mese_chiuso` | Giorni 1-15 (`_MESE_CHIUSO_ULTIMO_GIORNO`) | Fase F, 8/10/2026. Mese appena chiuso: food cost e, col personale, MOL. Tace senza incasso, senza merce (`costi_mancanti`) o con `_incasso_fuori_norma_sede` True. `warning` oltre il 33%, con MOL negativo o con il mese non consolidato (nessuna merce del mese dopo, come `food_cost_alto`), altrimenti `success`. Se la buona notizia è `mol_mese`/`perdita_in_calo` sullo stesso mese, `_build_snapshot` toglie il MOL dalla riga. Prodotta da `_briefing_osservazioni_pv`, **solo PV**: `_briefing_osservazioni` è chiamata anche da catena ed email settimanale. Mai per i negozi |
+| `prezzo_sceso` | Percorso completo (async) | Fase F, 8/10/2026. `price_impact_service._ribassi_prodotti`: specchio di `_alert_prodotti` sullo stesso `calcola_alert` (un solo calcolo), `Aumento_Perc <= -soglia del cliente`, `Impatto_Stimato < 0`, filtro Pareto o preferiti, acquisto negli ultimi `_RIBASSI_GIORNI_FRESCHI` (7) giorni; il briefing dice il primo (risparmio maggiore). Il motore gira se serve `price_alert` **o** `prezzo_sceso`, ognuno col suo interruttore. Nomi fra «» anonimizzati per l'AI (`_anonymize_bullets`). `success` |
 
 **Perché proprio queste due** — misura sul DB live del 24/9, prima del codice.
 Dei cinque candidati del piano gli altri non reggevano: food cost *sul mese* e

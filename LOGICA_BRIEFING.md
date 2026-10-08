@@ -114,6 +114,10 @@ contano per il "tutto a posto".
      rimanda alla stessa card (vedi §5.1);
   5. altrimenti **nessuna apertura**: il briefing è solo lista di cose da fare.
 
+  Dall'8/10/2026 (decisione di Mattia) le **fatture arrivate ieri** si dicono
+  **sempre**: se la buona notizia è il MOL o l'incasso di ieri, la riga delle
+  fatture si aggiunge subito dopo invece di sparire.
+
 ### 4-bis. Le osservazioni: cosa direbbe un consulente (dal 24/9/2026)
 
 Dopo le aperture e prima di "Da sistemare oggi", il briefing può dire un fatto
@@ -172,6 +176,17 @@ nella versione completa (§2), non in quella rapida.
   *Come suona* (cifre di esempio): «📅 Settembre, con le fatture arrivate
   finora: food cost 28,8%, MOL di € 12.285.»
 
+- **Prezzi scesi** (dall'8/10/2026, decisione di Mattia): «🏷️ Prezzo sceso:
+  «SALMONE» di «ITTICA ROSSI» costa il 12% in meno, circa € 85 al mese». È lo
+  specchio dell'alert prezzi: stessi prodotti (quelli che pesano sulla spesa, o i
+  preferiti se il cliente ha scelto così), stessa soglia % del cliente, risparmio
+  al mese stimato come il rincaro. In più l'acquisto col prezzo nuovo dev'essere
+  degli **ultimi 7 giorni**: oltre, sarebbe la stessa notizia ripetuta. Ne dice
+  **uno**, quello che fa risparmiare di più. Misurato l'8/10: da 0 a 2 ribassi
+  per locale in due settimane, quasi tutti di pochi euro — **parlerà di rado**.
+  Lascia acceso il "tutto a posto". I nomi di prodotto e fornitore non vanno
+  all'AI (come per i rincari).
+
 **Perché solo le prime due** (misurato sul DB il 24/9): delle altre candidate
 del piano nessuna diceva qualcosa di utile. Il fornitore che pesa più dell'80% di una
 categoria c'era su 7 sedi su 8 (quasi tutto bevande: rumore); nessun prodotto o
@@ -217,7 +232,7 @@ delle sedi non segna mai le fatture pagate; il MOL mese su mese è un'altalena.
 
 Ordine di importanza degli argomenti (dal più al meno urgente):
 
-> rientro → buona notizia → andamento incasso → food cost alto → mese chiuso → upload fallito → upload ricavi fallito → alert prezzi →
+> rientro → buona notizia → andamento incasso → food cost alto → mese chiuso → prezzi scesi → upload fallito → upload ricavi fallito → alert prezzi →
 > righe da classificare → fatture mancanti → fatturato mancante → incasso mancante →
 > costo personale mancante → scadenze → anomalia coperti → appuntamenti
 
@@ -413,6 +428,7 @@ un'email spedita non si ritira.
 | Food cost: norma / critico | fino al 33% / oltre il 38% |
 | Food cost: quando se ne parla | ultimo giorno del mese e primi 7 |
 | Mese appena chiuso in una riga: fino a che giorno | 15 |
+| Prezzi scesi: quanto recente l'acquisto | 7 giorni |
 | Da quanti giorni senza fatture scatta l'avviso | 7 giorni |
 | Finestra "novita" da controllare | 7 giorni |
 | Quante voci arretrate prima di dirlo | 20 |

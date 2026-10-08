@@ -2977,6 +2977,8 @@ _CONFIG_TOPICS: List[tuple] = [
      "A cavallo fra un mese e l'altro ti dico se il food cost di un mese chiuso è sopra la norma del settore."),
     ("mese_chiuso",              "Il mese appena chiuso",    False,
      "Nei primi 15 giorni del mese ti riassumo food cost e MOL del mese appena chiuso."),
+    ("prezzo_sceso",             "Prezzi scesi",             False,
+     "Ti dico quando un fornitore ti abbassa il prezzo di un prodotto che pesa sulla spesa."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
@@ -6504,6 +6506,28 @@ def _mesi_confrontabili(kpi: Dict[str, Any], kpi_prec: Dict[str, Any]) -> bool:
 def _briefing_buona_notizia(
     user_id: str, ristorante_id: str, supabase_client,
 ) -> Optional[Dict[str, Any]]:
+    """La buona notizia (`_buona_notizia_principale`) con, accanto al MOL o
+    all'incasso di ieri, le fatture arrivate ieri: fase F (8/10/2026), Mattia
+    le vuole «sempre», prima si dicevano solo se mancavano MOL e incasso."""
+    rec = _buona_notizia_principale(user_id, ristorante_id, supabase_client)
+    if rec is None or (rec.get("payload") or {}).get("tipo") == "fatture_arrivate":
+        return rec
+    try:
+        from datetime import timedelta as _td3
+        fa = _fatture_arrivate_ieri_sdi(
+            ristorante_id, supabase_client, _oggi_rome() - _td3(days=1))
+        if fa and fa.get("n_fatture"):
+            rec["payload"]["fatture_ieri"] = {
+                "n_fatture": fa["n_fatture"], "importo": fa["importo"],
+            }
+    except Exception as exc:
+        logger.warning("briefing buona notizia: fatture di ieri accanto fallite: %s", exc)
+    return rec
+
+
+def _buona_notizia_principale(
+    user_id: str, ristorante_id: str, supabase_client,
+) -> Optional[Dict[str, Any]]:
     """Apertura POSITIVA del briefing: un fatto vero e fresco con cui iniziare.
 
     Senza questa, il briefing e' una pura to-do list: quando va tutto bene
@@ -8696,7 +8720,12 @@ def _briefing_raccogli_notifiche(
         # alert sbagliato sui marginali. Per questo la rimozione sta PRIMA del
         # calcolo, fuori dal try — altrimenti su un timeout il legacy resterebbe.
         notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
-    if ristorante_id and includi_alert_prezzi and "price_alert" not in spenti:
+    # Il motore dei prezzi da' anche i ribassi (osservazione `prezzo_sceso`,
+    # fase F): gira se serve l'una o l'altra cosa, e ognuna rispetta il suo
+    # interruttore del configuratore.
+    _vuole_alert = "price_alert" not in spenti
+    _vuole_ribassi = includi_osservazioni and "prezzo_sceso" not in spenti
+    if ristorante_id and includi_alert_prezzi and (_vuole_alert or _vuole_ribassi):
         try:
             from services.price_impact_service import calcola_alert_prezzi_impatto
             # Budget di tempo: l'alert prezzi e' un "di piu'" del briefing, non deve
@@ -8716,7 +8745,26 @@ def _briefing_raccogli_notifiche(
                 else _ALERT_PREZZI_TIMEOUT_SEC
             )
             ap = _fut.result(timeout=_budget)
-            if ap.get("count") and ap.get("top"):
+            if _vuole_ribassi and ap.get("ribassi"):
+                r0 = ap["ribassi"][0]
+                notifications.append({
+                    "id": "prezzo-sceso-live",
+                    "topic_key": "prezzo_sceso",
+                    "source_type": "live",
+                    "severity": "success",
+                    "title": "",
+                    "body": "",
+                    "action_page": "/prezzi",
+                    "payload": {
+                        "nome": r0.get("nome"),
+                        "fornitore": r0.get("fornitore"),
+                        "ribasso_pct": r0.get("ribasso_pct"),
+                        "risparmio_mese": r0.get("risparmio_mese"),
+                    },
+                    "source_event_at": None,
+                    "dedupe_key": "prezzo-sceso-live",
+                })
+            if _vuole_alert and ap.get("count") and ap.get("top"):
                 top = ap["top"]
                 notifications.append({
                     "id": "price-alert-live",
