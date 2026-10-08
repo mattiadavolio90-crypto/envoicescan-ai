@@ -1458,6 +1458,13 @@ class MarginiCopertiPV(BaseModel):
     scontrino_medio: Optional[float]    # netto/coperti; alto = meglio
     mp_per_coperto: Optional[float]     # costi F&B/coperti; BASSO = meglio
     dati_incompleti: bool
+    # Fase E (8/10/2026): costi F&B / netto, la formula di `_kpi_periodo` (la
+    # pagina Margini del PV). None senza incasso o senza merce: uno 0% non e' un
+    # valore.
+    food_cost_perc: Optional[float] = None
+    # Solo con `mese`: incasso del mese molto sotto i mesi vicini (ferie,
+    # chiusura, incasso non completo). None = non calcolato o non giudicabile.
+    incasso_fuori_norma: Optional[bool] = None
 
 
 class MarginiCopertiResponse(BaseModel):
@@ -1546,6 +1553,15 @@ def gruppo_margini_coperti(
         mesi=mesi_periodo,
     )
 
+    # Fase E: sul mese singolo si dice se l'incasso e' fuori dal solito, con la
+    # regola dell'osservazione del food cost (una sola, nel worker).
+    fuori_norma: Dict[str, Optional[bool]] = {}
+    if mese_sel:
+        fw = _fw()
+        oggi = fw._oggi_rome()
+        for rid in ids:
+            fuori_norma[rid] = fw._incasso_fuori_norma_sede(user_id, rid, sb, anno, mese_sel, oggi)
+
     def _riga(rid: str, nome: str, a: Dict[str, float], incompleti: bool) -> MarginiCopertiPV:
         netto = a["netto"]
         cop = int(round(a["cop"]))
@@ -1562,6 +1578,8 @@ def gruppo_margini_coperti(
             scontrino_medio=round(netto / cop, 2) if cop > 0 else None,
             mp_per_coperto=round(a["fb"] / cop_fb, 2) if (cop_fb > 0 and a["fb"] > 0) else None,
             dati_incompleti=incompleti,
+            food_cost_perc=round(a["fb"] / netto * 100, 1) if (netto > 0 and a["fb"] > 0) else None,
+            incasso_fuori_norma=fuori_norma.get(rid),
         )
 
     righe = [
@@ -1903,7 +1921,10 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # `costo_personale_chiamata`, che si somma a lordo ed extra nel MOL dei segnali
 # `margine_calo`/osservazioni. Uno snapshot v3 la ignora e mostra un margine piu'
 # alto del vero per le sedi che la usano.
-_SEGNALI_CODE_VERSION = 4
+# 5 = 08/10/2026 (fase E del piano consulente): l'osservazione `food_cost_alto`
+# tace su un mese con l'incasso molto sotto i mesi vicini (ferie). Uno snapshot
+# v4 ripete l'allarme su OVERTIME e OFFSIDE (agosto) fino a mezzanotte.
+_SEGNALI_CODE_VERSION = 5
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti

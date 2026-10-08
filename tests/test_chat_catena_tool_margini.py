@@ -39,5 +39,7 @@ class TestDispatcherUsaKeyword:
         from services import fastapi_worker
 
         src = inspect.getsource(fastapi_worker._chat_esegui_tool_gruppo)
-        assert "g.gruppo_margini_coperti(authorization=authorization)" in src
+        # Dal 08/10/2026 (fase E) passa anche il mese, per nome: il
+        # comportamento lo prova test_fase_e_incasso_fuori_norma.py::test_tool_catena_passa_il_mese.
+        assert "g.gruppo_margini_coperti(mese=mese, authorization=authorization)" in src
         assert "g.gruppo_margini_coperti(authorization)" not in src

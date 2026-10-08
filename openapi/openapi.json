@@ -23507,6 +23507,11 @@
             "title": "Costi Mancanti",
             "default": false
           },
+          "incasso_fuori_norma": {
+            "type": "boolean",
+            "title": "Incasso Fuori Norma",
+            "default": false
+          },
           "mol_mensile": {
             "items": {
               "$ref": "#/components/schemas/MolMensilePoint"
@@ -23912,6 +23917,28 @@
           "dati_incompleti": {
             "type": "boolean",
             "title": "Dati Incompleti"
+          },
+          "food_cost_perc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Food Cost Perc"
+          },
+          "incasso_fuori_norma": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incasso Fuori Norma"
           }
         },
         "type": "object",

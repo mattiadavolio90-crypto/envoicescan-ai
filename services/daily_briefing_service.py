@@ -160,7 +160,11 @@ logger = get_logger('daily_briefing')
 #               ed extra. Un mese con la sola chiamata conta come personale
 #               inserito: senza bump lo snapshot di oggi continuerebbe a
 #               sollecitare un personale gia' registrato fino al TTL.
-_BRIEFING_CODE_VERSION = 29
+#   30 (08/10): fase E del piano consulente. Il food cost alto non si dice su
+#               un mese con l'incasso molto sotto i mesi vicini (ferie: OVERTIME
+#               agosto 2026 al 95,3%). Senza bump lo snapshot di oggi
+#               continuerebbe a dare l'allarme fino al TTL.
+_BRIEFING_CODE_VERSION = 30
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

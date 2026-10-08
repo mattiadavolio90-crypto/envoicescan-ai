@@ -134,7 +134,13 @@ nella versione completa (§2), non in quella rapida.
   fatture di food & beverage, o tace. Parla se il food cost supera il **33%**
   (norma del settore 28-33%), dice "soglia critica" oltre il **38%**, e
   aggiunge quanti euro di acquisti in più rappresenta rispetto al 33%. Mai per
-  i negozi.
+  i negozi. **Tace su un mese di ferie** (dall'8/10/2026, decisione di Mattia):
+  se l'incasso del mese è sotto i **3/4** dell'incasso tipico dei mesi vicini
+  (la mediana dei 6 mesi prima e dei 6 dopo già chiusi; ne servono almeno 3),
+  il mese è una chiusura o un incasso non completo e il suo food cost non è un
+  allarme. Caso vero: OVERTIME ad agosto 2026, 95% di food cost su un quarto
+  dell'incasso solito; con lui OFFSIDE e CASATI 14, tutti chiusi per ferie.
+  Senza tre mesi di confronto (sede nuova) parla come prima.
   *Come suona* (cifre di esempio): «🍽️ A luglio il food cost è stato del 45,8%, oltre la soglia
   critica del 38%: rispetto al 33% sono circa € 581 di acquisti in più.»
   ⚠️ **Parlerà spesso**: sopra il 33% è la condizione normale di molte sedi
@@ -269,7 +275,8 @@ Regole della frase:
 **Le osservazioni da consulente** stanno nella card, nel riquadro «Da sapere», sopra
 gli avvisi. Sono quelle del PV (§4-bis): stesso calcolo, stessa frase, stessi giorni.
 - **Andamento dell'incasso**: il martedì.
-- **Food cost alto**: fra l'ultimo giorno del mese e i primi 7; mai per i negozi.
+- **Food cost alto**: fra l'ultimo giorno del mese e i primi 7; mai per i negozi, mai
+  su un mese di ferie (vedi §4-bis).
 
 C'è una riga per sede, col nome della sede davanti. Non sono avvisi e non si contano
 fra gli avvisi aperti; come nel PV, però, quelle negative (food cost alto, incasso

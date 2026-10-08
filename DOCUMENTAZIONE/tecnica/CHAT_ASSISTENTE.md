@@ -474,6 +474,23 @@ Chat e briefing **condividono la fonte KPI** (`home_kpi`/`_kpi_periodo`), quindi
 MOL/food cost detti in chat coincidono con quelli del briefing e della card. Se un
 giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 
+**Mese fuori dal solito (fase E, dall'8/10/2026).** Un mese con l'incasso sotto i
+3/4 della mediana dei mesi vicini (`_incasso_fuori_norma`, ferie o incasso non
+completo) ha un food cost che non è un allarme (OVERTIME, agosto 2026: 95%). La
+regola è una sola e la usano tutti: l'osservazione del briefing tace
+(`_briefing_food_cost_alto`), `home_kpi` espone `incasso_fuori_norma` e il prompt
+lo dice nel blocco dei conti, `query_margini` e `gruppo_margini_coperti` mettono
+`incasso_fuori_norma` e una `nota` accanto al numero. La nota sta **nel dato**:
+con la sola riga del prompt, col modello vero, la catena diceva ancora «problema
+grave» 2 volte su 3; con la nota 0 su 10.
+
+**Catena, stesso mese stesso numero.** `gruppo_margini_coperti` accetta `mese`
+(anno in corso) e porta `food_cost_perc` per sede e per il gruppo, con la formula
+di `_kpi_periodo`: il presidio `test_presidio_catena_e_pagina_stesso_mese_stesso_food_cost`
+confronta catena, pagina e chat del PV sugli stessi dati. Il prompt di catena
+chiede di dire sempre il periodo (la sintesi e lo strumento senza `mese` vanno da
+gennaio a oggi).
+
 ---
 
 ## 8. "Dove metto le mani per…" (mappa rapida)
@@ -550,6 +567,11 @@ reale del cliente.
 ---
 
 ## Changelog rilevante
+
+- **8/10/2026 (piano assistente consulente, fase E; non ancora pushato al
+  momento della nota)** — numeri coerenti in catena (§7): mese fuori dal solito
+  (ferie) senza allarme sul food cost, `gruppo_margini_coperti` con `mese` e
+  `food_cost_perc`, il periodo detto sempre.
 
 - **5/10/2026 (piano assistente consulente, fase D3; non ancora pushato al
   momento della nota)** — regole su come chiede nelle registrazioni (§5.4) e
