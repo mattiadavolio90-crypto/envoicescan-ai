@@ -896,10 +896,15 @@ def test_al_massimo_quattro():
 
 
 def test_i_temi_senza_domanda_si_saltano():
-    """Senza uno strumento che risponda, niente domanda: rincari e ribassi non
-    hanno ancora chi li elenchi (revisore, 8/10)."""
-    assert _domande(["uncategorized_rows", "fatture_mancanti", "upload_failed",
-                     "price_alert", "prezzo_sceso"]) == FISSE_PV
+    """Senza uno strumento che risponda, niente domanda."""
+    assert _domande(["uncategorized_rows", "fatture_mancanti", "upload_failed"]) == FISSE_PV
+
+
+def test_rincari_e_ribassi_con_lo_strumento_degli_avvisi():
+    """Tolte il 8/10 finche' nessuno strumento elencava gli avvisi prezzi
+    (revisore); tornate con `avvisi_prezzi`."""
+    assert _domande(["prezzo_sceso", "price_alert"])[:2] == [
+        "Quali prezzi sono scesi di recente?", "Quali prodotti sono rincarati di più?"]
 
 
 def test_registrare_solo_dove_c_e_la_conferma():
@@ -923,7 +928,7 @@ def test_ogni_tema_della_tabella_esiste_nel_worker():
     """Un refuso nella chiave e la domanda non compare mai, in silenzio."""
     import services.daily_briefing_service as dbs
     chiavi = esegui_ts(MODULO, "emit([...Object.keys(m.DOMANDE_PER_TEMA), ...Object.keys(m.DOMANDE_PER_REGISTRARE)]);")
-    assert len(chiavi) >= 14
+    assert len(chiavi) >= 16
     tipi_buona = {"mol_mese", "perdita_in_calo", "incasso_ieri", "fatture_arrivate"}
     for k in chiavi:
         if k.startswith("buona_notizia:"):

@@ -5080,6 +5080,196 @@ def _chat_query_appuntamenti(
     return {"appuntamenti": appuntamenti, "da": d_da, "a": d_a, "trovati": len(appuntamenti)}
 
 
+def _mese_anno_chat(mese, anno) -> tuple:
+    """(mese, anno) da argomenti del modello: default il mese in corso (Roma),
+    fuori intervallo = il mese in corso."""
+    oggi = _oggi_rome()
+    try:
+        m = int(mese) if mese is not None else oggi.month
+        a = int(anno) if anno is not None else oggi.year
+    except (TypeError, ValueError):
+        return oggi.month, oggi.year
+    if not 1 <= m <= 12 or not 2000 <= a <= oggi.year + 1:
+        return oggi.month, oggi.year
+    return m, a
+
+
+def _estremi_mese(mese: int, anno: int) -> tuple:
+    import calendar as _cal
+    return (f"{anno}-{mese:02d}-01",
+            f"{anno}-{mese:02d}-{_cal.monthrange(anno, mese)[1]:02d}")
+
+
+def _chat_query_personale(supabase_client, ristorante_id: str, mese=None, anno=None) -> Dict[str, Any]:
+    """Turni di Agenda → Personale del mese, SOLO in totale (Mattia, 8/10/2026:
+    nomi e costi per persona non vanno a OpenAI). Stessa regola della pagina per
+    turni e stipendio dello stesso mese (`aggrega_per_dipendente_mese`)."""
+    from services.costo_personale_turni import aggrega_per_dipendente_mese
+    m, a = _mese_anno_chat(mese, anno)
+    da, al = _estremi_mese(m, a)
+    turni = (
+        supabase_client.table("turni_personale").select("*")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_turno", da).lte("data_turno", al)
+        .execute().data or []
+    )
+    tot = {"ore": 0.0, "ore_extra": 0.0, "costo_ordinario": 0.0, "costo_extra": 0.0,
+           "costo_chiamata": 0.0, "costo_assenze": 0.0, "giorni_assenza": 0}
+    persone, senza_costo = set(), set()
+    for (dip_id, _m), c in aggrega_per_dipendente_mese(turni, _ore_turno).items():
+        persone.add(dip_id)
+        if c["ha_ore"]:
+            tot["ore"] += c["ore"]
+            tot["ore_extra"] += c["ore_extra"]
+            if not c["costo_noto"]:
+                senza_costo.add(dip_id)
+        if c["costo_noto"]:
+            tot["costo_ordinario"] += c["costo_ordinario"]
+        tot["costo_extra"] += c["costo_extra"]
+        tot["costo_chiamata"] += c["costo_chiamata"]
+        tot["costo_assenze"] += c["costo_assenze"]
+        tot["giorni_assenza"] += c["n_giorni_assenza"]
+    out: Dict[str, Any] = {k: (round(v, 2) if isinstance(v, float) else v) for k, v in tot.items()}
+    # Le extra sono gia' DENTRO le ore (modello del 5/9): col nome «ore» il
+    # modello vero le sommava 2 volte su 3 («344 ore ordinarie e 12 extra»).
+    # Senza dirlo nel dato, a «quante ore ha fatto Marco?» il modello dava a
+    # Marco le ore di tutti: la nota e' il primo campo che legge.
+    out = {
+        "attenzione": ("totali di TUTTO il locale, non di una persona: ore e costi per "
+                       "persona non sono disponibili qui, sono in Agenda → Personale"),
+        "ore_totali_locale": out.pop("ore"),
+        "di_cui_ore_extra": out.pop("ore_extra"),
+        **out,
+    }
+    out.update({
+        "mese": _MESI_IT_BRIEFING[m], "anno": a,
+        "persone": len(persone),
+        "persone_senza_costo_orario": len(senza_costo),
+        "costo_totale": round(tot["costo_ordinario"] + tot["costo_extra"] + tot["costo_chiamata"], 2),
+    })
+    if not turni:
+        out["nota"] = "nessun turno registrato in Agenda per questo mese"
+    return out
+
+
+def _chat_query_spese_extra(supabase_client, ristorante_id: str, mese=None, anno=None) -> Dict[str, Any]:
+    """Spese di Agenda → Spese del mese, come `ws_spese_list`."""
+    m, a = _mese_anno_chat(mese, anno)
+    da, al = _estremi_mese(m, a)
+    voci = (
+        supabase_client.table("spese_extra")
+        .select("data_spesa,descrizione,categoria,importo,tipo")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_spesa", da).lte("data_spesa", al)
+        .order("data_spesa", desc=True)
+        .execute().data or []
+    )
+    tot_fb = sum(float(v.get("importo") or 0) for v in voci if v.get("tipo") == "fb")
+    tot_gen = sum(float(v.get("importo") or 0) for v in voci if v.get("tipo") == "generale")
+    return {
+        "mese": _MESI_IT_BRIEFING[m], "anno": a,
+        "voci": [{
+            "data": v.get("data_spesa"),
+            "descrizione": (v.get("descrizione") or "").strip(),
+            "categoria": v.get("categoria"),
+            "importo": round(float(v.get("importo") or 0), 2),
+        } for v in voci[:30]],
+        "voci_totali": len(voci),
+        "totale_food_beverage": round(tot_fb, 2),
+        "totale_spese_generali": round(tot_gen, 2),
+        "totale": round(tot_fb + tot_gen, 2),
+        "nota": "importi pagati, IVA compresa; entrano nel MOL solo con «Recupera dal tab Spese» in Margini",
+    }
+
+
+def _chat_score_fornitori(supabase_client, ristorante_id: str, fornitore: Optional[str] = None) -> Dict[str, Any]:
+    """Lo Score Fornitori della pagina, sull'anno in corso fino a oggi (il periodo
+    di default della scheda) e con la soglia di default della scheda. Senza
+    bozze: le scrive la pagina, non l'assistente (decisione del 3/10)."""
+    from services.routers import prezzi as _prezzi
+    oggi = _oggi_rome()
+    data_da, data_a = f"{oggi.year}-01-01", oggi.isoformat()
+    rows = _prezzi._load_fatture_for_prezzi(supabase_client, ristorante_id, data_da, data_a)
+    if not rows:
+        return {"fornitori": [], "nota": "nessuna fattura quest'anno"}
+    variazioni = _prezzi._calcola_variazioni_prezzi_sync(rows, _prezzi._PRICE_ALERT_DEFAULT)
+    nc_map = _prezzi._nc_credito_per_fornitore(supabase_client, ristorante_id, data_da, data_a, rows=rows)
+    tutti = _prezzi._calcola_score_fornitori(rows, variazioni, nc_map)
+    filtro = (fornitore or "").strip().lower()
+    scelti = [f for f in tutti if filtro in (f.fornitore or "").lower()] if filtro else tutti
+    scelti = sorted(scelti, key=lambda f: float(f.spesa_periodo or 0), reverse=True)[:10]
+    return {
+        "periodo": f"dal 1 gennaio {oggi.year} a oggi",
+        "fornitori": [{
+            "fornitore": f.fornitore,
+            "score": f.score,
+            "stato": f.stato,
+            "giudizio": f.frase_sintesi,
+            "spesa_periodo": round(float(f.spesa_periodo or 0), 2),
+            "rincari_euro_mese": round(float(f.impatto_rincari or 0), 2),
+            "fatture": f.n_fatture,
+        } for f in scelti],
+        "fornitori_valutati": len(tutti),
+    }
+
+
+_CHAT_AVVISI_PREZZI_TIMEOUT_SEC = 12.0
+
+
+def _chat_avvisi_prezzi(user_id: str, supabase_client, ristorante_id: str) -> Dict[str, Any]:
+    """Il motore degli avvisi prezzi della Home (rincari per impatto e ribassi
+    della settimana), con un tetto di tempo: su clienti grandi puo' essere lento."""
+    from services.price_impact_service import calcola_alert_prezzi_impatto
+    fut = _ALERT_PREZZI_EXECUTOR.submit(
+        calcola_alert_prezzi_impatto, user_id, ristorante_id, supabase_client=supabase_client)
+    try:
+        ap = fut.result(timeout=_CHAT_AVVISI_PREZZI_TIMEOUT_SEC)
+    except _cf_TimeoutError:
+        return {"errore": "il calcolo degli avvisi prezzi e' lento oggi: li trovi in Osservatorio → Variazioni Prezzo"}
+    return {
+        "rincari": [{
+            "nome": r.get("nome"), "tipo": r.get("tipo"), "fornitore": r.get("fornitore") or None,
+            "aumento_pct": r.get("aumento_pct"), "costo_in_piu_al_mese": r.get("impatto_mese"),
+        } for r in ap.get("alerts") or []],
+        "ribassi_ultima_settimana": [{
+            "nome": r.get("nome"), "fornitore": r.get("fornitore") or None,
+            "ribasso_pct": r.get("ribasso_pct"), "risparmio_al_mese": r.get("risparmio_mese"),
+        } for r in ap.get("ribassi") or []],
+        "nota": "solo i prodotti che pesano sulla spesa (o i preferiti), oltre la soglia scelta dal cliente in Osservatorio",
+    }
+
+
+def _chat_query_tag(user_id: str, ristorante_id: str, tag: Optional[str] = None) -> Dict[str, Any]:
+    """I tag del cliente con i KPI di Analisi e Tag dall'inizio dell'anno.
+    Le fatture si caricano una volta per tutti i tag, come fa l'alert prezzi."""
+    from datetime import date as _d
+    from services.db_service import carica_e_prepara_dataframe, get_custom_tags
+    from services.tag_analytics_service import analizza_tag
+    tags = get_custom_tags(user_id, ristorante_id) or []
+    if not tags:
+        return {"tag": [], "nota": "nessun tag creato in Analisi e Tag"}
+    filtro = (tag or "").strip().lower()
+    scelti = [t for t in tags if filtro in str(t.get("nome") or "").lower()] if filtro else tags
+    scelti = scelti[:8]
+    oggi = _oggi_rome()
+    inizio = _d(oggi.year, 1, 1)
+    df = carica_e_prepara_dataframe(user_id, ristorante_id=ristorante_id, force_refresh=False)
+    out = []
+    for t in scelti:
+        a = analizza_tag(user_id, ristorante_id, int(t["id"]), inizio, oggi, df_precaricato=df)
+        k = a.get("kpi") or {}
+        out.append({
+            "tag": t.get("nome"),
+            "spesa": k.get("spesa_totale"),
+            "prezzo_medio": k.get("prezzo_medio_ponderato"),
+            "unita": k.get("unita_dominante"),
+            "fornitori": k.get("num_fornitori"),
+            "fatture": k.get("num_fatture"),
+        } if not a.get("vuoto") else {"tag": t.get("nome"), "nota": "nessun acquisto quest'anno"})
+    return {"periodo": f"dal 1 gennaio {oggi.year} a oggi", "tag": out,
+            "tag_totali": len(tags)}
+
+
 def _chat_ultimi_acquisti(
     user_id: str,
     supabase_client,
@@ -5521,6 +5711,86 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             },
         },
     },
+    # Fase F (8/10/2026): le pagine che l'assistente non conosceva. Leggono gli
+    # stessi dati e lo stesso periodo della pagina, cosi' i numeri coincidono.
+    {
+        "type": "function",
+        "function": {
+            "name": "query_personale",
+            "description": (
+                "Turni del personale registrati in Agenda → Personale in un mese: ore "
+                "lavorate, ore extra, costo ordinario, extra e a chiamata, giorni di "
+                "assenza, IN TOTALE per il locale. Non da' nomi ne' dati per persona "
+                "(scelta del cliente): se te li chiedono, di' che li trova in Agenda → "
+                "Personale. Per il costo del personale che entra nel MOL usa "
+                "query_margini: e' quello inserito in Margini e puo' essere diverso."
+            ),
+            "parameters": {"type": "object", "properties": {
+                    "mese": {"type": "integer", "description": "Numero del mese 1-12 (opzionale, default il mese in corso)"},
+                    "anno": {"type": "integer", "description": "Anno es. 2026 (opzionale, default l'anno in corso)"},
+            }},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_spese_extra",
+            "description": (
+                "Le spese scritte a mano in Agenda → Spese in un mese (senza fattura: "
+                "es. 'latte 20 euro'), con data, descrizione, categoria e importo "
+                "pagato, e i totali. Usalo per 'quanto ho speso fuori fattura', "
+                "'che spese ho segnato'. Le spese con fattura sono in query_costi."
+            ),
+            "parameters": {"type": "object", "properties": {
+                    "mese": {"type": "integer", "description": "Numero del mese 1-12 (opzionale, default il mese in corso)"},
+                    "anno": {"type": "integer", "description": "Anno es. 2026 (opzionale, default l'anno in corso)"},
+            }},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "score_fornitori",
+            "description": (
+                "Il voto (0-100) dei fornitori di Osservatorio → Score Fornitori "
+                "sull'anno in corso, con stato (affidabile, da monitorare, "
+                "instabile...), il giudizio in una frase, la spesa e quanto costano "
+                "al mese i rincari. Usalo per 'com'e' il mio fornitore X', 'qual e' "
+                "il fornitore peggiore/migliore'. Non scrive bozze o messaggi."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale: senza, i 10 con piu' spesa)"},
+            }},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "avvisi_prezzi",
+            "description": (
+                "Gli avvisi prezzi di oggi: i prodotti che pesano sulla spesa e sono "
+                "rincarati oltre la soglia scelta dal cliente, con quanto costano in "
+                "piu' al mese, e quelli scesi di prezzo nell'ultima settimana. Usalo "
+                "per 'cosa e' rincarato', 'quali prezzi sono scesi', 'dove spendo di "
+                "piu' per i rincari'."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_tag",
+            "description": (
+                "I gruppi di prodotti creati dal cliente in Analisi e Tag (tag), con "
+                "spesa, prezzo medio, fornitori e fatture dall'inizio dell'anno. "
+                "Usalo per 'quanto spendo per il mio tag X', 'come vanno i miei tag'."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "tag": {"type": "string", "description": "Nome o parte del tag (opzionale: senza, tutti fino a 8)"},
+            }},
+        },
+    },
     # Fase 3 (M4): le cifre DETTATE dal cliente. Non scrivono: preparano una card
     # con Conferma (ChatResponse.proposte); scrive POST /api/assistente/registra.
     {
@@ -5637,11 +5907,39 @@ _CHAT_TOOL_FLAG = {
     "confronto_prezzi": "prezzi",
     "trend_prezzo": "prezzi",
     "query_appuntamenti": "agenda",
+    "query_personale": "agenda",
+    "query_spese_extra": "agenda",
+    "score_fornitori": "prezzi",
+    "avvisi_prezzi": "prezzi",
+    "query_tag": "analisi_e_tag",
     "proponi_incasso": "margini",
     "proponi_personale": "margini",
     "proponi_fatturato_mese": "margini",
     "proponi_spesa": "agenda",
 }
+
+
+# Gli strumenti della fase F leggono una SCHEDA, non solo una pagina: con la
+# scheda spenta dall'admin (`tab_off_<pagina>_<scheda>`) il cliente non la vede,
+# e la chat non deve leggerne i dati. Vale per l'offerta e per l'esecuzione.
+_CHAT_TOOL_SCHEDA = {
+    "query_personale": "agenda_personale",
+    "query_spese_extra": "agenda_spese",
+    "score_fornitori": "prezzi_score",
+    "avvisi_prezzi": "prezzi_variazioni",
+}
+_CHAT_TOOLS_FASE_F = frozenset(_CHAT_TOOL_SCHEDA) | {"query_tag"}
+
+
+def _chat_tool_fase_f_permesso(nome: str, pagine) -> bool:
+    """Pagina abilitata e scheda accesa per uno strumento della fase F.
+    pagine None (admin, account senza restrizioni) = tutto."""
+    if pagine is None:
+        return True
+    if _CHAT_TOOL_FLAG.get(nome) not in set(pagine):
+        return False
+    scheda = _CHAT_TOOL_SCHEDA.get(nome)
+    return not scheda or f"{_TAB_OFF_PREFIX}{scheda}" not in set(pagine)
 
 
 def _chat_tools_sede_offerti(user: Dict[str, Any], settore: Optional[str]) -> List[Dict[str, Any]]:
@@ -5653,6 +5951,8 @@ def _chat_tools_sede_offerti(user: Dict[str, Any], settore: Optional[str]) -> Li
         tools = [
             t for t in tools
             if _CHAT_TOOL_FLAG.get(t["function"]["name"]) in pagine_set
+            and (t["function"]["name"] not in _CHAT_TOOLS_FASE_F
+                 or _chat_tool_fase_f_permesso(t["function"]["name"], pagine))
         ]
 
     # Gate per SETTORE, e non per pagina come quello sopra. La Fase 3 ha spento a
@@ -5729,6 +6029,20 @@ def _chat_esegui_tool_sede(
             user, supabase_client, ristorante_id,
             da=args.get("da"), a=args.get("a"),
         )
+    if nome in _CHAT_TOOLS_FASE_F:
+        if not _chat_tool_fase_f_permesso(nome, _normalize_pagine(user.get("pagine_abilitate"))):
+            return {"errore": "questa sezione non e' attiva per il tuo account"}
+        if not ristorante_id:
+            return {"errore": "nessun locale selezionato"}
+        if nome == "query_personale":
+            return _chat_query_personale(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
+        if nome == "query_spese_extra":
+            return _chat_query_spese_extra(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
+        if nome == "score_fornitori":
+            return _chat_score_fornitori(supabase_client, ristorante_id, args.get("fornitore"))
+        if nome == "avvisi_prezzi":
+            return _chat_avvisi_prezzi(user_id, supabase_client, ristorante_id)
+        return _chat_query_tag(user_id, ristorante_id, args.get("tag"))
     if nome in _assistente.STRUMENTI_PROPOSTA:
         # Le card hanno bisogno delle liste di chat_ai (vista punto vendita):
         # arrivare qui vuol dire un chiamante che non le passa, cioe' la catena.

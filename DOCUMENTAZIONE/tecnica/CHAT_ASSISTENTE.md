@@ -188,6 +188,11 @@ vista catena si usano anche loro, con una `sede` obbligatoria (§5.3).
 | `ultimi_acquisti` | `_chat_ultimi_acquisti` | "ultimo acquisto", "ultima fattura di X" | ordine data desc; NON per totali |
 | `trend_prezzo` | `_chat_trend_prezzo` | "la mozzarella è aumentata?" | prezzo unitario medio ponderato/mese, ~7 mesi |
 | `query_appuntamenti` | `_chat_query_appuntamenti` | "cosa ho oggi", "appuntamenti questa settimana" | **sola lettura** su `diario_eventi`; default oggi→+7gg (10/6) |
+| `query_personale` | `_chat_query_personale` | "quante ore ha lavorato il personale a settembre" | turni di Agenda → Personale del mese **solo in totale** (Mattia, 8/10/2026: nomi e costi per persona non vanno a OpenAI); regola stipendio/turni della pagina (`aggrega_per_dipendente_mese`); campo `attenzione` in testa: senza, a «quante ore ha fatto Marco?» il modello dava a Marco le ore di tutti (fase F) |
+| `query_spese_extra` | `_chat_query_spese_extra` | "che spese ho segnato a mano" | Agenda → Spese del mese, max 30 voci, totali su tutte (fase F) |
+| `score_fornitori` | `_chat_score_fornitori` | "com'è il mio fornitore X" | Score Fornitori sull'anno in corso fino a oggi (default della scheda), i 10 con più spesa o filtro per nome, **senza bozze** (§5.5) (fase F) |
+| `avvisi_prezzi` | `_chat_avvisi_prezzi` | "cosa è rincarato", "quali prezzi sono scesi" | motore della Home (`calcola_alert_prezzi_impatto`): rincari per impatto e ribassi della settimana; tetto 12 s (fase F) |
+| `query_tag` | `_chat_query_tag` | "quanto spendo per il mio tag X" | tag di Analisi e Tag con KPI da inizio anno (`analizza_tag`), max 8, fatture caricate una volta (fase F) |
 | `proponi_incasso` / `proponi_personale` / `proponi_fatturato_mese` / `proponi_spesa` | `proponi` in `services/routers/assistente.py` | "ieri ho fatto 2.340: 1.800 al 10% e 540 senza IVA", "latte 20 euro" | **non scrivono**: preparano una card con Conferma (§5.4); solo con `card_conferma` e pagina `margini` (la spesa: `agenda`), mai in catena |
 
 **Ricerca tollerante (`query_costi`, `trend_prezzo`, `confronto_prezzi`):** un
@@ -216,7 +221,14 @@ nemmeno in chat.**
 | `query_margini` | `margini` |
 | `confronto_prezzi`, `trend_prezzo` | `prezzi` |
 | `query_appuntamenti` | `agenda` |
+| `query_personale`, `query_spese_extra` | `agenda` + scheda `personale` / `spese` accesa |
+| `score_fornitori`, `avvisi_prezzi` | `prezzi` + scheda `score` / `variazioni` accesa |
+| `query_tag` | `analisi_e_tag` |
 
+- **Scheda spenta (fase F, 8/10/2026).** Gli strumenti della fase F leggono una
+  scheda: con `tab_off_<pagina>_<scheda>` il cliente non la vede e la chat non
+  la legge (`_CHAT_TOOL_SCHEDA`, `_chat_tool_fase_f_permesso`), sia nell'elenco
+  offerto sia nell'esecuzione. Non sono offerti in catena.
 - **`pagine_abilitate` = `None`** (admin / nessuna restrizione) → **tutti** i tool
   (stessa semantica di `_normalize_pagine`: None = tutto abilitato).
 - Lista presente → resta solo il tool il cui flag è nella lista.
