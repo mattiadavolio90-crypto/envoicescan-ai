@@ -1785,6 +1785,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   di ferie; desktop e `/m` stesso `KpiBlock`. Cambiano solo quelle 3 sedi.
 >   **Prove:** 13 test nuovi; mutazione 17/18 (la guardia `confronto_label` evita
 >   una lettura); suite `-m "not sql"` 18.056 + 58 skip; revisore senza difetti.
+> - **08/10/2026, `3c9d9c0a` + `test` successivo — fase F, primo passo: la buona
+>   notizia del MOL sui mesi di ferie.** Chiude i due residui della E sul
+>   briefing. **Fatto:** MOL in crescita e perdita in calo tacciono se il
+>   mese mostrato o quello di confronto ha l'incasso fuori norma (stessa regola della
+>   card); non giudicabile = come prima. `_incasso_fuori_norma_sede` arricchisce i
+>   margini del chiamante: `home_kpi` non rilegge piu' l'anno prima.
+>   `_BRIEFING_CODE_VERSION` 31. **Prove:** 9 test nuovi (ogni caso «tace» ha
+>   numeri con cui, senza la regola, la notizia uscirebbe); mutazione 7/7, il
+>   settimo (anno del mese di confronto a gennaio) trovato dal revisore; suite
+>   `-m "not sql"` 18.102 + 58 skip (misurata dal revisore, include un test non
+>   committato di un'altra sessione); revisore 🟢. **Residuo accettato:** il
+>   filtro `if v[0]` sui margini di `_cache_anno` conta solo dopo un errore di
+>   lettura (un anno fallito si rilegge invece di valere vuoto): non presidiato.
 
 ---
 
