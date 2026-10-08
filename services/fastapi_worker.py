@@ -4615,10 +4615,19 @@ def _chat_esegui_tool_gruppo(nome: str, args: Dict[str, Any], authorization: Opt
             out = g.gruppo_margini_coperti(mese=mese, authorization=authorization).model_dump()
             # Fase E: il prompt da solo non bastava (col modello vero, 2 volte su
             # 3 «problema grave» sull'agosto di ferie di OVERTIME). La nota sta
-            # nel dato, accanto al numero.
-            for r in out.get("righe") or []:
-                if r.get("incasso_fuori_norma") is True:
-                    r["nota"] = _NOTA_INCASSO_FUORI_NORMA
+            # nel dato, accanto al numero. Si calcola qui e non nell'endpoint:
+            # la pagina Catena lo chiama gia' con `mese` e non lo mostra.
+            if mese:
+                try:
+                    fuori = g.incasso_fuori_norma_per_sede(authorization, mese)
+                except Exception as exc:
+                    logger.warning("chat catena: incasso fuori norma non giudicabile: %s", exc)
+                    fuori = {}
+                for r in out.get("righe") or []:
+                    v = fuori.get(r.get("ristorante_id"))
+                    r["incasso_fuori_norma"] = v
+                    if v is True:
+                        r["nota"] = _NOTA_INCASSO_FUORI_NORMA
             return out
         if nome == "gruppo_spesa":
             dim = args.get("dimensione") if args.get("dimensione") in ("categoria", "fornitore") else "categoria"
@@ -5236,9 +5245,17 @@ def _chat_query_margini(
     # Fase E: un mese di ferie ha poco incasso e un food cost altissimo che non
     # e' un allarme. Lo dice il dato, non solo il prompt.
     anni_rif = sorted({a for (aa_, mm_) in visti for a in _anni_riferimento_incasso(aa_, mm_, oggi)})
-    netti = _netti_mensili(lambda a: _anno(a)[0], anni_rif)
+    try:
+        netti = _netti_mensili(
+            lambda a: cache_anni[a][0] if a in cache_anni
+            else _margini_fusi(user_id, ristorante_id, supabase_client, a),
+            anni_rif,
+        )
+    except Exception as exc:
+        logger.warning("chat query_margini: incasso fuori norma non giudicabile: %s", exc)
+        netti = {}
     for r, (aa_, mm_) in zip(risultati, visti):
-        if not r["parziale"] and _incasso_fuori_norma(netti, aa_, mm_, oggi) is True:
+        if _incasso_fuori_norma(netti, aa_, mm_, oggi) is True:
             r["incasso_fuori_norma"] = True
             r["nota"] = _NOTA_INCASSO_FUORI_NORMA
     return {"mesi": risultati}
@@ -6873,8 +6890,9 @@ def _mese_food_cost_da_dire(oggi) -> Optional[tuple]:
 _INCASSO_FUORI_NORMA_QUOTA = 0.75
 _NOTA_INCASSO_FUORI_NORMA = (
     "Incasso molto piu' basso del solito (chiusura per ferie o incasso non completo): "
-    "food cost e margine di questo mese non sono un allarme e non vanno giudicati con "
-    "le soglie. Dillo al cliente; per un giudizio usa il mese prima o dopo."
+    "l'incidenza della merce (food cost) e il margine di questo mese non sono un allarme "
+    "e non vanno giudicati con le soglie. Dillo al cliente; per un giudizio usa il mese "
+    "prima o dopo."
 )
 _INCASSO_RIF_RAGGIO_MESI = 6
 _INCASSO_RIF_MIN_MESI = 3
@@ -6907,15 +6925,18 @@ def _incasso_fuori_norma(netti: Dict[tuple, float], anno: int, mese: int, oggi) 
     vicini: ferie, chiusura o incasso non completo. Il food cost di quel mese
     non dice com'e' andata la cucina.
 
-    None = non giudicabile: mese senza incasso, o meno di tre mesi di
-    riferimento. Il mese in corso e quelli dopo non fanno da riferimento: sono
-    parziali o vuoti.
+    None = non giudicabile: mese senza incasso, mese in corso (e' parziale, non
+    di ferie: la catena l'avrebbe detto di ogni sede a meta' mese) o meno di tre
+    mesi di riferimento. Il mese in corso e quelli dopo non fanno nemmeno da
+    riferimento.
     """
     netto = float(netti.get((anno, mese)) or 0)
     if netto <= 0:
         return None
     idx = anno * 12 + mese - 1
     in_corso = oggi.year * 12 + oggi.month - 1
+    if idx >= in_corso:
+        return None
     rif = []
     for d in range(-_INCASSO_RIF_RAGGIO_MESI, _INCASSO_RIF_RAGGIO_MESI + 1):
         j = idx + d
@@ -6932,6 +6953,14 @@ def _incasso_fuori_norma(netti: Dict[tuple, float], anno: int, mese: int, oggi) 
     return netto < _INCASSO_FUORI_NORMA_QUOTA * mediana
 
 
+def _margini_fusi(user_id: str, ristorante_id: str, supabase_client, anno: int) -> dict:
+    """I margini dell'anno con gli override della modalita' mensile, senza costi:
+    per i soli incassi la RPC dei costi e' una lettura sprecata."""
+    from services.margine_service import carica_margini_anno
+    m = carica_margini_anno(user_id, ristorante_id, anno)
+    return _merge_override_mensile(m, supabase_client, ristorante_id, anno)
+
+
 def _incasso_fuori_norma_sede(
     user_id: str, ristorante_id: str, supabase_client, anno: int, mese: int, oggi,
     margini_noti: Optional[Dict[int, dict]] = None,
@@ -6939,14 +6968,12 @@ def _incasso_fuori_norma_sede(
     """`_incasso_fuori_norma` leggendo gli anni che servono. `margini_noti`
     ({anno: margini gia' fusi}) evita di rileggere cio' che il chiamante ha.
     Un errore di lettura torna None: non giudicabile, non «nella norma»."""
-    from services.margine_service import carica_margini_anno
     noti = margini_noti or {}
 
     def _margini(a: int) -> dict:
         if a in noti:
             return noti[a]
-        m = carica_margini_anno(user_id, ristorante_id, a)
-        return _merge_override_mensile(m, supabase_client, ristorante_id, a)
+        return _margini_fusi(user_id, ristorante_id, supabase_client, a)
 
     try:
         netti = _netti_mensili(_margini, _anni_riferimento_incasso(anno, mese, oggi))

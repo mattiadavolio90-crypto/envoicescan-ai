@@ -1462,9 +1462,6 @@ class MarginiCopertiPV(BaseModel):
     # pagina Margini del PV). None senza incasso o senza merce: uno 0% non e' un
     # valore.
     food_cost_perc: Optional[float] = None
-    # Solo con `mese`: incasso del mese molto sotto i mesi vicini (ferie,
-    # chiusura, incasso non completo). None = non calcolato o non giudicabile.
-    incasso_fuori_norma: Optional[bool] = None
 
 
 class MarginiCopertiResponse(BaseModel):
@@ -1553,15 +1550,6 @@ def gruppo_margini_coperti(
         mesi=mesi_periodo,
     )
 
-    # Fase E: sul mese singolo si dice se l'incasso e' fuori dal solito, con la
-    # regola dell'osservazione del food cost (una sola, nel worker).
-    fuori_norma: Dict[str, Optional[bool]] = {}
-    if mese_sel:
-        fw = _fw()
-        oggi = fw._oggi_rome()
-        for rid in ids:
-            fuori_norma[rid] = fw._incasso_fuori_norma_sede(user_id, rid, sb, anno, mese_sel, oggi)
-
     def _riga(rid: str, nome: str, a: Dict[str, float], incompleti: bool) -> MarginiCopertiPV:
         netto = a["netto"]
         cop = int(round(a["cop"]))
@@ -1579,7 +1567,6 @@ def gruppo_margini_coperti(
             mp_per_coperto=round(a["fb"] / cop_fb, 2) if (cop_fb > 0 and a["fb"] > 0) else None,
             dati_incompleti=incompleti,
             food_cost_perc=round(a["fb"] / netto * 100, 1) if (netto > 0 and a["fb"] > 0) else None,
-            incasso_fuori_norma=fuori_norma.get(rid),
         )
 
     righe = [
@@ -1612,6 +1599,20 @@ def gruppo_margini_coperti(
         gruppo=gruppo,
         n_incompleti=sum(1 for r in righe if r.dati_incompleti),
     )
+
+
+def incasso_fuori_norma_per_sede(
+    authorization: Optional[str], mese: int,
+) -> Dict[str, Optional[bool]]:
+    """{ristorante_id: incasso del mese (anno in corso) fuori dal solito?} per le
+    sedi del gruppo, con la regola dell'osservazione del food cost (una sola, nel
+    worker). Solo per la chat: fa due letture per sede, e la pagina non lo mostra.
+    """
+    sb, user_id, _sedi, _nome, _rid_to_nome, ids = _resolve_gruppo(authorization)
+    anno, _mese_corr = _anno_mese_corrente()
+    fw = _fw()
+    oggi = fw._oggi_rome()
+    return {rid: fw._incasso_fuori_norma_sede(user_id, rid, sb, anno, mese, oggi) for rid in ids}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

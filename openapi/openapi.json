@@ -23928,17 +23928,6 @@
               }
             ],
             "title": "Food Cost Perc"
-          },
-          "incasso_fuori_norma": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Incasso Fuori Norma"
           }
         },
         "type": "object",

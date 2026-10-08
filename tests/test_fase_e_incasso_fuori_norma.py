@@ -104,6 +104,15 @@ def test_riferimento_che_attraversa_l_anno():
     assert fw._incasso_fuori_norma(netti, 2026, 1, OGGI) is True
 
 
+@pytest.mark.parametrize("mese", [10, 11])
+def test_il_mese_in_corso_e_i_futuri_non_si_giudicano(mese):
+    """Revisore, 8/10: in catena «come va ottobre?» segnava ogni sede come «in
+    ferie» a meta' mese. Un mese in corso e' parziale, non fuori norma."""
+    netti = {**_netti(2026, NETTI_OVERTIME), (2026, mese): 3000.0}
+    assert fw._incasso_fuori_norma(netti, 2026, mese, OGGI) is None
+    assert fw._incasso_fuori_norma(netti, 2026, mese, date(2027, 6, 1)) is True
+
+
 def test_mese_senza_incasso_non_e_giudicabile():
     netti = {(2026, 5): 100.0, (2026, 6): 100.0, (2026, 7): 100.0}
     assert fw._incasso_fuori_norma(netti, 2026, 8, OGGI) is None
@@ -208,6 +217,20 @@ def _query_margini():
     with _patch_fonti(_margini_overtime()), \
          patch.object(fw, "_oggi_rome", return_value=OGGI):
         return fw._chat_query_margini({"id": UID}, _sb_vuoto(), None, ristorante_id=RID)
+
+
+def test_query_margini_non_chiede_i_costi_per_i_soli_incassi():
+    """Gli anni letti solo per il riferimento (qui il 2025) non passano dalla RPC
+    dei costi: servono gli incassi."""
+    margini = _margini_overtime()
+    carica = MagicMock(side_effect=lambda _u, _r, a: margini if a == 2026 else {})
+    costi = MagicMock(side_effect=lambda _u, _r, a: (FB_OVERTIME, {}) if a == 2026 else ({}, {}))
+    with patch.multiple("services.margine_service", carica_margini_anno=carica,
+                        calcola_costi_automatici_per_anno_sql=costi), \
+         patch.object(fw, "_oggi_rome", return_value=OGGI):
+        fw._chat_query_margini({"id": UID}, _sb_vuoto(), None, ristorante_id=RID)
+    assert {c.args[2] for c in costi.call_args_list} == {2026}
+    assert 2025 in {c.args[2] for c in carica.call_args_list}
 
 
 def test_query_margini_segna_agosto_e_solo_agosto():
@@ -407,37 +430,78 @@ def test_catena_food_cost_none_senza_merce(monkeypatch):
     assert resp.righe[0].food_cost_perc is None, "uno 0% senza merce non e' un valore"
 
 
-@pytest.mark.parametrize("esito", [True, False, None])
-def test_catena_riporta_l_incasso_fuori_norma_del_mese(esito):
-    calcolo = MagicMock(return_value=esito)
-    resp = _margini_coperti(8, calcolo)
-    assert resp.righe[0].incasso_fuori_norma is esito
-    assert resp.gruppo.incasso_fuori_norma is None
-    _u, rid, _sb, anno, mese, _oggi = calcolo.call_args.args
-    assert (_u, rid, anno, mese) == (UID, "a", 2026, 8)
-
-
-def test_catena_senza_mese_non_giudica_l_incasso():
+def test_la_pagina_catena_non_paga_il_giudizio_sull_incasso():
+    """La pagina chiama l'endpoint con `mese`: il giudizio (due letture per sede)
+    lo calcola solo lo strumento della chat."""
     calcolo = MagicMock(return_value=True)
-    resp = _margini_coperti(None, calcolo)
+    resp = _margini_coperti(8, calcolo)
     calcolo.assert_not_called()
-    assert resp.righe[0].incasso_fuori_norma is None
+    assert "incasso_fuori_norma" not in resp.righe[0].model_dump()
+
+
+def test_incasso_fuori_norma_per_sede_usa_l_anno_in_corso_e_il_mese():
+    calcolo = MagicMock(side_effect=lambda u, rid, sb, anno, mese, oggi: rid == "a")
+    with patch.object(gruppo, "_resolve_gruppo",
+                      return_value=("sb", UID, [], "G", {"a": "A", "b": "B"}, ["a", "b"])), \
+         patch.object(gruppo, "_anno_mese_corrente", return_value=(2026, 10)), \
+         patch.object(fw, "_oggi_rome", return_value=OGGI), \
+         patch.object(fw, "_incasso_fuori_norma_sede", calcolo):
+        out = gruppo.incasso_fuori_norma_per_sede("Bearer t", 8)
+    assert out == {"a": True, "b": False}
+    assert {c.args[:6] for c in calcolo.call_args_list} == {
+        (UID, "a", "sb", 2026, 8, OGGI), (UID, "b", "sb", 2026, 8, OGGI)}
+
+
+def _tool_catena(args, fuori):
+    g = MagicMock()
+    g.gruppo_margini_coperti.return_value.model_dump.return_value = {
+        "righe": [
+            {"ristorante_id": "o", "nome": "OVERTIME", "food_cost_perc": 93.3},
+            {"ristorante_id": "f", "nome": "OFFSIDE", "food_cost_perc": 42.7},
+            {"ristorante_id": "l", "nome": "LAND", "food_cost_perc": 30.0},
+        ],
+        "gruppo": {"food_cost_perc": 60.0},
+    }
+    g.incasso_fuori_norma_per_sede = fuori
+    with patch.object(fw, "_gruppo_router_mod", return_value=g):
+        return fw._chat_esegui_tool_gruppo("gruppo_margini_coperti", args, "Bearer t")
 
 
 def test_tool_catena_mette_la_nota_accanto_al_mese_fuori_norma():
     """Col modello vero la sola riga del prompt dava «problema grave» 2 volte su 3."""
-    g = MagicMock()
-    g.gruppo_margini_coperti.return_value.model_dump.return_value = {
-        "righe": [
-            {"nome": "OVERTIME", "food_cost_perc": 93.3, "incasso_fuori_norma": True},
-            {"nome": "OFFSIDE", "food_cost_perc": 42.7, "incasso_fuori_norma": False},
-            {"nome": "LAND", "food_cost_perc": 30.0, "incasso_fuori_norma": None},
-        ],
-        "gruppo": {"food_cost_perc": 60.0, "incasso_fuori_norma": None},
-    }
-    with patch.object(fw, "_gruppo_router_mod", return_value=g):
-        out = fw._chat_esegui_tool_gruppo("gruppo_margini_coperti", {"mese": 8}, "Bearer t")
-    note = {r["nome"]: r.get("nota") for r in out["righe"]}
-    assert "non sono un allarme" in note["OVERTIME"]
-    assert note["OFFSIDE"] is None and note["LAND"] is None
-    assert out["righe"][0]["food_cost_perc"] == 93.3, "il numero resta quello della pagina"
+    fuori = MagicMock(return_value={"o": True, "f": False})
+    out = _tool_catena({"mese": 8}, fuori)
+    fuori.assert_called_once_with("Bearer t", 8)
+    righe = {r["nome"]: r for r in out["righe"]}
+    assert righe["OVERTIME"]["incasso_fuori_norma"] is True
+    assert "non sono un allarme" in righe["OVERTIME"]["nota"]
+    assert righe["OFFSIDE"]["incasso_fuori_norma"] is False and "nota" not in righe["OFFSIDE"]
+    assert righe["LAND"]["incasso_fuori_norma"] is None and "nota" not in righe["LAND"]
+    assert righe["OVERTIME"]["food_cost_perc"] == 93.3, "il numero resta quello della pagina"
+
+
+def test_tool_catena_senza_mese_non_giudica():
+    fuori = MagicMock(return_value={"o": True})
+    out = _tool_catena({}, fuori)
+    fuori.assert_not_called()
+    assert all("nota" not in r and "incasso_fuori_norma" not in r for r in out["righe"])
+
+
+def test_tool_catena_un_errore_del_giudizio_non_toglie_i_numeri():
+    out = _tool_catena({"mese": 8}, MagicMock(side_effect=RuntimeError("giu'")))
+    assert [r["food_cost_perc"] for r in out["righe"]] == [93.3, 42.7, 30.0]
+    assert all(r["incasso_fuori_norma"] is None and "nota" not in r for r in out["righe"])
+
+
+def test_giudica_gli_incassi_inseriti_a_mese_intero():
+    """OVERTIME e OFFSIDE mettono l'incasso a mese intero
+    (ricavi_modalita_mensile): margini_mensili ha i ricavi a zero. Senza la
+    fusione degli override nessuna loro ferie sarebbe riconosciuta."""
+    overrides = {(2026, m): {"iva10": 0.0, "iva22": 0.0, "altri": v}
+                 for m, v in NETTI_OVERTIME.items()}
+    with patch("services.margine_service.carica_margini_anno",
+               return_value={m: {"altri_ricavi_noiva": 0} for m in range(1, 13)}), \
+         patch.object(fw, "_load_mensile_overrides",
+                      side_effect=lambda _sb, _rid, anni: {k: v for k, v in overrides.items() if k[0] in anni}):
+        assert fw._incasso_fuori_norma_sede(UID, RID, _sb_vuoto(), 2026, 8, OGGI) is True
+        assert fw._incasso_fuori_norma_sede(UID, RID, _sb_vuoto(), 2026, 7, OGGI) is False

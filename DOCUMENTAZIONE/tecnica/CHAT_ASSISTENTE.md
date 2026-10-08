@@ -479,10 +479,13 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 completo) ha un food cost che non è un allarme (OVERTIME, agosto 2026: 95%). La
 regola è una sola e la usano tutti: l'osservazione del briefing tace
 (`_briefing_food_cost_alto`), `home_kpi` espone `incasso_fuori_norma` e il prompt
-lo dice nel blocco dei conti, `query_margini` e `gruppo_margini_coperti` mettono
-`incasso_fuori_norma` e una `nota` accanto al numero. La nota sta **nel dato**:
-con la sola riga del prompt, col modello vero, la catena diceva ancora «problema
-grave» 2 volte su 3; con la nota 0 su 10.
+lo dice nel blocco dei conti, `query_margini` e lo strumento di catena
+`gruppo_margini_coperti` (nel dispatcher, via `incasso_fuori_norma_per_sede`: la
+pagina Catena chiama lo stesso endpoint e non paga quelle letture) mettono
+`incasso_fuori_norma` e una `nota` accanto al numero. Il mese in corso non si
+giudica mai: e' parziale, non di ferie. La nota sta **nel dato**: con la sola
+riga del prompt, col modello vero, la catena diceva ancora «problema grave» 2
+volte su 3; con la nota 0 su 10.
 
 **Catena, stesso mese stesso numero.** `gruppo_margini_coperti` accetta `mese`
 (anno in corso) e porta `food_cost_perc` per sede e per il gruppo, con la formula
