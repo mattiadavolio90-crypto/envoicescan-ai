@@ -1857,6 +1857,29 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   solo i componenti), tema scuro per pagina, dialog, hover; `/m`; 4 copie di
 >   `tabs-switcher.tsx`; doppio token rosso; icona nel titolo Admin. Dettaglio in
 >   `DOCUMENTAZIONE/COERENZA_VISIVA_FASI.md` §16.
+> - **09/10/2026, `d9ecb29b` + `40c5712e` — piano consulente, fase G: la Home
+>   della catena con meno rumore (screen 12).** **Misurato** (sola lettura): il
+>   gruppo da 5 sedi aveva 7 righe nel «Da fare» e 20 avvisi in «Vedi tutti gli
+>   avvisi», con lo stesso fatto nei due elenchi. **Fatto:** un elenco solo
+>   (`lib/home-da-fare.ts::daFareCatena`) con segnali, osservazioni e avvisi delle
+>   sedi, una riga chiusa per punto vendita con il conteggio, per gravita' poi
+>   numero; tetto 4 (= `_MAX_CARD`) e «Altri N punti vendita»; avvisi archiviabili
+>   da li'; «Vedi tutti gli avvisi» fuori dalla catena. Il segnale `dati_mancanti`
+>   porta `manca` e `mese` (`_SEGNALI_CODE_VERSION` 6) e sparisce solo se gli
+>   avvisi della stessa sede dicono ogni voce di quel mese. **Trovato** (revisore,
+>   primo giro): la prima dedup guardava solo il topic, e «Nessuna fattura caricata
+>   nell'ultima settimana» nascondeva «Mancano le fatture costo» di settembre su
+>   3 sedi vere (SUSHILAND PADERNO, LA PIAZZA DEI SAPORI, LEW CLUB): corretto in
+>   `40c5712e`. **Prove:** mutazione 25/25 + 9/9 (un mutante del primo giro era
+>   scritto male e non cambiava niente: riscritto, ucciso); suite `python -m pytest
+>   tests/ -m "not sql" -q -p no:randomly` **18.301 + 58 skip** a `d9ecb29b`
+>   (include `test_brevo_mittente_default.py` modificato e non committato da
+>   un'altra sessione); dopo il fix 1.417 verdi su 11 file pertinenti; revisore
+>   🟢 sui due commit. **Residui:** la frase del briefing di catena «tutto in
+>   ordine» guarda solo i segnali; un segnale della mattina ricompare se il dato
+>   viene inserito in giornata (lo snapshot vale fino a mezzanotte, gli avvisi
+>   no); `/m` catena invariato (fase I); domande proposte e osservazioni nuove in
+>   catena (residuo F) non fatte.
 
 ---
 
