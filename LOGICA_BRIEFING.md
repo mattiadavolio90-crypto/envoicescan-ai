@@ -321,6 +321,10 @@ Regole della frase:
     il costo del personale» della card.
 - **«Tutto in ordine»** compare solo se non ci sono avvisi aperti, la Salute non è
   rossa, nessuna sede è da completare e non ci sono fatture di gruppo da smistare.
+  Dal 9/10/2026 guarda anche gli **avvisi dei singoli locali** (scadenze superate,
+  prodotti da controllare, coperti…), gli stessi dell'elenco «Da fare oggi»: se un
+  locale ne ha anche uno, o se non si sono potuti leggere, la frase non esce. Una
+  buona notizia nell'elenco non la spegne, come nel PV.
   Mai dire che va tutto bene mentre la salute del gruppo è bassa. Le sedi che
   aspettano solo il personale non lo spengono, come nel PV. La card «I conti del
   gruppo», però, resta in ambra con «N PV con dati di costo incompleti»: parla del

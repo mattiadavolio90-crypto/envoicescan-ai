@@ -491,3 +491,74 @@ def test_il_marker_viene_tolto_da_tutti_i_segnali_non_solo_dal_primo(monkeypatch
     assert all("_degradato" not in s for s in segnali), (
         "il marker deve sparire da TUTTI gli elementi, non solo dal primo"
     )
+
+
+# ── Fase G (9/10/2026): gli avvisi delle sedi spengono «tutto in ordine» ─────
+#
+# Il «Da fare» della catena mostra per punto vendita anche gli avvisi delle sedi
+# (scadenze, righe da controllare...). La frase in alto non puo' dire «tutto in
+# ordine» sopra quell'elenco: una regola sola per i due.
+
+
+def test_tutto_ok_resta_se_le_sedi_non_hanno_avvisi():
+    assert TUTTO_OK in _briefing(avvisi_aperti=lambda: 0).narrativa
+
+
+def test_tutto_ok_spento_se_una_sede_ha_un_avviso():
+    assert TUTTO_OK not in _briefing(avvisi_aperti=lambda: 2).narrativa
+
+
+def test_tutto_ok_spento_se_gli_avvisi_non_si_sanno():
+    """Sede non letta o errore: dato assente non e' via libera."""
+    assert TUTTO_OK not in _briefing(avvisi_aperti=lambda: None).narrativa
+
+
+def test_gli_avvisi_si_leggono_solo_quando_il_resto_e_in_ordine():
+    """La lettura costa una query per sede: l'overview e' il percorso veloce, e
+    nel caso normale (segnali aperti) la frase non esce comunque."""
+    def vietato():
+        raise AssertionError("avvisi letti senza bisogno")
+    assert TUTTO_OK not in _briefing(n_segnali=3, avvisi_aperti=vietato).narrativa
+
+
+def _avvisi_passati_dall_overview(avvisi=None, errore=None):
+    """Chiama l'endpoint vero e restituisce cio' che la funzione degli avvisi
+    passata al briefing risponde, con `_avvisi_delle_sedi` sostituita."""
+    preso = {}
+
+    def finto_briefing(*a, **kw):
+        preso["fn"] = kw.get("avvisi_aperti")
+        return gruppo.GruppoBriefing(saluto="Ciao", narrativa="x", severity_max="info")
+
+    def finti_avvisi(sb, user_id, user, ids, rid_to_nome, pv_excl):
+        preso["pv_excl"] = pv_excl
+        if errore:
+            raise errore
+        return avvisi
+
+    with patch.object(gruppo, "_build_briefing", side_effect=finto_briefing), \
+         patch.object(gruppo, "_avvisi_delle_sedi", side_effect=finti_avvisi), \
+         patch.object(gruppo, "_resolve_user_from_token", return_value={"id": "u1"}), \
+         patch.object(gruppo, "_get_gruppo_config", return_value=(set(), {"spenta"})):
+        _overview_con_completezza({})
+        assert callable(preso.get("fn")), "l'overview non passa gli avvisi delle sedi al briefing"
+        risposta = preso["fn"]()
+    return risposta, preso
+
+
+def test_l_overview_conta_gli_avvisi_delle_sedi():
+    risposta, preso = _avvisi_passati_dall_overview(avvisi=(["a1", "a2"], []))
+    assert risposta == 2
+    assert preso["pv_excl"] == {"spenta"}, "le sedi spente in configurazione generano avvisi"
+
+
+def test_l_overview_senza_avvisi_dice_zero():
+    assert _avvisi_passati_dall_overview(avvisi=([], []))[0] == 0
+
+
+def test_l_overview_con_una_sede_non_letta_non_sa():
+    assert _avvisi_passati_dall_overview(avvisi=([], ["PV a"]))[0] is None
+
+
+def test_l_overview_con_un_errore_non_sa():
+    assert _avvisi_passati_dall_overview(errore=RuntimeError("giu"))[0] is None

@@ -15,7 +15,7 @@ risolti al primo uso, niente module-level __getattr__ (PEP 562 non risolve i
 lookup di nome globale interni → NameError → HTTP 500). _verify_worker_key resta
 esplicito perché usato in Depends() a import-time.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -361,6 +361,7 @@ def _build_briefing(
     fatture_ieri_da_assegnare: bool = False,
     personale_in_attesa_ids: Optional[set] = None,
     mese_personale: Optional[str] = None,
+    avvisi_aperti: Optional[Callable[[], Optional[int]]] = None,
 ) -> "GruppoBriefing":
     """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
     overview + segnali → coerente per costruzione, tono sobrio.
@@ -490,6 +491,13 @@ def _build_briefing(
         and completezza_nota and n_incompleti == 0
         and n_fatture_da_collocare == 0
     )
+    # Gli avvisi delle sedi (fase G, 9/10/2026): il «Da fare» sotto li mostra
+    # per punto vendita, e la frase non puo' dire «tutto in ordine» sopra un
+    # elenco con «Scadenze superate (11)». Si leggono SOLO qui, quando tutto il
+    # resto e' gia' in ordine: e' il caso raro, e l'overview resta leggera.
+    # None = non si sa (sede non letta, errore): niente «tutto in ordine».
+    if tutto_ok and avvisi_aperti is not None:
+        tutto_ok = avvisi_aperti() == 0
     if tutto_ok:
         frasi.append("Nessuna segnalazione aperta: tutto in ordine.")
 
@@ -1302,6 +1310,17 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # arrivato nulla, per non forzare un'apertura vuota.
     arrivate_ieri = _fatture_arrivate_ieri_gruppo(sb, user_id, ids)
     n_arrivate_ieri_tot = arrivate_ieri["n_assegnate"] + arrivate_ieri["n_in_coda"]
+
+    def _avvisi_aperti() -> Optional[int]:
+        try:
+            user = _resolve_user_from_token(authorization)
+            _off, pv_excl = _get_gruppo_config(sb, user_id)
+            avvisi, non_lette = _avvisi_delle_sedi(sb, user_id, user, ids, rid_to_nome, pv_excl)
+        except Exception as exc:
+            logger.warning("catena: avvisi delle sedi non letti per il briefing: %s", exc)
+            return None
+        return None if non_lette else len(avvisi)
+
     briefing = _build_briefing(
         nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max,
         salute_pv=salute_pv, incompleti_ids=incompleti_ids,
@@ -1311,6 +1330,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         fatture_ieri_da_assegnare=arrivate_ieri["n_in_coda"] > 0,
         personale_in_attesa_ids=personale_in_attesa,
         mese_personale=mese_personale,
+        avvisi_aperti=_avvisi_aperti,
     )
 
     return GruppoOverviewResponse(
@@ -2524,6 +2544,35 @@ class GruppoNotificheResponse(BaseModel):
     sedi_non_lette: List[str] = []
 
 
+def _avvisi_delle_sedi(
+    sb, user_id: str, user: Dict[str, Any], ids: List[str],
+    rid_to_nome: Dict[str, str], pv_excl: set,
+) -> tuple:
+    """(avvisi, sedi_non_lette) di tutte le sedi monitorate: quelli che il «Da
+    fare» della catena mostra per punto vendita. Li legge anche il briefing di
+    catena, che non dice «tutto in ordine» sopra un elenco con avvisi (fase G)."""
+    notifiche: List[GruppoNotifica] = []
+    non_lette: List[str] = []
+    for rid in ids:
+        if rid in pv_excl:
+            continue
+        try:
+            righe = _righe_notifiche_sede(user_id, rid, sb)
+        except Exception as exc:
+            logger.warning("gruppo_notifiche: sede %s non letta: %s", rid, exc)
+            non_lette.append(rid_to_nome[rid])
+            continue
+        # Come la campanella: un sotto-utente senza Home vede solo le sue pagine.
+        if _su.e_sotto_utente(user):
+            righe = [r for r in righe if notifica_visibile(user, r.get("action_page"))]
+        for r in righe:
+            item = _notifica_item(r)
+            notifiche.append(
+                GruppoNotifica(**item.model_dump(), ristorante_id=rid, sede_nome=rid_to_nome[rid])
+            )
+    return notifiche, non_lette
+
+
 @router.get(
     "/api/gruppo/notifiche",
     tags=["Catena"],
@@ -2546,25 +2595,7 @@ def gruppo_notifiche(authorization: Optional[str] = Header(None)) -> GruppoNotif
     sb, user_id, _sedi, _nome, rid_to_nome, ids = _resolve_gruppo(authorization)
     user = _resolve_user_from_token(authorization)
     _seg_off, pv_excl = _get_gruppo_config(sb, user_id)
-    notifiche: List[GruppoNotifica] = []
-    non_lette: List[str] = []
-    for rid in ids:
-        if rid in pv_excl:
-            continue
-        try:
-            righe = _righe_notifiche_sede(user_id, rid, sb)
-        except Exception as exc:
-            logger.warning("gruppo_notifiche: sede %s non letta: %s", rid, exc)
-            non_lette.append(rid_to_nome[rid])
-            continue
-        # Come la campanella: un sotto-utente senza Home vede solo le sue pagine.
-        if _su.e_sotto_utente(user):
-            righe = [r for r in righe if notifica_visibile(user, r.get("action_page"))]
-        for r in righe:
-            item = _notifica_item(r)
-            notifiche.append(
-                GruppoNotifica(**item.model_dump(), ristorante_id=rid, sede_nome=rid_to_nome[rid])
-            )
+    notifiche, non_lette = _avvisi_delle_sedi(sb, user_id, user, ids, rid_to_nome, pv_excl)
     notifiche.sort(key=lambda n: n.created_at or "", reverse=True)
     unread = sum(1 for n in notifiche if not n.dismissed_at)
     return GruppoNotificheResponse(
