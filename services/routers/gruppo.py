@@ -2212,7 +2212,7 @@ def _completezza_viva(
         return None
 
 
-_OSSERVAZIONI_CATENA =("andamento_incasso", "food_cost_alto")
+_OSSERVAZIONI_CATENA = ("andamento_incasso", "food_cost_alto")
 
 
 def _calcola_osservazioni(

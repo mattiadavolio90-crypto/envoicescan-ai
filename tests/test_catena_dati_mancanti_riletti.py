@@ -174,6 +174,12 @@ def test_conteggio_toglie_le_sedi_completate():
     assert n == 2
 
 
+def test_la_gravita_si_calcola_sui_segnali_rimasti():
+    sb = _FakeSB(_snapshot(gruppo._SEGNALI_CODE_VERSION, [_dm("a", severity="error"), ALTRO]))
+    assert gruppo._conta_segnali_cache(sb, "u1", {}) == (1, "warning")
+    assert gruppo._conta_segnali_cache(sb, "u1", None) == (2, "error")
+
+
 def test_conteggio_senza_completezza_conta_lo_snapshot():
     sb = _FakeSB(_snapshot(gruppo._SEGNALI_CODE_VERSION, [_dm("a"), _dm("b"), ALTRO]))
     assert gruppo._conta_segnali_cache(sb, "u1")[0] == 3
