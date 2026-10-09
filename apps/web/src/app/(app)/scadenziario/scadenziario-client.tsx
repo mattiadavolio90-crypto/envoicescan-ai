@@ -26,7 +26,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, buildCashFlow, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
@@ -35,6 +35,7 @@ import {
   aperturaSezione, type AperturaSezione, ricercaAttiva,
   inPuntiVendita, alternaPuntoVendita, etichettaPuntiVendita,
 } from "@/lib/scadenziario";
+import { visteFattureOrdinate, vistaFattureIniziale } from "@/lib/tab-flags";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
 
@@ -640,80 +641,6 @@ function CalendarView({ documenti }: CalendarViewProps) {
           </p>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Cash-flow bar ── (buildCashFlow e CashFascia vivono in @/lib/scadenziario,
-// estratti per poter essere testati: vedi tests/test_scadenziario_kpi_frontend.py)
-
-function CashFlowBar({ documenti }: { documenti: Documento[] }) {
-  const fasce = useMemo(() => buildCashFlow(documenti), [documenti]);
-  const totale = fasce.reduce((s, f) => s + f.totale, 0);
-  const max = Math.max(1, ...fasce.map(f => f.totale));
-
-  // Una fascia conta se porta un importo, in qualunque direzione: `is_nota_credito`
-  // e' solo TD04, e in produzione esistono documenti non-TD04 con somma negativa
-  // (misurati il 22/09: 3, su due sedi). Contare i soli positivi faceva sparire
-  // la card quando i segni si annullavano, e disegnava sei barre vuote quando
-  // l'unica fascia valorizzata era negativa.
-  const valorizzate = fasce.filter(f => f.totale !== 0);
-  if (valorizzate.length === 0) return null;
-
-  // Sei barre di cui cinque a zero non sono un grafico: e' una barra sola con
-  // cinque segnaposto. Per CASATI si vedeva «Scadute 1.0k€» e cinque «0€».
-  // Un profilo di esposizione si legge se ci sono almeno due fasce da
-  // confrontare; altrimenti la stessa informazione sta in una riga.
-  if (valorizzate.length === 1) {
-    const sola = valorizzate[0];
-    return (
-      <div className="rounded-lg border bg-card px-4 py-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Quando pagherai
-        </p>
-        <p className="text-sm">
-          <span className="font-bold tabular-nums">{formatEuro(sola.totale)}</span>
-          <span className="text-muted-foreground">
-            {" "}in {sola.label.toLowerCase()} · {sola.count} fattur{sola.count === 1 ? "a" : "e"}
-          </span>
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        {/* Si chiamava «Esposizione futura», ma la prima fascia di
-            buildCashFlow e' «Scadute» (lib/scadenziario.ts:301): il riquadro
-            mostra anche il passato, e quando quella e' l'unica fascia con
-            soldi il titolo diceva il contrario di cio' che c'era sotto. */}
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Quando pagherai
-        </p>
-        <p className="text-sm font-bold tabular-nums">{formatEuro(totale)}</p>
-      </div>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {fasce.map(f => (
-          <div key={f.label} className="flex flex-col gap-1.5">
-            <div className="flex items-end h-16">
-              <div className="w-full flex flex-col justify-end h-full">
-                <div
-                  className={`w-full rounded-t ${f.tone} ${f.totale === 0 ? "opacity-20" : ""}`}
-                  style={{ height: `${Math.max(f.totale > 0 ? 6 : 2, (f.totale / max) * 100)}%` }}
-                  title={`${f.label}: ${formatEuro(f.totale)} · ${f.count} fatt.`}
-                />
-              </div>
-            </div>
-            <div className="text-center leading-tight">
-              <p className="text-[10px] text-muted-foreground font-medium">{f.label}</p>
-              <p className="text-xs font-semibold tabular-nums">
-                {formatEuroCompact(f.totale)}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1671,7 +1598,7 @@ type ScadenziarioClientProps = {
    */
   caricamentoFallito?: boolean;
   /**
-   * Viste consentite dal pannello admin ("agenda" = Da pagare, "calendario").
+   * Viste consentite dal pannello admin ("agenda" = Scadenzario, "calendario").
    * Default = entrambe, quindi un chiamante che non la passa resta identico a
    * prima: e' il caso della vista di CATENA (catena/fatture/page.tsx), che monta
    * questo stesso componente in un contesto diverso dal punto vendita e NON deve
@@ -1687,18 +1614,16 @@ type ScadenziarioClientProps = {
   vistaIniziale?: string;
 };
 
-export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false, visteAttive = ["agenda", "calendario", "lista_mensile"], vistaIniziale }: ScadenziarioClientProps) {
+export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false, visteAttive = ["lista_mensile", "agenda", "calendario"], vistaIniziale }: ScadenziarioClientProps) {
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
   const sedeTecnicaId = sedi.find(s => s.is_sede_tecnica)?.id;
   const [filtroSede, setFiltroSede] = useState<Set<string>>(new Set()); // vuoto = tutti i punti vendita
-  // Ordine di preferenza dei fallback: la Lista resta la vista "normale".
-  const ORDINE_VISTE: View[] = ["agenda", "calendario", "lista_mensile"];
-  const visteConsentite = ORDINE_VISTE.filter(v => visteAttive.includes(v));
-  // Parte dalla preferenza salvata, se e' ancora consentita; altrimenti dalla
-  // prima permessa. Con una vista fissa, spegnerla avrebbe mostrato una pagina
-  // vuota senza modo di uscirne (il bottone per cambiarla non viene reso).
-  const vistaSalvata = ORDINE_VISTE.find(v => v === vistaIniziale && visteAttive.includes(v));
-  const [view, setView] = useState<View>(vistaSalvata ?? visteConsentite[0] ?? "agenda");
+  // Ordine delle schede e vista d'apertura: lib/tab-flags (Archivio prima,
+  // Mattia 09/10/2026).
+  const visteConsentite = visteFattureOrdinate(visteAttive) as View[];
+  const [view, setView] = useState<View>(
+    (vistaFattureIniziale(visteAttive, vistaIniziale) ?? "lista_mensile") as View,
+  );
 
   // Il salvataggio e' best-effort e NON blocca il cambio vista: se il POST
   // fallisce la scelta resta attiva per questa sessione, invece di lampeggiare
@@ -2188,7 +2113,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               value: v,
               label: (
                 <>
-                  <Icona /> {v === "agenda" ? "Da pagare" : v === "calendario" ? "Calendario" : "Archivio fatture"}
+                  <Icona /> {v === "agenda" ? "Scadenzario" : v === "calendario" ? "Calendario" : "Archivio fatture"}
                 </>
               ),
               title:
@@ -2210,16 +2135,13 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             slot per figli — cosi' arriva anche alla catena. */}
         <InfoPopover title="Come leggere Gestione Fatture">
           <div className="space-y-1.5 text-muted-foreground">
-            <p><strong className="text-foreground">Da pagare</strong> = cosa devi pagare e quando, raggruppato per scadenza.</p>
-            <p><strong className="text-foreground">Calendario</strong> = le stesse scadenze sul calendario, giorno per giorno.</p>
             <p><strong className="text-foreground">Archivio fatture</strong> = tutte le fatture per mese di emissione, <em>senza</em> scadenze: serve per consultarle, non per pagarle.</p>
+            <p><strong className="text-foreground">Scadenzario</strong> = cosa devi pagare e quando, raggruppato per scadenza.</p>
+            <p><strong className="text-foreground">Calendario</strong> = le stesse scadenze sul calendario, giorno per giorno.</p>
           </div>
           <div className="border-t border-border pt-2 space-y-1.5 text-muted-foreground">
             <p className="font-medium text-foreground">Le card in alto non si sommano</p>
             <p><strong className="text-foreground">Da pagare</strong> e&apos; il totale: <strong className="text-foreground">Scadute</strong> e <strong className="text-foreground">Questa settimana</strong> sono due sue parti, gia&apos; comprese dentro.</p>
-          </div>
-          <div className="border-t border-border pt-2 text-muted-foreground">
-            <p><strong className="text-foreground">Quando pagherai</strong> distribuisce le fatture non pagate per fascia di scadenza. Le gia&apos; scadute sono la prima fascia.</p>
           </div>
         </InfoPopover>
 
@@ -2552,12 +2474,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       {/* Content */}
       {view === "agenda" ? (
         <div className="space-y-3">
-          {/* Cash-flow: vista d'insieme dell'esposizione. Mostrata solo senza
-              filtro periodo attivo (col filtro la barra perde senso aggregato).
-              Usa documentiCalendario = filtrati per fornitore/nuove ma non periodo. */}
-          {filtroPeriodo === "tutti" && (
-            <CashFlowBar documenti={documentiCalendario} />
-          )}
+          {/* Niente riquadro «Quando pagherai» (Mattia, 09/10/2026: «non ho
+              capito a cosa serve»): le fasce ripetevano le card in alto. */}
           {/* Chiusa all'apertura dal 17/09/2026: su una sede reale sono 414
               righe (1.685 in vista gruppo), e montarle tutte spingeva "Questo
               mese" — cio' su cui si agisce — a ~38 schermate di distanza. Il
@@ -2601,7 +2519,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
               // Solo il mese piu' recente aperto: con anni di storico, aprirli
               // tutti riempirebbe la pagina di righe che nessuno ha chiesto.
               defaultOpen={g === gruppiMensili[0]}
-              // Come nella vista Da pagare: con una ricerca attiva i mesi si
+              // Come nella vista Scadenzario: con una ricerca attiva i mesi si
               // aprono, o cercare una fattura di marzo in Archivio mostrerebbe
               // solo un elenco di mesi chiusi.
               forzaAperta={ricercaAttiva(ricerca)}

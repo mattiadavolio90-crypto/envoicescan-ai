@@ -28892,7 +28892,7 @@
           "vista_fatture": {
             "type": "string",
             "title": "Vista Fatture",
-            "default": "agenda"
+            "default": "lista_mensile"
           },
           "privacy_accepted": {
             "type": "boolean",

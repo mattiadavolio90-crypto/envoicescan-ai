@@ -87,6 +87,16 @@ def test_sovrapponi_tiene_il_tenant_e_cambia_la_persona():
     assert su.sedi_consentite(u) == {"s2"}
 
 
+
+def test_la_vista_fatture_e_della_persona_e_di_default_e_archivio():
+    """La preferenza e' del sotto-utente, non del titolare; senza valore vale
+    Archivio fatture, come il default della colonna (fase H, 09/10/2026)."""
+    titolare = {**_titolare(), "vista_fatture": "calendario"}
+    u = su.sovrapponi(titolare, {"id": "su1", "pagine": {}}, ["s2"], SEDI)
+    assert u["vista_fatture"] == "lista_mensile"
+    u = su.sovrapponi(titolare, {"id": "su1", "pagine": {}, "vista_fatture": "agenda"}, ["s2"], SEDI)
+    assert u["vista_fatture"] == "agenda"
+
 def test_sede_attiva_salvata_fuori_dalle_sedi_ricade_sulla_prima():
     u = su.sovrapponi(_titolare(), {"id": "su1", "pagine": {}, "ultimo_ristorante_id": "s1"}, ["s2"], SEDI)
     assert u["ristorante_id"] == "s2"

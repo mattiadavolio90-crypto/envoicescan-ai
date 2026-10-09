@@ -163,11 +163,12 @@ def test_la_vista_salvata_torna_nel_payload_di_sessione(monkeypatch):
     assert payload.vista_fatture == "lista_mensile"
 
 
-def test_un_utente_senza_preferenza_atterra_sulla_lista(monkeypatch):
-    """Default esplicito: i token emessi prima di questa colonna non la portano,
-    e chi non ha mai scelto deve trovare la pagina com'era."""
+def test_un_utente_senza_preferenza_atterra_sull_archivio(monkeypatch):
+    """Default esplicito: i token emessi prima di questa colonna non la portano.
+    Dal 09/10/2026 (Mattia) chi non ha scelto atterra su Archivio fatture, la
+    prima scheda — lo stesso default della colonna."""
     payload = _auth_me(monkeypatch, {"id": "u1", "email": "a@b.it"})
-    assert payload.vista_fatture == "agenda"
+    assert payload.vista_fatture == "lista_mensile"
 
 
 def test_tutte_le_select_utente_portano_la_vista():

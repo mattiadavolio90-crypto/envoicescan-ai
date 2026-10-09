@@ -426,60 +426,10 @@ export function bucketizeDocumenti(documenti: Documento[]) {
   return { scadute, settimana, mese, oltre, senzaScadenza, pagate, noteCredito, oscurate };
 }
 
-// ── Cash-flow: esposizione futura aggregata ──────────────────────────────────
-//
-// Estratta da `scadenziario-client.tsx` il 31/08/2026. Viveva dentro il
-// componente, dove nessuna tecnica di test la raggiungeva (stessa ragione, e
-// stessa strada, di `poolSaturo`/F7 in `lib/tag-candidati.ts`).
-//
-// Confini: `scadute` e' STRETTO (`s < today`), le altre fasce sono INCLUSIVE
-// (`s <= inN`). Un documento che scade oggi e' "Entro 7gg", non "Scadute".
-// Esclude pagate e note di credito: una NC non e' un debito.
-
-export type CashFascia = { label: string; totale: number; count: number; tone: string };
-
-export function buildCashFlow(documenti: Documento[]): CashFascia[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = (n: number) => { const x = new Date(today); x.setDate(x.getDate() + n); return x; };
-  const in7 = d(7), in30 = d(30), in60 = d(60), in90 = d(90);
-
-  const fasce: CashFascia[] = [
-    { label: "Scadute", totale: 0, count: 0, tone: "bg-negativo" },
-    { label: "Entro 7gg", totale: 0, count: 0, tone: "bg-incerto" },
-    { label: "8–30gg", totale: 0, count: 0, tone: "bg-incerto/60" },
-    { label: "31–60gg", totale: 0, count: 0, tone: "bg-primary" },
-    { label: "61–90gg", totale: 0, count: 0, tone: "bg-primary/60" },
-    { label: "Oltre 90gg", totale: 0, count: 0, tone: "bg-muted-foreground/40" },
-  ];
-
-  for (const doc of documenti) {
-    if (doc.pagata || doc.is_nota_credito || doc.oscurata) continue;
-    const s = parseLocalDate(doc.scadenza_effettiva);
-    // Fuori dal cash-flow di proposito: il riquadro si intitola "Quando
-    // pagherai" ed e' una distribuzione nel TEMPO — una fattura senza data non
-    // ha un "quando", e inventarle una colonna direbbe una cosa priva di senso.
-    // Il loro peso si legge nel KPI dedicato (computeKpi.senza_scadenza_*) e il
-    // rimedio sta nel riquadro dei fornitori sopra la lista.
-    if (!s) continue;
-    const t = doc.totale_documento || 0;
-    let i: number;
-    if (s < today) i = 0;
-    else if (s <= in7) i = 1;
-    else if (s <= in30) i = 2;
-    else if (s <= in60) i = 3;
-    else if (s <= in90) i = 4;
-    else i = 5;
-    fasce[i].totale += t;
-    fasce[i].count += 1;
-  }
-  return fasce;
-}
-
 // ── Filtri, ordinamento, stato: la logica che decide cosa il cliente VEDE ────
 //
 // Estratta da `scadenziario-client.tsx` il 31/08/2026, stessa strada di
-// `buildCashFlow` (sopra) e di `poolSaturo`/F7 in `lib/tag-candidati.ts`.
+// `poolSaturo`/F7 in `lib/tag-candidati.ts`.
 // Viveva dentro il componente: 2.210 righe che nessun test raggiungeva, mentre
 // decidevano quali fatture comparivano in lista e quali numeri il cliente
 // leggeva. Un difetto qui non si vede — la lista e' solo piu' corta.

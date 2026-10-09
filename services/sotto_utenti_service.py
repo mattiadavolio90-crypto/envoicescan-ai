@@ -134,7 +134,7 @@ def sovrapponi(
     utente["email"] = sotto_utente.get("email")
     utente["nome_referente"] = sotto_utente.get("nome")
     utente["tema"] = sotto_utente.get("tema") or "dark"
-    utente["vista_fatture"] = sotto_utente.get("vista_fatture") or "agenda"
+    utente["vista_fatture"] = sotto_utente.get("vista_fatture") or "lista_mensile"
     utente["privacy_accepted_at"] = sotto_utente.get("privacy_accepted_at")
     utente["pagine_abilitate"] = effettive
     utente["ultimo_ristorante_id"] = sede_attiva

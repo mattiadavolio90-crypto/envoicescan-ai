@@ -58,13 +58,14 @@ export const TAB_SEZIONI: Record<SezioneConTab, readonly TabDef[]> = {
     { key: "foodcost", label: "Foodcost" },
     { key: "inventario", label: "Inventario" },
   ],
-  // La vista «Da pagare» ha chiave tecnica `agenda` per ragioni storiche (si
-  // chiamava «Lista» fino al 22/09/2026): e' il
-  // valore del type View in scadenziario-client.tsx, non un refuso.
+  // La vista «Scadenzario» ha chiave tecnica `agenda` per ragioni storiche (si
+  // chiamava «Lista» fino al 22/09/2026, «Da pagare» fino al 09/10/2026): e' il
+  // valore del type View in scadenziario-client.tsx e di `users.vista_fatture`,
+  // non un refuso. Archivio prima (Mattia, 09/10): e' anche la vista d'apertura.
   scadenziario: [
-    { key: "agenda", label: "Da pagare" },
-    { key: "calendario", label: "Calendario" },
     { key: "lista_mensile", label: "Archivio fatture" },
+    { key: "agenda", label: "Scadenzario" },
+    { key: "calendario", label: "Calendario" },
   ],
 };
 
@@ -92,6 +93,29 @@ export function tabAttive(
   sezione: SezioneConTab,
 ): TabDef[] {
   return TAB_SEZIONI[sezione].filter((t) => tabAbilitata(pagine, sezione, t.key));
+}
+
+/**
+ * Le viste di Gestione Fatture nell'ordine delle schede, ristrette a quelle
+ * che l'admin consente. L'ordine e' quello di TAB_SEZIONI: Archivio prima.
+ */
+export function visteFattureOrdinate(attive: readonly string[]): string[] {
+  return TAB_SEZIONI.scadenziario.map((t) => t.key).filter((k) => attive.includes(k));
+}
+
+/**
+ * La vista su cui si apre Gestione Fatture: quella salvata sull'account
+ * (`users.vista_fatture`) se e' ancora consentita, altrimenti la prima
+ * consentita — con una vista spenta dall'admin il cliente non deve restare
+ * su una pagina vuota senza il bottone per uscirne. `null` = tutte spente.
+ */
+export function vistaFattureIniziale(
+  attive: readonly string[],
+  salvata: string | null | undefined,
+): string | null {
+  const consentite = visteFattureOrdinate(attive);
+  if (salvata != null && consentite.includes(salvata)) return salvata;
+  return consentite[0] ?? null;
 }
 
 // null se sono tutte spente: il chiamante decide (le pagine fanno notFound()).

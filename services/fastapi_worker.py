@@ -1252,9 +1252,10 @@ class UserPublic(BaseModel):
     pagine_abilitate: Optional[List[str]] = None
     is_admin: bool = False
     tema: str = "dark"
-    # Vista preferita di Gestione Fatture ("agenda" = Da pagare, "calendario",
-    # "lista_mensile"). Default per i token vecchi che non la portano.
-    vista_fatture: str = "agenda"
+    # Vista preferita di Gestione Fatture ("lista_mensile" = Archivio fatture,
+    # "agenda" = Scadenzario, "calendario"). Default per i token vecchi che non
+    # la portano: Archivio, come il default della colonna dal 09/10/2026.
+    vista_fatture: str = "lista_mensile"
     # False per gli account creati prima dell'introduzione del consenso esplicito
     # (colonna privacy_accepted_at aggiunta 24/5, meccanismo reale dal 2/6): la UI
     # mostra un modale bloccante di accettazione al primo accesso finche' non
@@ -1575,7 +1576,7 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         is_admin=_is_admin_utente(user),
         sotto_utente=_su.e_sotto_utente(user),
         tema=(user.get("tema") or "dark"),
-        vista_fatture=(user.get("vista_fatture") or "agenda"),
+        vista_fatture=(user.get("vista_fatture") or "lista_mensile"),
         privacy_accepted=bool(user.get("privacy_accepted_at")),
         tipo_attivita=_settore_sessione,
     )

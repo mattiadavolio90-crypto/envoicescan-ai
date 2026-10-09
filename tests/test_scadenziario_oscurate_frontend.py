@@ -4,9 +4,9 @@ Perche' esiste
 ==============
 "Escludi dai conti" e' inutile se il cliente la esclude e continua a vederla nei
 KPI in cima alla pagina: significherebbe due verita' diverse sullo stesso
-documento nella stessa schermata. Il filtro va applicato in QUATTRO punti di
-`lib/scadenziario.ts` (`computeKpi`, `bucketizeDocumenti`, `buildCashFlow`,
-`aggregaPerSede`) piu' `statoDocumento`, che decide anche cosa scrive il CSV
+documento nella stessa schermata. Il filtro va applicato in TRE punti di
+`lib/scadenziario.ts` (`computeKpi`, `bucketizeDocumenti`, `aggregaPerSede`)
+piu' `statoDocumento`, che decide anche cosa scrive il CSV
 scaricato. Dimenticarne uno non rompe niente: cambia solo un numero.
 
 Perche' le fixture hanno importo != 0 e scadenza SCADUTA
@@ -93,18 +93,6 @@ def test_i_kpi_ignorano_le_fatture_fuori_dai_conti(tz):
     assert kpi["scadute_totale"] == pytest.approx(100.0)
     assert kpi["da_pagare_count"] == 1
     assert kpi["da_pagare_totale"] == pytest.approx(100.0)
-
-
-@pytest.mark.parametrize("tz", FUSI)
-def test_il_cash_flow_ignora_le_fatture_fuori_dai_conti(tz):
-    """La barra dell'esposizione futura conta solo debiti veri."""
-    fasce = esegui_ts(
-        MODULO, "emit(m.buildCashFlow(input));", argomento=_coppia(tz), tz=tz,
-        richiede=["buildCashFlow"],
-    )
-    scadute = next(f for f in fasce if f["label"] == "Scadute")
-    assert scadute["count"] == 1
-    assert scadute["totale"] == pytest.approx(100.0)
 
 
 @pytest.mark.parametrize("tz", FUSI)

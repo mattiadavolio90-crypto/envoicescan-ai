@@ -32,7 +32,7 @@ MODULO = "lib/tab-flags"
 
 _RICHIEDE = [
     "tabOffKey", "tabAbilitata", "tabAttive", "primaTabAttiva",
-    "sezioneHaTabAttive", "risolviTab",
+    "sezioneHaTabAttive", "risolviTab", "visteFattureOrdinate", "vistaFattureIniziale",
 ]
 
 
@@ -143,6 +143,48 @@ class TestRisolviTab:
           }));
         """)
         assert all(esito), esito
+
+
+
+class TestVisteGestioneFatture:
+    """Ordine, nomi e vista d'apertura di Gestione Fatture (fase H, Mattia 09/10/2026).
+
+    Archivio prima e vista d'apertura; «Da pagare» si chiama «Scadenzario» (la
+    tessera KPI resta «Da pagare», e' un'altra cosa). Le chiavi non cambiano:
+    sono i valori di `users.vista_fatture`, gia' salvati sugli account.
+    """
+
+    def test_archivio_prima_poi_scadenzario_poi_calendario(self):
+        assert _chiama("emit(m.TAB_SEZIONI.scadenziario)") == [
+            {"key": "lista_mensile", "label": "Archivio fatture"},
+            {"key": "agenda", "label": "Scadenzario"},
+            {"key": "calendario", "label": "Calendario"},
+        ]
+
+    def test_le_schede_seguono_l_ordine_anche_se_l_admin_le_passa_in_disordine(self):
+        assert _chiama(
+            'emit(m.visteFattureOrdinate(["calendario", "agenda", "lista_mensile"]))'
+        ) == ["lista_mensile", "agenda", "calendario"]
+
+    def test_senza_vista_salvata_si_apre_su_archivio(self):
+        assert _chiama(
+            'emit(m.vistaFattureIniziale(["agenda", "calendario", "lista_mensile"], undefined))'
+        ) == "lista_mensile"
+
+    def test_la_vista_salvata_vince_se_consentita(self):
+        assert _chiama(
+            'emit(m.vistaFattureIniziale(["agenda", "calendario", "lista_mensile"], "calendario"))'
+        ) == "calendario"
+
+    def test_vista_salvata_spenta_ricade_sulla_prima_consentita(self):
+        """Archivio spento dall'admin, vista salvata Archivio: si apre lo
+        Scadenzario, non una pagina vuota senza bottoni per uscirne."""
+        assert _chiama(
+            'emit(m.vistaFattureIniziale(["calendario", "agenda"], "lista_mensile"))'
+        ) == "agenda"
+
+    def test_tutte_spente_e_null(self):
+        assert _chiama('emit(m.vistaFattureIniziale([], "agenda"))') is None
 
 
 def test_formato_chiave_riconosciuto_dal_worker():
