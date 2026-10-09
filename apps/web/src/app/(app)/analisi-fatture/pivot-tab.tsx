@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 // xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
 import {
   type PivotResponse,
@@ -129,20 +131,16 @@ export function PivotTab({ pivot, dimensione, filtri, settore }: Props) {
     <div className={`space-y-4 ${pending ? "opacity-70" : ""}`}>
       {/* Sub-filtri */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1">
+        <div className="flex gap-1.5">
           {tipoOptions(settore).map((t) => (
-            <button
+            <FilterChip
               key={t.key}
               disabled={pending}
+              active={(filtri.tipo_prodotti ?? "tutti") === t.key}
               onClick={() => setParam({ tipo: t.key === "tutti" ? undefined : t.key })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-60 ${
-                (filtri.tipo_prodotti ?? "tutti") === t.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-input hover:bg-muted"
-              }`}
             >
               {t.label}
-            </button>
+            </FilterChip>
           ))}
         </div>
         {pivot.granularita !== "mese" && (
@@ -150,13 +148,15 @@ export function PivotTab({ pivot, dimensione, filtri, settore }: Props) {
             Visualizzazione per {granuLabel} ({pivot.periodi.length} periodi)
           </span>
         )}
-        <button
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
           onClick={exportXls}
           disabled={pivot.rows.length === 0}
-          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium disabled:opacity-50"
         >
           Esporta Excel
-        </button>
+        </Button>
       </div>
 
       {pivot.rows.length === 0 ? (

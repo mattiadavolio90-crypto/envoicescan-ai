@@ -13,6 +13,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { mostraGuasto } from "@/lib/esito-caricamento";
 import { formatEuro } from "@/lib/format";
 import { intervalloPeriodo } from "@/lib/periodo";
@@ -1145,29 +1147,19 @@ export function AnalisiETagClient({
           </div>
         </InfoPopover>
         {tags.map(tag => (
-          <button
-            key={tag.id}
-            onClick={() => selectTag(tag.id)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-              tag.id === selectedTagId
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-            }`}
-          >
+          <FilterChip key={tag.id} active={tag.id === selectedTagId} onClick={() => selectTag(tag.id)}>
             {tag.emoji && <span>{tag.emoji}</span>}
             {tag.nome}
-          </button>
+          </FilterChip>
         ))}
-        <button
-          onClick={() => setDialogTag({ open: true, tag: null })}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
-        >
-          <Plus className="size-3.5" />
+        <FilterChip className="border-dashed" onClick={() => setDialogTag({ open: true, tag: null })}>
+          <Plus />
           Nuovo tag
-        </button>
+        </FilterChip>
 
         {/* Bottone suggerimenti — widget colorato */}
-        <button
+        <FilterChip
+          active={suggerimentiAperti}
           onClick={async () => {
             if (suggestions.length > 0) { setSuggerimentiAperti(v => !v); return; }
             await refreshSuggestions();
@@ -1175,18 +1167,18 @@ export function AnalisiETagClient({
             setSuggerimentiAperti(true);
           }}
           disabled={refreshingSuggestions}
-          className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium border transition-all disabled:opacity-60 ml-auto ${
+          className={`ml-auto ${
             suggestions.length === 0
-              ? "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-border"
+              ? "bg-muted"
               : suggerimentiAperti
-                ? "bg-incerto/10 border-incerto text-incerto ring-2 ring-incerto/40"
-                : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10"
+                ? "bg-incerto/10 border-incerto text-incerto ring-2 ring-incerto/40 hover:bg-incerto/10 hover:text-incerto"
+                : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10 hover:text-incerto"
           }`}
           title={suggestions.length > 0 ? "Mostra o nascondi i suggerimenti" : "Analizza prodotti non taggati e trova suggerimenti"}
         >
           {refreshingSuggestions
-            ? <RefreshCw className="size-3.5 animate-spin" />
-            : <Lightbulb className="size-3.5" />
+            ? <RefreshCw className="animate-spin" />
+            : <Lightbulb />
           }
           {refreshingSuggestions
             ? "Analisi in corso…"
@@ -1194,7 +1186,7 @@ export function AnalisiETagClient({
               ? <><span className="inline-flex items-center justify-center size-5 rounded-full bg-incerto text-white text-[10px] font-bold">{suggestions.length}</span> Suggerimenti</>
               : "Suggerimenti"
           }
-        </button>
+        </FilterChip>
       </div>
 
       {/* ── Empty state ── */}
@@ -1212,13 +1204,10 @@ export function AnalisiETagClient({
             <>
               <p className="text-sm font-medium">Nessun tag ancora</p>
               <p className="text-xs text-muted-foreground mt-1 mb-4">Crea il primo tag per raggruppare i tuoi prodotti e analizzare la spesa</p>
-              <button
-                onClick={() => setDialogTag({ open: true, tag: null })}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                <Plus className="size-4" />
+              <Button onClick={() => setDialogTag({ open: true, tag: null })}>
+                <Plus />
                 Crea primo tag
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -1234,36 +1223,33 @@ export function AnalisiETagClient({
               <h2 className="text-lg font-semibold">{selectedTag.nome}</h2>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setDialogTag({ open: true, tag: selectedTag })}
-                className="px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors"
-              >
+              <Button variant="outline" size="sm" onClick={() => setDialogTag({ open: true, tag: selectedTag })}>
                 Modifica
-              </button>
+              </Button>
               {deleteConfirm === selectedTag.id ? (
                 <div className="flex gap-1">
-                  <button
+                  <Button
+                    variant="destructive"
+                    size="sm"
                     onClick={() => deleteTag(selectedTag.id)}
                     disabled={deletingId === selectedTag.id}
-                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-negativo text-white hover:bg-negativo disabled:opacity-50 transition-colors"
                   >
                     {deletingId === selectedTag.id ? "…" : "Conferma eliminazione"}
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirm(null)}
-                    className="px-2 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors"
-                  >
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setDeleteConfirm(null)}>
                     Annulla
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <button
+                <Button
+                  variant="destructive"
+                  size="icon-sm"
                   onClick={() => setDeleteConfirm(selectedTag.id)}
-                  className="p-1.5 text-xs rounded-md border border-border text-muted-foreground hover:text-negativo hover:border-negativo/30 transition-colors"
                   title="Elimina tag"
+                  aria-label="Elimina tag"
                 >
-                  <Trash2 className="size-3.5" />
-                </button>
+                  <Trash2 />
+                </Button>
               )}
             </div>
           </div>
@@ -1336,13 +1322,15 @@ export function AnalisiETagClient({
                 >
                   <span>Trend prezzi nel periodo</span>
                   <div className="flex items-center gap-2">
-                    <button
+                    <Button
+                      variant="outline"
+                      size="icon-xs"
                       onClick={e => { e.stopPropagation(); exportXls(); }}
-                      className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                       title="Esporta XLS"
+                      aria-label="Esporta XLS"
                     >
-                      <Download className="size-3.5" />
-                    </button>
+                      <Download />
+                    </Button>
                     {showTrend ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
                   </div>
                 </div>

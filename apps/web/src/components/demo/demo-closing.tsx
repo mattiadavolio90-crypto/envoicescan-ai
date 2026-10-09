@@ -63,7 +63,7 @@ export function DemoClosing({ onRestart }: { onRestart: () => void }) {
         {/* CTA unica dominante: il bottone porta l'offerta */}
         <div className="mt-6 flex flex-col items-center gap-3">
           <a href={waHref} target="_blank" rel="noopener noreferrer" className="w-full max-w-sm">
-            <Button size="lg" className="h-12 w-full gap-2 bg-emerald-600 text-base text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700">
+            <Button className="h-12 w-full gap-2 bg-emerald-600 text-base text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700">
               <MessageCircle className="size-5" />
               Attiva la prova gratuita — 7 giorni
             </Button>

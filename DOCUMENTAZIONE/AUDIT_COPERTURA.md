@@ -1840,6 +1840,23 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   servizi; domande proposte e card non filtrate per pagina/scheda; con un solo
 >   dipendente i totali sono suoi; anno senza mese = mese corrente di quell'anno;
 >   il «3» della nota degli avvisi e' scritto a mano (`_MAX_ALERT`).
+> - **09/10/2026 — bottoni, un sistema solo.**
+>   Un audit a video aveva misurato 6 altezze del secondario, 4 «Tutti», angoli a
+>   4/8/10 px. **Fatto:** Button a 3 taglie (24/28/32px) e un solo raggio; nuovi
+>   `FilterChip`, `SegmentedControl`, `UnderlineTabs`; migrati i punti segnalati
+>   (Gestione Fatture, Analisi Fatture, Osservatorio, Analisi e Tag, Agenda,
+>   Foodcost, banner suggerimenti). Presidio a trinquetto
+>   `tests/test_bottoni_condivisi_frontend.py` (4 test): 186 `<button` a mano in
+>   43 file e 52 `<Button` con taglia sovrascritta in 13 file, congelati e solo
+>   in discesa; **7 mutanti, tutti uccisi** (il commento resta verde come atteso;
+>   M3 alza due basi insieme, non isola la causa). Misurato a video con Chromium
+>   headless su una pagina temporanea: 24/28/32px, raggio 10px, pillole 28px.
+>   Suite `python -m pytest tests/ -m "not sql" -q -p no:randomly`: **18.269 verdi,
+>   58 skip** (1.032 `-m sql` esclusi). `tsc --noEmit` pulito.
+>   **Non fatto, dichiarato:** pagine reali a video (serve il login, ho provato
+>   solo i componenti), tema scuro per pagina, dialog, hover; `/m`; 4 copie di
+>   `tabs-switcher.tsx`; doppio token rosso; icona nel titolo Admin. Dettaglio in
+>   `DOCUMENTAZIONE/COERENZA_VISIVA_FASI.md` §16.
 
 ---
 

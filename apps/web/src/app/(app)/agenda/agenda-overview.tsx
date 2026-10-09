@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, CalendarDays, Wallet, Users, LayoutGrid, CalendarRange, List, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { toast } from "sonner";
 import { EventoDialog } from "../workspace/diario-tab";
 import { tipoSpesaLabel, type Settore } from "@/lib/categorie-spesa";
@@ -296,22 +297,17 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
           const haDati = fontiConDati.has(f);
           const Icon = info.icon;
           return (
-            <button
+            <FilterChip
               key={f}
+              empty={!haDati}
+              aria-pressed={attiva}
               onClick={() => toggleFonte(f)}
-              disabled={!haDati}
               title={haDati ? undefined : "Niente di questo tipo in questo mese"}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                !haDati
-                  ? "border-dashed border-border text-muted-foreground/50 cursor-default"
-                  : attiva
-                    ? `${info.chip} border-transparent`
-                    : "border-border text-muted-foreground hover:text-foreground opacity-60"
-              }`}
+              className={haDati && attiva ? `${info.chip} border-transparent hover:bg-accent` : undefined}
             >
-              <Icon className="size-3.5" />
+              <Icon />
               {info.label}
-            </button>
+            </FilterChip>
           );
         })}
         <div className="ml-auto flex items-center gap-2">

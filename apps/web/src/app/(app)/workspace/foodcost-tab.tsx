@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2, BookOpen, BarChart3, Copy, ChevronUp, ChevronDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
@@ -133,27 +134,19 @@ export function FoodcostTab() {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => { setEditorRicetta(null); setEditorOpen(true); }}>
-          <Plus className="size-4 mr-1.5" />Nuova ricetta
+        <Button size="sm" onClick={() => { setEditorRicetta(null); setEditorOpen(true); }}>
+          <Plus />Nuova ricetta
         </Button>
-        <Button variant="outline" onClick={() => setManualiOpen(true)}>
-          <BookOpen className="size-4 mr-1.5" />Ingredienti manuali
+        <Button size="sm" variant="outline" onClick={() => setManualiOpen(true)}>
+          <BookOpen />Ingredienti manuali
         </Button>
 
         {/* Filtro categoria */}
-        <div className="flex flex-wrap gap-1 ml-auto">
+        <div className="flex flex-wrap gap-1.5 ml-auto">
           {categorieFiltro.map(c => (
-            <button
-              key={c}
-              onClick={() => setFiltroCategoria(c)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                filtroCategoria === c
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-              }`}
-            >
-              {c}
-            </button>
+            <FilterChip key={c} active={filtroCategoria === c} onClick={() => setFiltroCategoria(c)}>
+              {c === "TUTTI" ? "Tutti" : c}
+            </FilterChip>
           ))}
         </div>
 

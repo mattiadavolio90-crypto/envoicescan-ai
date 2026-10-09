@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +42,8 @@ const statoColore: Record<string, string> = {
 };
 
 export default function StyleGuidePage() {
+  const [segmento, setSegmento] = useState<"tutti" | "preferiti">("tutti");
+  const [scheda, setScheda] = useState<"da-pagare" | "calendario">("da-pagare");
   return (
     <div className="max-w-4xl space-y-10">
       <div>
@@ -135,10 +141,43 @@ export default function StyleGuidePage() {
           <Button disabled>Disabilitato</Button>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button size="sm">Piccolo</Button>
-          <Button size="default">Default</Button>
-          <Button size="lg">Grande</Button>
+          <Button size="xs">Compatto (24px)</Button>
+          <Button size="sm">Standard (28px)</Button>
+          <Button size="default">Form e dialog (32px)</Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Azioni di pagina (esporta, aggiorna, paginazione): outline 28px. Azioni che cancellano: destructive.
+          Un solo raggio per tutte le taglie: la taglia si sceglie con <code>size=</code>, non con le classi.
+        </p>
+      </section>
+
+      <Separator />
+
+      {/* Filtri e sezioni */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Filtri e sezioni</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <FilterChip active>Tutti</FilterChip>
+          <FilterChip>Solo scadute</FilterChip>
+          <FilterChip empty>Senza dati</FilterChip>
+          <SegmentedControl
+            aria-label="Mostra"
+            value={segmento}
+            onChange={setSegmento}
+            options={[
+              { value: "tutti", label: "Tutti" },
+              { value: "preferiti", label: "Preferiti" },
+            ]}
+          />
+        </div>
+        <UnderlineTabs
+          value={scheda}
+          onChange={setScheda}
+          tabs={[
+            { value: "da-pagare", label: "Da pagare" },
+            { value: "calendario", label: "Calendario" },
+          ]}
+        />
       </section>
 
       <Separator />

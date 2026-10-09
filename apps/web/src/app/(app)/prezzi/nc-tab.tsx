@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw, FileX2, Building2, Euro, FileText, Calendar, Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { NoteCreditoResponse } from "@/lib/prezzi";
 import { MESI_LUNGHI } from "@/lib/mesi";
@@ -148,14 +149,10 @@ export function NcTab() {
               {fmtItDate(dataDaCustom)} → {fmtItDate(dataACustom)}
             </span>
           )}
-          <button
-            onClick={() => load()}
-            disabled={loading}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => load()} disabled={loading}>
+            <RefreshCw className={loading ? "animate-spin" : ""} />
             Aggiorna
-          </button>
+          </Button>
         </div>
 
         {showMese && (

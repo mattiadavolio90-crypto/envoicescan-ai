@@ -21,6 +21,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
+import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { formatEuro } from "@/lib/format";
 import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
@@ -365,14 +366,10 @@ export function ScoreTab() {
               {fmtItDate(dataDaCustom)} → {fmtItDate(dataACustom)}
             </span>
           )}
-          <button
-            onClick={() => load()}
-            disabled={loading}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => load()} disabled={loading}>
+            <RefreshCw className={loading ? "animate-spin" : ""} />
             Aggiorna
-          </button>
+          </Button>
         </div>
 
         {showMese && (

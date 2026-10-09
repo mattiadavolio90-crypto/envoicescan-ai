@@ -38,7 +38,6 @@ export function DemoCover({ onStart }: { onStart: () => void }) {
 
         <div className="mt-8 flex flex-col items-center gap-3">
           <Button
-            size="lg"
             onClick={onStart}
             className="h-12 w-full max-w-sm gap-2 text-base shadow-lg shadow-primary/30"
           >

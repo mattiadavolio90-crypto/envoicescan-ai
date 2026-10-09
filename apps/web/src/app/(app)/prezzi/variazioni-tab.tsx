@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { RefreshCw, ChevronDown, Search, TriangleAlert, CheckCircle2, Calendar, Settings2, Star } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { toast } from "sonner";
 import {
   LineChart,
@@ -733,14 +735,10 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                 <p>Dati dalle tue fatture reali: servono almeno due acquisti dello stesso prodotto.</p>
               </div>
             </InfoPopover>
-            <button
-              onClick={() => loadRange(rangeAttivo(), soglia)}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
-            >
-              <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            <Button variant="outline" size="sm" onClick={() => loadRange(rangeAttivo(), soglia)} disabled={loading}>
+              <RefreshCw className={loading ? "animate-spin" : ""} />
               Aggiorna
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -843,21 +841,23 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           </div>
           {variazioni.length > 0 && (
           <>
-          <div className="inline-flex rounded-full border border-border p-0.5 bg-background">
-            <button
-              onClick={() => setSoloPreferiti(false)}
-              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${!soloPreferiti ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            >
-              Tutti
-            </button>
-            <button
-              onClick={() => setSoloPreferiti(true)}
-              className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full transition-colors ${soloPreferiti ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            >
-              <Star className={`size-3 ${soloPreferiti ? "fill-current" : "fill-incerto text-incerto"}`} />
-              Preferiti{nPreferiti > 0 ? ` (${nPreferiti})` : ""}
-            </button>
-          </div>
+          <SegmentedControl
+            aria-label="Mostra"
+            value={soloPreferiti ? "preferiti" : "tutti"}
+            onChange={(v) => setSoloPreferiti(v === "preferiti")}
+            options={[
+              { value: "tutti", label: "Tutti" },
+              {
+                value: "preferiti",
+                label: (
+                  <>
+                    <Star className={`size-3 ${soloPreferiti ? "fill-current" : "fill-incerto text-incerto"}`} />
+                    Preferiti{nPreferiti > 0 ? ` (${nPreferiti})` : ""}
+                  </>
+                ),
+              },
+            ]}
+          />
           <div className="relative">
             <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -1004,20 +1004,22 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                 Pagina {safePage} di {totalPages} · {filtered.length.toLocaleString("it-IT")} variazioni
               </span>
               <div className="flex gap-2">
-                <button
-                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={safePage <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   ← Precedente
-                </button>
-                <button
-                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={safePage >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
                   Successiva →
-                </button>
+                </Button>
               </div>
             </div>
           )}

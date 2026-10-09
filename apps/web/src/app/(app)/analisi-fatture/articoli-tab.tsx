@@ -3,6 +3,8 @@
 import { memo, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import {
   SPESE_GENERALI_SET,
   CATEGORIA_NON_CLASSIFICATA,
@@ -323,20 +325,16 @@ export function ArticoliTab({
     <div className="space-y-3">
       {/* Sub-filtri */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1">
+        <div className="flex gap-1.5">
           {tipoOptions(settore).map((t) => (
-            <button
+            <FilterChip
               key={t.key}
               disabled={pending}
+              active={(filtri.tipo_prodotti ?? "tutti") === t.key}
               onClick={() => setUrlParam({ tipo: t.key === "tutti" ? undefined : t.key })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-60 ${
-                (filtri.tipo_prodotti ?? "tutti") === t.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background border-input hover:bg-muted"
-              }`}
             >
               {t.label}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
@@ -377,14 +375,16 @@ export function ArticoliTab({
           ))}
         </select>
 
-        <button
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
           onClick={exportXls}
           disabled={sorted.length === 0 || exporting}
-          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
         >
           {exporting && <Loader2 className="size-3 animate-spin" />}
           {exporting ? "Esporto…" : "Esporta Excel"}
-        </button>
+        </Button>
       </div>
 
       {/* Toggle: Nuovi / Solo verifica */}
@@ -517,20 +517,22 @@ export function ArticoliTab({
                 Pagina {safePage} di {totalPages} · {sorted.length.toLocaleString("it-IT")} prodotti
               </span>
               <div className="flex gap-2">
-                <button
-                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={safePage <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   ← Precedente
-                </button>
-                <button
-                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={safePage >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
                   Successiva →
-                </button>
+                </Button>
               </div>
             </div>
           )}

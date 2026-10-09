@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { TriggerDef } from "@/lib/trigger-servizi";
 
 // Giorni di silenzio dopo che l'utente chiude un trigger: se lo ignora non
@@ -93,17 +94,19 @@ export function TriggerHint({ trigger, enabled = true, className }: Props) {
       </p>
       <Link
         href={`/assistenza?servizio=${trigger.servizioKey}`}
-        className="shrink-0 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+        className={cn(buttonVariants({ size: "sm" }), "shrink-0 hover:bg-primary/90")}
       >
         {trigger.cta}
       </Link>
-      <button
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={dismiss}
         aria-label="Nascondi suggerimento"
-        className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="shrink-0 text-muted-foreground"
       >
         <X className="size-4" />
-      </button>
+      </Button>
     </div>
   );
 }

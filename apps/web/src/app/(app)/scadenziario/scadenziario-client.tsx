@@ -8,6 +8,8 @@ import {
   Split, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
@@ -2169,6 +2171,37 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       {/* Niente riquadro giallo «N fatture senza scadenza» (Mattia, 28/9): il
           totale sta gia' sotto «Da pagare», le fatture nella sezione «Senza
           scadenza» dell'elenco, e i termini si impostano da «Regole fornitore». */}
+      {/* Reso come `map` e non con una condizione per coppia: con tre viste
+          un `mostraLista && mostraCalendario` avrebbe nascosto la scheda
+          proprio quando le viste sono piu' di due. */}
+      {visteConsentite.length > 1 && (
+        <UnderlineTabs
+          value={view}
+          onChange={cambiaVista}
+          tabs={visteConsentite.map((v) => {
+            const Icona = v === "agenda" ? List : v === "calendario" ? CalendarDays : CalendarRange;
+            // «Lista / Calendario / Per mese» descrivevano la FORMA della
+            // pagina, non la domanda a cui risponde, e nessuna diceva che
+            // "Per mese" e' l'unica che nasconde le scadenze — cioe' proprio
+            // la funzione che serve per consultare le fatture senza scadenze.
+            return {
+              value: v,
+              label: (
+                <>
+                  <Icona /> {v === "agenda" ? "Da pagare" : v === "calendario" ? "Calendario" : "Archivio fatture"}
+                </>
+              ),
+              title:
+                v === "agenda"
+                  ? "Cosa devi pagare e quando, raggruppato per scadenza"
+                  : v === "calendario"
+                    ? "Le scadenze sul calendario, giorno per giorno"
+                    : "Tutte le fatture per mese di emissione, senza scadenze",
+            };
+          })}
+        />
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* L'unica pagina dell'app senza aiuto, ed e' quella con tre viste e
@@ -2190,43 +2223,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           </div>
         </InfoPopover>
 
-        {/* Reso come `map` e non con una condizione per coppia: con tre viste
-            un `mostraLista && mostraCalendario` avrebbe nascosto il bottone
-            proprio quando le viste sono piu' di due. */}
-        {visteConsentite.length > 1 && (
-          <div className="flex rounded-md border overflow-hidden">
-            {visteConsentite.map((v, i) => {
-              const Icona = v === "agenda" ? List : v === "calendario" ? CalendarDays : CalendarRange;
-              // «Lista / Calendario / Per mese» descrivevano la FORMA della
-              // pagina, non la domanda a cui risponde, e nessuna diceva che
-              // "Per mese" e' l'unica che nasconde le scadenze — cioe' proprio
-              // la funzione che serve per consultare le fatture senza scadenze.
-              const etichetta = v === "agenda" ? "Da pagare" : v === "calendario" ? "Calendario" : "Archivio fatture";
-              const spiegazione =
-                v === "agenda"
-                  ? "Cosa devi pagare e quando, raggruppato per scadenza"
-                  : v === "calendario"
-                    ? "Le scadenze sul calendario, giorno per giorno"
-                    : "Tutte le fatture per mese di emissione, senza scadenze";
-              return (
-                <button
-                  key={v}
-                  title={spiegazione}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l" : ""} ${view === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                  onClick={() => cambiaVista(v)}
-                >
-                  <Icona className="size-3.5" /> {etichetta}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setRegoleOpen(true)}>
+        <Button variant="outline" size="sm" onClick={() => setRegoleOpen(true)}>
           <Settings2 className="size-3.5" /> Regole fornitore
         </Button>
 
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={exportCsv}>
+        <Button variant="outline" size="sm" onClick={exportCsv}>
           <Download className="size-3.5" /> Esporta CSV
         </Button>
 
@@ -2234,13 +2235,12 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           <Button
             variant={cestinoOpen ? "secondary" : "outline"}
             size="sm"
-            className="h-8 gap-1.5 text-xs"
             onClick={toggleCestino}
           >
             <ArchiveRestore className="size-3.5" />
             Cestino{cestinoItems.length > 0 && ` (${cestinoItems.length})`}
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={loadData} disabled={refreshing}>
+          <Button variant="outline" size="sm" onClick={loadData} disabled={refreshing}>
             {refreshing ? "..." : "Aggiorna"}
           </Button>
         </div>
@@ -2265,13 +2265,12 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                     <span className="text-xs text-muted-foreground">
                       {modalitaCatena ? "Elimini il cestino di questa sede?" : "Elimini tutto il cestino?"}
                     </span>
-                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCestinoConfermaSvuota(false)} disabled={cestinoActionLoading}>
+                    <Button variant="outline" size="sm" onClick={() => setCestinoConfermaSvuota(false)} disabled={cestinoActionLoading}>
                       Annulla
                     </Button>
                     <Button
                       variant="destructive"
                       size="sm"
-                      className="h-7 text-xs"
                       onClick={() => { setCestinoConfermaSvuota(false); handleCestinoSvuota(); }}
                       disabled={cestinoActionLoading}
                     >
@@ -2280,9 +2279,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                   </div>
                 ) : (
                   <Button
-                    variant="ghost"
+                    variant="destructive"
                     size="sm"
-                    className="h-7 text-xs text-destructive hover:text-destructive"
                     onClick={() => setCestinoConfermaSvuota(true)}
                     disabled={cestinoActionLoading}
                   >
@@ -2291,7 +2289,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                   </Button>
                 )
               )}
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={loadCestino} disabled={cestinoLoading}>
+              <Button variant="outline" size="sm" onClick={loadCestino} disabled={cestinoLoading}>
                 {cestinoLoading ? <Loader2 className="size-3.5 animate-spin" /> : "Aggiorna"}
               </Button>
             </div>
@@ -2414,16 +2412,9 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             {(["tutti", "scadute"] as Periodo[]).map(p => {
               const labels: Partial<Record<Periodo, string>> = { tutti: "Tutti", scadute: "Solo scadute" };
               return (
-                <button
-                  key={p}
-                  onClick={() => setFiltroPeriodo(p)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
-                    ${filtroPeriodo === p
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
+                <FilterChip key={p} active={filtroPeriodo === p} onClick={() => setFiltroPeriodo(p)}>
                   {labels[p]}
-                </button>
+                </FilterChip>
               );
             })}
           </div>
@@ -2436,29 +2427,20 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             {(["settimana", "mese"] as Periodo[]).map(p => {
               const labels: Partial<Record<Periodo, string>> = { settimana: "Questa settimana", mese: "Questo mese" };
               return (
-                <button
-                  key={p}
-                  onClick={() => setFiltroPeriodo(f => f === p ? "tutti" : p)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
-                    ${filtroPeriodo === p
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border hover:bg-muted text-muted-foreground"}`}
-                >
+                <FilterChip key={p} active={filtroPeriodo === p} onClick={() => setFiltroPeriodo(f => f === p ? "tutti" : p)}>
                   {labels[p]}
-                </button>
+                </FilterChip>
               );
             })}
-            <button
-              type="button"
+            <FilterChip
+              active={filtroPeriodo === "personalizzato"}
               onClick={() => setFiltroPeriodo(f => f === "personalizzato" ? "tutti" : "personalizzato")}
               title="Intervallo di date personalizzato"
-              className={`flex items-center justify-center size-7 rounded-full border transition-colors flex-shrink-0
-                ${filtroPeriodo === "personalizzato"
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border hover:bg-muted text-muted-foreground"}`}
+              aria-label="Intervallo di date personalizzato"
+              className="size-7 px-0"
             >
-              <Calendar className="size-3.5" />
-            </button>
+              <Calendar />
+            </FilterChip>
           </div>
 
           <Separator orientation="vertical" className="h-5" />

@@ -1102,3 +1102,41 @@ La **fase 3** (§14), 11 rilievi: la tabella Margini con le sue tre decisioni, i
 due grafici senza scala (M4, AF4) e sei ritocchi minori. Vincolo invariato:
 **una pagina per volta, mostrata prima di passare oltre**, e **R2 mai
 verificato** — nessuno ha ancora visto l'app sotto i 1900px.
+
+---
+
+## 16. I bottoni — un sistema solo (9/10/2026)
+
+Un audit a video (estensione Chrome, tema chiaro, stato a riposo) aveva misurato
+sei altezze del bottone secondario, quattro versioni del filtro «Tutti», angoli
+a 4, 8 e 10 px, due modi diversi di cambiare sezione. Il componente
+`components/ui/button.tsx` c'era già: 66 file avevano comunque ricreato il
+bottone a mano. Non tutto l'audit era un difetto — «Cestino» apre il cestino,
+non cancella, e i filtri dell'Agenda senza dati sono tratteggiati di proposito.
+
+**Regole** (una volta, nel Button):
+- tre taglie: `xs` 24px (righe dense), `sm` 28px **standard** (azioni di pagina),
+  `default` 32px (form e dialog). Un solo raggio. `lg` tolto.
+- azioni di pagina (esporta, aggiorna, paginazione) = `outline` + `sm`;
+  azioni che cancellano = `destructive`.
+- la taglia si sceglie con `size=`, non con `h-8 text-xs`.
+
+**Componenti nuovi** in `components/ui/`: `FilterChip` (pillola 28px: attivo,
+non attivo, senza dati), `SegmentedControl` (opzioni esclusive, es. Tutti /
+Preferiti), `UnderlineTabs` (cambio sezione, come i tab del resto dell'app).
+Mostrati in `/style-guide`.
+
+**Migrati**: Gestione Fatture (sezioni a tab, «Aggiorna» da ghost a outline,
+filtri), Analisi Fatture e Osservatorio (export, paginazione, «Tutti»,
+«Aggiorna»), Analisi e Tag (pillole, modifica/elimina), Agenda (filtri fonte,
+senza il testo al 50%), Foodcost, il banner dei suggerimenti.
+
+**Presidio**: `tests/test_bottoni_condivisi_frontend.py` è un **trinquetto**: i
+file che hanno ancora `<button` a mano o `<Button` con la taglia sovrascritta
+restano in due liste (`BASE_BUTTON`, `BASE_TAGLIA`) e il numero può solo
+scendere; un file nuovo parte da zero. Provato per mutazione (7 mutanti).
+
+**Resta** (dichiarato, non nascosto): i file ancora in `BASE_BUTTON`; `/m`, che
+non usa il Button condiviso; le quattro copie di `tabs-switcher.tsx`; il doppio
+token rosso `negativo` / `destructive`; l'icona nel titolo delle pagine Admin.
+Da guardare ancora a video: tema scuro per pagina, dialog, hover, menu a tendina.
