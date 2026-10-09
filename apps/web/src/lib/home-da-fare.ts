@@ -93,24 +93,31 @@ export type DaFareCatena = {
   verde: boolean;
 };
 
-// Le voci di `dati_mancanti` (gruppo.py, `_CHIAVE_MANCA`) e l'avviso della sede
-// che dice la stessa cosa.
-const TOPIC_DELLA_VOCE: Record<string, string> = {
-  fatturato: "fatturato_mancante",
-  fatture: "fatture_mancanti",
-  personale: "costo_personale_mancante",
-};
+// Il segnale «Mancano le fatture costo» della catena parla del mese chiuso;
+// l'avviso della sede «Mancano le fatture costo di settembre» dice lo stesso, e
+// in piu' il mese: nell'elenco unico si tiene l'avviso. Ma lo stesso topic ha
+// anche avvisi che dicono ALTRO: «Nessuna fattura caricata nell'ultima
+// settimana» (fatture), «Costo del personale mancante in luglio e agosto» senza
+// il mese chiuso (personale). Quelli non coprono il segnale (revisore, 9/10:
+// tre sedi vere perdevano «Mancano le fatture costo» di settembre).
+function voceDetta(voce: string, mese: number | null | undefined, avvisi: Notifica[]): boolean {
+  return avvisi.some((a) => {
+    const p = (a.payload ?? {}) as { tipo?: unknown; mesi?: unknown };
+    if (voce === "fatturato") return a.topic_key === "fatturato_mancante";
+    if (voce === "fatture") return a.topic_key === "fatture_mancanti" && p.tipo === "mese_senza_costi";
+    if (voce === "personale") {
+      // Senza `mese` (null) nessun elenco di mesi lo contiene: resta il segnale.
+      return a.topic_key === "costo_personale_mancante" && Array.isArray(p.mesi) && p.mesi.includes(mese);
+    }
+    return false;
+  });
+}
 
-// Il segnale «Mancano le fatture costo» della catena e l'avviso «Mancano le
-// fatture costo di settembre» della sede sono lo stesso fatto: nell'elenco
-// unico si tiene quello della sede, che dice anche il mese. Solo se OGNI voce
-// del segnale e' gia' detta: altrimenti si perderebbe un dato. Senza `manca`
-// (snapshot vecchio) il segnale resta.
-function giaDettoDallaSede(s: Segnale, topics: Set<string>): boolean {
+// Solo se OGNI voce del segnale e' gia' detta: altrimenti si perderebbe un
+// dato. Senza `manca` (snapshot vecchio) il segnale resta.
+function giaDettoDallaSede(s: Segnale, avvisi: Notifica[]): boolean {
   if (s.tipo !== "dati_mancanti" || !Array.isArray(s.manca) || s.manca.length === 0) return false;
-  // Una voce sconosciuta («toString») da' un valore che non e' un topic: il Set
-  // contiene solo stringhe di topic, quindi non e' mai coperta.
-  return s.manca.every((v) => topics.has(TOPIC_DELLA_VOCE[v]));
+  return s.manca.every((v) => voceDetta(v, s.mese, avvisi));
 }
 
 /**
@@ -167,13 +174,11 @@ export function daFareCatena(input: {
   const avvisi = (input.avvisi?.notifiche ?? []).filter(
     (a) => !a.dismissed_at && !archiviati.has(`avviso-${chiaveAvviso(a)}`),
   );
-  const topicsDellaSede = new Map<string, Set<string>>();
+  const avvisiDellaSede = new Map<string, Notifica[]>();
   for (const a of avvisi) {
     const rid = (a.ristorante_id ?? "").trim();
-    if (!rid || !a.topic_key) continue;
-    const t = topicsDellaSede.get(rid) ?? new Set<string>();
-    t.add(a.topic_key);
-    topicsDellaSede.set(rid, t);
+    if (!rid) continue;
+    avvisiDellaSede.set(rid, [...(avvisiDellaSede.get(rid) ?? []), a]);
   }
 
   if (input.segnali) {
@@ -188,7 +193,7 @@ export function daFareCatena(input: {
         ignorabile: false,
       };
       if (!rid) generali.push(voce);
-      else if (!giaDettoDallaSede(s, topicsDellaSede.get(rid) ?? new Set())) aggiungi(rid, s.pv_nome, voce);
+      else if (!giaDettoDallaSede(s, avvisiDellaSede.get(rid) ?? [])) aggiungi(rid, s.pv_nome, voce);
     });
   }
 

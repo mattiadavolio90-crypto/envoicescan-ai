@@ -1926,8 +1926,9 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # tace su un mese con l'incasso molto sotto i mesi vicini (ferie). Uno snapshot
 # v4 ripete l'allarme su OVERTIME e OFFSIDE (agosto) fino a mezzanotte.
 # 6 = 09/10/2026 (fase G del piano consulente): `dati_mancanti` porta `manca`, le
-# voci mancanti con un nome stabile. Uno snapshot v5 non le ha, e la Home di
-# catena mostrerebbe il segnale accanto all'avviso della sede che dice lo stesso.
+# voci mancanti con un nome stabile, e `mese`, il mese chiuso. Uno snapshot v5
+# non li ha, e la Home di catena mostrerebbe il segnale accanto all'avviso della
+# sede che dice lo stesso.
 _SEGNALI_CODE_VERSION = 6
 
 # Soglie v1 confermate da Mattia.
@@ -1949,9 +1950,11 @@ class Segnale(BaseModel):
     pv_nome: str
     testo: str                      # messaggio con il numero che lo giustifica
     cta_page: str                   # pagina PV dove approfondire (deep link)
-    # Solo `dati_mancanti`: quali voci mancano (_CHIAVE_MANCA). Vuoto = non si sa,
-    # e la Home di catena tiene il segnale.
+    # Solo `dati_mancanti`: quali voci mancano (_CHIAVE_MANCA) e di quale mese
+    # (il mese chiuso, 1-12). Vuoto/None = non si sa, e la Home di catena tiene
+    # il segnale.
     manca: List[str] = []
+    mese: Optional[int] = None
 
 
 class Osservazione(BaseModel):
@@ -2255,6 +2258,7 @@ def _calcola_segnali(
                         "testo": "Mancano " + _elenco_it(manca) + " — vai a completare nel punto vendita",
                         "cta_page": "/dashboard",
                         "manca": [_CHIAVE_MANCA[m] for m in manca if m in _CHIAVE_MANCA],
+                        "mese": _mc_mese,
                     })
         except Exception as exc:
             # Un errore NON puo' sparire in silenzio: senza questo segnale la card

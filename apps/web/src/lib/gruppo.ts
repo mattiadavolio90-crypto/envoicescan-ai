@@ -168,8 +168,10 @@ export type Segnale = {
   testo: string;
   cta_page: string; // pagina PV dove approfondire (deep link "Vedi PV →")
   // Solo `dati_mancanti`: le voci che mancano ("fatturato" | "fatture" |
-  // "personale"). Assente in uno snapshot di prima del 9/10/2026.
+  // "personale") e il mese chiuso di cui parla (1-12). Assenti in uno snapshot
+  // di prima del 9/10/2026.
   manca?: string[];
+  mese?: number | null;
 };
 
 // Osservazioni da consulente (fase 6): fatti sull'andamento di un PV, non

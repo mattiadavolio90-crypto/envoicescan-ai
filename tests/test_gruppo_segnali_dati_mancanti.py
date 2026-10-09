@@ -156,6 +156,17 @@ class TestVociMancantiConNome:
         assert dm[0]["manca"] == ["fatturato"]
         assert "personale" not in dm[0]["testo"]
 
+    def test_il_segnale_dice_il_mese_chiuso(self, monkeypatch):
+        """La Home confronta questo mese con i `mesi` dell'avviso del personale.
+        `_calcola_segnali` legge l'ora da se': si confronta col mese chiuso di
+        oggi a Roma, calcolato dall'helper del modulo."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        import services.routers.gruppo as g
+        atteso = g._mese_chiuso(datetime.now(tz=ZoneInfo("Europe/Rome")).date())[1]
+        dm = self._dm([{"ristorante_id": "b", "netto": 0, "n_fatture": 0, "personale": 0}], monkeypatch)
+        assert dm[0]["mese"] == atteso
+
     def test_le_frasi_hanno_tutte_un_nome(self):
         """Ogni voce che `_completezza_dati_pv` puo' scrivere ha il suo nome."""
         from services.routers.gruppo import _CHIAVE_MANCA
@@ -167,6 +178,7 @@ class TestVociMancantiConNome:
         s = Segnale(tipo="dati_mancanti", severity="warning", ristorante_id="b", pv_nome="PV B",
                     testo="Mancano le fatture costo", cta_page="/dashboard", manca=["fatture"])
         assert s.model_dump()["manca"] == ["fatture"]
+        assert Segnale(**{**s.model_dump(), "mese": 9}).model_dump()["mese"] == 9
         vecchio = Segnale(tipo="margine_calo", severity="warning", ristorante_id="b", pv_nome="PV B",
                           testo="Margine al 30%", cta_page="/margini")
-        assert vecchio.manca == []
+        assert vecchio.manca == [] and vecchio.mese is None

@@ -33,13 +33,15 @@ def _catena(segnali=None, errore=False, n=0, avvisi=_NESSUN_AVVISO, errore_avvis
     )
 
 
-def _seg(tipo="dati_mancanti", rid="r1", nome="PV Uno", testo="Mancano le fatture", severity="warning", manca=None):
+def _seg(tipo="dati_mancanti", rid="r1", nome="PV Uno", testo="Mancano le fatture", severity="warning",
+         manca=None, mese=9):
     s = {
         "tipo": tipo, "severity": severity, "ristorante_id": rid,
         "pv_nome": nome, "testo": testo, "cta_page": "/margini",
     }
     if manca is not None:
         s["manca"] = manca
+        s["mese"] = mese
     return s
 
 
@@ -51,10 +53,12 @@ def _oss(tipo="andamento_incasso", rid="r1", nome="PV Uno", testo="Incasso in ca
 
 
 def _avv(id="n1", rid="r1", nome="PV Uno", topic="scadenza_superata", title="Scadenze superate (3)",
-         severity="warning", body=None, dismissible=True, action_page="/scadenziario", dismissed_at=None):
+         severity="warning", body=None, dismissible=True, action_page="/scadenziario", dismissed_at=None,
+         payload=None):
     return {
         "id": id, "topic_key": topic, "source_type": "live", "severity": severity,
         "title": title, "body": body, "action_page": action_page, "dismissible": dismissible,
+        "payload": payload,
         "dismissed_at": dismissed_at, "expires_at": None, "created_at": "2026-10-09T08:00:00Z",
         "ristorante_id": rid, "sede_nome": nome,
     }
@@ -233,7 +237,14 @@ def test_archiviare_in_una_sede_non_tocca_lo_stesso_avviso_nell_altra():
 
 def _fatture_mancanti(rid="r1", nome="PV Uno"):
     return _avv(id="live-fatture", rid=rid, nome=nome, topic="fatture_mancanti",
-                title="Mancano le fatture costo di settembre", dismissible=False, action_page="/analisi-fatture")
+                title="Mancano le fatture costo di settembre", dismissible=False, action_page="/analisi-fatture",
+                payload={"canale": "manuale", "tipo": "mese_senza_costi", "mese": "settembre"})
+
+
+def _personale_mancante(mesi, rid="r1", nome="PV Uno"):
+    return _avv(id="live-personale", rid=rid, nome=nome, topic="costo_personale_mancante",
+                title="Costo del personale mancante", dismissible=False, action_page="/margini",
+                payload={"mese": "settembre", "anno": 2026, "mesi": mesi, "n_mesi": len(mesi or [])})
 
 
 def test_il_segnale_detto_dall_avviso_della_sede_sparisce():
@@ -250,7 +261,7 @@ def test_tutte_le_voci_dette_il_segnale_sparisce():
         avvisi=_avvisi(
             _fatture_mancanti(),
             _avv(id="l1", topic="fatturato_mancante", title="Fatturato mancante", dismissible=False),
-            _avv(id="l2", topic="costo_personale_mancante", title="Personale mancante", dismissible=False),
+            _personale_mancante([8, 9]),
         ),
     )
     assert "Mancano tutto" not in _testi(out["sedi"][0])
@@ -275,6 +286,45 @@ def test_l_avviso_di_un_altra_sede_non_conta():
         ("A", ["Mancano le fatture costo"]),
         ("B", ["Mancano le fatture costo di settembre"]),
     ]
+
+
+def test_nessuna_fattura_nell_ultima_settimana_non_copre_il_mese_chiuso():
+    """Stesso topic, fatto diverso: «Nessuna fattura caricata nell'ultima
+    settimana» non dice che a settembre mancano le fatture costo (revisore, 9/10:
+    SUSHILAND PADERNO, LA PIAZZA DEI SAPORI, LEW CLUB)."""
+    settimana = _avv(id="live-fatture", topic="fatture_mancanti", dismissible=False,
+                     title="Nessuna fattura caricata nell'ultima settimana",
+                     payload={"canale": "manuale", "fase": "attivo"})
+    out = _catena(
+        segnali={"segnali": [_seg(testo="Mancano le fatture costo", manca=["fatture"])]},
+        avvisi=_avvisi(settimana),
+    )
+    assert _testi(out["sedi"][0]) == ["Mancano le fatture costo", "Nessuna fattura caricata nell'ultima settimana"]
+
+
+def test_avviso_senza_payload_non_copre_le_fatture():
+    a = _fatture_mancanti()
+    a["payload"] = None
+    out = _catena(segnali={"segnali": [_seg(testo="Mancano le fatture costo", manca=["fatture"])]}, avvisi=_avvisi(a))
+    assert "Mancano le fatture costo" in _testi(out["sedi"][0])
+
+
+@pytest.mark.parametrize("mesi, coperto", [([8, 9], True), ([9], True), ([7, 8], False), ([], False), (None, False)])
+def test_il_personale_e_coperto_solo_se_l_avviso_dice_il_mese_chiuso(mesi, coperto):
+    """«Costo del personale mancante in luglio e agosto» non dice settembre."""
+    out = _catena(
+        segnali={"segnali": [_seg(testo="Mancano il costo del personale", manca=["personale"], mese=9)]},
+        avvisi=_avvisi(_personale_mancante(mesi)),
+    )
+    assert ("Mancano il costo del personale" not in _testi(out["sedi"][0])) is coperto
+
+
+def test_segnale_senza_mese_non_e_coperto_sul_personale():
+    out = _catena(
+        segnali={"segnali": [_seg(testo="Mancano il costo del personale", manca=["personale"], mese=None)]},
+        avvisi=_avvisi(_personale_mancante([9])),
+    )
+    assert "Mancano il costo del personale" in _testi(out["sedi"][0])
 
 
 @pytest.mark.parametrize("manca", [None, [], ["toString"], ["fatture", "constructor"]])

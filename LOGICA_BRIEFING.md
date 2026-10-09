@@ -292,10 +292,14 @@ lo stesso tetto delle card del PV: le altre stanno sotto «Altri N punti vendita
 Il pulsante «Vedi tutti gli avvisi» in catena non c'è più. Le fatture da collocare
 e gli avvisi senza sede restano righe aperte in cima.
 
-- **Niente doppioni**: «Mancano le fatture costo» della catena non compare se
-  l'avviso della stessa sede dice già ogni voce mancante (fatturato, fatture,
-  personale). Resta se ne manca anche una sola, o se gli avvisi della sede non si
-  sono potuti leggere.
+- **Niente doppioni**: «Mancano … — vai a completare nel punto vendita» della catena
+  parla del mese chiuso, e non compare se gli avvisi della stessa sede dicono già
+  ogni voce **di quel mese**: «Fatturato di settembre non ancora inserito»,
+  «Mancano le fatture costo di settembre», un costo del personale mancante che
+  comprende settembre. Gli avvisi dello stesso argomento che dicono altro
+  («Nessuna fattura caricata nell'ultima settimana», «Costo del personale
+  mancante in luglio e agosto») non bastano: lì restano tutte e due le righe.
+  Resta anche se gli avvisi della sede non si sono potuti leggere.
 - Lo compone `lib/home-da-fare.ts`. Un errore nel leggere segnali o avvisi non
   diventa mai «Tutto in ordine»: l'elenco dice cosa non ha potuto leggere.
 
