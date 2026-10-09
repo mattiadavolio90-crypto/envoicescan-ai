@@ -1835,7 +1835,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   test in `test_chat_strumenti_pagine.py`; mutazione 22/22; scelta dello
 >   strumento col modello vero 11/11. Suite `-m "not sql"` **18.269 + 58 skip** a
 >   `f0bb704d` (include un test non committato di un'altra sessione); suite
->   completa del revisore 19.301 + 58 skip. Fase F: 14 commit, revisore su ogni
+>   completa del revisore 19.301 + 58 skip. Fase F: 13 commit, revisore su ogni
 >   passo. **Residui:** guasti di motore prezzi e tag letti come vuoto dentro i
 >   servizi; domande proposte e card non filtrate per pagina/scheda; con un solo
 >   dipendente i totali sono suoi; anno senza mese = mese corrente di quell'anno;
