@@ -280,3 +280,18 @@ def test_tag_filtro_tetto_e_vuoti():
 def test_senza_tag():
     out, *_ = _tag({}, [], lambda *a, **k: KPI)
     assert out["tag"] == [] and "nota" in out
+
+
+def test_un_guasto_dello_strumento_non_fa_cadere_la_chat():
+    """In vista PV non c'e' un try per strumento: un'eccezione dava 502 a tutta
+    la risposta (revisore, 9/10). Il modello riceve un errore che non e' «niente»."""
+    with patch.object(fw, "_chat_query_tag", side_effect=RuntimeError("pandas")):
+        out = _esegui("query_tag")
+    assert "errore" in out and "non dire che non c'e'" in out["errore"]
+
+
+def test_gli_avvisi_dicono_che_sono_al_massimo_tre():
+    import services.price_impact_service as pis
+    with patch.object(pis, "calcola_alert_prezzi_impatto", return_value=AP):
+        out = _esegui("avvisi_prezzi")
+    assert "al massimo i 3 rincari" in out["nota"]

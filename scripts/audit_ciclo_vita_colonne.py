@@ -128,10 +128,12 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # fase 7b) legge l'ultima fattura NON cancellata per l'invito a riprendere.
 # `tipo_attivita` 17 dal 28/09/2026: `app/(app)/catena/page.tsx` passa il settore
 # alla conversazione della Home di catena (i negozi hanno domande proposte loro).
+# 18 dal 08/10/2026: `app/(mobile)/m/chat/page.tsx` sceglie le domande proposte
+# dal briefing riempiendo i posti liberi con quelle del settore (fase F).
 TARATURA_FILE_CODICE = {
     "correzioni_count": 0, "ultimo_correttore": 0,           # morte, confermate da L4
     "consecutive_correct_classifications": 4, "categoria_fonte": 12,
-    "tipo_attivita": 17, "deleted_at": 34,                   # vive
+    "tipo_attivita": 18, "deleted_at": 34,                   # vive
 }
 
 

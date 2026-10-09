@@ -19,7 +19,7 @@ cliente (briefing = "ti dico io cosa guardare"; chat = "chiedimi quello che vuoi
 Un **agente in linguaggio naturale** che risponde a domande sui dati del
 ristorante: costi, fornitori, food cost, margini/MOL, scadenze, prezzi,
 appuntamenti in agenda. Non è un chatbot che "racconta": è un agente con
-**function calling reale** su 7 strumenti che leggono il DB. I numeri che dice
+**function calling reale** su 13 strumenti che leggono il DB (più 4 che preparano le cifre dettate, §5.4). I numeri che dice
 sono **gli stessi della Home** — usa la medesima fonte (`home_kpi`), quindi non
 contraddice mai la schermata.
 
@@ -52,7 +52,7 @@ chat_ai()  [fastapi_worker.py]          ← ENDPOINT
    ├─ _build_chat_system_prompt         ← contesto: KPI Home + top categorie/fornitori + agenda di oggi
    ├─ gate tool per pagine_abilitate    ← filtra i tool offerti al modello (§5.1)
    ├─ loop tool-calling (max 3 round)   ← l'LLM chiama gli strumenti che gli servono
-   │     └─ _esegui_tool → _chat_*      ← 7 strumenti che leggono il DB
+   │     └─ _esegui_tool → _chat_*      ← 13 strumenti che leggono il DB
    └─ track_ai_usage                    ← costo €  nel ledger AI (come categorizzazione)
         │
         ▼
@@ -480,7 +480,7 @@ I tre punti di contatto AI col cliente **devono dire la stessa cosa**:
 |---|---|---|---|
 | Card "I tuoi conti" (Home) | `home_kpi` | — | — |
 | Briefing | `_kpi_periodo` + price_impact | `gpt-4o-mini` | onesto, non sterile |
-| **Chat** | **`home_kpi`** + 7 tool | `gpt-4.1-mini` | onesto, da collega F&B |
+| **Chat** | **`home_kpi`** + 13 tool di lettura | `gpt-4.1-mini` | onesto, da collega F&B |
 
 Chat e briefing **condividono la fonte KPI** (`home_kpi`/`_kpi_periodo`), quindi il
 MOL/food cost detti in chat coincidono con quelli del briefing e della card. Se un

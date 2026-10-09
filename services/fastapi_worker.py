@@ -5235,7 +5235,9 @@ def _chat_avvisi_prezzi(user_id: str, supabase_client, ristorante_id: str) -> Di
             "nome": r.get("nome"), "fornitore": r.get("fornitore") or None,
             "ribasso_pct": r.get("ribasso_pct"), "risparmio_al_mese": r.get("risparmio_mese"),
         } for r in ap.get("ribassi") or []],
-        "nota": "solo i prodotti che pesano sulla spesa (o i preferiti), oltre la soglia scelta dal cliente in Osservatorio",
+        "nota": ("al massimo i 3 rincari che costano di piu' al mese, non tutti: solo i prodotti "
+                 "che pesano sulla spesa (o i preferiti), oltre la soglia scelta dal cliente; "
+                 "l'elenco completo e' in Osservatorio → Variazioni Prezzo"),
     }
 
 
@@ -6034,15 +6036,22 @@ def _chat_esegui_tool_sede(
             return {"errore": "questa sezione non e' attiva per il tuo account"}
         if not ristorante_id:
             return {"errore": "nessun locale selezionato"}
-        if nome == "query_personale":
-            return _chat_query_personale(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
-        if nome == "query_spese_extra":
-            return _chat_query_spese_extra(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
-        if nome == "score_fornitori":
-            return _chat_score_fornitori(supabase_client, ristorante_id, args.get("fornitore"))
-        if nome == "avvisi_prezzi":
-            return _chat_avvisi_prezzi(user_id, supabase_client, ristorante_id)
-        return _chat_query_tag(user_id, ristorante_id, args.get("tag"))
+        # Un guasto qui (pandas, analisi dei tag) non deve far cadere tutta la
+        # risposta con un 502: il modello riceve l'errore e lo dice (revisore, 9/10).
+        try:
+            if nome == "query_personale":
+                return _chat_query_personale(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
+            if nome == "query_spese_extra":
+                return _chat_query_spese_extra(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
+            if nome == "score_fornitori":
+                return _chat_score_fornitori(supabase_client, ristorante_id, args.get("fornitore"))
+            if nome == "avvisi_prezzi":
+                return _chat_avvisi_prezzi(user_id, supabase_client, ristorante_id)
+            return _chat_query_tag(user_id, ristorante_id, args.get("tag"))
+        except Exception as exc:
+            logger.warning("chat: strumento %s fallito: %s", nome, exc)
+            return {"errore": "dato non leggibile in questo momento: non dire che non c'e', "
+                              "di' che non riesci a leggerlo e rimanda alla pagina"}
     if nome in _assistente.STRUMENTI_PROPOSTA:
         # Le card hanno bisogno delle liste di chat_ai (vista punto vendita):
         # arrivare qui vuol dire un chiamante che non le passa, cioe' la catena.
