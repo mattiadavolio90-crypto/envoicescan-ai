@@ -1323,9 +1323,16 @@ _FLAG_TRASPORTATI = frozenset({"trigger_servizi_off"})
 # lista gemella qui driftterebbe alla prima tab aggiunta di là.
 _TAB_OFF_PREFIX = "tab_off_"
 
+# Sezioni con schede spegnibili che NON sono chiavi-pagina: la catena non ha un
+# interruttore di pagina, solo le schede (`tab_off_catena_<scheda>`, fase H3,
+# apps/web/src/lib/catena-schede.ts). Fuori da _PAGINE_FLAG di proposito: quella
+# decide il menu del PV e la guardia «nessuna chiave-pagina = tutto aperto».
+_SEZIONI_SOLO_TAB = frozenset({"catena"})
+
 
 def _is_tab_off_key(k: str) -> bool:
-    """True per `tab_off_<sezione>_<tab>` con <sezione> fra le chiavi-pagina.
+    """True per `tab_off_<sezione>_<tab>` con <sezione> fra le chiavi-pagina o
+    le sezioni con sole schede (la catena).
 
     La sezione è validata perché una chiave inventata non deve viaggiare al
     client solo per via del prefisso giusto.
@@ -1335,7 +1342,7 @@ def _is_tab_off_key(k: str) -> bool:
     resto = k[len(_TAB_OFF_PREFIX):]
     return any(
         resto.startswith(sezione + "_") and len(resto) > len(sezione) + 1
-        for sezione in _PAGINE_FLAG
+        for sezione in _PAGINE_FLAG | _SEZIONI_SOLO_TAB
     )
 
 
@@ -1410,8 +1417,18 @@ def _normalize_pagine(raw) -> Optional[List[str]]:
         # La guardia si valuta SOLO su _PAGINE_FLAG: le chiavi tab/trasportate non
         # devono farla scattare, o un cliente con i soli 'tab_off_*' impostati si
         # ritroverebbe il menu vuoto — lo stesso bug, un piano più in basso.
+        #
+        # Ma «nessuna chiave-pagina» vuol dire pagine tutte aperte, non
+        # interruttori ignorati: fino al 09/10/2026 si tornava None e i
+        # 'tab_off_*' (e 'trigger_servizi_off') impostati su un account mai
+        # toccato nelle pagine non arrivavano al client — l'admin spegneva una
+        # scheda e non succedeva niente. Ora tutte le pagine + quelle chiavi.
         if not any(k in _PAGINE_FLAG for k in raw):
-            return None
+            extra = sorted(
+                k for k, v in raw.items()
+                if v and (k in _FLAG_TRASPORTATI or _is_tab_off_key(k))
+            )
+            return sorted(_PAGINE_FLAG) + extra if extra else None
         # La lista trasporta anche chiavi non-pagina. È sicuro perché ogni suo
         # consumatore la interroga per appartenenza puntuale di una chiave-pagina
         # (sidebar, page-guard, gate dei tool chat), mai iterandola: aggiungere

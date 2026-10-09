@@ -3267,7 +3267,7 @@ def admin_aggiorna_flags(
     if body.pagine_abilitate is not None:
         existing = resp.data[0].get("pagine_abilitate") or {}
         if isinstance(existing, dict):
-            merged = {**existing, **body.pagine_abilitate}
+            merged = {**_con_pagine_esplicite(existing), **body.pagine_abilitate}
         else:
             merged = body.pagine_abilitate
         update["pagine_abilitate"] = merged
@@ -3297,6 +3297,20 @@ def admin_aggiorna_flags(
 
     logger.info("admin_aggiorna_flags: cliente=%s update=%s | admin=%s", cliente_id, list(update.keys()), admin_user.get("email"))
     return {"ok": True}
+
+
+def _con_pagine_esplicite(pagine: dict) -> dict:
+    """Un dict senza chiavi-pagina (account mai configurato, o con i soli
+    interruttori di scheda) vale «tutte le pagine aperte»: prima di fonderci il
+    primo interruttore le si scrive per esteso. Senza, spegnere UNA pagina su
+    un account NULL salvava {pagina: False}, che `_normalize_pagine` legge come
+    «solo le pagine a True» — cioe' nessuna: il cliente perdeva tutto il menu.
+    """
+    from services.sotto_utenti_service import PAGINE_ACCOUNT
+
+    if any(k in PAGINE_ACCOUNT for k in pagine):
+        return pagine
+    return {**{p: True for p in sorted(PAGINE_ACCOUNT)}, **pagine}
 
 
 @router.post("/api/admin/clienti/{cliente_id}/trial", tags=["Admin"])

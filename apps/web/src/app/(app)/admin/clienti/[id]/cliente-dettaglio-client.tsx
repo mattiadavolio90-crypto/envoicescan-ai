@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ClienteDettaglio, Sede, Settore, PIANO_LABEL, PIANO_COLOR, SETTORE_LABEL, SETTORE_OPTIONS, fmtDate, fmtDateTime } from "@/lib/admin";
 import { TAB_SEZIONI, tabOffKey, type SezioneConTab } from "@/lib/tab-flags";
+import { INTERRUTTORI_CATENA, tabOffKeyCatena } from "@/lib/catena-schede";
 import { InvioCommercialistaCard } from "@/components/admin/invio-commercialista";
 import { SottoUtentiCard } from "@/components/admin/sotto-utenti";
 
@@ -572,6 +573,35 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 </div>
               );
             })}
+            {/* Catena (fase H3, 09/10/2026): non ha un interruttore di pagina,
+                solo le schede, e le colonne dei coperti per chi non li
+                registra. Solo per gli account con almeno due sedi: con una
+                sola la vista di catena non esiste. Convenzione inversa, come
+                le tab del PV: chiave presente = spenta. */}
+            {c.sedi.length > 1 && (
+              <div className="py-1 border-b">
+                <p className="text-sm font-medium">Catena</p>
+                <p className="text-xs text-muted-foreground">Schede della vista di gruppo</p>
+                <div className="mt-2 ml-1 pl-3 border-l space-y-1.5">
+                  {INTERRUTTORI_CATENA.flatMap((g) =>
+                    g.voci.map((v) => {
+                      const chiave = tabOffKeyCatena(v.key);
+                      const acceso = flags[chiave] !== true;
+                      const etichetta = `Catena › ${g.pagina} › ${v.label}`;
+                      return (
+                        <div key={chiave} className="flex items-center justify-between gap-4">
+                          <p className="text-xs text-muted-foreground">{g.pagina} › {v.label}</p>
+                          <Switch
+                            checked={acceso}
+                            onCheckedChange={(on: boolean) => handleToggleFlag(chiave, !on, etichetta, on)}
+                          />
+                        </div>
+                      );
+                    }),
+                  )}
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-4 py-1 border-b">
               <div>
                 <p className="text-sm font-medium">Assistente AI (Chat)</p>

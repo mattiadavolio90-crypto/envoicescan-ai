@@ -82,13 +82,27 @@ class TestFlagPerTab:
         out = fw._normalize_pagine({"margini": True, "tab_off_margini_coperti": False})
         assert out == ["margini"]
 
-    def test_solo_chiavi_tab_resta_default_aperto(self):
-        """La guardia OFFSIDE si valuta SOLO sulle chiavi-pagina.
+    def test_solo_chiavi_tab_tiene_le_pagine_aperte_e_porta_le_chiavi(self):
+        """La guardia OFFSIDE si valuta SOLO sulle chiavi-pagina: un cliente con
+        i soli 'tab_off_*' impostati non perde il menu (tutte le pagine).
 
-        Se le chiavi tab la facessero scattare, un cliente con i soli 'tab_off_*'
-        impostati perderebbe tutto il menu: lo stesso bug, un piano piu' in basso.
+        E gli interruttori arrivano al client: fino al 09/10/2026 si tornava
+        None e la scheda spenta dall'admin restava accesa (fase H3).
         """
-        assert fw._normalize_pagine({"tab_off_margini_coperti": True}) is None
+        out = fw._normalize_pagine({"tab_off_margini_coperti": True})
+        assert out == sorted(fw._PAGINE_FLAG) + ["tab_off_margini_coperti"]
+        out = fw._normalize_pagine({"tab_off_catena_margini": True, "trigger_servizi_off": True})
+        assert out == sorted(fw._PAGINE_FLAG) + ["tab_off_catena_margini", "trigger_servizi_off"]
+
+    def test_senza_chiavi_pagina_ne_interruttori_resta_none(self):
+        """Solo impostazioni non trasportate (o interruttori a False): nessuna
+        restrizione, come NULL."""
+        assert fw._normalize_pagine({"blocco_mesi_precedenti": True}) is None
+        assert fw._normalize_pagine({"tab_off_margini_coperti": False}) is None
+
+    def test_le_chiavi_della_catena_viaggiano(self):
+        out = fw._normalize_pagine({"margini": True, "tab_off_catena_coperti": True})
+        assert out == ["margini", "tab_off_catena_coperti"]
 
     def test_sezione_inventata_scartata(self):
         out = fw._normalize_pagine({"margini": True, "tab_off_pippo_x": True})

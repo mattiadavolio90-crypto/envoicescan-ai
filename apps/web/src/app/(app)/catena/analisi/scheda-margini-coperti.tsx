@@ -9,6 +9,7 @@ import { ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
 import { formatEuro, formatPct } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
+import { colonneMarginiCatena } from "@/lib/catena-schede";
 import { type MarginiCoperti, type MarginiCopertiPV, type SprecoCategorie } from "@/lib/gruppo";
 import {
   headerMargini,
@@ -55,7 +56,7 @@ type Col = ColConfronto & {
   fmt: (v: number | null) => string;
   tooltip?: string;
 };
-const COLS: Col[] = [
+const COLS_TUTTE: Col[] = [
   { key: "margine_perc", label: "Margine %", fmt: pct, altoMeglio: true,
     tooltip: "MOL sul fatturato netto: quanto resta dopo food cost, personale e spese." },
   { key: "fatturato", label: "Fatturato", fmt: euro, altoMeglio: true,
@@ -68,7 +69,11 @@ const COLS: Col[] = [
     tooltip: "Quanto costa in materie prime (food & beverage) servire un coperto. Più basso = meglio." },
 ];
 
-export function SchedaMarginiCoperti() {
+// `coperti` false (interruttore admin `tab_off_catena_coperti`, fase H3): via le
+// colonne che dividono per i coperti e lo spreco per coperto. Per chi non li
+// registra (OFFSIDE) erano colonne a zero e un «Nessun dato» fisso.
+export function SchedaMarginiCoperti({ coperti = true }: { coperti?: boolean } = {}) {
+  const COLS = colonneMarginiCatena(COLS_TUTTE, coperti);
   const [data, setData] = useState<MarginiCoperti | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -132,7 +137,7 @@ export function SchedaMarginiCoperti() {
       XLSX.utils.sheet_add_aoa(ws, [[nota]], { origin: -1 });
     }
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Margini e coperti");
+    XLSX.utils.book_append_sheet(wb, ws, coperti ? "Margini e coperti" : "Margini");
     XLSX.writeFile(wb, nomeFileMargini(data.periodo_label, new Date().toISOString().slice(0, 10)));
   }
 
@@ -147,7 +152,7 @@ export function SchedaMarginiCoperti() {
   return (
     <div className="space-y-5">
       <PannelloScheda
-        titolo="Margini e coperti per punto vendita"
+        titolo={coperti ? "Margini e coperti per punto vendita" : "Margini per punto vendita"}
         azioni={
           <>
             <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-48 text-xs">
@@ -298,7 +303,7 @@ export function SchedaMarginiCoperti() {
           «Margini e coperti» (Mattia, 28/9) e in pagina, sotto la tabella dei
           margini, con lo stesso periodo: come finestra aperta da un bottone
           «Categorie» non la trovava nessuno (Mattia, 29/9). */}
-      <SezioneSprecoCategorie mese={periodo !== "anno" ? Number(periodo) : null} />
+      {coperti && <SezioneSprecoCategorie mese={periodo !== "anno" ? Number(periodo) : null} />}
     </div>
   );
 }

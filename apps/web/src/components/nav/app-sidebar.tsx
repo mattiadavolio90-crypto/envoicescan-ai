@@ -50,6 +50,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { sezioneHaTabAttive } from "@/lib/tab-flags";
+import { schedeAnalisiCatena, schedeFattureCatena } from "@/lib/catena-schede";
 
 const navMain = [
   { title: "Home", url: "/dashboard", icon: Home, flag: null },
@@ -131,6 +132,11 @@ export function AppSidebar({
           (item.flag === null && mostraHome) ||
           (item.flag !== null && pagineAbilitate.includes(item.flag) && sezioneHaTabAttive(pagineAbilitate, item.flag)),
       );
+
+  // Catena: una pagina con tutte le schede spente dall'admin fa 404, quindi la
+  // sua voce non si mostra (come le sezioni del PV qui sopra).
+  const catenaFatture = schedeFattureCatena(null, pagineAbilitate).length > 0;
+  const catenaAnalisi = schedeAnalisiCatena(pagineAbilitate).length > 0;
 
   async function handleLogout() {
     try {
@@ -290,7 +296,7 @@ export function AppSidebar({
                     <span>Home</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                <SidebarMenuItem>
+                {catenaFatture && <SidebarMenuItem>
                   <SidebarMenuButton
                     render={<Link href="/catena/fatture" />}
                     isActive={pathname === "/catena/fatture"}
@@ -299,8 +305,8 @@ export function AppSidebar({
                     <CalendarCheck />
                     <span>Gestione Fatture</span>
                   </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
+                </SidebarMenuItem>}
+                {catenaAnalisi && <SidebarMenuItem>
                   <SidebarMenuButton
                     render={<Link href="/catena/analisi" />}
                     isActive={pathname === "/catena/analisi"}
@@ -309,7 +315,7 @@ export function AppSidebar({
                     <BarChart3 />
                     <span>Analisi catena</span>
                   </SidebarMenuButton>
-                </SidebarMenuItem>
+                </SidebarMenuItem>}
               </>
             ) : (
               <>

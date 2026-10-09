@@ -17,7 +17,6 @@ import {
   metricaPrincipaleConti,
   tintConti,
 } from "@/lib/catena-confronti";
-import { LINK_ANALISI_MARGINI, LINK_ANALISI_SPESA } from "@/lib/catena-schede";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
 import { TestataHome } from "@/components/home/testata-home";
@@ -130,8 +129,9 @@ function ContiGruppoCard({
   onApriMargini,
 }: {
   overview: GruppoOverview;
-  onApriSpesa: () => void;
-  onApriMargini: () => void;
+  // undefined = Analisi catena spenta dall'admin: i numeri restano, senza clic.
+  onApriSpesa?: () => void;
+  onApriMargini?: () => void;
 }) {
   const { kpi } = overview;
   // La scelta del ramo e il testo dell'avviso vengono dalla funzione pura in
@@ -185,7 +185,8 @@ function ContiGruppoCard({
         <button
           type="button"
           onClick={onApriMargini}
-          className="flex min-w-0 flex-col items-start gap-1 rounded-md text-left hover:opacity-80"
+          disabled={!onApriMargini}
+          className="flex min-w-0 flex-col items-start gap-1 rounded-md text-left hover:opacity-80 disabled:hover:opacity-100"
         >
           <EtichettaKpi>MOL del gruppo</EtichettaKpi>
           <span className={cn("text-2xl font-bold leading-tight tabular-nums", tint.text)}>{euro(kpi.mol)}</span>
@@ -194,9 +195,11 @@ function ContiGruppoCard({
                 gonfiato, in percentuale. Un numero falso con l'avviso e' la
                 decisione; due sarebbero rumore. Solo quando il MOL e' reale. */}
             {affidabile && <span className="tabular-nums">margine {pct(kpi.margine_medio_perc)}</span>}
-            <span className="inline-flex items-center gap-0.5 font-medium text-primary-text">
-              confronta i PV <ArrowRight className="size-3" />
-            </span>
+            {onApriMargini && (
+              <span className="inline-flex items-center gap-0.5 font-medium text-primary-text">
+                confronta i PV <ArrowRight className="size-3" />
+              </span>
+            )}
           </span>
         </button>
         <AndamentoMargine punti={overview.mol_mensile} anno={overview.mol_mensile_anno} affidabile={affidabile} />
@@ -210,11 +213,12 @@ function ContiGruppoCard({
         <button
           type="button"
           onClick={onApriMargini}
-          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-left text-xs text-incerto transition-colors hover:border-incerto/60"
+          disabled={!onApriMargini}
+          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-left text-xs text-incerto transition-colors hover:border-incerto/60 disabled:hover:border-incerto/30"
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
-            {avviso}. <span className="font-medium">Vedi quali PV →</span>
+            {avviso}.{onApriMargini && <> <span className="font-medium">Vedi quali PV →</span></>}
           </span>
         </button>
       )}
@@ -327,10 +331,16 @@ function SaluteGruppoCard({
 export function SintesiCatena({
   overview,
   chat = null,
+  linkSpesa = null,
+  linkMargini = null,
 }: {
   overview: GruppoOverview;
   /** Quota della chat di catena; null = chat non disponibile (pool a 0). */
   chat?: QuotaChat | null;
+  /** Dove portano i numeri della card dei conti (linkAnalisiCatena): con la
+   *  scheda spenta dall'admin la prima accesa, null = nessun link. */
+  linkSpesa?: string | null;
+  linkMargini?: string | null;
 }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
@@ -380,8 +390,8 @@ export function SintesiCatena({
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
         <ContiGruppoCard
           overview={overview}
-          onApriSpesa={() => router.push(LINK_ANALISI_SPESA)}
-          onApriMargini={() => router.push(LINK_ANALISI_MARGINI)}
+          onApriSpesa={linkSpesa ? () => router.push(linkSpesa) : undefined}
+          onApriMargini={linkMargini ? () => router.push(linkMargini) : undefined}
         />
         <SaluteGruppoCard
           indice={overview.salute_indice}

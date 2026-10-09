@@ -91,7 +91,7 @@ def test_il_link_della_coda_porta_alla_scheda_collocare():
     scheda devono coincidere, o il rimando apre le scadenze."""
     out = esegui_ts(
         MODULO,
-        "emit([m.LINK_CODA_GRUPPO, m.LINK_ANALISI_SPESA, m.LINK_ANALISI_MARGINI]);",
+        'emit([m.LINK_CODA_GRUPPO, m.linkAnalisiCatena(null, "spesa"), m.linkAnalisiCatena(null, "margini")]);',
     )
     assert out == [
         "/catena/fatture?tab=collocare",
@@ -167,6 +167,11 @@ def test_lo_spreco_per_categoria_e_una_sezione_sempre_montata():
     montaggi = re.findall(r"^(.*)<SezioneSprecoCategorie\b", testo, re.M)
     assert len(montaggi) == 1, f"attesa una sola <SezioneSprecoCategorie>, trovate {len(montaggi)}"
     prima = testo.split("<SezioneSprecoCategorie", 1)[0].rstrip()
+    # L'unica condizione ammessa e' l'interruttore admin dei coperti (fase H3,
+    # 09/10/2026): senza coperti lo spreco per coperto non esiste. Non e' un
+    # clic del cliente.
+    if prima.endswith("{coperti &&"):
+        prima = prima[: -len("{coperti &&")].rstrip()
     assert not prima.endswith(("&& (", "&&", "? (", "?", ": (", ":")), (
         "lo spreco per categoria e' tornato dietro una condizione: si vede solo "
         "dopo un clic, come la finestra che nessuno trovava"
@@ -201,3 +206,88 @@ def test_un_ricaricamento_fallito_dice_che_i_dati_sono_vecchi():
     prima_tabella = sezione[:j]
     assert "{loadError && (" in prima_tabella[prima_tabella.rindex(") : ("):]
     assert "Aggiornamento non riuscito: restano i dati di {data.periodo_label}." in prima_tabella
+
+
+# ─── Interruttori della catena (fase H3, Mattia 09/10/2026) ─────────────────
+#
+# L'admin spegne le schede della catena con `tab_off_catena_<scheda>` (chiave
+# presente = spenta, come i `tab_off_*` del PV), piu' le sole colonne dei
+# coperti (OFFSIDE non li registra: spegnere «Margini e coperti» intera
+# toglierebbe anche i margini del gruppo).
+
+
+def _ts(espressione, argomento=None):
+    return esegui_ts(MODULO, espressione, argomento=argomento)
+
+
+def test_la_chiave_di_una_scheda_di_catena():
+    assert _ts('emit(m.tabOffKeyCatena("margini"))') == "tab_off_catena_margini"
+
+
+def test_una_scheda_fatture_spenta_sparisce_le_altre_restano():
+    pagine = ["scadenziario", "tab_off_catena_costi"]
+    assert _chiavi(_schede_fatture(0, pagine)) == ["scadenze", "collocare"]
+
+
+def test_fatture_tutte_spente_e_lista_vuota():
+    """La pagina risponde 404 sulla lista vuota: niente scheda inventata."""
+    pagine = ["scadenziario", "tab_off_catena_scadenze", "tab_off_catena_collocare", "tab_off_catena_costi"]
+    assert _schede_fatture(0, pagine) == []
+
+
+@pytest.mark.parametrize("pagine, attese", [
+    (None, ["spesa", "margini", "tag"]),
+    ([], ["spesa", "margini", "tag"]),
+    (["tab_off_catena_tag"], ["spesa", "margini"]),
+    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag"], []),
+])
+def test_schede_di_analisi_accese(pagine, attese):
+    assert _chiavi(_ts("emit(m.schedeAnalisiCatena(input))", pagine)) == attese
+
+
+def test_senza_coperti_la_scheda_si_chiama_margini():
+    schede = _ts('emit(m.schedeAnalisiCatena(["tab_off_catena_coperti"]))')
+    assert _chiavi(schede) == ["spesa", "margini", "tag"]
+    assert _etichetta(schede, "margini") == "Margini"
+    assert _etichetta(_ts("emit(m.schedeAnalisiCatena(null))"), "margini") == "Margini e coperti"
+
+
+def test_i_coperti_sono_accesi_finche_l_admin_non_li_spegne():
+    assert _ts("emit([m.copertiCatenaAccesi(null), m.copertiCatenaAccesi([]),"
+               ' m.copertiCatenaAccesi(["tab_off_catena_coperti"])])') == [True, True, False]
+
+
+def test_senza_coperti_via_le_tre_colonne_che_li_usano():
+    cols = [{"key": k} for k in ("margine_perc", "fatturato", "coperti", "scontrino_medio", "mp_per_coperto")]
+    con = _ts("emit(m.colonneMarginiCatena(input, true).map(c => c.key))", cols)
+    senza = _ts("emit(m.colonneMarginiCatena(input, false).map(c => c.key))", cols)
+    assert con == ["margine_perc", "fatturato", "coperti", "scontrino_medio", "mp_per_coperto"]
+    assert senza == ["margine_perc", "fatturato"]
+
+
+@pytest.mark.parametrize("pagine, scheda, atteso", [
+    (None, "margini", "/catena/analisi?tab=margini"),
+    (["tab_off_catena_margini"], "margini", "/catena/analisi?tab=spesa"),
+    (["tab_off_catena_spesa"], "spesa", "/catena/analisi?tab=margini"),
+    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag"], "margini", None),
+])
+def test_i_link_della_home_ripiegano_o_spariscono(pagine, scheda, atteso):
+    """Un clic dalla Home catena verso una scheda spenta porta alla prima
+    accesa; spente tutte, nessun link (la pagina sarebbe un 404)."""
+    assert _ts("emit(m.linkAnalisiCatena(input.p, input.s))", {"p": pagine, "s": scheda}) == atteso
+
+
+def test_ogni_interruttore_della_catena_e_riconosciuto_dal_worker():
+    """Coerenza TS<->Python: una chiave che il worker non riconosce non arriva
+    al client e l'interruttore admin non fa niente (il difetto di sempre)."""
+    import os
+    os.environ.setdefault("WORKER_DEV_MODE", "1")
+    import services.fastapi_worker as fw
+
+    chiavi = _ts("emit(m.INTERRUTTORI_CATENA.flatMap(g => g.voci.map(v => m.tabOffKeyCatena(v.key))))")
+    assert sorted(chiavi) == sorted(
+        f"tab_off_catena_{k}" for k in ("scadenze", "collocare", "costi", "spesa", "margini", "tag", "coperti")
+    )
+    assert [k for k in chiavi if not fw._is_tab_off_key(k)] == []
+    out = fw._normalize_pagine({"margini": True, **{k: True for k in chiavi}})
+    assert sorted(out) == sorted(["margini", *chiavi])

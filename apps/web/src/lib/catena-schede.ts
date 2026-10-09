@@ -3,10 +3,12 @@
 // come finestre diventano schede di pagina.
 //
 // Separate da TAB_SEZIONI (lib/tab-flags) di proposito: quella mappa e'
-// indicizzata per pagina del PUNTO VENDITA e alimenta gli interruttori admin
-// per-tab (`tab_off_*`), che in catena non esistono.
+// indicizzata per pagina del PUNTO VENDITA. In catena non c'e' un interruttore
+// di pagina: l'admin spegne le SCHEDE (fase H3, Mattia 09/10/2026) con chiavi
+// `tab_off_catena_<scheda>`, stessa convenzione inversa dei `tab_off_*` del PV
+// (chiave presente = spenta), riconosciute dal worker in `_is_tab_off_key`.
 
-import type { TabDef } from "./tab-flags";
+import { TAB_OFF_PREFIX, type TabDef } from "@/lib/tab-flags";
 
 // «Scadenze» prima (Mattia, 28/9): e' la scheda su cui si apre la pagina, e
 // stava terza.
@@ -29,9 +31,61 @@ export const SCHEDE_ANALISI_CATENA: readonly TabDef[] = [
   { key: "tag", label: "Tag di catena" },
 ];
 
+// Non e' una scheda: spegne le colonne dei coperti (e lo spreco per coperto)
+// nella scheda dei margini, che senza coperti si chiama «Margini». Per chi non
+// registra i coperti (OFFSIDE): spegnere la scheda intera toglierebbe anche i
+// margini del gruppo (Mattia, 09/10/2026).
+export const COPERTI_CATENA = "coperti";
+
+/** Gli interruttori della catena nel pannello admin, nell'ordine delle pagine. */
+export const INTERRUTTORI_CATENA: readonly { pagina: string; voci: readonly TabDef[] }[] = [
+  { pagina: "Gestione Fatture", voci: SCHEDE_FATTURE_CATENA },
+  { pagina: "Analisi catena", voci: SCHEDE_ANALISI_CATENA },
+  { pagina: "Margini", voci: [{ key: COPERTI_CATENA, label: "Colonne dei coperti" }] },
+];
+
+export function tabOffKeyCatena(scheda: string): string {
+  return `${TAB_OFF_PREFIX}catena_${scheda}`;
+}
+
+/** `pagine` null = admin / nessuna restrizione: tutto acceso. */
+export function schedaCatenaAccesa(pagine: string[] | null | undefined, scheda: string): boolean {
+  return pagine == null || !pagine.includes(tabOffKeyCatena(scheda));
+}
+
+export function copertiCatenaAccesi(pagine: string[] | null | undefined): boolean {
+  return schedaCatenaAccesa(pagine, COPERTI_CATENA);
+}
+
+// Le colonne della tabella dei margini di catena che senza coperti non hanno
+// senso: tutte e tre si dividono per i coperti, o li contano.
+export const COLONNE_COPERTI_CATENA: readonly string[] = ["coperti", "scontrino_medio", "mp_per_coperto"];
+
+export function colonneMarginiCatena<T extends { key: string }>(colonne: readonly T[], coperti: boolean): T[] {
+  return coperti ? [...colonne] : colonne.filter((c) => !COLONNE_COPERTI_CATENA.includes(c.key));
+}
+
+/** Le schede di Analisi catena accese per questo account. Senza coperti la
+ *  scheda dei margini si chiama «Margini». Vuota = pagina senza schede (404). */
+export function schedeAnalisiCatena(pagine: string[] | null | undefined): TabDef[] {
+  const coperti = copertiCatenaAccesi(pagine);
+  return SCHEDE_ANALISI_CATENA.filter((s) => schedaCatenaAccesa(pagine, s.key)).map((s) =>
+    s.key === "margini" && !coperti ? { ...s, label: "Margini" } : { ...s },
+  );
+}
+
+/**
+ * Dove porta un link della Home di catena verso una scheda di Analisi: la
+ * scheda chiesta se accesa, altrimenti la prima accesa, altrimenti `null`
+ * (niente link: un clic verso una pagina 404 e' peggio di nessun clic).
+ */
+export function linkAnalisiCatena(pagine: string[] | null | undefined, scheda: string): string | null {
+  const schede = schedeAnalisiCatena(pagine);
+  if (schede.length === 0) return null;
+  return `/catena/analisi?tab=${risolviScheda(schede, scheda, scheda)}`;
+}
+
 export const LINK_CODA_GRUPPO = "/catena/fatture?tab=collocare";
-export const LINK_ANALISI_SPESA = "/catena/analisi?tab=spesa";
-export const LINK_ANALISI_MARGINI = "/catena/analisi?tab=margini";
 
 /**
  * La scheda da mostrare per il `?tab=` richiesto. Un valore sconosciuto (link
@@ -66,7 +120,9 @@ export function schedeFattureCatena(
   pagine: string[] | null | undefined,
 ): TabDef[] {
   const scadenziario = pagine == null || pagine.includes("scadenziario");
-  return SCHEDE_FATTURE_CATENA.filter((s) => s.key !== "scadenze" || scadenziario).map((s) =>
+  return SCHEDE_FATTURE_CATENA.filter(
+    (s) => (s.key !== "scadenze" || scadenziario) && schedaCatenaAccesa(pagine, s.key),
+  ).map((s) =>
     s.key === "collocare" && daCollocare != null && daCollocare > 0
       ? { ...s, label: `${s.label} (${daCollocare})` }
       : { ...s },

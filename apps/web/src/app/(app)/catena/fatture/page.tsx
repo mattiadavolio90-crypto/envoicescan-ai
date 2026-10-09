@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCurrentSession, getCurrentUser } from "@/lib/auth";
 import { fetchGruppoOverview } from "@/lib/gruppo";
 import { PageHeader } from "@/components/ui/page-header";
@@ -67,6 +67,9 @@ async function FattureBlock({ richiesta }: { richiesta: string | undefined }) {
 
   const pagine = sessione.status === "ok" ? sessione.user.pagine_abilitate : null;
   const schede = schedeFattureCatena(overview.briefing?.n_fatture_da_collocare, pagine);
+  // Tutte spente dall'admin (scadenziario e `tab_off_catena_*`): 404, come le
+  // pagine del PV senza schede.
+  if (schede.length === 0) notFound();
   const tab = risolviScheda(schede, richiesta, SCHEDA_FATTURE_PREDEFINITA);
   // Il menu delle categorie dei costi di gruppo deve offrire solo quelle che il
   // worker accetta per questo settore. Costa un /api/auth/me: solo su quella scheda.
