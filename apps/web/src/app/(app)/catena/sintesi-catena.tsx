@@ -31,7 +31,6 @@ import {
   TesseraVoce,
 } from "@/components/home/card-home";
 import { DaFareCatena } from "./da-fare-catena";
-import { NotificheWidget } from "../dashboard/notifiche-widget";
 import { ConfigAssistenteCatena } from "./config-assistente-catena";
 import { ETICHETTA_INCOMPLETO, SALUTE_TINT } from "@/lib/salute-tint";
 
@@ -368,18 +367,14 @@ export function SintesiCatena({
 
       <section className="space-y-5">
         <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} chat={chat} />
+        {/* Un elenco solo, per punto vendita: segnali, osservazioni e avvisi
+            delle sedi (fase G). Non c'e' piu' «Vedi tutti gli avvisi». */}
         <DaFareCatena
           nDaCollocare={overview.briefing?.n_fatture_da_collocare}
           vaiAlPV={vaiAlPV}
           switching={switching}
         />
       </section>
-
-      {/* Avvisi, come nel punto vendita: un pulsante che apre l'elenco. In
-          catena sono quelli di tutte le sedi, ognuno col nome della sua. Senza
-          wrapper: senza avvisi il widget non rende niente, e un div vuoto
-          lascerebbe un buco nella spaziatura. */}
-      <NotificheWidget ambito="gruppo" onVaiSede={(id, pagina) => vaiAlPV(id, pagina)} />
 
       {/* Le due card della Home PV, nello stesso ordine: conti e completezza. */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">

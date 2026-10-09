@@ -283,10 +283,21 @@ Per costruzione, le tre cose non possono contraddirsi.
 l'AI eventualmente la si aggiunge dopo. Viene calcolato dal vivo a ogni apertura e non
 è giornaliero come quello del singolo PV. Sotto c'è il «Da fare oggi» della catena
 (fino al 28/9/2026 la card «Da vedere nella catena»): segnali e osservazioni di ogni
-sede, che si calcolano una volta al giorno, più le fatture di gruppo da collocare.
-È lo stesso componente della Home del PV; lo compone `lib/home-da-fare.ts`, e un
-errore nel leggere i segnali non diventa mai «Tutto in ordine». Sotto ancora, gli
-avvisi di tutte le sedi, ognuno col nome della sua (`/api/gruppo/notifiche`).
+sede, che si calcolano una volta al giorno, gli avvisi di ogni sede
+(`/api/gruppo/notifiche`, le stesse regole della campanella del PV) e le fatture di
+gruppo da collocare. Dal 9/10/2026 (fase G, screen 12) è **un elenco solo, una riga
+per punto vendita**, chiusa, con il numero di avvisi; si apre con un clic. Le sedi
+più gravi vengono prima, poi quelle con più avvisi. Se ne vedono **al massimo 4**,
+lo stesso tetto delle card del PV: le altre stanno sotto «Altri N punti vendita».
+Il pulsante «Vedi tutti gli avvisi» in catena non c'è più. Le fatture da collocare
+e gli avvisi senza sede restano righe aperte in cima.
+
+- **Niente doppioni**: «Mancano le fatture costo» della catena non compare se
+  l'avviso della stessa sede dice già ogni voce mancante (fatturato, fatture,
+  personale). Resta se ne manca anche una sola, o se gli avvisi della sede non si
+  sono potuti leggere.
+- Lo compone `lib/home-da-fare.ts`. Un errore nel leggere segnali o avvisi non
+  diventa mai «Tutto in ordine»: l'elenco dice cosa non ha potuto leggere.
 
 Regole della frase:
 

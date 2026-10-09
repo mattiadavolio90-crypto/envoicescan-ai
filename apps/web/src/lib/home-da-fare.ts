@@ -3,14 +3,15 @@
 //
 // Il punto vendita riceve le azioni gia' decise dal briefing (backend, con cache
 // giornaliera). La catena le compone qui dai segnali di gruppo, dalle
-// osservazioni e dalle fatture da collocare: i segnali escono dal render
+// osservazioni, dagli avvisi delle sedi e dalle fatture da collocare, una riga
+// per punto vendita (fase G, 9/10/2026): i segnali escono dal render
 // bloccante di proposito (il primo calcolo del giorno costa), quindi non
 // possono entrare nel briefing di gruppo che la Home aspetta.
 //
 // Logica pura, fuori dai .tsx: sotto node si esegue davvero
 // (tests/test_home_da_fare_frontend.py).
 import type { Osservazione, Segnale } from "./gruppo";
-import { raggruppaSegnali } from "@/lib/catena-segnali";
+import { chiaveAvviso, destinazioneAvviso, pulisci, type Notifica } from "@/lib/notifiche-shared";
 import { haDestinazione, osservazioniDaMostrare } from "@/lib/catena-osservazioni";
 import { LINK_CODA_GRUPPO } from "@/lib/catena-schede";
 
@@ -32,6 +33,8 @@ export type VoceDaFare = {
   sedeCompleta?: string | null;
   azione: AzioneVoce | null;
   ignorabile: boolean;
+  // Solo per gli avvisi di catena: l'id della notifica da archiviare.
+  rif?: string | null;
 };
 
 type AzionePV = {
@@ -60,35 +63,86 @@ export function vociDaAzioniPV<A extends AzionePV>(azioni: A[], ignorabile: (a: 
 
 const RANGO: Record<SeveritaVoce, number> = { error: 0, warning: 1, info: 2, success: 3 };
 
-export type DaFareCatena = {
+// Quanti punti vendita si vedono prima di «Altri N punti vendita»: lo stesso
+// tetto delle card del briefing del punto vendita (`_MAX_CARD` in
+// daily_briefing_service).
+export const MAX_SEDI_VISIBILI = 4;
+
+export type SedeDaFare = {
+  ristoranteId: string;
+  nome: string;
+  // La piu' grave fra le sue voci: e' l'icona della riga chiusa.
+  severity: SeveritaVoce;
   voci: VoceDaFare[];
-  // Cosa dire oltre alle voci: i segnali non sono ancora arrivati, o non sono
+  // «1 avviso», «3 avvisi»: la riga chiusa dice quanti ne nasconde.
+  conteggio: string;
+};
+
+export type DaFareCatena = {
+  // Senza sede: le fatture di gruppo da collocare, «non e' stato possibile
+  // controllare». Restano righe aperte sopra le sedi.
+  generali: VoceDaFare[];
+  // Una per punto vendita, le piu' gravi prima.
+  sedi: SedeDaFare[];
+  totale: number;
+  // I segnali o gli avvisi non sono ancora arrivati, o i segnali non sono
   // arrivati affatto. In entrambi i casi mai il verde.
   avviso: "caricamento" | "errore" | null;
+  // Gli avvisi delle sedi non letti, tutti o in parte: detto, mai taciuto.
+  notaAvvisi: string | null;
   verde: boolean;
 };
 
+// Le voci di `dati_mancanti` (gruppo.py, `_CHIAVE_MANCA`) e l'avviso della sede
+// che dice la stessa cosa.
+const TOPIC_DELLA_VOCE: Record<string, string> = {
+  fatturato: "fatturato_mancante",
+  fatture: "fatture_mancanti",
+  personale: "costo_personale_mancante",
+};
+
+// Il segnale «Mancano le fatture costo» della catena e l'avviso «Mancano le
+// fatture costo di settembre» della sede sono lo stesso fatto: nell'elenco
+// unico si tiene quello della sede, che dice anche il mese. Solo se OGNI voce
+// del segnale e' gia' detta: altrimenti si perderebbe un dato. Senza `manca`
+// (snapshot vecchio) il segnale resta.
+function giaDettoDallaSede(s: Segnale, topics: Set<string>): boolean {
+  if (s.tipo !== "dati_mancanti" || !Array.isArray(s.manca) || s.manca.length === 0) return false;
+  // Una voce sconosciuta («toString») da' un valore che non e' un topic: il Set
+  // contiene solo stringhe di topic, quindi non e' mai coperta.
+  return s.manca.every((v) => topics.has(TOPIC_DELLA_VOCE[v]));
+}
+
 /**
- * Il «Da fare» della catena.
+ * Il «Da fare» della catena: segnali, osservazioni e avvisi di ogni punto
+ * vendita in un elenco solo, una riga per sede (Mattia, screen 12: «in catena
+ * le card sono sempre tante… comprimerle per poi espanderle, unificando card e
+ * avvisi sotto»). Prima erano due elenchi: il «Da fare» e «Vedi tutti gli
+ * avvisi», con lo stesso fatto in tutti e due.
  *
- * - `segnali` null = non ancora letti o non letti per errore (`errore` dice
- *   quale): il verde resta spento, perche' non sappiamo se c'e' qualcosa.
+ * - `segnali` null = non ancora letti o non letti per errore (`errore`): il
+ *   verde resta spento, perche' non sappiamo se c'e' qualcosa. Stessa regola
+ *   per `avvisi`.
  * - Le fatture da collocare si contano dal briefing di gruppo, che la Home ha
  *   gia': compaiono anche mentre i segnali caricano o se falliscono.
  * - Le osservazioni sono fatti sull'andamento, non compiti, ma stanno qui come
  *   nella Home del punto vendita (fase 4): una positiva e' una voce, e basta la
- *   sua presenza a non dichiarare «tutto in ordine» sopra un fatto che il
- *   cliente deve leggere.
+ *   sua presenza a non dichiarare «tutto in ordine».
+ * - `archiviati`: gli id delle voci archiviate in questa visita (l'avviso
+ *   sparisce solo dopo che il worker ha risposto).
  */
 export function daFareCatena(input: {
   segnali: { segnali?: Segnale[]; osservazioni?: Osservazione[] } | null;
   errore: boolean;
+  avvisi: { notifiche?: Notifica[]; sedi_non_lette?: string[] } | null;
+  erroreAvvisi: boolean;
   nDaCollocare: number | null | undefined;
+  archiviati?: Iterable<string>;
 }): DaFareCatena {
-  const voci: VoceDaFare[] = [];
+  const generali: VoceDaFare[] = [];
   const n = input.nDaCollocare ?? 0;
   if (n > 0) {
-    voci.push({
+    generali.push({
       id: "coda-gruppo",
       severity: "warning",
       testo: n === 1 ? "1 fattura di gruppo da collocare" : `${n} fatture di gruppo da collocare`,
@@ -102,43 +156,117 @@ export function daFareCatena(input: {
     });
   }
 
+  const perSede = new Map<string, { nome: string; voci: VoceDaFare[] }>();
+  const aggiungi = (rid: string, nome: string, voce: VoceDaFare) => {
+    const sede = perSede.get(rid);
+    if (sede) sede.voci.push(voce);
+    else perSede.set(rid, { nome, voci: [voce] });
+  };
+
+  const archiviati = new Set(input.archiviati ?? []);
+  const avvisi = (input.avvisi?.notifiche ?? []).filter(
+    (a) => !a.dismissed_at && !archiviati.has(`avviso-${chiaveAvviso(a)}`),
+  );
+  const topicsDellaSede = new Map<string, Set<string>>();
+  for (const a of avvisi) {
+    const rid = (a.ristorante_id ?? "").trim();
+    if (!rid || !a.topic_key) continue;
+    const t = topicsDellaSede.get(rid) ?? new Set<string>();
+    t.add(a.topic_key);
+    topicsDellaSede.set(rid, t);
+  }
+
   if (input.segnali) {
-    raggruppaSegnali(input.segnali.segnali ?? []).forEach((s, i) => {
-      const nomi = s.pv.map((p) => p.pv_nome).join(" · ");
-      const unica = s.pv.length === 1 && s.pv[0].ristorante_id ? s.pv[0] : null;
-      voci.push({
+    (input.segnali.segnali ?? []).forEach((s, i) => {
+      const rid = (s.ristorante_id ?? "").trim();
+      const voce: VoceDaFare = {
         id: `segnale-${s.tipo}-${i}`,
         severity: s.severity,
         testo: s.testo,
-        sede: s.pv.length > 1 ? `${s.pv.length} punti vendita · ${nomi}` : nomi || null,
-        sedeCompleta: nomi || null,
-        // Una destinazione sola: con piu' sedi raggruppate il bottone
-        // manderebbe su una sede arbitraria (stessa regola della card di prima).
-        azione: unica
-          ? { tipo: "sede", ristoranteId: unica.ristorante_id, pagina: unica.cta_page, etichetta: "Vedi PV" }
-          : null,
+        sede: null,
+        azione: rid ? { tipo: "sede", ristoranteId: rid, pagina: s.cta_page, etichetta: "Vedi PV" } : null,
         ignorabile: false,
-      });
+      };
+      if (!rid) generali.push(voce);
+      else if (!giaDettoDallaSede(s, topicsDellaSede.get(rid) ?? new Set())) aggiungi(rid, s.pv_nome, voce);
     });
+  }
+
+  for (const a of avvisi) {
+    const rid = (a.ristorante_id ?? "").trim();
+    const dest = destinazioneAvviso(a, "gruppo");
+    const voce: VoceDaFare = {
+      id: `avviso-${chiaveAvviso(a)}`,
+      severity: a.severity,
+      testo: pulisci(a.title),
+      dettaglio: a.body ? pulisci(a.body) : null,
+      sede: null,
+      azione:
+        dest?.tipo === "sede"
+          ? { tipo: "sede", ristoranteId: dest.ristoranteId, pagina: dest.href, etichetta: dest.label }
+          : null,
+      // Un avviso LIVE non si archivia: si chiude da solo quando arriva il dato.
+      ignorabile: a.dismissible !== false,
+      rif: a.id,
+    };
+    if (rid) aggiungi(rid, a.sede_nome || rid, voce);
+    else generali.push(voce);
+  }
+
+  if (input.segnali) {
     osservazioniDaMostrare(input.segnali).forEach((o, i) => {
-      voci.push({
+      const voce: VoceDaFare = {
         id: `osservazione-${o.tipo}-${o.ristorante_id}-${i}`,
         severity: o.severity,
         testo: o.testo,
-        sede: o.pv_nome,
-        sedeCompleta: o.pv_nome,
+        sede: null,
         azione: haDestinazione(o)
           ? { tipo: "sede", ristoranteId: o.ristorante_id, pagina: o.cta_page, etichetta: "Vedi PV" }
           : null,
         ignorabile: false,
-      });
+      };
+      if (haDestinazione(o)) aggiungi(o.ristorante_id.trim(), o.pv_nome, voce);
+      else generali.push({ ...voce, sede: o.pv_nome || null });
     });
   }
 
   // `sort` e' stabile: a parita' di gravita' resta l'ordine di arrivo (coda,
-  // segnali nell'ordine del backend, osservazioni).
-  voci.sort((a, b) => RANGO[a.severity] - RANGO[b.severity]);
+  // segnali nell'ordine del backend, avvisi, osservazioni).
+  const perGravita = (a: VoceDaFare, b: VoceDaFare) => RANGO[a.severity] - RANGO[b.severity];
+  generali.sort(perGravita);
+  const sedi: SedeDaFare[] = [...perSede.entries()].map(([ristoranteId, s]) => {
+    const voci = [...s.voci].sort(perGravita);
+    const conteggio = voci.length === 1 ? "1 avviso" : `${voci.length} avvisi`;
+    return { ristoranteId, nome: s.nome, severity: voci[0].severity, voci, conteggio };
+  });
+  sedi.sort(
+    (a, b) =>
+      RANGO[a.severity] - RANGO[b.severity] ||
+      b.voci.length - a.voci.length ||
+      a.nome.localeCompare(b.nome, "it"),
+  );
 
-  const avviso = input.segnali ? null : input.errore ? "errore" : "caricamento";
-  return { voci, avviso, verde: avviso === null && voci.length === 0 };
+  const totale = generali.length + sedi.reduce((t, s) => t + s.voci.length, 0);
+  const avvisiInArrivo = input.avvisi === null && !input.erroreAvvisi;
+  const avviso = !input.segnali
+    ? input.errore
+      ? "errore"
+      : "caricamento"
+    : avvisiInArrivo
+      ? "caricamento"
+      : null;
+  const nonLette = input.avvisi?.sedi_non_lette ?? [];
+  const notaAvvisi = input.erroreAvvisi
+    ? "Non è stato possibile leggere gli avvisi dei punti vendita."
+    : nonLette.length > 0
+      ? `Avvisi non letti per: ${nonLette.join(", ")}.`
+      : null;
+  return {
+    generali,
+    sedi,
+    totale,
+    avviso,
+    notaAvvisi,
+    verde: avviso === null && notaAvvisi === null && totale === 0,
+  };
 }

@@ -27764,6 +27764,14 @@
           "cta_page": {
             "type": "string",
             "title": "Cta Page"
+          },
+          "manca": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Manca",
+            "default": []
           }
         },
         "type": "object",

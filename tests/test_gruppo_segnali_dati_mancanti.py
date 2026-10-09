@@ -120,3 +120,53 @@ class TestSegnaleDatiMancanti:
             sb, ["b"], {"b": "PV B"}, segnali_off={"dati_mancanti"},
         )
         assert [s for s in segnali if s["tipo"] == "dati_mancanti"] == []
+
+
+class TestVociMancantiConNome:
+    """Fase G (9/10/2026): il segnale porta `manca`, le voci con un nome stabile.
+    La Home di catena lo toglie da una sede solo quando gli avvisi di quella sede
+    dicono gia' OGNI voce: un nome sbagliato o mancante qui terrebbe il doppione,
+    uno in piu' farebbe sparire un dato che nessun altro avviso dice."""
+
+    def _dm(self, rows, monkeypatch, personale_dovuto=True):
+        import services.routers.gruppo as g
+        monkeypatch.setattr(
+            g, "_personale_non_ancora_dovuto",
+            lambda *a, **k: None if personale_dovuto else 9,
+        )
+        segnali = _calcola_segnali(_sb_con_componenti(rows), ["b"], {"b": "PV B"})
+        return [s for s in segnali if s["tipo"] == "dati_mancanti"]
+
+    def test_tutte_e_tre_le_voci(self, monkeypatch):
+        dm = self._dm([{"ristorante_id": "b", "netto": 0, "n_fatture": 0, "personale": 0}], monkeypatch)
+        assert dm[0]["manca"] == ["fatturato", "fatture", "personale"]
+
+    def test_solo_le_voci_che_mancano(self, monkeypatch):
+        dm = self._dm([{"ristorante_id": "b", "netto": 1000, "n_fatture": 0, "personale": 800}], monkeypatch)
+        assert dm[0]["manca"] == ["fatture"]
+        assert dm[0]["testo"].startswith("Mancano le fatture costo")
+
+    def test_il_personale_non_ancora_dovuto_non_e_fra_le_voci(self, monkeypatch):
+        """Prima del 15 la frase non lo dice: nemmeno `manca` deve dirlo, o la
+        Home cercherebbe un avviso del personale che il PV non da'."""
+        dm = self._dm(
+            [{"ristorante_id": "b", "netto": 0, "n_fatture": 5, "personale": 0}],
+            monkeypatch, personale_dovuto=False,
+        )
+        assert dm[0]["manca"] == ["fatturato"]
+        assert "personale" not in dm[0]["testo"]
+
+    def test_le_frasi_hanno_tutte_un_nome(self):
+        """Ogni voce che `_completezza_dati_pv` puo' scrivere ha il suo nome."""
+        from services.routers.gruppo import _CHIAVE_MANCA
+        sb = _sb_con_componenti([{"ristorante_id": "a", "netto": 0, "n_fatture": 0, "personale": 0}])
+        assert set(_completezza_dati_pv(sb, ["a"])["a"]) == set(_CHIAVE_MANCA)
+
+    def test_il_campo_arriva_al_client(self):
+        from services.routers.gruppo import Segnale
+        s = Segnale(tipo="dati_mancanti", severity="warning", ristorante_id="b", pv_nome="PV B",
+                    testo="Mancano le fatture costo", cta_page="/dashboard", manca=["fatture"])
+        assert s.model_dump()["manca"] == ["fatture"]
+        vecchio = Segnale(tipo="margine_calo", severity="warning", ristorante_id="b", pv_nome="PV B",
+                          testo="Margine al 30%", cta_page="/margini")
+        assert vecchio.manca == []

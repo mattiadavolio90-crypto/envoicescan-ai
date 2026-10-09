@@ -80,7 +80,7 @@ BASE_BUTTON: dict[str, int] = {
 }
 BASE_TAGLIA: dict[str, int] = {
     "app/(app)/catena/analisi/scheda-margini-coperti.tsx": 1,
-    "app/(app)/dashboard/notifiche-widget.tsx": 2,
+    "app/(app)/dashboard/notifiche-widget.tsx": 1,
     "app/(app)/notifiche/notifiche-list.tsx": 1,
     "app/(app)/scadenziario/scadenziario-client.tsx": 19,
     "app/(app)/workspace/diario-tab.tsx": 2,

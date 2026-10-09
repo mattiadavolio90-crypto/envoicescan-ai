@@ -1925,7 +1925,10 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # 5 = 08/10/2026 (fase E del piano consulente): l'osservazione `food_cost_alto`
 # tace su un mese con l'incasso molto sotto i mesi vicini (ferie). Uno snapshot
 # v4 ripete l'allarme su OVERTIME e OFFSIDE (agosto) fino a mezzanotte.
-_SEGNALI_CODE_VERSION = 5
+# 6 = 09/10/2026 (fase G del piano consulente): `dati_mancanti` porta `manca`, le
+# voci mancanti con un nome stabile. Uno snapshot v5 non le ha, e la Home di
+# catena mostrerebbe il segnale accanto all'avviso della sede che dice lo stesso.
+_SEGNALI_CODE_VERSION = 6
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
@@ -1946,6 +1949,9 @@ class Segnale(BaseModel):
     pv_nome: str
     testo: str                      # messaggio con il numero che lo giustifica
     cta_page: str                   # pagina PV dove approfondire (deep link)
+    # Solo `dati_mancanti`: quali voci mancano (_CHIAVE_MANCA). Vuoto = non si sa,
+    # e la Home di catena tiene il segnale.
+    manca: List[str] = []
 
 
 class Osservazione(BaseModel):
@@ -2048,6 +2054,16 @@ def _elenco_it(voci: List[str]) -> str:
 
 
 _MANCA_PERSONALE = "il costo del personale"
+
+# Le voci di `dati_mancanti` con un nome stabile, accanto alla frase (fase G,
+# 9/10/2026): la Home di catena toglie il segnale da una sede quando gli avvisi
+# di QUELLA sede dicono gia' ogni voce (`fatturato_mancante`, `fatture_mancanti`,
+# `costo_personale_mancante`). Leggere la frase sarebbe un confronto di testo.
+_CHIAVE_MANCA = {
+    "il fatturato": "fatturato",
+    "le fatture costo": "fatture",
+    _MANCA_PERSONALE: "personale",
+}
 
 
 def _completezza_dati_pv(
@@ -2238,6 +2254,7 @@ def _calcola_segnali(
                         "pv_nome": rid_to_nome[rid],
                         "testo": "Mancano " + _elenco_it(manca) + " — vai a completare nel punto vendita",
                         "cta_page": "/dashboard",
+                        "manca": [_CHIAVE_MANCA[m] for m in manca if m in _CHIAVE_MANCA],
                     })
         except Exception as exc:
             # Un errore NON puo' sparire in silenzio: senza questo segnale la card

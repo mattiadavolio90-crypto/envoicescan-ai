@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -42,18 +42,12 @@ const SEVERITY_ACCENT: Record<Notifica["severity"], string> = {
 };
 
 type Props = {
-  /** Sede: il conteggio arriva dal server (Home del PV). */
+  /** Il conteggio arriva dal server (Home del PV). In catena gli avvisi delle
+   * sedi stanno nel «Da fare», per punto vendita (fase G, 9/10/2026). */
   count?: number;
-  /** «gruppo» = Home di catena: gli avvisi di tutte le sedi, ognuno col nome
-   * della sua (28/9/2026). Il conteggio si legge qui, dopo il render della
-   * Home, perche' chiede una lettura per sede. */
-  ambito?: "sede" | "gruppo";
-  /** In catena il pulsante di un avviso cambia prima sede (vedi
-   * destinazioneAvviso). */
-  onVaiSede?: (ristoranteId: string, pagina: string) => void;
 };
 
-export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onVaiSede }: Props) {
+export function NotificheWidget({ count = 0 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -67,20 +61,16 @@ export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onV
   // chiusura e non ad ogni dismiss per non rigenerare la Home mentre l'utente
   // sta ancora archiviando (eviterebbe sfarfallii e round-trip inutili).
   const [needsRefresh, setNeedsRefresh] = useState(false);
-  const [sediNonLette, setSediNonLette] = useState<string[]>([]);
   const [erroreLista, setErroreLista] = useState(false);
 
   async function carica() {
     setLoadingList(true);
     setErroreLista(false);
     try {
-      const res = await fetch(ambito === "gruppo" ? "/api/gruppo/notifiche" : "/api/notifiche", {
-        cache: "no-store",
-      });
+      const res = await fetch("/api/notifiche", { cache: "no-store" });
       if (res.ok) {
-        const data = (await res.json()) as { notifiche?: Notifica[]; sedi_non_lette?: string[] };
+        const data = (await res.json()) as { notifiche?: Notifica[] };
         setNotifiche(data.notifiche ?? []);
-        setSediNonLette(data.sedi_non_lette ?? []);
       } else {
         setErroreLista(true);
       }
@@ -91,12 +81,6 @@ export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onV
       setLoadingList(false);
     }
   }
-
-  // In catena il conteggio non arriva dal server: si legge l'elenco subito.
-  useEffect(() => {
-    if (ambito === "gruppo") carica();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ambito]);
 
   function onOpenChange(v: boolean) {
     setOpen(v);
@@ -137,12 +121,6 @@ export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onV
 
   const visibili = notifiche.filter((n) => !dismissed.has(chiaveAvviso(n)));
   const gruppi = raggruppa(visibili);
-  // In catena il numero e' quello letto qui (meno gli archiviati); nel PV
-  // quello del server finche' l'elenco non e' stato aperto.
-  const count = ambito === "gruppo" ? visibili.filter((n) => !n.dismissed_at).length : countIniziale;
-  // Chiuso l'elenco, senza avvisi il pulsante non c'e' (come nel PV). Aperto,
-  // resta: archiviare l'ultimo non deve chiudere la finestra sotto le dita.
-  if (ambito === "gruppo" && !open && count === 0 && sediNonLette.length === 0 && !erroreLista) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -167,20 +145,14 @@ export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onV
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Avvisi</DialogTitle>
-          <DialogDescription>
-            {ambito === "gruppo"
-              ? "Gli avvisi di tutti i punti vendita. Archivia quelli che hai gestito."
-              : "Tutti gli avvisi del tuo assistente. Archivia quelli che hai gestito."}
-          </DialogDescription>
+          <DialogDescription>Tutti gli avvisi del tuo assistente. Archivia quelli che hai gestito.</DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[60vh] space-y-3 overflow-y-auto py-1">
-          {(erroreLista || sediNonLette.length > 0) && (
+          {erroreLista && (
             <p className="flex items-start gap-2 rounded-md border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto">
               <AlertTriangle className="mt-px size-3.5 shrink-0" />
-              {erroreLista
-                ? "Non è stato possibile leggere gli avvisi."
-                : `Avvisi non letti per: ${sediNonLette.join(", ")}.`}
+              Non è stato possibile leggere gli avvisi.
             </p>
           )}
           {loadingList && !loaded ? (
@@ -201,7 +173,7 @@ export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onV
                   <span className="ml-1.5 text-muted-foreground/60">{g.notifiche.length}</span>
                 </p>
                 {g.notifiche.map((n) => {
-                  const dest = destinazioneAvviso(n, ambito);
+                  const dest = destinazioneAvviso(n, "sede");
                   const chiave = chiaveAvviso(n);
                   return (
                     <div
@@ -213,11 +185,6 @@ export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onV
                     >
                       <SeverityIcon severity={n.severity} />
                       <div className="min-w-0 flex-1">
-                        {ambito === "gruppo" && n.sede_nome && (
-                          <p className="truncate text-xs font-semibold text-muted-foreground" title={n.sede_nome}>
-                            {n.sede_nome}
-                          </p>
-                        )}
                         <p className="text-sm font-medium">{pulisci(n.title)}</p>
                         {n.body && (
                           <p className="mt-0.5 whitespace-pre-line text-sm text-muted-foreground">
@@ -233,19 +200,6 @@ export function NotificheWidget({ count: countIniziale = 0, ambito = "sede", onV
                             >
                               {dest.label}
                             </Link>
-                          )}
-                          {dest?.tipo === "sede" && onVaiSede && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              onClick={() => {
-                                setOpen(false);
-                                onVaiSede(dest.ristoranteId, dest.href);
-                              }}
-                            >
-                              {dest.label}
-                            </Button>
                           )}
                           {n.created_at && (
                             <span className="text-xs text-muted-foreground">
