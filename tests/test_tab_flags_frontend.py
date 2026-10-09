@@ -61,7 +61,7 @@ class TestTabAbilitata:
           emit(out);
         """)
         assert all(esito.values()), [k for k, v in esito.items() if not v]
-        assert len(esito) == 19  # 19 tab su 6 sezioni: se cambia, aggiorna il piano
+        assert len(esito) == 18  # 18 tab su 6 sezioni: se cambia, aggiorna il piano
 
     def test_chiave_presente_spegne_la_tab(self):
         assert _chiama(
@@ -187,8 +187,19 @@ class TestVisteGestioneFatture:
         assert _chiama('emit(m.vistaFattureIniziale([], "agenda"))') is None
 
 
+def test_agenda_ha_tre_schede_e_il_calendario_tiene_la_chiave_tutto():
+    """Fase H2 (Mattia, 09/10/2026): «Tutto» e «Appuntamenti» sono una scheda
+    sola, «Calendario», dove gli appuntamenti si creano e si modificano. La
+    chiave resta `tutto`: link salvati e flag admin non cambiano."""
+    assert _chiama("emit(m.TAB_SEZIONI.agenda)") == [
+        {"key": "tutto", "label": "Calendario"},
+        {"key": "spese", "label": "Spese"},
+        {"key": "personale", "label": "Personale"},
+    ]
+
+
 def test_formato_chiave_riconosciuto_dal_worker():
-    """Coerenza TS<->Python su tutte e 19 le tab.
+    """Coerenza TS<->Python su tutte e 18 le tab.
 
     Il TS genera le chiavi, il Python le valida. Uccide il mutante "cambio il
     prefisso (o il separatore) da una parte sola", che nessun test su un singolo
@@ -203,7 +214,7 @@ def test_formato_chiave_riconosciuto_dal_worker():
       }
       emit(out);
     """)
-    assert len(chiavi) == 19
+    assert len(chiavi) == 18
     non_riconosciute = [k for k in chiavi if not fw._is_tab_off_key(k)]
     assert not non_riconosciute, (
         f"il worker non riconosce {non_riconosciute}: il formato di tabOffKey e "

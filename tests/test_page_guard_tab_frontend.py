@@ -52,10 +52,17 @@ def test_sezione_senza_tab_attive_da_404():
     assert _decisione(spente, "workspace", "foodcost") == {"esito": "404"}
 
 
+
+def test_vecchio_link_agli_appuntamenti_porta_al_calendario():
+    """Fase H2 (09/10/2026): la scheda «Appuntamenti» e' confluita nel
+    «Calendario» (chiave `tutto`). I link salvati a ?layer=appuntamenti devono
+    atterrare li', dove ora gli appuntamenti si creano e si modificano."""
+    assert _decisione([], "agenda", "appuntamenti") == {"esito": "redirect", "tab": "tutto"}
+
 def test_la_pagina_di_arrivo_non_redirige_di_nuovo():
     """Il guard redirige solo se risolta !== richiesta: se la destinazione a sua
     volta redirigesse, il cliente resterebbe in un ciclo infinito."""
-    pagine = ["tab_off_agenda_tutto", "tab_off_agenda_appuntamenti"]
+    pagine = ["tab_off_agenda_tutto", "tab_off_agenda_spese"]
     primo = _decisione(pagine, "agenda", "tutto")
     assert primo["esito"] == "redirect"
     secondo = _decisione(pagine, "agenda", primo["tab"])

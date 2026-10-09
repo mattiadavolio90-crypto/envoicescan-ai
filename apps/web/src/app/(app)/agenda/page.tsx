@@ -4,7 +4,6 @@ import { requirePaginaConTab } from "@/lib/page-guard";
 import { getCurrentUser } from "@/lib/auth";
 import { LayerSwitcher } from "./layer-switcher";
 import { AgendaOverview } from "./agenda-overview";
-import { AgendaView } from "../workspace/diario-tab";
 import { SpeseView } from "../workspace/spese-view";
 import { PersonaleTab } from "../workspace/personale-tab";
 
@@ -14,6 +13,8 @@ export default async function AgendaPage({
   searchParams: Promise<{ layer?: string }>;
 }) {
   const sp = await searchParams;
+  // `?layer=appuntamenti` (scheda confluita nel «Calendario» il 09/10/2026)
+  // non e' piu' una scheda: il guard lo rimanda alla prima attiva, il Calendario.
   // Il param qui si chiama `layer`, non `tab`: il guard lo riceve come nome, cosi'
   // un redirect ricostruisce /agenda?layer=... e non un ?tab= che nessuno legge.
   const { tab: layer, disponibili } = await requirePaginaConTab(
@@ -42,11 +43,6 @@ export default async function AgendaPage({
         {layer === "tutto" && (
           <Suspense>
             <AgendaOverview settore={settore} />
-          </Suspense>
-        )}
-        {layer === "appuntamenti" && (
-          <Suspense>
-            <AgendaView />
           </Suspense>
         )}
         {layer === "spese" && (

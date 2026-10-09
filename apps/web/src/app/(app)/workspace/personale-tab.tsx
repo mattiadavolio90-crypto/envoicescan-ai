@@ -1524,7 +1524,7 @@ export function PersonaleTab() {
           </div>
           <div className="border-t border-border pt-2 text-muted-foreground">
             <p>Per lo stesso dipendente nello stesso mese puoi segnare i turni e poi mettere lo stipendio: le ore restano quelle dei turni e il costo diventa quello dello stipendio, che <strong>vince</strong> sul costo orario dei turni (non si sommano).</p>
-            <p className="mt-1.5">Per vedere i turni sul calendario, insieme ad appuntamenti e spese, vai su <strong>Agenda → Tutto</strong>.</p>
+            <p className="mt-1.5">Per vedere i turni sul calendario, insieme ad appuntamenti e spese, vai su <strong>Agenda → Calendario</strong>.</p>
           </div>
         </InfoPopover>
 

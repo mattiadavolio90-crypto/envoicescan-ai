@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
-import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -36,34 +34,11 @@ const COLORI: { key: string; label: string; dot: string; badge: string }[] = [
   { key: "gray",  label: "Grigio",  dot: "bg-muted-foreground/60", badge: "bg-muted text-muted-foreground" },
 ];
 
-function coloreInfo(key: string) {
+export function coloreInfo(key: string) {
   return COLORI.find(c => c.key === key) ?? COLORI[0];
 }
 
-// ─── Utilità date ─────────────────────────────────────────────────────────────
-
-const GIORNI_BREVI = ["L","M","M","G","V","S","D"];
-
-function meseISO(anno: number, mese: number) {
-  return `${anno}-${String(mese + 1).padStart(2, "0")}`;
-}
-
-function primoGiornoMese(anno: number, mese: number): number {
-  const d = new Date(anno, mese, 1).getDay();
-  return d === 0 ? 6 : d - 1;
-}
-
-function giorniNelMese(anno: number, mese: number) {
-  return new Date(anno, mese + 1, 0).getDate();
-}
-
-function todayISO() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const g = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${g}`;
-}
+// ─── Utilità ──────────────────────────────────────────────────────────────────
 
 function fmtOra(t: string | null | undefined) {
   if (!t) return "";
@@ -77,9 +52,13 @@ interface EventoDialogProps {
   evento: EventoDiario | null;
   dataDefault: string;
   onClose: () => void;
+  // Salvataggio ed eliminazione: il chiamante ricarica il calendario.
   onSaved: () => void;
 }
 
+// Dal 09/10/2026 (Mattia, fase H2) e' l'unico posto dove un appuntamento si
+// crea, si modifica, si colora e si elimina: la scheda «Appuntamenti»
+// dell'Agenda e' confluita nel «Calendario» (agenda-overview.tsx).
 export function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: EventoDialogProps) {
   const [titolo, setTitolo] = useState("");
   const [descrizione, setDescrizione] = useState("");
@@ -88,6 +67,7 @@ export function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: Ev
   const [oraFine, setOraFine] = useState("");
   const [colore, setColore] = useState("sky");
   const [saving, setSaving] = useState(false);
+  const [confermaElimina, setConfermaElimina] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -130,7 +110,24 @@ export function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: Ev
     }
   }
 
+  async function elimina() {
+    if (!evento) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/workspace/diario/${evento.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Evento eliminato");
+      onSaved();
+      onClose();
+    } catch {
+      toast.error("Errore eliminazione evento");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
+    <>
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -184,255 +181,29 @@ export function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: Ev
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
+            {evento && (
+              <Button
+                variant="ghost"
+                className="mr-auto text-muted-foreground hover:text-negativo"
+                onClick={() => setConfermaElimina(true)}
+                disabled={saving}
+              >
+                <Trash2 /> Elimina
+              </Button>
+            )}
             <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
             <Button onClick={salva} disabled={saving}>{saving ? "Salvo…" : "Salva"}</Button>
           </div>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
 
-// ─── Calendario mini ──────────────────────────────────────────────────────────
-
-interface CalendarioProps {
-  anno: number;
-  mese: number;
-  eventi: EventoDiario[];
-  selezionato: string | null;
-  onSelect: (d: string) => void;
-}
-
-function CalendarioMini({ anno, mese, eventi, selezionato, onSelect }: CalendarioProps) {
-  const oggi = todayISO();
-  const n = giorniNelMese(anno, mese);
-  const offset = primoGiornoMese(anno, mese);
-  const eventiPerGiorno: Record<string, EventoDiario[]> = {};
-  for (const e of eventi) {
-    if (!eventiPerGiorno[e.data_evento]) eventiPerGiorno[e.data_evento] = [];
-    eventiPerGiorno[e.data_evento].push(e);
-  }
-
-  const celle: (number | null)[] = [
-    ...Array(offset).fill(null),
-    ...Array.from({ length: n }, (_, i) => i + 1),
-  ];
-
-  return (
-    <div className="select-none">
-      <div className="grid grid-cols-7 mb-1">
-        {GIORNI_BREVI.map((g, i) => (
-          <div key={i} className="text-center text-[10px] font-medium text-muted-foreground py-1">{g}</div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {celle.map((giorno, i) => {
-          if (!giorno) return <div key={i} />;
-          const iso = `${anno}-${String(mese + 1).padStart(2, "0")}-${String(giorno).padStart(2, "0")}`;
-          const isOggi = iso === oggi;
-          const isSel = iso === selezionato;
-          const eventiGiorno = eventiPerGiorno[iso] ?? [];
-          const dots = eventiGiorno.slice(0, 3);
-          const extra = eventiGiorno.length - dots.length;
-          return (
-            <button
-              key={iso}
-              onClick={() => onSelect(iso)}
-              title={eventiGiorno.length > 0 ? `${eventiGiorno.length} ${eventiGiorno.length === 1 ? "appunto" : "appunti"}` : undefined}
-              className={`flex flex-col items-center justify-start rounded-lg py-1.5 min-h-[44px] text-sm transition-colors
-                ${isSel ? "bg-primary text-primary-foreground font-semibold" : isOggi ? "ring-1 ring-primary font-semibold" : "hover:bg-muted"}
-              `}
-            >
-              <span>{giorno}</span>
-              {dots.length > 0 && (
-                <div className="flex items-center gap-0.5 mt-1">
-                  {dots.map((e, di) => (
-                    <span key={di} className={`size-1.5 rounded-full ${coloreInfo(e.colore).dot} ${isSel ? "opacity-90" : ""}`} />
-                  ))}
-                  {extra > 0 && (
-                    <span className={`text-[9px] leading-none font-medium ${isSel ? "text-primary-foreground opacity-90" : "text-muted-foreground"}`}>
-                      +{extra}
-                    </span>
-                  )}
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Vista Agenda (calendario eventi) ───────────────────────────────────────────
-
-export function AgendaView() {
-  const today = todayISO();
-  const now = new Date();
-  const [anno, setAnno] = useState(now.getFullYear());
-  const [mese, setMese] = useState(now.getMonth());
-  const [eventi, setEventi] = useState<EventoDiario[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [giornoSel, setGiornoSel] = useState<string>(today);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editEvento, setEditEvento] = useState<EventoDiario | null>(null);
-  const [daEliminare, setDaEliminare] = useState<EventoDiario | null>(null);
-
-  const loadEventi = useCallback(async (a: number, m: number) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/workspace/diario?mese=${meseISO(a, m)}`);
-      if (!res.ok) throw new Error();
-      const d = await res.json();
-      setEventi(d.eventi ?? []);
-    } catch {
-      toast.error("Errore caricamento diario");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadEventi(anno, mese); }, [anno, mese, loadEventi]);
-
-  // Entrando in un nuovo mese seleziona oggi (se cade in quel mese) o il giorno 1,
-  // cosi' il pannello giorno non resta su una data fuori dal mese visualizzato.
-  function giornoIngressoMese(a: number, m: number): string {
-    const mISO = meseISO(a, m);
-    return today.startsWith(mISO) ? today : `${mISO}-01`;
-  }
-  function mesePrecedente() {
-    if (mese === 0) { setAnno(anno - 1); setMese(11); setGiornoSel(giornoIngressoMese(anno - 1, 11)); }
-    else { setMese(mese - 1); setGiornoSel(giornoIngressoMese(anno, mese - 1)); }
-  }
-  function meseSuccessivo() {
-    if (mese === 11) { setAnno(anno + 1); setMese(0); setGiornoSel(giornoIngressoMese(anno + 1, 0)); }
-    else { setMese(mese + 1); setGiornoSel(giornoIngressoMese(anno, mese + 1)); }
-  }
-
-  async function elimina(e: EventoDiario) {
-    try {
-      const res = await fetch(`/api/workspace/diario/${e.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      toast.success("Evento eliminato");
-      loadEventi(anno, mese);
-    } catch {
-      toast.error("Errore eliminazione evento");
-    }
-  }
-
-  const eventiGiorno = eventi.filter(e => e.data_evento === giornoSel)
-    .sort((a, b) => (a.ora_inizio ?? "99:99").localeCompare(b.ora_inizio ?? "99:99"));
-
-  const fmtGiornoLabel = (iso: string) => {
-    const d = new Date(iso + "T00:00:00");
-    return d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
-  };
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-4 items-start">
-      {/* Calendario largo */}
-      <Card>
-        <CardContent className="p-4">
-          {/* Navigazione mese */}
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <button onClick={mesePrecedente} className="p-1 rounded hover:bg-muted">
-              <ChevronLeft className="size-4" />
-            </button>
-            <span className="text-sm font-semibold min-w-[140px] text-center">{MESI[mese]} {anno}</span>
-            <button onClick={meseSuccessivo} className="p-1 rounded hover:bg-muted">
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-          <CalendarioMini
-            anno={anno}
-            mese={mese}
-            eventi={eventi}
-            selezionato={giornoSel}
-            onSelect={setGiornoSel}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Pannello giorno selezionato */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold capitalize">{fmtGiornoLabel(giornoSel)}</h2>
-          <Button
-            size="sm"
-            onClick={() => { setEditEvento(null); setDialogOpen(true); }}
-          >
-            <Plus className="size-3.5 mr-1" />Aggiungi
-          </Button>
-        </div>
-
-        {loading ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
-        ) : eventiGiorno.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Nessun evento per questo giorno.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {eventiGiorno.map(e => {
-              const col = coloreInfo(e.colore);
-              return (
-                <div
-                  key={e.id}
-                  className="flex items-start gap-3 rounded-lg border border-border p-3 hover:bg-muted/40 group"
-                >
-                  <div className={`mt-1 size-2.5 rounded-full flex-shrink-0 ${col.dot}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate" title={e.titolo}>{e.titolo}</span>
-                      {(e.ora_inizio || e.ora_fine) && (
-                        <span className="text-xs text-muted-foreground flex-shrink-0">
-                          {fmtOra(e.ora_inizio)}{e.ora_fine ? `–${fmtOra(e.ora_fine)}` : ""}
-                        </span>
-                      )}
-                    </div>
-                    {e.descrizione && (
-                      <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">{e.descrizione}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-7"
-                      onClick={() => { setEditEvento(e); setDialogOpen(true); }}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => setDaEliminare(e)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <EventoDialog
-        open={dialogOpen}
-        evento={editEvento}
-        dataDefault={giornoSel}
-        onClose={() => { setDialogOpen(false); setEditEvento(null); }}
-        onSaved={() => loadEventi(anno, mese)}
-      />
-
-      <ConfirmDialog
-        open={daEliminare !== null}
-        titolo={daEliminare ? `Eliminare "${daEliminare.titolo}"?` : ""}
-        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
-        onClose={() => setDaEliminare(null)}
-      />
-    </div>
+    <ConfirmDialog
+      open={confermaElimina}
+      titolo={evento ? `Eliminare "${evento.titolo}"?` : ""}
+      onConferma={elimina}
+      onClose={() => setConfermaElimina(false)}
+    />
+    </>
   );
 }

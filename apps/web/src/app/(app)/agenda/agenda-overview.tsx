@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { toast } from "sonner";
-import { EventoDialog } from "../workspace/diario-tab";
+import { EventoDialog, coloreInfo, type EventoDiario } from "../workspace/diario-tab";
 import { tipoSpesaLabel, type Settore } from "@/lib/categorie-spesa";
 import { formatEuro } from "@/lib/format";
 import { MESI_LUNGHI } from "@/lib/mesi";
@@ -36,16 +36,22 @@ interface VoceAgenda {
   dettaglio?: string;      // riga secondaria
   ora?: string;            // HH:MM se rilevante
   importo?: number;        // per spese
+  // Solo per fonte "appuntamento": la riga intera, per aprirla in modifica
+  // (titolo, orari, colore, elimina) senza cambiare scheda.
+  evento?: EventoDiario;
   // Solo per fonte "turno": stato del giorno e ore, così un giorno di ferie non
   // si traveste da turno delle 00:00 e il pannello può totalizzare le ore.
   tipoGiorno?: TipoGiorno;
   ore?: number;
 }
 
-const FONTI: Record<Fonte, { label: string; dot: string; chip: string; icon: typeof CalendarDays; href: string }> = {
+// `href` = dove si lavora quella voce. Gli appuntamenti non ne hanno: dal
+// 09/10/2026 (Mattia, fase H2) si creano, modificano ed eliminano qui, nel
+// «Calendario», e la scheda «Appuntamenti» non esiste piu'.
+const FONTI: Record<Fonte, { label: string; dot: string; chip: string; icon: typeof CalendarDays; href?: string }> = {
   // Tre fonti, tre pallini: blu, grigio e celeste (--grafico-*), non tre tinte.
   // I turni sono la fonte piu' frequente, quindi la piu' chiara.
-  appuntamento: { label: "Appuntamenti", dot: "bg-grafico-1", chip: "bg-accent text-primary-text", icon: CalendarDays, href: "/agenda?layer=appuntamenti" },
+  appuntamento: { label: "Appuntamenti", dot: "bg-grafico-1", chip: "bg-accent text-primary-text", icon: CalendarDays },
   spesa:        { label: "Spese",        dot: "bg-grafico-4", chip: "bg-accent text-primary-text", icon: Wallet,       href: "/agenda?layer=spese" },
   turno:        { label: "Personale",    dot: "bg-grafico-3", chip: "bg-accent text-primary-text", icon: Users,        href: "/agenda?layer=personale" },
 };
@@ -88,7 +94,6 @@ function addDays(d: Date, n: number): Date {
 
 // ─── Tipi grezzi degli endpoint riusati ────────────────────────────────────────
 
-interface EventoRaw { id: string; data_evento: string; titolo: string; ora_inizio?: string | null; ora_fine?: string | null; descrizione?: string | null; }
 interface SpesaRaw { id: string; data_spesa: string; tipo: "fb" | "generale"; importo: number; descrizione: string; categoria?: string | null; }
 interface DipendenteRaw { id: string; nome: string; }
 
@@ -105,6 +110,7 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
   const [nonCaricate, setNonCaricate] = useState<string[]>([]);
   const [vista, setVista] = useState<Vista>("mese");
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [eventoAperto, setEventoAperto] = useState<EventoDiario | null>(null);
   // filtri fonte attivi
   const [fontiAttive, setFontiAttive] = useState<Set<Fonte>>(new Set(["appuntamento", "spesa", "turno"]));
 
@@ -115,7 +121,7 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
     const dN = `${mISO}-${String(giorniNelMese(a, m)).padStart(2, "0")}`;
     try {
       const [evRes, spRes, tuRes] = await Promise.allSettled([
-        leggiJson<{ eventi?: EventoRaw[] }>(`/api/workspace/diario?mese=${mISO}`),
+        leggiJson<{ eventi?: EventoDiario[] }>(`/api/workspace/diario?mese=${mISO}`),
         leggiJson<{ voci?: SpesaRaw[] }>(`/api/workspace/spese?da=${d0}&a=${dN}`),
         leggiJson<{ turni?: Turno[]; dipendenti?: DipendenteRaw[] }>(`/api/workspace/personale?da=${d0}&a=${dN}&mensile=false`),
       ]);
@@ -130,12 +136,13 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
       const out: VoceAgenda[] = [];
 
       if (evRes.status === "fulfilled") {
-        for (const e of (evRes.value?.eventi ?? []) as EventoRaw[]) {
+        for (const e of (evRes.value?.eventi ?? []) as EventoDiario[]) {
           out.push({
             id: `ev-${e.id}`, fonte: "appuntamento", data: e.data_evento,
             titolo: e.titolo,
             dettaglio: e.descrizione ?? undefined,
             ora: fmtOra(e.ora_inizio) || undefined,
+            evento: e,
           });
         }
       }
@@ -409,7 +416,7 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
                 {/* Appuntamenti e spese: una riga per voce, come sempre. */}
                 {vociGiornoAltre.length > 0 && (
                   <div className="space-y-1.5">
-                    {vociGiornoAltre.map(v => <VoceRow key={v.id} v={v} />)}
+                    {vociGiornoAltre.map(v => <VoceRow key={v.id} v={v} onApri={setEventoAperto} />)}
                   </div>
                 )}
                 {/* Personale: chi lavora e chi no, in chiaro, col totale ore. */}
@@ -436,8 +443,8 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
                 <div className="space-y-1">
                   {items.map(v => {
                     const info = FONTI[v.fonte];
-                    return (
-                      <Link key={v.id} href={info.href} className={`block rounded px-1.5 py-1 text-[10px] ${info.chip} hover:opacity-80 transition-opacity`}>
+                    const corpo = (
+                      <>
                         <div className="font-semibold truncate" title={`${v.ora ? `${v.ora} ` : ""}${v.titolo}`}>{v.ora ? `${v.ora} ` : ""}{v.titolo}</div>
                         {/* Un'assenza va detta: senza, in settimana un giorno di
                             ferie sembra un turno senza orario. */}
@@ -445,6 +452,24 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
                           <div className="opacity-80">{TIPO_GIORNO_LABEL[v.tipoGiorno]}</div>
                         )}
                         {v.importo != null && <div className="tabular-nums">{formatEuro(v.importo, 2)}</div>}
+                      </>
+                    );
+                    if (v.evento) {
+                      const evento = v.evento;
+                      return (
+                        <Button
+                          key={v.id}
+                          variant="ghost"
+                          onClick={() => setEventoAperto(evento)}
+                          className={`block h-auto w-full px-1.5 py-1 text-left font-normal whitespace-normal ${coloreInfo(evento.colore).badge} hover:opacity-80`}
+                        >
+                          <div className="text-[10px]">{corpo}</div>
+                        </Button>
+                      );
+                    }
+                    return (
+                      <Link key={v.id} href={info.href ?? "/agenda"} className={`block rounded px-1.5 py-1 text-[10px] ${info.chip} hover:opacity-80 transition-opacity`}>
+                        {corpo}
                       </Link>
                     );
                   })}
@@ -463,7 +488,7 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
               <div key={iso}>
                 <p className="text-xs font-semibold text-muted-foreground mb-1.5 capitalize">{fmtGiornoLabel(iso)}</p>
                 <div className="space-y-1.5">
-                  {ordina(perGiorno[iso]).map(v => <VoceRow key={v.id} v={v} />)}
+                  {ordina(perGiorno[iso]).map(v => <VoceRow key={v.id} v={v} onApri={setEventoAperto} />)}
                 </div>
               </div>
             ))}
@@ -472,10 +497,10 @@ export function AgendaOverview({ settore }: { settore?: Settore | null } = {}) {
       )}
 
       <EventoDialog
-        open={quickAddOpen}
-        evento={null}
+        open={quickAddOpen || eventoAperto !== null}
+        evento={eventoAperto}
         dataDefault={giornoSel}
-        onClose={() => setQuickAddOpen(false)}
+        onClose={() => { setQuickAddOpen(false); setEventoAperto(null); }}
         onSaved={() => load(anno, mese)}
       />
     </div>
@@ -527,7 +552,7 @@ function PannelloPersonale({ voci }: { voci: VoceAgenda[] }) {
         })}
       </div>
       <Link
-        href={FONTI.turno.href}
+        href={FONTI.turno.href ?? "/agenda"}
         className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 border-t border-border transition-colors"
       >
         <Plus className="size-3" />Aggiungi o modifica turni
@@ -536,15 +561,15 @@ function PannelloPersonale({ voci }: { voci: VoceAgenda[] }) {
   );
 }
 
-function VoceRow({ v }: { v: VoceAgenda }) {
+function VoceRow({ v, onApri }: { v: VoceAgenda; onApri: (e: EventoDiario) => void }) {
   const info = FONTI[v.fonte];
   const assente = !!v.tipoGiorno && v.tipoGiorno !== "turno";
-  return (
-    <Link
-      href={info.href}
-      className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 hover:bg-muted/40 transition-colors"
-    >
-      <span className={`mt-1 size-2.5 rounded-full shrink-0 ${info.dot}`} />
+  // Il pallino di un appuntamento e' il SUO colore, scelto dal cliente: quello
+  // della fonte lo dice gia' il filtro in alto.
+  const dot = v.evento ? coloreInfo(v.evento.colore).dot : info.dot;
+  const corpo = (
+    <>
+      <span className={`mt-1 size-2.5 rounded-full shrink-0 ${dot}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm truncate" title={v.titolo}>{v.titolo}</span>
@@ -562,6 +587,27 @@ function VoceRow({ v }: { v: VoceAgenda }) {
           {formatEuro(v.importo, 2)}
         </span>
       )}
+    </>
+  );
+  if (v.evento) {
+    const evento = v.evento;
+    return (
+      <Button
+        variant="outline"
+        onClick={() => onApri(evento)}
+        title="Apri per modificare, cambiare colore o eliminare"
+        className="flex h-auto w-full items-start justify-start gap-2.5 p-2.5 text-left font-normal whitespace-normal hover:bg-muted/40"
+      >
+        {corpo}
+      </Button>
+    );
+  }
+  return (
+    <Link
+      href={info.href ?? "/agenda"}
+      className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 hover:bg-muted/40 transition-colors"
+    >
+      {corpo}
     </Link>
   );
 }

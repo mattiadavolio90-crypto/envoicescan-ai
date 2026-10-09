@@ -47,7 +47,8 @@ export function LayerSwitcher({ active, disponibili }: { active: string; disponi
   }
 
   function badge(key: string): number {
-    if (key === "appuntamenti") return oggi.appuntamenti;
+    // Gli appuntamenti di oggi si contano sul «Calendario», dove ora si creano.
+    if (key === "tutto") return oggi.appuntamenti;
     if (key === "personale") return oggi.personale;
     return 0;
   }

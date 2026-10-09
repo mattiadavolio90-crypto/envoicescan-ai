@@ -48,9 +48,11 @@ export const TAB_SEZIONI: Record<SezioneConTab, readonly TabDef[]> = {
     { key: "coperti", label: "Coperti" },
     { key: "analisi", label: "Analisi Avanzate" },
   ],
+  // «Calendario» ha chiave `tutto`: si chiamava cosi' fino al 09/10/2026, quando
+  // ha assorbito la scheda «Appuntamenti» (Mattia, fase H2). La chiave resta
+  // per non cambiare i link salvati e gli eventuali `tab_off_agenda_tutto`.
   agenda: [
-    { key: "tutto", label: "Tutto" },
-    { key: "appuntamenti", label: "Appuntamenti" },
+    { key: "tutto", label: "Calendario" },
     { key: "spese", label: "Spese" },
     { key: "personale", label: "Personale" },
   ],

@@ -10,7 +10,7 @@ import { InventarioTab } from "./inventario-tab";
 // I tab Agenda/Spese/Personale sono migrati nella pagina dedicata /agenda.
 // Vecchi link a ?tab=agenda|spese|personale vengono rediretti per non rompersi.
 const LAYER_REDIRECT: Record<string, string> = {
-  agenda: "appuntamenti",
+  agenda: "tutto",
   spese: "spese",
   personale: "personale",
 };
