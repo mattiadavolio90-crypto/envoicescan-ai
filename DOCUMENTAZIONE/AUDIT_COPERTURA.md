@@ -1891,6 +1891,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   ordine, ogni messaggio della chat di catena rilegge gli avvisi delle sedi
 >   (l'overview e' anche il contesto della chat); una buona notizia nell'elenco non
 >   spegne la frase (dichiarato).
+> - **09/10/2026, `4f2da3a0` + `bbabdb03` — residuo (4) della G: «Mancano …» della
+>   catena si rilegge in giornata.** Lo snapshot dei segnali vale fino a mezzanotte:
+>   un fatturato inserito di pomeriggio lasciava «Mancano il fatturato» nella riga
+>   della sede. `_restringi_dati_mancanti` + `_completezza_viva`: l'endpoint rilegge
+>   la completezza delle sole sedi con un `dati_mancanti` e toglie le voci inserite;
+>   `_conta_segnali_cache` usa la completezza gia' letta dall'overview. Si toglie
+>   soltanto; lettura fallita = snapshot. **Prove:** mutazione 12/12 (il dodicesimo,
+>   gravita' sullo snapshot intero, dal revisore); 25 test nuovi; 1.276 test di
+>   catena/gruppo/briefing verdi; suite del revisore 18.342 + 58 skip; revisore 🟢.
+>   **Residuo:** costo di K+2 letture a ogni apertura della Home catena quando c'e'
+>   un «Mancano …» (2-3 sedi nei dati); se i costi del mese non si leggono, la voce
+>   «fatture» ripiega sul conteggio righe (ripiego gia' presente in overview e
+>   segnali, mai raggiunto in pratica).
 
 ---
 

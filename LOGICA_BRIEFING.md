@@ -300,6 +300,11 @@ e gli avvisi senza sede restano righe aperte in cima.
   («Nessuna fattura caricata nell'ultima settimana», «Costo del personale
   mancante in luglio e agosto») non bastano: lì restano tutte e due le righe.
   Resta anche se gli avvisi della sede non si sono potuti leggere.
+- **Si rilegge in giornata**: i segnali si calcolano una volta al giorno, ma
+  «Mancano …» viene ricontrollato a ogni apertura. Se il cliente inserisce il
+  fatturato di pomeriggio, la voce sparisce subito (dalla riga e dal conteggio del
+  briefing); una voce nuova invece aspetta il giorno dopo. Se il controllo non
+  riesce, resta quello che c'era la mattina.
 - Lo compone `lib/home-da-fare.ts`. Un errore nel leggere segnali o avvisi non
   diventa mai «Tutto in ordine»: l'elenco dice cosa non ha potuto leggere.
 
