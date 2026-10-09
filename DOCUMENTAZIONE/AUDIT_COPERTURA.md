@@ -1875,11 +1875,22 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   tests/ -m "not sql" -q -p no:randomly` **18.301 + 58 skip** a `d9ecb29b`
 >   (include `test_brevo_mittente_default.py` modificato e non committato da
 >   un'altra sessione); dopo il fix 1.417 verdi su 11 file pertinenti; revisore
->   🟢 sui due commit. **Residui:** la frase del briefing di catena «tutto in
->   ordine» guarda solo i segnali; un segnale della mattina ricompare se il dato
+>   🟢 sui due commit. **Residui:** un segnale della mattina ricompare se il dato
 >   viene inserito in giornata (lo snapshot vale fino a mezzanotte, gli avvisi
 >   no); `/m` catena invariato (fase I); domande proposte e osservazioni nuove in
 >   catena (residuo F) non fatte.
+> - **09/10/2026, `0edcccfc` — residuo della G chiesto da Mattia: «tutto in
+>   ordine» della catena guarda anche gli avvisi dei locali.** La frase guardava
+>   solo i segnali e poteva stare sopra «Scadenze superate (11)» nell'elenco.
+>   `_avvisi_delle_sedi` (una lettura sola per endpoint e briefing);
+>   `_build_briefing(avvisi_aperti=...)` la chiama solo quando il resto e' in
+>   ordine; «non so» spegne la frase. **Prove:** mutazione 9/9 (il filtro dei
+>   sotto-utenti lo uccide il test `-m sql`
+>   `test_notifiche_di_catena_solo_delle_sue_pagine_senza_home`); 763 test di
+>   catena/gruppo verdi; revisore 🟢. **Residuo:** quando una catena e' davvero in
+>   ordine, ogni messaggio della chat di catena rilegge gli avvisi delle sedi
+>   (l'overview e' anche il contesto della chat); una buona notizia nell'elenco non
+>   spegne la frase (dichiarato).
 
 ---
 
