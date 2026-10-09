@@ -71,6 +71,9 @@ def test_emette_i_due_topic_canonici_che_il_briefing_conosce():
     assert "::scadenza_superata::" in sup["dedupe_key"]
     assert sup["refresh_on_conflict"] is True
     dismiss.assert_not_called()
+    # Fase H1 (09/10/2026): la pagina si apre su Archivio, che le scadenze non
+    # le mostra. Entrambi gli avvisi aprono lo Scadenzario.
+    assert [r["action_page"] for r in records] == ["/scadenziario?vista=agenda"] * 2
 
 
 def test_gli_importi_sono_italiani_non_inglesi():

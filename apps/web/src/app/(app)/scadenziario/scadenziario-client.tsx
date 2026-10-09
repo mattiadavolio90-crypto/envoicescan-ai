@@ -1612,9 +1612,11 @@ type ScadenziarioClientProps = {
    * salvata su una pagina vuota, senza il bottone per uscirne.
    */
   vistaIniziale?: string;
+  /** Vista chiesta dal link (`?vista=`): vince sulla salvata, non si salva. */
+  vistaRichiesta?: string;
 };
 
-export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false, visteAttive = ["lista_mensile", "agenda", "calendario"], vistaIniziale }: ScadenziarioClientProps) {
+export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, sedi = [], caricamentoFallito = false, visteAttive = ["lista_mensile", "agenda", "calendario"], vistaIniziale, vistaRichiesta }: ScadenziarioClientProps) {
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
   const sedeTecnicaId = sedi.find(s => s.is_sede_tecnica)?.id;
   const [filtroSede, setFiltroSede] = useState<Set<string>>(new Set()); // vuoto = tutti i punti vendita
@@ -1622,7 +1624,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // Mattia 09/10/2026).
   const visteConsentite = visteFattureOrdinate(visteAttive) as View[];
   const [view, setView] = useState<View>(
-    (vistaFattureIniziale(visteAttive, vistaIniziale) ?? "lista_mensile") as View,
+    (vistaFattureIniziale(visteAttive, vistaIniziale, vistaRichiesta) ?? "lista_mensile") as View,
   );
 
   // Il salvataggio e' best-effort e NON blocca il cambio vista: se il POST

@@ -183,6 +183,19 @@ class TestVisteGestioneFatture:
             'emit(m.vistaFattureIniziale(["calendario", "agenda"], "lista_mensile"))'
         ) == "agenda"
 
+    def test_la_vista_chiesta_dal_link_vince_sulla_salvata(self):
+        """Gli avvisi «Scadenze superate» portano a ?vista=agenda: chi ha
+        Archivio salvato deve vedere le scadenze, non l'elenco per mese."""
+        assert _chiama(
+            'emit(m.vistaFattureIniziale(["agenda", "calendario", "lista_mensile"], "lista_mensile", "agenda"))'
+        ) == "agenda"
+
+    def test_vista_chiesta_spenta_o_inventata_ricade_sulla_salvata(self):
+        assert _chiama(
+            'emit([m.vistaFattureIniziale(["lista_mensile", "calendario"], "calendario", "agenda"),'
+            ' m.vistaFattureIniziale(["lista_mensile", "agenda", "calendario"], "calendario", "pippo")])'
+        ) == ["calendario", "calendario"]
+
     def test_tutte_spente_e_null(self):
         assert _chiama('emit(m.vistaFattureIniziale([], "agenda"))') is None
 

@@ -173,7 +173,10 @@ logger = get_logger('daily_briefing')
 #               arrivate ieri accanto a MOL e incasso.
 #   34 (08/10): fase F. Lo snapshot dice di quali temi ha parlato (`temi`): la
 #               Home ne fa le domande proposte. Snapshot vecchi senza = fisse.
-_BRIEFING_CODE_VERSION = 34
+#   35 (09/10): fase H1. Gestione Fatture si apre su Archivio: i pulsanti delle
+#               scadenze portano a `/scadenziario?vista=agenda`. Senza bump lo
+#               snapshot di oggi aprirebbe l'Archivio, che le scadenze non le mostra.
+_BRIEFING_CODE_VERSION = 35
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -325,11 +328,14 @@ _TOPIC_PRIORITY: Dict[str, int] = {
 # proprio. La Home renderizza il bottone come link generico alla pagina.
 _TOPIC_ACTION: Dict[str, tuple] = {
     'rientro_assenza':          ('Scopri come ti aiutiamo', '/assistenza?servizio=assistenza_continuativa'),
-    'scadenza_superata':        ('Controlla scadenze',   '/scadenziario'),
+    # `?vista=agenda`: dal 09/10/2026 la pagina si apre su Archivio fatture,
+    # che le scadenze non le mostra. Lo Scadenzario si apre per quella visita,
+    # senza cambiare la vista salvata del cliente.
+    'scadenza_superata':        ('Controlla scadenze',   '/scadenziario?vista=agenda'),
     'upload_failed':            ('Riprova upload',        '/analisi-fatture'),
     'fatture_mancanti':         ('Vai a Analisi Fatture', '/analisi-fatture'),
     'upload_ricavi_failed':     ('Controlla ricavi',      '/margini'),
-    'scadenza_imminente':       ('Vedi scadenze',         '/scadenziario'),
+    'scadenza_imminente':       ('Vedi scadenze',         '/scadenziario?vista=agenda'),
     'fatturato_mancante':       ('Inserisci fatturato',   '/margini'),
     'incasso_mancante':         ('Inserisci incasso',     '/margini'),
     'costo_personale_mancante': ('Inserisci costo',       '/margini'),

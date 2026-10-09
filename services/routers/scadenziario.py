@@ -56,6 +56,11 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
 #
 # Non e' una falla che si chiude: al 3/9 tutti i 216 endpoint erano gia'
 # protetti uno per uno. E' la rete perche' il 217esimo non nasca aperto.
+# Gli avvisi sulle scadenze aprono lo Scadenzario: dal 09/10/2026 Gestione
+# Fatture si apre su Archivio, che le scadenze non le mostra (vedi anche
+# `_TOPIC_ACTION` in daily_briefing_service).
+LINK_SCADENZE = "/scadenziario?vista=agenda"
+
 router = APIRouter(dependencies=[Depends(_verify_worker_key)])
 
 
@@ -497,7 +502,7 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
                 f"€ {_euro_it_scadenze(tot_sc)} — controlla i pagamenti."
             ),
             payload={"count": n, "totale": round(float(tot_sc), 2)},
-            action_page="/scadenziario",
+            action_page=LINK_SCADENZE,
         ))
     else:
         da_spegnere.append("scadenza_superata")
@@ -516,7 +521,7 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
                 f"giorni per € {_euro_it_scadenze(tot_sw)}."
             ),
             payload={"count": n, "totale": round(float(tot_sw), 2)},
-            action_page="/scadenziario",
+            action_page=LINK_SCADENZE,
         ))
     else:
         da_spegnere.append("scadenza_imminente")

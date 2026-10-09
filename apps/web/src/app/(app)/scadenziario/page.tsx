@@ -43,8 +43,15 @@ async function triggerNotifica(token: string): Promise<void> {
   }
 }
 
-export default async function ScadenziarioPage() {
+export default async function ScadenziarioPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ vista?: string }>;
+}) {
   await requirePagina("scadenziario");
+  // `?vista=agenda` dagli avvisi sulle scadenze: apre lo Scadenzario per questa
+  // visita, senza toccare la vista salvata (vistaFattureIniziale la valida).
+  const { vista: vistaRichiesta } = await searchParams;
 
   // Qui le viste non sono in URL (stato locale del client), quindi niente guard
   // con redirect: basta non rendere i bottoni. Il 404 a viste esaurite lo si fa
@@ -78,6 +85,7 @@ export default async function ScadenziarioPage() {
         caricamentoFallito={esito.stato === "non_disponibile"}
         visteAttive={viste}
         vistaIniziale={sessione.status === "ok" ? sessione.user.vista_fatture : undefined}
+        vistaRichiesta={vistaRichiesta}
       />
     </div>
   );

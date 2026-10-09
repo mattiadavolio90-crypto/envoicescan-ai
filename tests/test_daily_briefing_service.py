@@ -459,9 +459,15 @@ class TestActionFor:
         assert a["topic_key"] == "scadenza_superata"
         assert a["severity"] == "error"
         assert a["cta_label"] == "Controlla scadenze"
-        assert a["cta_page"] == "/scadenziario"
+        assert a["cta_page"] == "/scadenziario?vista=agenda"
         # testo riusa _bullet_for
         assert a["testo"] == _bullet_for(n)
+
+    def test_scadenza_imminente_apre_lo_scadenzario(self):
+        """Fase H1 (09/10/2026): Gestione Fatture si apre su Archivio, che le
+        scadenze non le mostra; «Vedi scadenze» apre lo Scadenzario."""
+        n = _notif("scadenza_imminente", "warning", {"count": 2, "totale": 300})
+        assert _action_for(n)["cta_page"] == "/scadenziario?vista=agenda"
 
     def test_notif_action_page_overrides_when_next_path(self):
         n = _notif("fatturato_mancante", "warning", {"mese": "aprile", "anno": 2026})

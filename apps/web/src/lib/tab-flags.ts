@@ -106,16 +106,20 @@ export function visteFattureOrdinate(attive: readonly string[]): string[] {
 }
 
 /**
- * La vista su cui si apre Gestione Fatture: quella salvata sull'account
- * (`users.vista_fatture`) se e' ancora consentita, altrimenti la prima
- * consentita — con una vista spenta dall'admin il cliente non deve restare
- * su una pagina vuota senza il bottone per uscirne. `null` = tutte spente.
+ * La vista su cui si apre Gestione Fatture. In ordine: quella chiesta dal link
+ * (`?vista=`, gli avvisi sulle scadenze aprono lo Scadenzario anche a chi ha
+ * salvato Archivio), quella salvata sull'account (`users.vista_fatture`), la
+ * prima consentita. Ognuna vale solo se consentita: con una vista spenta
+ * dall'admin il cliente non deve restare su una pagina vuota senza il bottone
+ * per uscirne. `null` = tutte spente.
  */
 export function vistaFattureIniziale(
   attive: readonly string[],
   salvata: string | null | undefined,
+  richiesta?: string | null,
 ): string | null {
   const consentite = visteFattureOrdinate(attive);
+  if (richiesta != null && consentite.includes(richiesta)) return richiesta;
   if (salvata != null && consentite.includes(salvata)) return salvata;
   return consentite[0] ?? null;
 }

@@ -1253,8 +1253,9 @@ class UserPublic(BaseModel):
     is_admin: bool = False
     tema: str = "dark"
     # Vista preferita di Gestione Fatture ("lista_mensile" = Archivio fatture,
-    # "agenda" = Scadenzario, "calendario"). Default per i token vecchi che non
-    # la portano: Archivio, come il default della colonna dal 09/10/2026.
+    # "agenda" = Scadenzario, "calendario"). Non sta nel token: /api/auth/me la
+    # valorizza sempre dal DB, e il payload di login non porta le preferenze
+    # (vedi auth_login). Il default e' Archivio, come quello della colonna.
     vista_fatture: str = "lista_mensile"
     # False per gli account creati prima dell'introduzione del consenso esplicito
     # (colonna privacy_accepted_at aggiunta 24/5, meccanismo reale dal 2/6): la UI
