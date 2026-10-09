@@ -611,7 +611,9 @@ def _snapshot_versione_corrente(snapshot: Optional[Dict[str, Any]]) -> bool:
         return False
 
 
-def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
+def _conta_segnali_cache(
+    sb, user_id: str, completezza_viva: Optional[Dict[str, List[str]]] = None,
+) -> tuple[Optional[int], str]:
     """(n_segnali, severity_max) dallo snapshot segnali di OGGI in cache.
 
     Read-only: NON ricalcola (il calcolo avviene su /api/gruppo/segnali).
@@ -628,7 +630,11 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
     Il conteggio include le osservazioni NEGATIVE (food cost alto, incasso
     sceso: `osservazione_positiva` falsa), che non sono segnali ma spengono
     il «tutto in ordine» come nel PV (decisione di Mattia, 25/09/2026). Non
-    toccano severity_max: quella resta dei segnali."""
+    toccano severity_max: quella resta dei segnali.
+
+    `completezza_viva` (quella che l'overview ha appena letto) toglie i
+    `dati_mancanti` gia' completati in giornata, come fa l'endpoint: senza, la
+    Home avrebbe tolto la riga e il briefing l'avrebbe ancora contata."""
     from datetime import datetime as _dt
     try:
         from zoneinfo import ZoneInfo
@@ -651,7 +657,7 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[Optional[int], str]:
             # tutto_ok non deve accendersi su un conteggio che non vale piu'.
             if not _snapshot_versione_corrente(snap):
                 return None, "info"
-            segnali = snap.get("segnali") or []
+            segnali = _restringi_dati_mancanti(snap.get("segnali") or [], completezza_viva)
             from services.daily_briefing_service import osservazione_positiva
             negative = [
                 o for o in (snap.get("osservazioni") or [])
@@ -1290,7 +1296,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # Briefing: legge il conteggio segnali dalla cache di OGGI (read-only, niente
     # ricalcolo qui → overview resta leggera; i segnali si calcolano alla loro
     # chiamata). Se la cache manca, il briefing parla solo di margini/salute.
-    n_segnali, sev_max = _conta_segnali_cache(sb, user_id)
+    n_segnali, sev_max = _conta_segnali_cache(sb, user_id, completezza)
     # Fatture di gruppo ancora in coda 'da_assegnare' (COUNT leggero, no full-load):
     # entrano nel briefing come azione concreta del giorno.
     n_da_collocare = 0
@@ -2141,7 +2147,72 @@ def _completezza_dati_pv(
     return out
 
 
-_OSSERVAZIONI_CATENA = ("andamento_incasso", "food_cost_alto")
+_FRASE_MANCA = {v: k for k, v in _CHIAVE_MANCA.items()}
+
+
+def _testo_dati_mancanti(manca: List[str]) -> str:
+    return "Mancano " + _elenco_it(manca) + " — vai a completare nel punto vendita"
+
+
+def _restringi_dati_mancanti(
+    segnali: List[Dict[str, Any]], comp: Optional[Dict[str, List[str]]],
+) -> List[Dict[str, Any]]:
+    """Toglie da `dati_mancanti` le voci che, rilette ora (`comp`), non mancano piu'.
+
+    Lo snapshot dei segnali vale fino a mezzanotte, gli avvisi delle sedi si
+    ricalcolano ogni minuto (residuo della fase G, 9/10/2026): se il cliente
+    inserisce il fatturato in giornata, «Mancano il fatturato» della mattina
+    restava nella riga della sede accanto agli avvisi gia' spenti. Si toglie
+    soltanto, mai si aggiunge: una voce nuova aspetta il calcolo di domani, come
+    ogni altro segnale. `comp` None (lettura fallita) = si lascia lo snapshot,
+    perche' un dato non letto non e' un dato inserito.
+    """
+    if comp is None:
+        return segnali
+    out: List[Dict[str, Any]] = []
+    for s in segnali:
+        chiavi = s.get("manca") or []
+        if (
+            s.get("tipo") != "dati_mancanti" or not s.get("ristorante_id") or not chiavi
+            or any(k not in _FRASE_MANCA for k in chiavi)
+        ):
+            out.append(s)
+            continue
+        ancora = {_CHIAVE_MANCA.get(m) for m in comp.get(s["ristorante_id"]) or []}
+        restano = [k for k in chiavi if k in ancora]
+        if not restano:
+            continue
+        if restano != chiavi:
+            s = dict(
+                s, manca=restano,
+                testo=_testo_dati_mancanti([_FRASE_MANCA[k] for k in restano]),
+            )
+        out.append(s)
+    return out
+
+
+def _completezza_viva(
+    sb, user_id: str, segnali: List[Dict[str, Any]], oggi,
+) -> Optional[Dict[str, List[str]]]:
+    """La completezza riletta ora per le sole sedi con un `dati_mancanti` nello
+    snapshot. None se non ce n'e' nessuna (niente query) o se la lettura fallisce."""
+    rids = sorted({
+        s["ristorante_id"] for s in segnali
+        if s.get("tipo") == "dati_mancanti" and s.get("ristorante_id") and s.get("manca")
+    })
+    if not rids:
+        return None
+    mc_anno, mc_mese = _mese_chiuso(oggi)
+    try:
+        return _completezza_dati_pv(
+            sb, rids, costi_mese=_costi_mese_per_sede(user_id, rids, mc_anno, mc_mese),
+        )
+    except Exception as exc:
+        logger.warning("catena: completezza dei dati mancanti non riletta: %s", exc)
+        return None
+
+
+_OSSERVAZIONI_CATENA =("andamento_incasso", "food_cost_alto")
 
 
 def _calcola_osservazioni(
@@ -2275,7 +2346,7 @@ def _calcola_segnali(
                         "severity": "warning",
                         "ristorante_id": rid,
                         "pv_nome": rid_to_nome[rid],
-                        "testo": "Mancano " + _elenco_it(manca) + " — vai a completare nel punto vendita",
+                        "testo": _testo_dati_mancanti(manca),
                         "cta_page": "/dashboard",
                         "manca": [_CHIAVE_MANCA[m] for m in manca if m in _CHIAVE_MANCA],
                         "mese": _mc_mese,
@@ -2640,10 +2711,14 @@ def gruppo_segnali(
                 # serve, si ricalcola. Senza questo un deploy che cambia soglie o
                 # regole restava invisibile fino a mezzanotte di Roma.
                 if _snapshot_versione_corrente(snap):
+                    in_cache = snap.get("segnali") or []
+                    in_cache = _restringi_dati_mancanti(
+                        in_cache, _completezza_viva(sb, user_id, in_cache, oggi),
+                    )
                     return SegnaliResponse(
                         nome_gruppo=nome_gruppo,
                         generated_at=snap.get("generated_at"),
-                        segnali=[Segnale(**s) for s in (snap.get("segnali") or [])],
+                        segnali=[Segnale(**s) for s in in_cache],
                         osservazioni=[
                             Osservazione(**o) for o in (snap.get("osservazioni") or [])
                         ],
