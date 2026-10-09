@@ -1159,7 +1159,7 @@ export function AnalisiETagClient({
 
         {/* Bottone suggerimenti — widget colorato */}
         <FilterChip
-          active={suggerimentiAperti}
+          active={suggerimentiAperti && suggestions.length > 0}
           onClick={async () => {
             if (suggestions.length > 0) { setSuggerimentiAperti(v => !v); return; }
             await refreshSuggestions();
