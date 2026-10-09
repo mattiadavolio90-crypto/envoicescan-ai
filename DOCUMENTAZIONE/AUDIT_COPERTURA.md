@@ -1820,6 +1820,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Residui:** un sotto-utente senza Margini vede «Voglio inserire…»; con 4
 >   posti le domande delle card da fare possono restare fuori; `/m/chat` aspetta
 >   il briefing (fino a 12 s col worker in timeout).
+> - **09/10/2026, `4defc694` + `f0bb704d` — fase F, passo 7 e CHIUSURA della fase:
+>   l'assistente sulle pagine che non conosceva.** **Fatto** (decisioni di Mattia
+>   dell'8/10): strumenti `query_personale` (turni del mese SOLO in totale: nomi e
+>   costi per persona non vanno a OpenAI), `query_spese_extra`, `score_fornitori`
+>   (anno in corso, senza bozze), `avvisi_prezzi` (rincari e ribassi, tetto 12 s),
+>   `query_tag`; gate pagina + scheda `tab_off_*` nell'offerta e nell'esecuzione,
+>   non in catena; un guasto di uno strumento non e' piu' un 502 dell'intera chat;
+>   tornate le domande proposte su rincari e ribassi. **Trovato:** col nome «ore»
+>   il modello vero sommava due volte le extra, e a «quante ore ha fatto Marco?»
+>   dava a Marco le ore di tutti finche' il dato non ha detto «totali del locale»
+>   (campo `attenzione`): 6/6 corretto dopo. Il revisore ha trovato la taratura
+>   `tipo_attivita` 17→18 rossa per `/m/chat/page.tsx` (passo 5). **Prove:** 33
+>   test in `test_chat_strumenti_pagine.py`; mutazione 22/22; scelta dello
+>   strumento col modello vero 11/11. Suite `-m "not sql"` **18.269 + 58 skip** a
+>   `f0bb704d` (include un test non committato di un'altra sessione); suite
+>   completa del revisore 19.301 + 58 skip. Fase F: 14 commit, revisore su ogni
+>   passo. **Residui:** guasti di motore prezzi e tag letti come vuoto dentro i
+>   servizi; domande proposte e card non filtrate per pagina/scheda; con un solo
+>   dipendente i totali sono suoi; anno senza mese = mese corrente di quell'anno;
+>   il «3» della nota degli avvisi e' scritto a mano (`_MAX_ALERT`).
 
 ---
 
