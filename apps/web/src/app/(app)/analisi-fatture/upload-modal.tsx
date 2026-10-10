@@ -68,7 +68,10 @@ function humanSize(b: number): string {
 // e l'avviso sotto dice dove: la scheda «Da collocare» di Gestione Fatture della
 // catena. Fino al 28/9/2026 dalla catena diceva "qui sotto" (la coda stava in
 // Home) e da un PV rimandava alla vista del gruppo: ora il posto e' uno solo.
-export function UploadModal() {
+// `codaAccesa`: la scheda «Da collocare» di Gestione Fatture (catena) puo' essere
+// spenta dall'admin; spenta, l'avviso resta (le fatture sono in coda) ma senza il
+// link a una scheda che non c'e'.
+export function UploadModal({ codaAccesa = true }: { codaAccesa?: boolean }) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [confermaChiusuraConErrori, setConfermaChiusuraConErrori] = useState(false);
@@ -355,15 +358,19 @@ export function UploadModal() {
                   : `${queued} fatture sono intestate alla società, non a un locale`}
               </p>
               <p className="mt-0.5 text-muted-foreground">
-                Assegnale a un locale o dividile tra i locali in Gestione Fatture del gruppo, scheda «Da collocare».
+                {codaAccesa
+                  ? "Assegnale a un locale o dividile tra i locali in Gestione Fatture del gruppo, scheda «Da collocare»."
+                  : "Restano in attesa di essere assegnate a un locale."}
               </p>
-              <Link
-                href={LINK_CODA_GRUPPO}
-                className="mt-1.5 inline-flex items-center gap-1 font-medium text-incerto underline underline-offset-2 hover:text-incerto"
-              >
-                Vai alle fatture da collocare
-                <ArrowRight className="size-3" />
-              </Link>
+              {codaAccesa && (
+                <Link
+                  href={LINK_CODA_GRUPPO}
+                  className="mt-1.5 inline-flex items-center gap-1 font-medium text-incerto underline underline-offset-2 hover:text-incerto"
+                >
+                  Vai alle fatture da collocare
+                  <ArrowRight className="size-3" />
+                </Link>
+              )}
             </div>
           </div>
         )}

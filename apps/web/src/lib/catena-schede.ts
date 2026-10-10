@@ -85,6 +85,15 @@ export function linkAnalisiCatena(pagine: string[] | null | undefined, scheda: s
   return `/catena/analisi?tab=${risolviScheda(schede, scheda, scheda)}`;
 }
 
+/**
+ * Dove porta «Vedi quali PV» (dati di costo incompleti): solo alla scheda
+ * Margini, che li marca «Incompleto». Con la scheda spenta nessun link: «Spesa per
+ * PV» non li mostra, e il clic porterebbe a una pagina che non risponde alla frase.
+ */
+export function linkMarginiIncompleti(pagine: string[] | null | undefined): string | null {
+  return schedaCatenaAccesa(pagine, "margini") ? linkAnalisiCatena(pagine, "margini") : null;
+}
+
 export const LINK_CODA_GRUPPO = "/catena/fatture?tab=collocare";
 
 /**

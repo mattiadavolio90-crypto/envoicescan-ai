@@ -127,11 +127,14 @@ function ContiGruppoCard({
   overview,
   onApriSpesa,
   onApriMargini,
+  onApriIncompleti,
 }: {
   overview: GruppoOverview;
   // undefined = Analisi catena spenta dall'admin: i numeri restano, senza clic.
   onApriSpesa?: () => void;
   onApriMargini?: () => void;
+  /** «Vedi quali PV»: solo se la scheda Margini c'e' (linkMarginiIncompleti). */
+  onApriIncompleti?: () => void;
 }) {
   const { kpi } = overview;
   // La scelta del ramo e il testo dell'avviso vengono dalla funzione pura in
@@ -212,13 +215,13 @@ function ContiGruppoCard({
       {avviso && (
         <button
           type="button"
-          onClick={onApriMargini}
-          disabled={!onApriMargini}
+          onClick={onApriIncompleti}
+          disabled={!onApriIncompleti}
           className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-left text-xs text-incerto transition-colors hover:border-incerto/60 disabled:hover:border-incerto/30"
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
-            {avviso}.{onApriMargini && <> <span className="font-medium">Vedi quali PV →</span></>}
+            {avviso}.{onApriIncompleti && <> <span className="font-medium">Vedi quali PV →</span></>}
           </span>
         </button>
       )}
@@ -333,6 +336,7 @@ export function SintesiCatena({
   chat = null,
   linkSpesa = null,
   linkMargini = null,
+  linkIncompleti = null,
   codaAccesa = true,
 }: {
   overview: GruppoOverview;
@@ -342,6 +346,8 @@ export function SintesiCatena({
    *  scheda spenta dall'admin la prima accesa, null = nessun link. */
   linkSpesa?: string | null;
   linkMargini?: string | null;
+  /** «Vedi quali PV» (linkMarginiIncompleti): null con la scheda Margini spenta. */
+  linkIncompleti?: string | null;
   /** Scheda «Da collocare» accesa (schedaCatenaAccesa): spenta, niente riga. */
   codaAccesa?: boolean;
 }) {
@@ -396,6 +402,7 @@ export function SintesiCatena({
           overview={overview}
           onApriSpesa={linkSpesa ? () => router.push(linkSpesa) : undefined}
           onApriMargini={linkMargini ? () => router.push(linkMargini) : undefined}
+          onApriIncompleti={linkIncompleti ? () => router.push(linkIncompleti) : undefined}
         />
         <SaluteGruppoCard
           indice={overview.salute_indice}

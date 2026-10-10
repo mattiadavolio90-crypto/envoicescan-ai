@@ -76,7 +76,7 @@ def test_l_avviso_vince_sul_verde(testo):
     vincere sul verde. La lib non da' mai `verde` insieme a un avviso, ma il
     componente non deve dipendere da quella promessa per non mentire."""
     i_nota = testo.find("if (nota || notaLettura) {")
-    i_verde = testo.find("if (verde) return <TuttoInOrdine />;")
+    i_verde = testo.find("if (verde) return senzaVerde ? null : <TuttoInOrdine />;")
     assert i_nota != -1 and i_verde != -1
     assert i_nota < i_verde, "il verde viene controllato prima dell'avviso di errore"
 
@@ -130,4 +130,4 @@ def test_carica_fatture_non_sta_in_home(home):
 def test_carica_fatture_resta_in_analisi_fatture():
     """Il gemello: toglierlo dalle Home non deve toglierlo dall'unico posto dove resta."""
     pagina = _normalizza((_WEB / "app/(app)/analisi-fatture/page.tsx").read_text(encoding="utf-8"))
-    assert "actions={<UploadModal/>}" in pagina
+    assert "actions={<UploadModalcodaAccesa={schedaCatenaAccesa(user?.pagine_abilitate,\"collocare\")}/>}" in pagina

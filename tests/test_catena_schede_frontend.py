@@ -277,6 +277,30 @@ def test_i_link_della_home_ripiegano_o_spariscono(pagine, scheda, atteso):
     assert _ts("emit(m.linkAnalisiCatena(input.p, input.s))", {"p": pagine, "s": scheda}) == atteso
 
 
+@pytest.mark.parametrize("pagine, atteso", [
+    (None, "/catena/analisi?tab=margini"),
+    (["tab_off_catena_spesa"], "/catena/analisi?tab=margini"),
+    (["tab_off_catena_coperti"], "/catena/analisi?tab=margini"),
+    (["tab_off_catena_margini"], None),
+    (["tab_off_catena_margini", "tab_off_catena_spesa", "tab_off_catena_tag"], None),
+])
+def test_vedi_quali_pv_non_ripiega_su_una_scheda_che_non_li_marca(pagine, atteso):
+    """«Vedi quali PV» (costi incompleti) parla della scheda Margini, l'unica che li
+    marca «Incompleto». Spenta, niente link: «Spesa per PV» non risponde alla frase.
+    (Il link del MOL, «confronta i PV», puo' invece ripiegare: e' un confronto.)"""
+    assert _ts("emit(m.linkMarginiIncompleti(input))", pagine) == atteso
+
+
+def test_la_home_di_catena_passa_il_link_degli_incompleti():
+    from pathlib import Path
+    web = Path("apps/web/src/app/(app)/catena")
+    assert "linkIncompleti={linkMarginiIncompleti(utente?.pagine_abilitate)}" in (web / "page.tsx").read_text(encoding="utf-8")
+    sintesi = (web / "sintesi-catena.tsx").read_text(encoding="utf-8")
+    assert "onApriIncompleti={linkIncompleti ?" in sintesi
+    assert "{avviso}.{onApriIncompleti && <>" in sintesi
+    assert "onClick={onApriIncompleti}\n          disabled={!onApriIncompleti}" in sintesi
+
+
 def test_ogni_interruttore_della_catena_e_riconosciuto_dal_worker():
     """Coerenza TS<->Python: una chiave che il worker non riconosce non arriva
     al client e l'interruttore admin non fa niente (il difetto di sempre)."""

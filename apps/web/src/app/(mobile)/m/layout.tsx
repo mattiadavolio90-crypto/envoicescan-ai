@@ -6,6 +6,8 @@ import { getCurrentSession } from "@/lib/auth";
 import { haCatena, idPersona, tabMobileNascoste } from "@/lib/sotto-utente";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { fetchConfig } from "@/lib/home";
+import { fetchGruppoChatConfig } from "@/lib/gruppo";
+import { chatCatenaAttiva } from "@/lib/catena-confronti";
 import { Logo } from "@/components/brand/logo";
 import { BottomNav } from "./bottom-nav";
 import { HeaderMenu } from "./header-menu";
@@ -74,7 +76,11 @@ export default async function MobileLayout({ children }: { children: React.React
   // Stessa regola del widget chat desktop: la chat c'e' solo se abilitata e il
   // piano ha un limite > 0 (i piani free hanno limite 0). Se non disponibile,
   // la tab Assistente sparisce dalla bottom nav (niente 403 secco al tocco).
-  const chatEnabled = (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
+  // In catena la tab segue la regola della chat di gruppo, la stessa di /m/chat:
+  // altrimenti la tab compare e rimanda indietro, o manca con la chat accesa.
+  const chatEnabled = inChain
+    ? chatCatenaAttiva(await fetchGruppoChatConfig())
+    : (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
 
   return (
     // La conversazione con l'assistente sta qui, come nel layout di (app): sopravvive

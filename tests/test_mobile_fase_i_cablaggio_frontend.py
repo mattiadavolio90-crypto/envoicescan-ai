@@ -70,3 +70,19 @@ def test_la_chat_del_telefono_scorre_per_numero_di_messaggi_non_per_elenco():
     m = _src("app/(mobile)/m/chat/mobile-chat.tsx")
     assert "}, [nVoci, c.attesa]);" in m
     assert "[c.voci" not in m
+
+
+def test_la_tab_assistente_di_m_in_catena_segue_la_chat_di_gruppo():
+    """Stessa regola di /m/chat: altrimenti la tab compare e rimanda indietro (chat
+    di gruppo spenta) o manca con la chat accesa."""
+    m = _src("app/(mobile)/m/layout.tsx")
+    assert "? chatCatenaAttiva(await fetchGruppoChatConfig())" in m
+    assert ": (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;" in m
+
+
+def test_dopo_il_caricamento_il_link_alla_coda_c_e_solo_con_la_scheda_accesa():
+    u = _src("app/(app)/analisi-fatture/upload-modal.tsx")
+    assert "export function UploadModal({ codaAccesa = true }: { codaAccesa?: boolean })" in u
+    assert "{codaAccesa && (\n                <Link\n                  href={LINK_CODA_GRUPPO}" in u
+    p = _src("app/(app)/analisi-fatture/page.tsx")
+    assert '<UploadModal codaAccesa={schedaCatenaAccesa(user?.pagine_abilitate, "collocare")} />' in p

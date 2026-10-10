@@ -21,6 +21,7 @@ import { KpiBar } from "./kpi-bar";
 import { PivotTab } from "./pivot-tab";
 import { TabsSwitcher } from "./tabs-switcher";
 import { UploadModal } from "./upload-modal";
+import { schedaCatenaAccesa } from "@/lib/catena-schede";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
 
 type SearchParams = {
@@ -130,7 +131,7 @@ export default async function AnalisiFatturePage({
         icon="file"
         title="Analisi Fatture"
         hint="Cosa hai comprato, da chi e quanto incide"
-        actions={<UploadModal />}
+        actions={<UploadModal codaAccesa={schedaCatenaAccesa(user?.pagine_abilitate, "collocare")} />}
       />
 
       {/* Filtri temporali */}
