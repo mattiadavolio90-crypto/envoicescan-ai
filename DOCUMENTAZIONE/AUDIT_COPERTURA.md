@@ -1904,6 +1904,31 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   un «Mancano …» (2-3 sedi nei dati); se i costi del mese non si leggono, la voce
 >   «fatture» ripiega sul conteggio righe (ripiego gia' presente in overview e
 >   segnali, mai raggiunto in pratica).
+> - **10/10/2026, `12bd60fa` `4e44c781` `28881544` `fd045d56` `1b568e9f` — piano
+>   consulente, fase H: riordino interfaccia (screen 5, 6, 7, 9).** **Misurato**
+>   (sola lettura, OK di Mattia): `users.vista_fatture` e' NOT NULL DEFAULT
+>   'agenda', «mai scelto» = «scelto Da pagare» (6 account + 1 sotto-utente);
+>   nessun account con soli `tab_off_*`; 5 account su 9 con pagine NULL.
+>   **Fatto:** Gestione Fatture Archivio · Scadenzario · Calendario, apertura su
+>   Archivio (`vistaFattureIniziale`) e migration `20261009161543` (default +
+>   righe 'agenda' + avvisi gia' salvati) DA APPLICARE al push; «Quando pagherai»
+>   eliminato. Agenda: «Calendario» = Tutto + Appuntamenti, modifica/colore/elimina
+>   nell'`EventoDialog`. Catena: `tab_off_catena_<scheda>` e `_coperti` (pannello
+>   admin, pagine con 404 a schede esaurite, menu, link di ripiego in Home).
+>   **Trovato:** (revisore) gli avvisi sulle scadenze avrebbero aperto l'Archivio
+>   a tutti → `?vista=agenda` e `_BRIEFING_CODE_VERSION` 35; `action_page` non si
+>   aggiorna nel refresh delle notifiche (5 righe vive); un dict di soli
+>   interruttori era letto «nessuna restrizione» e li perdeva; su un account NULL
+>   spegnere UNA pagina dal pannello le spegneva tutte (`_con_pagine_esplicite`).
+>   **Prove:** mutazione 9/10 + 4/4 + 3/3 + 12/12 + 2/2 (sopravvissuto: default
+>   inerte di `UserPublic.vista_fatture`, confermato dal revisore); suite `python
+>   -m pytest tests/ -q -p no:randomly` a `fd045d56` **19.398 + 58 skip, 1 rosso**
+>   (`test_spesa_non_valida…[data-2026-10-10]`: suite partita alle 23:55 di Roma,
+>   `OGGI` letto all'import; da solo verde) — include `test_brevo_mittente_default.py`
+>   non committato di un'altra sessione; revisore 🟢 su H2/B1/H3. **Residui:**
+>   «Da collocare» spegnibile lascia la coda senza via d'uscita (decisione di
+>   Mattia); chat di catena e `/m` catena ignorano `tab_off_catena_*` (fase I);
+>   con «Margini» spenta «Vedi quali PV» del MOL ripiega su «Spesa per PV».
 
 ---
 
