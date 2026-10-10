@@ -37,7 +37,9 @@ export type Servizio = {
 
   // --- Fase 2: presenti nei dati, NON renderizzati ora ---
   priceMode?: PriceMode;
-  priceValue?: string; // testo umano gia' pronto: "49€ una tantum", "da 199€/mese"
+  // Testo umano gia' pronto. I prezzi sono SEMPRE IVA esclusa (Mattia,
+  // 10/10/2026): «49€ + IVA una tantum», «da 199€ + IVA/mese».
+  priceValue?: string;
   isFutureAutomated?: boolean; // servizio che diventera' automatizzabile in-app
   asyncReportTopics?: string[]; // temi dei report scritti asincroni (card Analisi)
   notesInternal?: string; // promemoria interno, mai mostrato all'utente
@@ -55,7 +57,7 @@ export const SERVIZI: Servizio[] = [
     icon: "Stethoscope",
     variant: "featured",
     priceMode: "fixed",
-    priceValue: "49€ una tantum",
+    priceValue: "49€ + IVA una tantum",
     isFutureAutomated: true,
     notesInternal:
       "Videocall inclusa. Fase 2: generazione automatica del check-up in-app e invio al cliente; usabile come leva commerciale (regalo/sconto).",
@@ -68,7 +70,7 @@ export const SERVIZI: Servizio[] = [
     icon: "LineChart",
     variant: "default",
     priceMode: "starting_from",
-    priceValue: "da 199€/mese",
+    priceValue: "da 199€ + IVA/mese",
     notesInternal: "Servizio continuativo.",
   },
   {
@@ -79,7 +81,7 @@ export const SERVIZI: Servizio[] = [
     icon: "Headset",
     variant: "default",
     priceMode: "fixed",
-    priceValue: "99€/mese",
+    priceValue: "99€ + IVA/mese",
     notesInternal: "Servizio continuativo.",
   },
   {
@@ -90,7 +92,7 @@ export const SERVIZI: Servizio[] = [
     icon: "FileSearch",
     variant: "default",
     priceMode: "starting_from",
-    priceValue: "da 49€ una tantum",
+    priceValue: "da 49€ + IVA una tantum",
     // TODO (fase 2): contenitore dei report asincroni. Questi topic guideranno
     // la scelta del tipo di report e, in futuro, la generazione/consegna in-app.
     asyncReportTopics: [
@@ -115,7 +117,6 @@ export const SERVIZI: Servizio[] = [
     icon: "Zap",
     variant: "default",
     priceMode: "fixed",
-    // Prezzi sempre IVA esclusa (Mattia, 10/10/2026).
     priceValue: "10€ + IVA una tantum",
     soloClienti: true,
     notesInternal:

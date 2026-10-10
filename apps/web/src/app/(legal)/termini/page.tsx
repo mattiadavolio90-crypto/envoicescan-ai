@@ -12,7 +12,7 @@ export default function TerminiPage() {
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Termini di Servizio</h1>
       <p className="text-xs text-muted-foreground">
-        Ultimo aggiornamento: 3 ottobre 2026 — versione 1.3
+        Ultimo aggiornamento: 10 ottobre 2026 — versione 1.4
       </p>
 
       <h2>1. Oggetto del Servizio</h2>
@@ -32,6 +32,7 @@ export default function TerminiPage() {
         <li>Calcolo margini e analisi dei costi alimentari</li>
         <li>Gestione area Foodcost (ricette, ingredienti, diario)</li>
         <li>Controllo prezzi e confronto fornitori</li>
+        <li>Assistente AI con crediti mensili secondo il piano sottoscritto</li>
         <li>Worker automatico di elaborazione fatture con coda persistente</li>
         <li>
           Su richiesta del cliente, invio periodico al suo commercialista di una copia
@@ -87,6 +88,13 @@ export default function TerminiPage() {
         <li>I contenuti delle fatture e i dati economici dell&apos;attività vengono trasmessi al provider AI <strong>esclusivamente on-the-fly</strong>, senza archivio permanente e senza utilizzo per l&apos;addestramento dei modelli. Il dettaglio di cosa viene trasmesso, per ciascuna funzione, è nella <Link href="/privacy">Privacy &amp; Cookie Policy</Link>.</li>
         <li>L&apos;utente è tenuto a verificare e correggere le classificazioni quando necessario.</li>
         <li>Il Servizio fornisce strumenti di revisione e conferma manuale a tale scopo.</li>
+      </ul>
+
+      <h2>5-bis. Crediti AI e Ricariche</h2>
+      <ul>
+        <li>Ogni piano include un numero di <strong>crediti AI mensili</strong> per l&apos;assistente. I crediti del piano si rinnovano il 1° di ogni mese; quelli non usati non passano al mese successivo.</li>
+        <li>La <strong>ricarica Boost AI</strong> aggiunge crediti che non scadono finché l&apos;abbonamento è attivo e si usano dopo quelli mensili del piano.</li>
+        <li>Le ricariche non sono rimborsabili né cedibili. Alla cancellazione dell&apos;account i crediti residui decadono insieme ai dati.</li>
       </ul>
 
       <h2>6. Sicurezza e Responsabilità dell&apos;Utente</h2>

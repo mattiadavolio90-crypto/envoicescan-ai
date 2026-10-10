@@ -57,3 +57,22 @@ def test_la_home_di_catena_propone_il_boost_coi_numeri_del_gruppo():
         "?valutaTrigger(\"home\",segnaliBoost(quotaDaGruppo(chatConfig),!utente?.sotto_utente)):null;"
     ) in n
     assert "<TriggerHinttrigger={boost}className=\"mt-6\"/>" in n
+
+
+def test_ogni_prezzo_dei_servizi_e_iva_esclusa():
+    """Mattia, 10/10/2026: «i prezzi sono sempre piu' IVA»."""
+    servizi = esegui_ts("lib/assistenza", "emit(m.SERVIZI)", None, richiede=["whatsappLink"])
+    con_prezzo = [s for s in servizi if s.get("priceValue")]
+    assert len(con_prezzo) >= 5
+    for s in con_prezzo:
+        assert "+ IVA" in s["priceValue"], s["key"]
+
+
+def test_i_termini_dicono_crediti_e_ricariche():
+    """La landing promette una ricarica «senza scadenza»: i Termini dicono fin
+    dove (abbonamento attivo, niente rimborso, decade con l'account)."""
+    t = (_WEB / "app/(legal)/termini/page.tsx").read_text(encoding="utf-8")
+    assert "5-bis. Crediti AI e Ricariche" in t
+    assert "non scadono finché l&apos;abbonamento è attivo" in t
+    assert "non sono rimborsabili né cedibili" in t
+    assert "versione 1.4" in t
