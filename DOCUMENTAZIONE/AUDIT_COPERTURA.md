@@ -1988,6 +1988,14 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   «+ IVA» su ogni prezzo dei Servizi (approvati da Mattia il 10/10). Decisi da Mattia il 10/10: il Boost e' «10€ + IVA» (prezzi sempre IVA
 >   esclusa); il piano free e' solo la prova di 7 giorni, nessuno ci «scende» (chi
 >   disdice smette di usare l'app), quindi una ricarica non resta mai a un free.
+>   **Deploy 10/10 ~20:50** (`4dfc3e6f..75f7673c`, migration applicata prima): CI
+>   «Tests» rossa sui 2 test della coda. Causa: `claim_batch_for_processing` e
+>   `claim_ricavi_email_batch` con `IN (SELECT ... LIMIT n FOR UPDATE SKIP LOCKED)`, che
+>   in nested loop rivaluta il LIMIT. **Fix** `579f07e9` (migration
+>   `20261010192831`, applicata sul live e pushata): scelta delle righe in una CTE
+>   MATERIALIZED. Prova: `-m sql` 1.059 verdi due volte col fix, gli stessi 2 rossi
+>   togliendolo. Non sono riuscito a forzare quel piano in un test deterministico:
+>   il presidio restano i due test esistenti, che lo avevano preso.
 
 ---
 
