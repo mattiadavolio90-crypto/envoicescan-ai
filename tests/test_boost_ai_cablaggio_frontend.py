@@ -26,7 +26,7 @@ def test_il_boost_e_fra_i_servizi_a_10_euro():
     boost = [s for s in servizi if s["key"] == "boost_ai"]
     assert len(boost) == 1
     b = boost[0]
-    assert b["priceValue"] == "10€ una tantum" and b["priceMode"] == "fixed"
+    assert b["priceValue"] == "10€ + IVA una tantum" and b["priceMode"] == "fixed"
     assert "300 crediti" in b["descrizione"] and "non scade" in b["descrizione"]
     assert b["soloClienti"] is True
 

@@ -90,7 +90,7 @@ export const TRIGGERS: Record<TriggerKey, TriggerDef> = {
     key: "boost",
     servizioKey: "boost_ai",
     messaggio:
-      "Hai usato gran parte dei crediti AI di questo mese. Se ti servono più risposte, una ricarica da 300 crediti costa 10€ e non scade.",
+      "Hai usato gran parte dei crediti AI di questo mese. Se ti servono più risposte, una ricarica da 300 crediti costa 10€ + IVA e non scade.",
     cta: "Scopri il Boost AI",
   },
 };

@@ -165,7 +165,7 @@ export const LANDING = {
     creditiCatena:
       "Con più punti vendita i crediti AI si sommano: il piano più alto vale per intero, ogni altro punto vendita per metà",
     // Boost AI (fase J): la ricarica una tantum, per chi ne vuole di più.
-    boost: "Ti servono più crediti? Boost AI: 300 crediti a 10€, una tantum, senza scadenza",
+    boost: "Ti servono più crediti? Boost AI: 300 crediti a 10€ +IVA, una tantum, senza scadenza",
     // Attivazione in 3 passi sopra la CTA finale: ammazza l'obiezione "sarà
     // complicato / non sono capace" nel momento esatto in cui riaffiora.
     attivazione: [

@@ -45,5 +45,5 @@ def test_la_catena_dice_la_regola_del_worker():
 
 def test_il_boost_della_landing_e_quello_dell_app():
     testo = _piani()["boost"]
-    assert f"{admin.RICARICA_AI_CREDITI} crediti a 10€" in testo
+    assert f"{admin.RICARICA_AI_CREDITI} crediti a 10€ +IVA" in testo, "i prezzi sono sempre IVA esclusa"
     assert "senza scadenza" in testo

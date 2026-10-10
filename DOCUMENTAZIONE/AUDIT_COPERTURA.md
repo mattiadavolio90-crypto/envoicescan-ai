@@ -1984,9 +1984,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   gira dopo certi test — codice della coda fatture, non della J. **Prima del push:**
 >   applicare `20261010135911` sul live (OK di Mattia) e `get_advisors security`.
 >   **Residui:** drop della vecchia `chat_usage_check_and_log` a deploy fatto; Boost
->   non proposto su `/m`; prezzo «10€» senza «+IVA» e Termini che non nominano il
->   Boost (decisioni di Mattia); un cliente che passa a free non puo' piu' usare la
->   ricarica gia' pagata.
+>   non proposto su `/m`; Termini che non nominano crediti e ricarica (proposta a
+>   Mattia). Decisi da Mattia il 10/10: il Boost e' «10€ + IVA» (prezzi sempre IVA
+>   esclusa); il piano free e' solo la prova di 7 giorni, nessuno ci «scende» (chi
+>   disdice smette di usare l'app), quindi una ricarica non resta mai a un free.
 
 ---
 

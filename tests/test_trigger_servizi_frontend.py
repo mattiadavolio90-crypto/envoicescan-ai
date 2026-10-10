@@ -61,7 +61,7 @@ def test_il_boost_compare_al_75_per_cento(mese, atteso):
 def test_il_boost_porta_alla_card_del_servizio():
     out = _home(_sig(800))
     assert out["servizioKey"] == "boost_ai"
-    assert "10€" in out["messaggio"] and "300 crediti" in out["messaggio"]
+    assert "10€ + IVA" in out["messaggio"] and "300 crediti" in out["messaggio"]
 
 
 def test_con_una_ricarica_da_spendere_non_compare():

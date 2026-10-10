@@ -68,7 +68,7 @@ export function RicaricheAiCliente({ clienteId }: { clienteId: string }) {
           <DialogHeader>
             <DialogTitle>Aggiungi ricarica AI</DialogTitle>
             <DialogDescription>
-              {fmtCrediti(boost)} crediti in più per l&apos;assistente del cliente (Boost AI, 10€). Non scadono e si
+              {fmtCrediti(boost)} crediti in più per l&apos;assistente del cliente (Boost AI, 10€ + IVA). Non scadono e si
               usano quando finiscono quelli del mese. Non si può annullare da qui.
             </DialogDescription>
           </DialogHeader>

@@ -115,7 +115,8 @@ export const SERVIZI: Servizio[] = [
     icon: "Zap",
     variant: "default",
     priceMode: "fixed",
-    priceValue: "10€ una tantum",
+    // Prezzi sempre IVA esclusa (Mattia, 10/10/2026).
+    priceValue: "10€ + IVA una tantum",
     soloClienti: true,
     notesInternal:
       "Attivazione a mano da Admin › cliente › Azioni («Aggiungi ricarica AI»): 300 crediti in chat_ricariche.",
