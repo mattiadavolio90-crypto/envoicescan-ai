@@ -820,6 +820,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None, settore: Optional[str
     try:
         # Import services solo quando necessario per evitare circular imports
         from services.ai_service import (
+            applica_regola_documento_pasto,
             carica_memoria_completa,
             categorizza_con_memoria,
             descrizione_e_dubbia,
@@ -1408,6 +1409,13 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None, settore: Optional[str
                 "eccezione — documento non letto, non è una fattura senza righe"
             )
             return None
+
+        # Fase K: la fattura di un locale dove si e' mangiato (c'e' la riga del
+        # coperto) va tutta in RAPPRESENTANZA. Dopo il ciclo perche' serve il
+        # documento intero: riga per riga la pizza sembra materia prima.
+        _pasto = applica_regola_documento_pasto(righe_prodotti)
+        if _pasto:
+            logger.info(f"🍽️ {file_caricato.name}: pasto in un altro locale, {_pasto} righe in RAPPRESENTANZA")
 
         logger.info(f"✅ {file_caricato.name}: {len(righe_prodotti)} righe estratte")
 

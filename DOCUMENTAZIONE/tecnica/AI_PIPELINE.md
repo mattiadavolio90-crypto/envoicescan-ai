@@ -15,7 +15,7 @@ il parsing dei diversi formati file, il sistema di memoria e il briefing AI gior
 
 ## 1. Architettura della Classificazione
 
-### Le fonti canoniche (non 5 livelli: 14 fonti, in ordine di priorità)
+### Le fonti canoniche (non 5 livelli: 15 fonti, in ordine di priorità)
 
 Un solo motore decide: **`decisione_deterministica()`** (`services/ai_service.py`),
 unificato dalla Fase 1 — prima la stessa scelta viveva in nove punti diversi che
@@ -29,6 +29,7 @@ su `fatture.categoria_fonte`.
 │  correzione_cliente     un umano ha corretto           certa     │
 │  correzione_admin       un admin ha corretto           certa     │
 │  L0_fornitore           fornitore-utility (bollette)   certa     │
+│  L0_documento_pasto     fattura col coperto → RAPPR.   certa     │
 │  L1_admin               memoria admin globale          certa     │
 │  L1_5_non_negoziabile   regola di dominio              certa     │
 │  L2_locale              memoria del cliente            certa     │
@@ -68,6 +69,10 @@ invoice_service.py — parsing (XML/P7M/PDF/Vision)
     ├── Step 2: AI batch via worker_client
     │   ├── Prova FastAPI Worker (se WORKER_BASE_URL configurato)
     │   └── Fallback automatico su classifica_con_ai() locale
+    │
+    ├── Fattura col coperto (Fase K): tutte le righe a importo ≠ 0 in
+    │   RAPPRESENTANZA — `applica_regola_documento_pasto`, dopo il ciclo righe
+    │   (serve il documento intero); niente memoria, niente coda AI
     │
     ├── Salvataggio batch: upsert memoria globale (keyword + AI)
     │

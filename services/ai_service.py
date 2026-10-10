@@ -1516,6 +1516,31 @@ _SAKE_RE = re.compile(r"\bSAKE\b")
 # in cima, prima di quelle sulle stoviglie, e senza questa eccezione li prenderebbe.
 _SAKE_OGGETTO_RE = re.compile(r"\b(BICCHIER\w*|TAZZ\w*|CARAFF\w*|CALIC\w*|TOKKURI|OCHOKO|SERVIZIO)\b")
 
+# RAPPRESENTANZA (Fase K, Mattia 10/10/2026): un pasto consumato in un altro locale.
+# Si riconosce da poche voci che compaiono SOLO sulla fattura di chi ha servito il
+# pasto. Strette apposta, misurato sul DB il 10/10: "PARCHEGGIO COPERTO" non e' un
+# coperto, "STAMPA 10 PZ. MENU PRANZO..." e' la tipografia, "PASTO DI RAVIOLI" e'
+# pasta (H.D. ITALIA).
+#   - la riga che e' SOLO il coperto: "COPERTO", "N.4 COPERTI", "COPERTO X 4",
+#     "SERVIZIO E COPERTO";
+#   - i pasti: "4 PASTI COMPLETI", "PRANZO DI LAVORO", "CENA AZIENDALE", "SPESE DI
+#     RAPPRESENTANZA", e la riga che e' SOLO un menu servito ("MENU FISSO").
+_COPERTO_RIGA_RE = re.compile(
+    r"^\W*(?:N\.?\s*)?(?:\d+\s*(?:X\s*)?)?(?:SERVIZIO\s*(?:E|\+|/|&)\s*)?COPERT[OI]"
+    r"(?:\s*(?:E|\+|/|&)\s*SERVIZIO)?(?:\s*(?:X\s*)?\d+(?:[.,]\d+)?)?\W*$"
+)
+_PASTO_RIGA_RE = re.compile(
+    r"\bPAST[OI]\s+COMPLET[OI]\b"
+    r"|\b(?:PRANZ[OI]|CEN[AE])\s+(?:DI\s+LAVORO|AZIENDAL[EI])\b"
+    r"|\bSPESE\s+DI\s+RAPPRESENTANZA\b"
+    r"|^\W*MENU\s+(?:FISSO|DEL\s+GIORNO|DEGUSTAZIONE)\W*$"
+)
+
+
+def e_riga_coperto(descrizione: Optional[str]) -> bool:
+    """La riga e' il coperto di un locale: solo chi serve al tavolo lo fattura."""
+    return bool(_COPERTO_RIGA_RE.search(str(descrizione or "").strip().upper()))
+
 # LARIO/officine auto: "FILTRO OLIO" è un ricambio veicolo, non un condimento — la
 # keyword "OLIO" del dizionario base lo intercetta prima. Cert. SUSHILAND Vimodrone
 # 21/07 (LARIO MI AUTO) + San Giuliano (LOMBARDA MOTORI): stesso errore, 2 fornitori
@@ -1653,6 +1678,13 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "VINI"
         if cat != mapped:
             return mapped, "sake_vini"
+        return cat, None
+
+    # Un pasto consumato in un altro locale → RAPPRESENTANZA (vedi _COPERTO_RIGA_RE).
+    if _COPERTO_RIGA_RE.search(desc_u) or _PASTO_RIGA_RE.search(desc_u):
+        mapped = "RAPPRESENTANZA"
+        if cat != mapped:
+            return mapped, "pasto_rappresentanza"
         return cat, None
 
     # Ricambi officina auto ("FILTRO OLIO", "OLIO FILTRO...") rubati dalla keyword
@@ -4346,6 +4378,11 @@ def _applica_guardrail_iva_bassa_spese_generali(
         # ristorante: la merce di un negozio ha qualunque aliquota, e il recupero
         # porterebbe la riga in CAFFE E THE o VINI dopo ogni filtro d'uscita.
         return categoria_norm
+    if categoria_norm == "RAPPRESENTANZA":
+        # Un pasto servito si fattura al 10%: per questa spesa generale l'IVA bassa
+        # e' la norma, non un indizio di cibo. Senza l'eccezione "SPAGHETTI
+        # VONGOLE" al 10% tornerebbe in PESCE, cioe' nel food cost (Fase K).
+        return categoria_norm
     if categoria_norm not in CATEGORIE_SPESE_GENERALI:
         return categoria_norm
 
@@ -4489,6 +4526,40 @@ def decisione_deterministica(descrizione: str) -> Tuple[str, Optional[str], Opti
     # il dizionario vale "alta"; il solo dizionario vale "media".
     confidenza = "alta" if motivo else ("media" if cat_dz != "Da Classificare" else "alta")
     return cat, motivo, confidenza
+
+
+def applica_regola_documento_pasto(righe: List[Dict[str, Any]]) -> int:
+    """La fattura di un locale dove si e' mangiato e' tutta RAPPRESENTANZA.
+
+    Decisione di Mattia (Fase K, 10/10/2026): se il documento ha la riga del
+    coperto, pizza, birra e acqua di quella fattura non sono materia prima, sono
+    il pasto consumato fuori. Riga per riga il dizionario le metterebbe in
+    PRODOTTI DA FORNO, BIRRE, ACQUA e gonfierebbero il food cost (RISTORANTE
+    MONOPOLI, misurato il 10/10: 26 righe in 9 categorie diverse).
+
+    Lavora IN PLACE sulle righe di UN documento come le produce
+    `estrai_dati_da_xml` ('Descrizione', 'Categoria', 'Totale_Riga'). Restano come
+    sono le righe a importo zero (diciture, omaggi). Non scrive in memoria:
+    "PIZZA" resta pizza per la prossima fattura di un fornitore. Le righe spostate
+    non sono piu' "Da Classificare", quindi non arrivano all'AI del worker ne' allo
+    streak di prodotti_master. Ritorna quante righe ha spostato.
+    """
+    if not righe or not any(e_riga_coperto(r.get("Descrizione")) for r in righe):
+        return 0
+    spostate = 0
+    for r in righe:
+        try:
+            importo = float(r.get("Totale_Riga") or 0)
+        except (TypeError, ValueError):
+            importo = 0.0
+        if importo == 0 or r.get("Categoria") == "RAPPRESENTANZA":
+            continue
+        r["Categoria"] = "RAPPRESENTANZA"
+        r["categoria_fonte"] = "L0_documento_pasto"
+        r["categoria_fiducia"] = "certa"
+        r["needs_review"] = False
+        spostate += 1
+    return spostate
 
 
 def _applica_tutti_guardrail(
@@ -5032,6 +5103,8 @@ _FONTI_CERTE = frozenset({
     "correzione_cliente", "correzione_admin",
     "L0_fornitore", "L1_admin", "L1_5_non_negoziabile", "L2_locale",
     "L4_dicitura", "L7_regola_forte", "AI_confermata",
+    # Fase K: la fattura col coperto, tutta RAPPRESENTANZA (applica_regola_documento_pasto).
+    "L0_documento_pasto",
 })
 # Fonti che affermano qualcosa di plausibile ma non certificato da un umano ne' da
 # una regola di dominio: match di keyword, regola-fornitore, unita' di misura.
