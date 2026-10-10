@@ -4717,7 +4717,9 @@ def _chat_tools_gruppo_per_pagine(tools: List[Dict[str, Any]], pagine) -> List[D
         nome = t["function"]["name"]
         if nome in spenti:
             continue
-        if nome == "gruppo_margini_coperti" and senza_coperti:
+        # Solo se la descrizione parla di coperti: quella dei negozi non ne parla
+        # e non deve tornare alle parole della ristorazione (food cost).
+        if nome == "gruppo_margini_coperti" and senza_coperti and "coperti" in t["function"]["description"]:
             t = {**t, "function": {**t["function"], "description": _MARGINI_SENZA_COPERTI}}
         out.append(t)
     return out

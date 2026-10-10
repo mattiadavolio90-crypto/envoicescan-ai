@@ -147,6 +147,21 @@ def test_coperti_spenti_lo_strumento_resta_ma_non_promette_coperti():
     assert "margine" in descr and "food cost" in descr
 
 
+@pytest.mark.parametrize("settore", ["ristorazione", "retail", None])
+def test_tutto_acceso_la_lista_e_la_stessa_in_ogni_settore(settore):
+    base = fw._chat_tools_gruppo(settore)
+    assert fw._chat_tools_gruppo_per_pagine(base, fw._normalize_pagine(_pagine())) is base
+
+
+def test_retail_coperti_spenti_la_descrizione_resta_quella_del_negozio():
+    """Un negozio non ha coperti: la sua descrizione non va sostituita con quella
+    della ristorazione («food cost»)."""
+    base = fw._chat_tools_gruppo("retail")
+    out = fw._chat_tools_gruppo_per_pagine(base, fw._normalize_pagine(_pagine("coperti")))
+    d = next(t for t in out if t["function"]["name"] == "gruppo_margini_coperti")["function"]["description"]
+    assert d == fw._GRUPPO_DESCRIZIONE_RETAIL["gruppo_margini_coperti"] and "food cost" not in d
+
+
 def test_filtrare_non_cambia_la_lista_di_modulo():
     originale = next(t for t in fw._CHAT_TOOLS_GRUPPO
                      if t["function"]["name"] == "gruppo_margini_coperti")["function"]["description"]
@@ -322,3 +337,22 @@ def test_chat_ai_catena_coperti_spenti_la_risposta_non_li_contiene(monkeypatch):
 def test_chat_ai_catena_tutto_acceso(monkeypatch):
     v = _chat_catena(monkeypatch, _pagine())
     assert {"gruppo_margini_coperti", "gruppo_spesa", "gruppo_segnali", "gruppo_overview"} <= v["tools"]
+
+
+# ── Un interruttore riacceso dall'admin vale `False`, non sparisce ───────────
+#
+# `handleToggleFlag` scrive {"tab_off_catena_X": false} quando si riaccende: la
+# chiave resta nel dict con valore falso. Se il confronto guarda la chiave e non il
+# valore, una scheda riaccesa resterebbe spenta per briefing e chat.
+
+def _riaccesa(*schede):
+    return {**PAGINE_BASE, **{f"tab_off_catena_{s}": False for s in schede}}
+
+
+def test_coda_riaccesa_il_briefing_la_conta():
+    assert _overview(_riaccesa("collocare")).n_fatture_da_collocare == 3
+
+
+def test_chat_ai_scheda_riaccesa_lo_strumento_c_e(monkeypatch):
+    v = _chat_catena(monkeypatch, _riaccesa("margini", "spesa", "coperti"))
+    assert {"gruppo_margini_coperti", "gruppo_spesa"} <= v["tools"]
