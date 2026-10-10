@@ -114,7 +114,12 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           per punto vendita con segnali, osservazioni e avvisi. La coda da collocare
           non c'e': su /m non si raggiunge, ne parla il riquadro qui sopra. Toccare
           «Vedi PV» scende nel locale (la pagina del desktop si ignora). */}
-      <DaFareCatena nDaCollocare={null} vaiAlPV={(id) => void drill(id)} switching={switching} />
+      <DaFareCatena
+        nDaCollocare={null}
+        senzaVerde={!!msgDaCollocare}
+        vaiAlPV={(id) => void drill(id)}
+        switching={switching}
+      />
 
       {/* Conti del gruppo (compatto) — il MOL sempre; ambra finche' non e' reale */}
       <div

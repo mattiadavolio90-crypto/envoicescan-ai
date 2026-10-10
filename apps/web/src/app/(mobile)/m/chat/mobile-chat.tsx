@@ -35,9 +35,12 @@ export function MobileChat({
   const c = useConversazione({ vista, limiteGiorno, domandeOggiIniziali, lettoAlle });
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Per numero di messaggi e non per elenco: `c.voci` e' un array nuovo a ogni
+  // render, e lo scroll partiva a ogni tasto (su iOS la pagina saltava).
+  const nVoci = c.voci.length;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [c.voci, c.attesa]);
+  }, [nVoci, c.attesa]);
 
   const suggerimenti =
     !c.esaurite && mostraSuggerimenti(c.voci, vista)

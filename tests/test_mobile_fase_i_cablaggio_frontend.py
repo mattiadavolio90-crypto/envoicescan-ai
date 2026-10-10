@@ -41,3 +41,32 @@ def test_il_banner_del_telefono_non_e_a_posizione_fissa():
     assert "fixed" not in in_flusso
     assert "fixed" in desktop
     assert "<ImpersonaBanner />" in _src("app/(app)/layout.tsx")
+
+
+def test_la_chat_del_telefono_in_catena_parla_del_gruppo_con_la_regola_della_home():
+    """In catena la chat di /m e' quella del gruppo: vista catena, pool AI e
+    interruttore di gruppo come la Home di catena (chatCatenaAttiva), non la
+    config della sede (con la chat di catena spenta il cliente avrebbe visto la chat
+    e ricevuto un 403 a ogni domanda)."""
+    p = _src("app/(mobile)/m/chat/page.tsx")
+    assert "vista={inChain ? vistaCatena() : vistaSede(utente?.sede_attiva_id)}" in p
+    assert "chatCatenaAttiva(gruppo)" in p
+    assert "(inChain ? gruppo?.limite_giorno : config?.chat_limite_giorno) ?? 0" in p
+    assert "(inChain ? gruppo?.domande_oggi : config?.chat_domande_oggi) ?? 0" in p
+
+
+def test_la_catena_del_telefono_ha_il_da_fare_per_sede_e_non_il_verde_sopra_la_coda():
+    m = _src("app/(mobile)/m/briefing/mobile-catena.tsx")
+    assert "<DaFareCatena" in m and "senzaVerde={!!msgDaCollocare}" in m and "nDaCollocare={null}" in m
+    d = _src("app/(app)/catena/da-fare-catena.tsx")
+    assert "if (verde) return senzaVerde ? null : <TuttoInOrdine />;" in d
+    # La Home desktop non lo passa: il suo verde resta quello di sempre.
+    assert "senzaVerde" not in _src("app/(app)/catena/sintesi-catena.tsx")
+
+
+def test_la_chat_del_telefono_scorre_per_numero_di_messaggi_non_per_elenco():
+    """`c.voci` e' un array nuovo a ogni render: come dipendenza faceva scorrere la
+    pagina a ogni tasto digitato."""
+    m = _src("app/(mobile)/m/chat/mobile-chat.tsx")
+    assert "}, [nVoci, c.attesa]);" in m
+    assert "[c.voci" not in m

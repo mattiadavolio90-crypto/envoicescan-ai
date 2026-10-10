@@ -14,6 +14,10 @@ import pytest
 _WEB = Path(__file__).resolve().parent.parent / "apps/web/src"
 _PROVIDER = _WEB / "components/home/assistente-provider.tsx"
 _CONV = _WEB / "components/home/conversazione-assistente.tsx"
+# Dalla fase I la logica della conversazione di una vista vive in un hook solo,
+# usato dalla Home e da /m/chat: i presidi che guardavano _CONV guardano lui.
+_HOOK = _WEB / "components/home/use-conversazione.ts"
+_M_CHAT = _WEB / "app/(mobile)/m/chat/mobile-chat.tsx"
 _LAYOUT = _WEB / "app/(app)/layout.tsx"
 _PV = _WEB / "app/(app)/dashboard/page.tsx"
 _CATENA_PAGE = _WEB / "app/(app)/catena/page.tsx"
@@ -30,6 +34,14 @@ def _n(p: Path) -> str:
     t = re.sub(r"(?m)^\s*//.*$", "", t)
     t = re.sub(r"\{/\*.*?\*/\}", "", t, flags=re.S)
     return re.sub(r"\s+", "", t)
+
+
+def test_home_e_telefono_usano_la_stessa_conversazione():
+    """Una sola copia della logica di una vista: se una delle due superfici la
+    riscrive, torna il difetto che la fase I ha chiuso (due copie che divergono)."""
+    for p in (_CONV, _M_CHAT):
+        assert "useConversazione({vista,limiteGiorno,domandeOggiIniziali,lettoAlle})" in _n(p), p
+        assert "useAssistente" not in _n(p), p
 
 
 def test_il_pulsante_flottante_non_c_e_piu():
@@ -56,7 +68,10 @@ def test_la_conversazione_sta_nel_layout_dell_app_per_utente():
 
 def test_il_provider_manda_solo_la_vista_corrente_e_col_suo_contesto():
     n = _n(_PROVIDER)
-    assert "messages:codaPerVista(vociRef.current,vista),contesto:vista.contesto,card_conferma:true" in n
+    # Il corpo lo compone corpoRichiestaChat (lib/home-chat.ts, eseguita in
+    # test_home_chat_frontend.py): messaggi della sola vista, il suo contesto,
+    # card_conferma.
+    assert "body:JSON.stringify(corpoRichiestaChat(vociRef.current,vista,mobile))" in n
     assert ("conRisposta(v,vista.chiave,messaggioRisposta(res.status,data),"
             "data.reply?cardDaProposte(data.proposte,Date.now()):[],)") in n
     assert "constchiave=chiaveConversazione(utenteId);" in n
@@ -67,11 +82,13 @@ def test_a_schermo_la_conversazione_della_sola_vista_aperta():
     """Mattia, 29/9: la conversazione che continuava sotto il briefing di un
     altro locale confondeva. Il pannello riceve i soli messaggi della vista, e
     «Nuova conversazione» e l'attesa riguardano solo lei."""
+    h = _n(_HOOK)
+    assert "constvoci=vociDellaVista(tutte,vista.chiave);" in h
+    assert "nuova:()=>nuova(vista.chiave)," in h
+    assert "attesa:inCorso===vista.chiave?testoAttesa(attesa):null," in h
     c = _n(_CONV)
-    assert "constvoci=vociDellaVista(tutte,vista.chiave);" in c
-    assert "<PannelloConversazionevoci={voci}" in c
-    assert "onNuova={()=>nuova(vista.chiave)}" in c
-    assert "attesa={inCorso===vista.chiave?testoAttesa(attesa):null}" in c
+    assert "<PannelloConversazionevoci={c.voci}" in c
+    assert "attesa={c.attesa}" in c and "onNuova={c.nuova}" in c
     assert "entraIn" not in c and "entraIn" not in _n(_PROVIDER)
     assert "nuova=useCallback((vistaChiave:string)=>aggiorna((v)=>senzaVista(v,vistaChiave))" in _n(_PROVIDER)
 
@@ -109,7 +126,7 @@ def test_il_contatore_e_uno_per_account_e_segue_la_lettura_piu_recente():
     p = _n(_PROVIDER)
     assert "useState<Conteggio|null>(null)" in p
     assert "finita:quotaEsaurita(res.status,data)" in p
-    c = _n(_CONV)
+    c = _n(_HOOK)
     assert "statoDomande(limiteGiorno,server,domande)" in c
     assert "},[domandeOggiIniziali,lettoAlle]);" in c
 
@@ -129,9 +146,12 @@ def test_la_casella_ferma_per_una_domanda_altrove_dice_perche():
     """Revisore, 29/9: domanda nella sede A, passaggio alla B prima della
     risposta. In B la casella e' ferma (una domanda alla volta) e senza attesa
     visibile sembrava rotta."""
-    c = _n(_CONV)
-    assert "constbloccato=inCorso!==null||esaurite;" in c
-    assert ":inCorso!==null&&inCorso!==vista.chiave?\"Storispondendoalladomandachehaifattoinun'altravista…\"" in c
+    h = _n(_HOOK)
+    assert "constbloccato=inCorso!==null||esaurite;" in h
+    assert "inAltraVista:inCorso!==null&&inCorso!==vista.chiave," in h
+    assert "c.inAltraVista" in _n(_CONV)
+    assert "Storispondendoalladomandachehaifattoinun'altravista…" in _n(_CONV)
+    assert "c.inAltraVista" in _n(_M_CHAT)
 
 
 # ─── Fase 3: la card delle cifre dettate ──────────────────────────────────────
@@ -166,8 +186,8 @@ def test_annulla_non_chiama_il_server():
 
 
 def test_la_card_arriva_a_schermo_con_i_suoi_pulsanti():
-    c = _n(_CONV)
-    assert "onConferma={(id)=>voidconferma(id)}onAnnulla={annulla}" in c
+    assert "conferma:(id:string)=>voidconferma(id)," in _n(_HOOK)
+    assert "onConferma={c.conferma}onAnnulla={c.annulla}" in _n(_CONV)
     p = _n(_PANNELLO)
     assert "v.card?.map((c)=>(<CardCifraDettatakey={c.id}card={c}onConferma={onConferma}onAnnulla={onAnnulla}/>))" in p
     k = _n(_CARD)

@@ -21,11 +21,15 @@ type Avvisi = { notifiche?: Notifica[]; sedi_non_lette?: string[] };
 export function DaFareCatena({
   nDaCollocare,
   codaAccesa = true,
+  senzaVerde = false,
   vaiAlPV,
   switching,
 }: {
   nDaCollocare: number | null | undefined;
   codaAccesa?: boolean;
+  /** Niente «Tutto in ordine» quando non c'e' nulla da elencare: su /m la coda da
+   *  collocare non e' una riga ma sta nel riquadro sopra, e il verde la smentirebbe. */
+  senzaVerde?: boolean;
   vaiAlPV: (ristoranteId: string, page?: string) => void;
   switching: boolean;
 }) {
@@ -139,7 +143,7 @@ export function DaFareCatena({
         </div>
       );
     }
-    if (verde) return <TuttoInOrdine />;
+    if (verde) return senzaVerde ? null : <TuttoInOrdine />;
     return null;
   }
 
