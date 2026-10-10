@@ -9,6 +9,7 @@ import {
   FileSearch,
   PiggyBank,
   Globe,
+  Zap,
   MessageCircle,
   Send,
   Loader2,
@@ -39,6 +40,7 @@ const ICONS: Record<ServizioIconName, LucideIcon> = {
   FileSearch,
   PiggyBank,
   Globe,
+  Zap,
 };
 
 // Stile WhatsApp (verde) condiviso tra card e dialog.

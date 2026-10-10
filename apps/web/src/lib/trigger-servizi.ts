@@ -14,15 +14,16 @@
 // qui decidiamo solo SE e QUALE, e al massimo uno.
 
 import type { Servizio } from "@/lib/assistenza";
+import type { QuotaCrediti } from "@/lib/home-chat";
 
-// Le quattro chiavi triggerabili. Le card 5-6 (partner/Recoma) NON si triggerano
-// mai: sono fuori dal core dell'app. Union type: un refuso e' errore a
-// compile-time.
-export type TriggerKey = "checkup" | "consulenza" | "assistenza" | "analisi";
+// Le chiavi triggerabili. Le card partner (Ottimizzazione costi, Sito) NON si
+// triggerano mai: sono fuori dal core dell'app. Union type: un refuso e' errore
+// a compile-time.
+export type TriggerKey = "checkup" | "consulenza" | "assistenza" | "analisi" | "boost";
 
 // Pagine dove un trigger puo' comparire. Stringa = flag pagina / route, cosi'
 // la valutazione e' per-pagina e "1 per pagina" e' garantito dal chiamante.
-export type TriggerPagina = "analisi-fatture" | "margini" | "prezzi";
+export type TriggerPagina = "analisi-fatture" | "margini" | "prezzi" | "home";
 
 // Segnali che la pagina passa al valutatore. Tutti OPZIONALI e gia' calcolati
 // altrove (KPI Home, conteggi notifiche): qui non si calcola nulla di pesante.
@@ -37,6 +38,11 @@ export type TriggerSignals = {
   molNegativo?: boolean; // MOL sotto zero nel periodo
   // Analisi: c'e' una criticita' puntuale da approfondire.
   alertPrezziAttivi?: number; // numero prodotti/categorie in aumento
+  // Boost AI (Home, sede e catena): i crediti dell'assistente.
+  creditiMese?: number; // crediti del piano spesi nel mese
+  creditiMeseLimite?: number; // crediti del mese dell'account (0 = nessuno)
+  creditiRicarica?: number; // ricarica ancora da spendere
+  titolare?: boolean; // solo chi compra: un collaboratore non vede l'offerta
 };
 
 export type TriggerDef = {
@@ -80,7 +86,29 @@ export const TRIGGERS: Record<TriggerKey, TriggerDef> = {
       "Hai un dubbio preciso? Possiamo prepararti un'analisi scritta sui tuoi numeri o sul mercato.",
     cta: "Richiedi un'analisi",
   },
+  boost: {
+    key: "boost",
+    servizioKey: "boost_ai",
+    messaggio:
+      "Hai usato gran parte dei crediti AI di questo mese. Se ti servono più risposte, una ricarica da 300 crediti costa 10€ e non scade.",
+    cta: "Scopri il Boost AI",
+  },
 };
+
+// Quando proporre il Boost (Mattia, 10/10/2026): al 75% dei crediti del mese.
+// Non prima: il trigger deve essere raro e arrivare quando serve.
+export const SOGLIA_BOOST = 0.75;
+
+// I segnali del Boost dalla quota della conversazione (stessi numeri del
+// contatore: quotaDaConfig / quotaDaGruppo).
+export function segnaliBoost(quota: QuotaCrediti, titolare: boolean): TriggerSignals {
+  return {
+    creditiMese: quota.mese,
+    creditiMeseLimite: quota.limiteMese,
+    creditiRicarica: quota.ricarica,
+    titolare,
+  };
+}
 
 // Chiave del flag per-cliente, in convenzione INVERSA: presente = trigger
 // SPENTI per quel cliente. Assente = accesi (default ON, anche per i clienti
@@ -134,6 +162,16 @@ export function valutaTrigger(
   if (pagina === "prezzi") {
     const alert = signals.alertPrezziAttivi ?? 0;
     return alert > 0 ? TRIGGERS.analisi : null;
+  }
+
+  if (pagina === "home") {
+    // Boost AI: crediti del mese al 75% o oltre, ricarica a zero (chi ha ancora
+    // una ricarica non ha bisogno di comprarne un'altra), e solo al titolare.
+    const limite = signals.creditiMeseLimite ?? 0;
+    const usati = signals.creditiMese ?? 0;
+    const ricarica = signals.creditiRicarica ?? 0;
+    const pieno = limite > 0 && usati >= limite * SOGLIA_BOOST;
+    return pieno && ricarica <= 0 && signals.titolare === true ? TRIGGERS.boost : null;
   }
 
   if (pagina === "margini") {

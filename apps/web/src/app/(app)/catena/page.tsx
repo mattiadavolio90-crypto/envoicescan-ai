@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { quotaDaGruppo } from "@/lib/home-chat";
+import { segnaliBoost, triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
+import { TriggerHint } from "@/components/trigger-hint";
 import { SintesiCatena } from "./sintesi-catena";
 import { BlockRetry } from "../dashboard/block-retry";
 import { linkAnalisiCatena, linkMarginiIncompleti, schedaCatenaAccesa } from "@/lib/catena-schede";
@@ -48,23 +50,31 @@ async function SintesiBlock() {
   if (deveRedirigereAPuntoVendita(overview)) {
     redirect("/dashboard");
   }
+  // Boost AI (fase J): al 75% dei crediti del mese dell'account, in fondo.
+  const boost =
+    chatCatenaAttiva(chatConfig) && triggerAbilitati(utente?.pagine_abilitate)
+      ? valutaTrigger("home", segnaliBoost(quotaDaGruppo(chatConfig), !utente?.sotto_utente))
+      : null;
   return (
-    <SintesiCatena
-      overview={overview}
-      chat={
-        chatCatenaAttiva(chatConfig)
-          ? {
-              quota: quotaDaGruppo(chatConfig),
-              lettoAlle: Date.now(),
-              settore: utente?.tipo_attivita ?? null,
-            }
-          : null
-      }
-      linkSpesa={linkAnalisiCatena(utente?.pagine_abilitate, "spesa")}
-      linkMargini={linkAnalisiCatena(utente?.pagine_abilitate, "margini")}
-      linkIncompleti={linkMarginiIncompleti(utente?.pagine_abilitate)}
-      codaAccesa={schedaCatenaAccesa(utente?.pagine_abilitate, "collocare")}
-    />
+    <>
+      <SintesiCatena
+        overview={overview}
+        chat={
+          chatCatenaAttiva(chatConfig)
+            ? {
+                quota: quotaDaGruppo(chatConfig),
+                lettoAlle: Date.now(),
+                settore: utente?.tipo_attivita ?? null,
+              }
+            : null
+        }
+        linkSpesa={linkAnalisiCatena(utente?.pagine_abilitate, "spesa")}
+        linkMargini={linkAnalisiCatena(utente?.pagine_abilitate, "margini")}
+        linkIncompleti={linkMarginiIncompleti(utente?.pagine_abilitate)}
+        codaAccesa={schedaCatenaAccesa(utente?.pagine_abilitate, "collocare")}
+      />
+      <TriggerHint trigger={boost} className="mt-6" />
+    </>
   );
 }
 

@@ -15,6 +15,7 @@ import {
   FileSearch,
   PiggyBank,
   Globe,
+  Zap,
   ExternalLink,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const SERVIZIO_ICONS: Record<ServizioIconName, LucideIcon> = {
   FileSearch,
   PiggyBank,
   Globe,
+  Zap,
 };
 
 // Stessi gruppi-colore della pagina servizi reale dell'app (marketplace.tsx),
@@ -121,7 +123,7 @@ export function ServiziModal({
             <p className="mt-3 max-w-2xl text-sm text-white/[0.72] sm:text-base">{t.sottotitolo}</p>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {SERVIZI.map((sv) => {
+              {SERVIZI.filter((sv) => !sv.soloClienti).map((sv) => {
                 const Icon = SERVIZIO_ICONS[sv.icon];
                 const variant = sv.variant ?? "default";
                 return (

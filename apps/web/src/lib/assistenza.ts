@@ -13,7 +13,8 @@ export type ServizioIconName =
   | "Headset"
   | "FileSearch"
   | "PiggyBank"
-  | "Globe";
+  | "Globe"
+  | "Zap";
 
 // Resa grafica: servizio OneFlux standard, entry-point in risalto, area partner.
 export type ServizioVariant = "default" | "featured" | "partner";
@@ -40,6 +41,9 @@ export type Servizio = {
   isFutureAutomated?: boolean; // servizio che diventera' automatizzabile in-app
   asyncReportTopics?: string[]; // temi dei report scritti asincroni (card Analisi)
   notesInternal?: string; // promemoria interno, mai mostrato all'utente
+  // Solo per chi e' gia' cliente (es. la ricarica dei crediti AI): nell'app si',
+  // nell'elenco dei servizi della landing no — li' sta con i prezzi dei piani.
+  soloClienti?: boolean;
 };
 
 export const SERVIZI: Servizio[] = [
@@ -99,6 +103,22 @@ export const SERVIZI: Servizio[] = [
     ],
     notesInternal:
       "Fase 2: includere food cost, margini, fornitori, prezzi, criticità operative e analisi di mercato come report scritti consegnabili in-app.",
+  },
+  {
+    // Fase J (10/10/2026, decisioni di Mattia): ricarica una tantum dei crediti
+    // dell'assistente. Non scade, si usa solo quando finiscono quelli del mese.
+    // La propone il banner al 75% dei crediti del mese (lib/trigger-servizi.ts).
+    key: "boost_ai",
+    label: "Boost AI",
+    descrizione:
+      "Ti servono più risposte dal tuo assistente? Una ricarica da 300 crediti AI che si aggiunge a quelli del tuo piano: non scade, si usa solo quando finiscono quelli del mese.",
+    icon: "Zap",
+    variant: "default",
+    priceMode: "fixed",
+    priceValue: "10€ una tantum",
+    soloClienti: true,
+    notesInternal:
+      "Attivazione a mano da Admin › cliente › Azioni («Aggiungi ricarica AI»): 300 crediti in chat_ricariche.",
   },
   {
     key: "ottimizzazione_costi",

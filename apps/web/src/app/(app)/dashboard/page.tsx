@@ -17,6 +17,8 @@ import { TestataHome } from "@/components/home/testata-home";
 import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
 import { quotaDaConfig, vistaSede } from "@/lib/home-chat";
 import { costoMerceLabel } from "@/lib/categorie-spesa";
+import { segnaliBoost, triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
+import { TriggerHint } from "@/components/trigger-hint";
 
 // Streaming con Suspense per blocco: ogni sezione carica i suoi dati in modo
 // indipendente. Prima un unico Promise.all bloccante aspettava la chiamata piu'
@@ -158,6 +160,18 @@ async function KpiSaluteBlock() {
   );
 }
 
+// Boost AI (fase J): al 75% dei crediti del mese, in fondo alla Home come gli
+// altri suggerimenti dei Servizi. Stessi numeri del contatore della
+// conversazione; config e utente sono in cache() per la richiesta.
+async function BoostBlock() {
+  const [config, user] = await Promise.all([fetchConfig(), getCurrentUser()]);
+  const trigger =
+    chatVisibile(config) && triggerAbilitati(user?.pagine_abilitate)
+      ? valutaTrigger("home", segnaliBoost(quotaDaConfig(config), !user?.sotto_utente))
+      : null;
+  return <TriggerHint trigger={trigger} />;
+}
+
 export default async function DashboardPage() {
   // Un sotto-utente senza la Home va alla prima pagina che ha.
   await requireHome();
@@ -188,6 +202,10 @@ export default async function DashboardPage() {
 
         <Suspense fallback={<div className="grid gap-4 lg:grid-cols-2"><CardSkeleton /><CardSkeleton /></div>}>
           <KpiSaluteBlock />
+        </Suspense>
+
+        <Suspense fallback={null}>
+          <BoostBlock />
         </Suspense>
       </div>
     </>
