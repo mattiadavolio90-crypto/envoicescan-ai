@@ -35,6 +35,12 @@ def test_il_residuo_si_dice_coi_punti():
         "Nessuna ricarica AI attivata."
 
 
+def test_la_data_e_quella_di_roma():
+    """All'1:30 del 10/10 a Roma l'UTC dice ancora 9/10."""
+    assert _f("rigaRicarica", {**R1, "created_at": "2026-10-09T23:30:00Z", "nota": None}) == \
+        "10/10/2026 · 300 crediti"
+
+
 def test_la_riga_della_ricarica():
     assert _f("rigaRicarica", R1) == "10/10/2026 · 300 crediti · bonifico"
     assert _f("rigaRicarica", {**R1, "nota": None}) == "10/10/2026 · 300 crediti"

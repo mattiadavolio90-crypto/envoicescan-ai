@@ -136,8 +136,8 @@ export const LANDING = {
   // prezzi 39/59/79 +IVA. Crediti AI/mese: cifra grande che comunica potenza, con
   // riferimento concreto piccolo sotto (richieste/giorno). Termine "crediti AI"
   // (NON "token"). Sono i crediti VERI dell'app dal 10/10/2026 (fase J, decisi
-  // da Mattia): 1.000/1.500/2.000, una richiesta = 3 crediti, quindi ~11/16/22
-  // al giorno (CHAT_BUDGET_MENSILE_PIANO nel worker; un test li tiene allineati).
+  // da Mattia): 1.000/1.500/2.000, una richiesta = 3 crediti, quindi 11/16/22
+  // al giorno (scritti per difetto: ~10/15/20) (CHAT_BUDGET_MENSILE_PIANO nel worker; un test li tiene allineati).
   piani: {
     title: "Tutto incluso, in ogni piano",
     // Nessun piano "consigliato": tutti full optional, cambia solo il volume.

@@ -3358,11 +3358,18 @@ def _ricariche_ai_del_cliente(sb, cliente_id: str) -> Dict[str, Any]:
         .limit(20)
         .execute()
     ).data or []
-    stato = _chat_crediti_stato(cliente_id, None, True, sb)
+    try:
+        stato = _chat_crediti_stato(cliente_id, None, True, sb, solleva=True)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Crediti del cliente non leggibili: riprova")
     return {"ricariche": righe, "residuo": stato["ricarica"], "crediti_boost": RICARICA_AI_CREDITI}
 
 
 def _cliente_esiste(sb, cliente_id: str) -> None:
+    try:
+        uuid.UUID(cliente_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
     r = sb.table("users").select("id").eq("id", cliente_id).limit(1).execute()
     if not r.data:
         raise HTTPException(status_code=404, detail="Cliente non trovato")

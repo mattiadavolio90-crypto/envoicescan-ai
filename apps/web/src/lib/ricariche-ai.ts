@@ -29,9 +29,15 @@ export function testoResiduo(r: RicaricheAi): string {
   return `Ricarica AI da spendere: ${fmtCrediti(r.residuo)} crediti`;
 }
 
+// Il giorno di Roma, non dell'UTC: una ricarica fatta all'1 di notte non va
+// scritta col giorno prima.
+const GIORNO_ROMA = new Intl.DateTimeFormat("it-IT", {
+  timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric",
+});
+
 /** Una ricarica nell'elenco: «10/10/2026 · 300 crediti · nota». */
 export function rigaRicarica(r: RicaricaAi): string {
-  const giorno = r.created_at.slice(0, 10).split("-").reverse().join("/");
+  const giorno = GIORNO_ROMA.format(new Date(r.created_at));
   const parti = [giorno, `${fmtCrediti(r.crediti)} crediti`];
   if (r.nota) parti.push(r.nota);
   return parti.join(" · ");

@@ -82,7 +82,7 @@ JS — vulnerabile a XSS (Art. 32).
 | Reset password | 1 / 5 min | In-memory |
 | Upload | 100 file / 200 MB | Per upload |
 | Classificazione AI | 1.000/giorno per ristorante | `constants.py` |
-| Chat AI | 0–2.000 crediti/mese per sede, 10% al giorno | `chat_usage_log` |
+| Chat AI | 0–2.000 crediti/mese per sede (catena: un salvadanaio per account), 10% al giorno | `chat_usage_log` |
 
 **Perché il login è persistente su DB:** un contatore in memoria si azzera al
 riavvio del processo. Con deploy e restart frequenti, il lockout sarebbe

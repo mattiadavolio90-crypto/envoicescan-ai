@@ -3518,7 +3518,7 @@ _CREDITI_A_ZERO = {"oggi": 0, "mese": 0, "ricarica": 0}
 
 
 def _chat_crediti_stato(
-    user_id: str, ristorante_id: Optional[str], pool: bool, supabase_client
+    user_id: str, ristorante_id: Optional[str], pool: bool, supabase_client, solleva: bool = False,
 ) -> Dict[str, int]:
     """Crediti spesi oggi e nel mese (giorno e mese di Roma) e ricarica residua.
 
@@ -3529,7 +3529,9 @@ def _chat_crediti_stato(
     Pool → per account; altrimenti per sede (o per account se la sede manca).
 
     Serve alla VISTA: una lettura fallita da' zeri, non blocca la pagina.
-    L'enforcement resta della RPC di consumo, che e' fail-closed.
+    L'enforcement resta della RPC di consumo, che e' fail-closed. Con
+    `solleva=True` (Admin › ricariche) una lettura fallita e' un errore: lo zero
+    farebbe aggiungere a Mattia una seconda ricarica a chi ne ha gia' una.
     """
     try:
         r = supabase_client.rpc("chat_crediti_stato", {
@@ -3537,7 +3539,9 @@ def _chat_crediti_stato(
             "p_ristorante_id": None if pool else ristorante_id,
             "p_pool": pool,
         }).execute()
-        d = r.data if isinstance(r.data, dict) else {}
+        if not isinstance(r.data, dict):
+            raise RuntimeError(f"risposta inattesa da chat_crediti_stato: {r.data!r}")
+        d = r.data
         return {
             "oggi": int(d.get("oggi") or 0),
             "mese": int(d.get("mese") or 0),
@@ -3547,6 +3551,8 @@ def _chat_crediti_stato(
         }
     except Exception as exc:
         logger.warning("chat: lettura crediti fallita: %s", exc)
+        if solleva:
+            raise
         return dict(_CREDITI_A_ZERO)
 
 

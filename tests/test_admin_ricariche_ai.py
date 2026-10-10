@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from services.routers import admin
 
-CLIENTE = "c-1"
+CLIENTE = "11111111-1111-4111-8111-111111111111"
 ADMIN = {"id": "a-1", "email": "mattia@oneflux.it"}
 
 
@@ -41,6 +41,11 @@ class _Tab:
         return self
 
     def execute(self):
+        # Come Postgres: un id che non e' un uuid e' un errore (22P02), non zero righe.
+        import uuid as _uuid
+        for col, val in self.filtri:
+            if col in ("id", "user_id"):
+                _uuid.UUID(str(val))
         righe = [r for r in self.db.righe.get(self.nome, []) if all(r.get(c) == v for c, v in self.filtri)]
         return MagicMock(data=righe)
 
@@ -58,7 +63,7 @@ def _db(con_cliente=True):
         "users": [{"id": CLIENTE}] if con_cliente else [],
         "chat_ricariche": [
             {"id": "r1", "user_id": CLIENTE, "crediti": 300, "nota": None, "creata_da": "m", "created_at": "2026-10-01T09:00:00Z"},
-            {"id": "r2", "user_id": "altro", "crediti": 900, "nota": None, "creata_da": "m", "created_at": "2026-10-02T09:00:00Z"},
+            {"id": "r2", "user_id": "22222222-2222-4222-8222-222222222222", "crediti": 900, "nota": None, "creata_da": "m", "created_at": "2026-10-02T09:00:00Z"},
         ],
     })
 
@@ -67,8 +72,8 @@ def _db(con_cliente=True):
 def stato(monkeypatch):
     chiamate = []
 
-    def finto(user_id, sede, pool, sb):
-        chiamate.append((user_id, sede, pool))
+    def finto(user_id, sede, pool, sb, solleva=False):
+        chiamate.append((user_id, sede, pool, solleva))
         return {"oggi": 0, "mese": 0, "ricarica": 150}
 
     monkeypatch.setattr(admin, "_chat_crediti_stato", finto)
@@ -82,7 +87,8 @@ def test_la_lettura_porta_le_ricariche_del_cliente_e_il_residuo(monkeypatch, sta
     assert [r["id"] for r in out["ricariche"]] == ["r1"], "le ricariche di un altro cliente non si vedono"
     assert out["residuo"] == 150 and out["crediti_boost"] == 300
     # il residuo e' quello dell'account intero, come lo spende la chat
-    assert stato == [(CLIENTE, None, True)]
+    # e una lettura fallita deve essere un errore, non uno zero
+    assert stato == [(CLIENTE, None, True, True)]
 
 
 def test_cliente_inesistente_404(monkeypatch, stato):
@@ -160,3 +166,32 @@ def test_i_300_crediti_sono_gli_stessi_del_servizio_e_del_banner():
     n = f"{admin.RICARICA_AI_CREDITI} crediti"
     assert n in (web / "assistenza.ts").read_text(encoding="utf-8")
     assert n in (web / "trigger-servizi.ts").read_text(encoding="utf-8")
+
+
+def test_crediti_illeggibili_sono_un_errore_non_uno_zero(monkeypatch):
+    """Con uno zero a schermo Mattia aggiungerebbe una seconda ricarica a chi ne
+    ha gia' una da spendere."""
+    from fastapi import HTTPException
+    sb = _db()
+    sb.rpc = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("rete"))
+    monkeypatch.setattr(admin, "get_supabase_client", lambda: sb)
+    with pytest.raises(HTTPException) as ei:
+        admin.admin_ricariche_ai(CLIENTE)
+    assert ei.value.status_code == 503
+
+
+def test_id_non_uuid_e_un_404(monkeypatch, stato):
+    from fastapi import HTTPException
+    monkeypatch.setattr(admin, "get_supabase_client", lambda: _db())
+    with pytest.raises(HTTPException) as ei:
+        admin.admin_ricariche_ai("non-un-uuid")
+    assert ei.value.status_code == 404
+
+
+def test_lo_stato_solleva_solo_se_chiesto():
+    import services.fastapi_worker as fw
+    sb = MagicMock()
+    sb.rpc.return_value.execute.return_value = MagicMock(data=None)
+    assert fw._chat_crediti_stato("u", None, True, sb) == {"oggi": 0, "mese": 0, "ricarica": 0}
+    with pytest.raises(RuntimeError):
+        fw._chat_crediti_stato("u", None, True, sb, solleva=True)
