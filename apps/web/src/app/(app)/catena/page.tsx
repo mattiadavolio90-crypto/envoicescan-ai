@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
+import { quotaDaGruppo } from "@/lib/home-chat";
 import { SintesiCatena } from "./sintesi-catena";
 import { BlockRetry } from "../dashboard/block-retry";
 import { linkAnalisiCatena, linkMarginiIncompleti, schedaCatenaAccesa } from "@/lib/catena-schede";
@@ -53,8 +54,7 @@ async function SintesiBlock() {
       chat={
         chatCatenaAttiva(chatConfig)
           ? {
-              limiteGiorno: chatConfig.limite_giorno,
-              domandeOggi: chatConfig.domande_oggi,
+              quota: quotaDaGruppo(chatConfig),
               lettoAlle: Date.now(),
               settore: utente?.tipo_attivita ?? null,
             }

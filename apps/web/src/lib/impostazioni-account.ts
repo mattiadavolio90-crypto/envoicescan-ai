@@ -23,29 +23,55 @@ export function statoUsageBar(usate: number, limite: number): StatoUsageBar {
 export type StatoChatAi =
   | { modo: "nascosto" }
   | { modo: "non_incluso" }
-  | { modo: "barra"; usate: number; limite: number; label: string; nota: string };
+  | { modo: "barra"; usate: number; limite: number; label: string; nota: string; avviso: string; ricarica: number };
 
-const CHAT_LABEL_GRUPPO = "Domande all'assistente AI del gruppo (oggi)";
-const CHAT_LABEL_SEDE = "Domande all'assistente AI (oggi)";
+// Crediti AI (fase J, 10/10/2026): la barra e' quella del MESE, il vincolo
+// vero. Il giorno resta solo se il worker non manda il mese (versione vecchia).
+const CHAT_LABEL_GRUPPO = "Crediti AI del gruppo (questo mese)";
+const CHAT_LABEL_SEDE = "Crediti AI (questo mese)";
 const CHAT_NOTA_POOL =
-  "Pool condiviso tra tutti i punti vendita e la modalità catena. Si azzera ogni giorno a mezzanotte.";
-const CHAT_NOTA_SEDE = "Il contatore si azzera ogni giorno a mezzanotte.";
+  "Condivisi tra tutti i punti vendita e la modalità catena. Si rinnovano il 1° di ogni mese.";
+const CHAT_NOTA_SEDE = "Si rinnovano il 1° di ogni mese.";
+const CHAT_LABEL_GRUPPO_GIORNO = "Crediti AI del gruppo (oggi)";
+const CHAT_LABEL_SEDE_GIORNO = "Crediti AI (oggi)";
+const CHAT_NOTA_GIORNO = "Il contatore si azzera ogni giorno a mezzanotte.";
+
+export type DatiChatAi = {
+  chat_limite_giorno?: number | null;
+  chat_limite_mese?: number | null;
+  chat_crediti_oggi?: number | null;
+  chat_crediti_mese?: number | null;
+  chat_crediti_ricarica?: number | null;
+  chat_pool?: boolean | null;
+};
 
 // Tre esiti che nel .tsx erano due condizioni annidate dentro il JSX: assente
 // (il piano non espone il dato), incluso con quota, non incluso nel piano.
-export function statoChatAi(
-  limite: number | null | undefined,
-  usate: number | null | undefined,
-  pool: boolean | null | undefined,
-): StatoChatAi {
-  if (limite == null) return { modo: "nascosto" };
-  if (!(limite > 0)) return { modo: "non_incluso" };
+export function statoChatAi(d: DatiChatAi): StatoChatAi {
+  const limiteGiorno = d.chat_limite_giorno;
+  if (limiteGiorno == null) return { modo: "nascosto" };
+  if (!(limiteGiorno > 0)) return { modo: "non_incluso" };
+  const ricarica = Math.max(0, d.chat_crediti_ricarica ?? 0);
+  const limiteMese = d.chat_limite_mese ?? 0;
+  if (limiteMese > 0) {
+    return {
+      modo: "barra",
+      usate: d.chat_crediti_mese ?? 0,
+      limite: limiteMese,
+      label: d.chat_pool ? CHAT_LABEL_GRUPPO : CHAT_LABEL_SEDE,
+      nota: d.chat_pool ? CHAT_NOTA_POOL : CHAT_NOTA_SEDE,
+      avviso: "Hai quasi esaurito i crediti del mese.",
+      ricarica,
+    };
+  }
   return {
     modo: "barra",
-    usate: usate ?? 0,
-    limite,
-    label: pool ? CHAT_LABEL_GRUPPO : CHAT_LABEL_SEDE,
-    nota: pool ? CHAT_NOTA_POOL : CHAT_NOTA_SEDE,
+    usate: d.chat_crediti_oggi ?? 0,
+    limite: limiteGiorno,
+    label: d.chat_pool ? CHAT_LABEL_GRUPPO_GIORNO : CHAT_LABEL_SEDE_GIORNO,
+    nota: CHAT_NOTA_GIORNO,
+    avviso: "Hai quasi esaurito i crediti di oggi.",
+    ricarica,
   };
 }
 

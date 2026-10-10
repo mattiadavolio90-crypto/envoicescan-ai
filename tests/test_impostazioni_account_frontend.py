@@ -32,10 +32,11 @@ def _barra(usate, limite):
     )
 
 
-def _chat(limite, usate=0, pool=False):
-    return esegui_ts(
-        MODULO, "emit(m.statoChatAi(...input));", argomento=[limite, usate, pool], richiede=FUNZIONI
-    )
+def _chat(limite, usate=0, pool=False, **altri):
+    """`limite` e `usate` sono quelli del giorno (worker senza mese); il mese e
+    la ricarica arrivano da `altri` (chat_limite_mese, chat_crediti_mese, ...)."""
+    dati = {"chat_limite_giorno": limite, "chat_crediti_oggi": usate, "chat_pool": pool, **altri}
+    return esegui_ts(MODULO, "emit(m.statoChatAi(input));", argomento=dati, richiede=FUNZIONI)
 
 
 def _conferma(funzione, testo):
@@ -87,15 +88,13 @@ def test_nessun_uso():
     assert _barra(0, 50) == {"pct": 0, "livello": "ok", "mostraAvviso": False}
 
 
-# ─── assistente AI: tre stati, non due ───────────────────────────────────────
+# ─── assistente AI: tre stati, non due (crediti, fase J) ─────────────────────
 
 def test_limite_assente_nasconde_il_blocco():
     """`null` e `undefined` sono entrambi "il piano non espone il dato": il
     campo e' opzionale nel tipo, e `!=` copre tutti e due."""
     assert _chat(None)["modo"] == "nascosto"
-    assert esegui_ts(
-        MODULO, "emit(m.statoChatAi(undefined, 0, false));", richiede=FUNZIONI
-    )["modo"] == "nascosto"
+    assert esegui_ts(MODULO, "emit(m.statoChatAi({}));", richiede=FUNZIONI)["modo"] == "nascosto"
 
 
 def test_limite_zero_e_non_incluso_nel_piano():
@@ -104,27 +103,49 @@ def test_limite_zero_e_non_incluso_nel_piano():
 
 
 def test_limite_negativo_non_e_una_barra():
-    """Comportamento attuale: un limite negativo non e' > 0, quindi ricade in
-    "non incluso" invece di disegnare una barra con numeri assurdi."""
+    """Un limite negativo non e' > 0, quindi ricade in "non incluso" invece di
+    disegnare una barra con numeri assurdi."""
     assert _chat(-1)["modo"] == "non_incluso"
 
 
+def test_la_barra_e_quella_del_mese():
+    """Il mese e' il vincolo vero: la barra mostra i crediti del mese, non quelli
+    di oggi (che restano sotto il tetto anche a mese quasi finito)."""
+    out = _chat(100, 30, False, chat_limite_mese=1000, chat_crediti_mese=720, chat_crediti_ricarica=300)
+    assert (out["modo"], out["usate"], out["limite"], out["ricarica"]) == ("barra", 720, 1000, 300)
+    assert out["label"] == "Crediti AI (questo mese)"
+    assert "1° di ogni mese" in out["nota"]
+    assert "del mese" in out["avviso"]
+
+
+def test_senza_mese_resta_il_giorno():
+    """Worker vecchio: niente mese, la barra resta quella di oggi."""
+    out = _chat(100, 30, False)
+    assert (out["usate"], out["limite"]) == (30, 100)
+    assert "oggi" in out["label"] and "mezzanotte" in out["nota"]
+
+
 def test_pool_di_gruppo_cambia_label_e_nota():
-    sede = _chat(10, 3, False)
-    gruppo = _chat(10, 3, True)
+    sede = _chat(100, 3, False, chat_limite_mese=1000)
+    gruppo = _chat(100, 3, True, chat_limite_mese=1500)
     assert sede["modo"] == gruppo["modo"] == "barra"
-    assert "del gruppo" in gruppo["label"]
+    assert gruppo["label"] == "Crediti AI del gruppo (questo mese)"
     assert "del gruppo" not in sede["label"]
-    assert "Pool condiviso" in gruppo["nota"]
-    assert "Pool condiviso" not in sede["nota"]
+    assert "Condivisi tra tutti i punti vendita" in gruppo["nota"]
+    assert "Condivisi" not in sede["nota"]
 
 
-def test_usate_assente_vale_zero():
+def test_usate_e_ricarica_assenti_valgono_zero():
     """Il contatore puo' mancare nel JSON: senza il default la barra riceverebbe
     undefined e mostrerebbe NaN."""
-    assert esegui_ts(
-        MODULO, "emit(m.statoChatAi(10, undefined, false));", richiede=FUNZIONI
-    )["usate"] == 0
+    out = esegui_ts(
+        MODULO, "emit(m.statoChatAi({chat_limite_giorno: 100, chat_limite_mese: 1000}));", richiede=FUNZIONI
+    )
+    assert out["usate"] == 0 and out["ricarica"] == 0
+
+
+def test_una_ricarica_negativa_non_si_mostra():
+    assert _chat(100, 0, False, chat_limite_mese=1000, chat_crediti_ricarica=-2)["ricarica"] == 0
 
 
 # ─── conferme distruttive: l'asimmetria e' voluta ────────────────────────────

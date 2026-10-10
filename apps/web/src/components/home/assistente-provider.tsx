@@ -16,6 +16,7 @@ import {
   trovaCard,
   quotaEsaurita,
   type Conteggio,
+  type Crediti,
   daSalvare,
   messaggioRisposta,
   parseConversazione,
@@ -33,8 +34,6 @@ import {
 // quella della vista aperta, dentro il riquadro del briefing. Fino alla fase 5 vive in
 // sessionStorage: resta finche' la scheda e' aperta, non passa al server.
 
-type Quota = { limiteGiorno: number; domandeOggi: number };
-
 type StatoAssistente = {
   pronta: boolean;
   voci: VoceChat[];
@@ -42,10 +41,11 @@ type StatoAssistente = {
   inCorso: string | null;
   /** 0, 1, 2: il messaggio d'attesa avanza col tempo. */
   attesa: number;
-  /** Domande di oggi come le ha contate il backend nell'ultima risposta (una
-   *  quota per account), col momento in cui e' arrivata. */
-  domande: Conteggio | null;
-  invia: (testo: string, vista: Vista, quota: Quota) => Promise<void>;
+  /** I crediti come li ha contati il backend nell'ultima risposta (una quota
+   *  per account), col momento in cui e' arrivata. */
+  crediti: Conteggio | null;
+  /** `attuale`: i crediti che la vista mostra ora, se la risposta non li porta. */
+  invia: (testo: string, vista: Vista, attuale: Crediti) => Promise<void>;
   /** Ricomincia la conversazione di questa vista; le altre restano. */
   nuova: (vistaChiave: string) => void;
   /** La cifra dettata: solo qui si scrive (POST /api/assistente/registra). */
@@ -77,7 +77,7 @@ export function AssistenteProvider({
   const [pronta, setPronta] = useState(false);
   const [inCorso, setInCorso] = useState<string | null>(null);
   const [attesa, setAttesa] = useState(0);
-  const [domande, setDomande] = useState<Conteggio | null>(null);
+  const [crediti, setCrediti] = useState<Conteggio | null>(null);
   const router = useRouter();
 
   const aggiorna = useCallback((f: (v: VoceChat[]) => VoceChat[]) => {
@@ -126,7 +126,7 @@ export function AssistenteProvider({
 
   const inCorsoRef = useRef(false);
   const invia = useCallback(
-    async (testo: string, vista: Vista, quota: Quota) => {
+    async (testo: string, vista: Vista, attuale: Crediti) => {
       const t = testo.trim();
       if (!t || inCorsoRef.current) return;
       inCorsoRef.current = true;
@@ -141,11 +141,13 @@ export function AssistenteProvider({
         const data = (await res.json()) as {
           reply?: string;
           error?: string;
-          domande_oggi?: number;
+          crediti_oggi?: number;
+          crediti_mese?: number;
+          crediti_ricarica?: number;
           proposte?: unknown;
         };
-        setDomande({
-          valore: contatoreAggiornato(res.status, data, quota.limiteGiorno, quota.domandeOggi),
+        setCrediti({
+          ...contatoreAggiornato(data, attuale),
           alle: Date.now(),
           finita: quotaEsaurita(res.status, data),
         });
@@ -204,7 +206,7 @@ export function AssistenteProvider({
   );
 
   return (
-    <Contesto.Provider value={{ pronta, voci, inCorso, attesa, domande, invia, nuova, conferma, annulla }}>
+    <Contesto.Provider value={{ pronta, voci, inCorso, attesa, crediti, invia, nuova, conferma, annulla }}>
       {children}
     </Contesto.Provider>
   );

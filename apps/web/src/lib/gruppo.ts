@@ -82,8 +82,12 @@ export const fetchGruppoOverview = cache(
 
 export type GruppoChatConfig = {
   enabled: boolean;
+  // Crediti AI dell'account (fase J): tetti, spesi, ricarica.
   limite_giorno: number;
-  domande_oggi: number;
+  limite_mese?: number;
+  crediti_oggi?: number;
+  crediti_mese?: number;
+  crediti_ricarica?: number;
 };
 
 export const fetchGruppoChatConfig = cache(

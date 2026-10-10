@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { fetchBriefing, fetchConfig } from "@/lib/home";
 import { fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva } from "@/lib/catena-confronti";
-import { vistaCatena, vistaSede } from "@/lib/home-chat";
+import { quotaDaConfig, quotaDaGruppo, vistaCatena, vistaSede } from "@/lib/home-chat";
 import { getCurrentUser } from "@/lib/auth";
 import { haCatena } from "@/lib/sotto-utente";
 import { requireTabMobile } from "@/lib/page-guard";
@@ -36,8 +36,7 @@ export default async function MobileChatPage() {
       vista={inChain ? vistaCatena() : vistaSede(utente?.sede_attiva_id)}
       temi={inChain ? undefined : briefing?.temi}
       settore={utente?.tipo_attivita}
-      limiteGiorno={(inChain ? gruppo?.limite_giorno : config?.chat_limite_giorno) ?? 0}
-      domandeOggiIniziali={(inChain ? gruppo?.domande_oggi : config?.chat_domande_oggi) ?? 0}
+      quota={inChain ? quotaDaGruppo(gruppo) : quotaDaConfig(config)}
       lettoAlle={Date.now()}
     />
   );

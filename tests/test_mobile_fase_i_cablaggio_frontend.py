@@ -51,8 +51,7 @@ def test_la_chat_del_telefono_in_catena_parla_del_gruppo_con_la_regola_della_hom
     p = _src("app/(mobile)/m/chat/page.tsx")
     assert "vista={inChain ? vistaCatena() : vistaSede(utente?.sede_attiva_id)}" in p
     assert "chatCatenaAttiva(gruppo)" in p
-    assert "(inChain ? gruppo?.limite_giorno : config?.chat_limite_giorno) ?? 0" in p
-    assert "(inChain ? gruppo?.domande_oggi : config?.chat_domande_oggi) ?? 0" in p
+    assert "quota={inChain ? quotaDaGruppo(gruppo) : quotaDaConfig(config)}" in p
 
 
 def test_la_catena_del_telefono_ha_il_da_fare_per_sede_e_non_il_verde_sopra_la_coda():

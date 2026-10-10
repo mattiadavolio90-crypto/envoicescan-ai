@@ -21,7 +21,7 @@ import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { RiquadroAssistente } from "@/components/home/riquadro-assistente";
 import { TestataHome } from "@/components/home/testata-home";
 import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
-import { vistaCatena } from "@/lib/home-chat";
+import { vistaCatena, type QuotaCrediti } from "@/lib/home-chat";
 import {
   AndamentoMargine,
   CardHome,
@@ -44,7 +44,7 @@ const TINT = SALUTE_TINT;
 type ColoreTint = keyof typeof TINT;
 
 // ─── Briefing di gruppo: lo stesso riquadro della Home del punto vendita ────
-type QuotaChat = { limiteGiorno: number; domandeOggi: number; lettoAlle: number; settore: string | null };
+type QuotaChat = { quota: QuotaCrediti; lettoAlle: number; settore: string | null };
 
 function BriefingGruppo({
   briefing,
@@ -71,8 +71,7 @@ function BriefingGruppo({
       {chat && (
         <ConversazioneAssistente
           vista={vistaCatena()}
-          limiteGiorno={chat.limiteGiorno}
-          domandeOggiIniziali={chat.domandeOggi}
+          quota={chat.quota}
           lettoAlle={chat.lettoAlle}
           settore={chat.settore}
         />

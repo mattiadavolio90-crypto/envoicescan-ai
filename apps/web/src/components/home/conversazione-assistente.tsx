@@ -4,6 +4,7 @@ import {
   domandeDalBriefing,
   mostraSuggerimenti,
   suggerimentiPer,
+  type QuotaCrediti,
   type Vista,
 } from "@/lib/home-chat";
 import { PannelloConversazione } from "./pannello-conversazione";
@@ -15,8 +16,7 @@ import { useConversazione } from "./use-conversazione";
 // (Mattia, 29/9), quella che l'assistente ricorda.
 export function ConversazioneAssistente({
   vista,
-  limiteGiorno,
-  domandeOggiIniziali,
+  quota,
   lettoAlle,
   settore,
   temi,
@@ -27,13 +27,12 @@ export function ConversazioneAssistente({
   temi?: readonly string[];
   /** Settore dell'account: i negozi hanno domande proposte loro. */
   settore?: string | null;
-  limiteGiorno: number;
-  domandeOggiIniziali: number;
+  quota: QuotaCrediti;
   /** Quando il server ha letto il numero: cambia a ogni render della pagina,
    *  anche se il numero e' uguale (il mattino dopo, 0 com'era ieri mattina). */
   lettoAlle: number;
 }) {
-  const c = useConversazione({ vista, limiteGiorno, domandeOggiIniziali, lettoAlle });
+  const c = useConversazione({ vista, quota, lettoAlle });
 
   return (
     <PannelloConversazione
@@ -52,7 +51,7 @@ export function ConversazioneAssistente({
       onInvia={() => c.manda(c.valore)}
       placeholder={
         c.esaurite
-          ? "Limite di oggi raggiunto"
+          ? c.statoBreve
           : c.inAltraVista
             // Una domanda alla volta per account: se aspetta la risposta in
             // un'altra vista, qui la casella e' ferma e deve dire perche'.

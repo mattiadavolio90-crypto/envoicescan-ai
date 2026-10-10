@@ -7,6 +7,7 @@ import {
   domandeDalBriefing,
   mostraSuggerimenti,
   suggerimentiPer,
+  type QuotaCrediti,
   type Vista,
 } from "@/lib/home-chat";
 import { Logo } from "@/components/brand/logo";
@@ -20,19 +21,17 @@ export function MobileChat({
   vista,
   temi,
   settore,
-  limiteGiorno,
-  domandeOggiIniziali,
+  quota,
   lettoAlle,
 }: {
   vista: Vista;
   /** Di cosa ha parlato il briefing della sede; assente (catena) = domande fisse. */
   temi?: readonly string[];
   settore?: string | null;
-  limiteGiorno: number;
-  domandeOggiIniziali: number;
+  quota: QuotaCrediti;
   lettoAlle: number;
 }) {
-  const c = useConversazione({ vista, limiteGiorno, domandeOggiIniziali, lettoAlle });
+  const c = useConversazione({ vista, quota, lettoAlle });
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Per numero di messaggi e non per elenco: `c.voci` e' un array nuovo a ogni
@@ -124,7 +123,7 @@ export function MobileChat({
             aria-label="Scrivi una domanda all'assistente"
             placeholder={
               c.esaurite
-                ? "Limite di oggi raggiunto"
+                ? c.statoBreve
                 : c.inAltraVista
                   ? "Sto rispondendo alla domanda che hai fatto in un'altra vista…"
                   : "Scrivi qui…"

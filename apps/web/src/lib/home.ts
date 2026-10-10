@@ -47,8 +47,12 @@ export type AssistantConfig = {
   nome_referente: string;
   topics: ConfigTopic[];
   chat_ai_enabled: boolean;
+  // Crediti AI (fase J, 10/10/2026): tutto in CREDITI, una domanda = 3.
   chat_limite_giorno: number; // 0 = piano free, chat non disponibile
-  chat_domande_oggi: number; // domande gia' consumate oggi (valore iniziale del contatore)
+  chat_limite_mese?: number; // 0 / assente = worker senza budget mensile
+  chat_crediti_oggi?: number; // spesi oggi (valore iniziale del contatore)
+  chat_crediti_mese?: number; // crediti del piano spesi nel mese
+  chat_crediti_ricarica?: number; // ricarica (Boost AI) ancora da spendere
   // Soglia % alert prezzi: da qui si imposta quando scatta l'avviso "Alert prezzi".
   // In pagina Prezzi resta solo come filtro di visualizzazione.
   price_alert_threshold: number;

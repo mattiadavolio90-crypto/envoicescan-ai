@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PannelloConversazione } from "@/components/home/pannello-conversazione";
-import { type VoceChat } from "@/lib/home-chat";
+import { fmtCrediti, type VoceChat } from "@/lib/home-chat";
 import { demoChatScambio, demoChatSuggerimenti } from "@/lib/demo-data";
 
 // La conversazione del Demo Tour, dentro il riquadro del briefing come nella
@@ -46,7 +46,8 @@ export function DemoConversazione({ attiva }: { attiva: boolean }) {
     ...(fase >= 4 ? [{ ...domanda2, vista: VISTA }] : []),
     ...(fase >= 6 ? [{ ...risposta2, vista: VISTA }] : []),
   ];
-  const rimanenti = 15 - (fase >= 6 ? 2 : fase >= 3 ? 1 : 0);
+  // Base: 1.000 crediti al mese, 3 a domanda (fase J).
+  const rimanenti = 1000 - 3 * (fase >= 6 ? 2 : fase >= 3 ? 1 : 0);
 
   return (
     <PannelloConversazione
@@ -57,7 +58,7 @@ export function DemoConversazione({ attiva }: { attiva: boolean }) {
       valore=""
       placeholder="Chiedimi dei tuoi costi, fornitori, margini…"
       bloccato
-      stato={`Ti restano ${rimanenti} domande oggi`}
+      stato={`Ti restano ${fmtCrediti(rimanenti)} crediti`}
     />
   );
 }

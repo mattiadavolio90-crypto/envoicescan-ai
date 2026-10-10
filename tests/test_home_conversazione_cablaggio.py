@@ -40,7 +40,7 @@ def test_home_e_telefono_usano_la_stessa_conversazione():
     """Una sola copia della logica di una vista: se una delle due superfici la
     riscrive, torna il difetto che la fase I ha chiuso (due copie che divergono)."""
     for p in (_CONV, _M_CHAT):
-        assert "useConversazione({vista,limiteGiorno,domandeOggiIniziali,lettoAlle})" in _n(p), p
+        assert "useConversazione({vista,quota,lettoAlle})" in _n(p), p
         assert "useAssistente" not in _n(p), p
 
 
@@ -96,12 +96,12 @@ def test_a_schermo_la_conversazione_della_sola_vista_aperta():
 def test_la_home_pv_passa_la_sede_aperta_e_la_regola_della_chat():
     n = _n(_PV)
     assert "chatVisibile(config)&&(<ConversazioneAssistentevista={vistaSede(utente?.sede_attiva_id)}" in n
-    assert "limiteGiorno={config?.chat_limite_giorno??0}domandeOggiIniziali={config?.chat_domande_oggi??0}" in n
+    assert "quota={quotaDaConfig(config)}" in n
 
 
 def test_la_home_di_catena_passa_il_pool_solo_se_attivo():
     n = _n(_CATENA_PAGE)
-    assert "chatCatenaAttiva(chatConfig)?{limiteGiorno:chatConfig.limite_giorno,domandeOggi:chatConfig.domande_oggi,lettoAlle:Date.now(),settore:utente?.tipo_attivita??null,}:null" in n
+    assert "chatCatenaAttiva(chatConfig)?{quota:quotaDaGruppo(chatConfig),lettoAlle:Date.now(),settore:utente?.tipo_attivita??null,}:null" in n
     c = _n(_CATENA)
     assert "{chat&&(<ConversazioneAssistentevista={vistaCatena()}" in c
     assert "chat={chat}" in c
@@ -127,8 +127,11 @@ def test_il_contatore_e_uno_per_account_e_segue_la_lettura_piu_recente():
     assert "useState<Conteggio|null>(null)" in p
     assert "finita:quotaEsaurita(res.status,data)" in p
     c = _n(_HOOK)
-    assert "statoDomande(limiteGiorno,server,domande)" in c
-    assert "},[domandeOggiIniziali,lettoAlle]);" in c
+    assert "statoCrediti({limiteGiorno,limiteMese},server,risposta)" in c
+    assert "},[oggi,mese,ricarica,lettoAlle]);" in c
+    # la domanda parte coi crediti che la vista mostra ora
+    assert "voidinvia(testoDomanda,vista,crediti);" in c
+    assert "...contatoreAggiornato(data,attuale)," in p
 
 
 @pytest.mark.parametrize("p", [_PV, _CATENA_PAGE], ids=lambda p: p.name)

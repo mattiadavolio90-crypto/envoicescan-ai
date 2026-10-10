@@ -15,7 +15,7 @@ import { getCurrentSession, getCurrentUser } from "@/lib/auth";
 import { requireHome } from "@/lib/page-guard";
 import { TestataHome } from "@/components/home/testata-home";
 import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
-import { vistaSede } from "@/lib/home-chat";
+import { quotaDaConfig, vistaSede } from "@/lib/home-chat";
 import { costoMerceLabel } from "@/lib/categorie-spesa";
 
 // Streaming con Suspense per blocco: ogni sezione carica i suoi dati in modo
@@ -74,8 +74,7 @@ async function BriefingBlock() {
         chatVisibile(config) && (
           <ConversazioneAssistente
             vista={vistaSede(utente?.sede_attiva_id)}
-            limiteGiorno={config?.chat_limite_giorno ?? 0}
-            domandeOggiIniziali={config?.chat_domande_oggi ?? 0}
+            quota={quotaDaConfig(config)}
             lettoAlle={Date.now()}
             settore={utente?.tipo_attivita}
             temi={briefing.temi}

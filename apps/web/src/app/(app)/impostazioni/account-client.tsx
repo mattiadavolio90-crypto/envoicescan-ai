@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
 import { erroreLocalePassword, PASSWORD_HINT } from "@/lib/password-policy";
 import { etichettaPiano, prezzoPiano } from "@/lib/piani";
+import { fmtCrediti } from "@/lib/home-chat";
 import {
   statoUsageBar,
   statoChatAi,
@@ -39,8 +40,12 @@ type AccountData = {
   piano: string;
   limite_fatture_mese: number;
   fatture_usate_mese: number;
-  chat_usate_oggi?: number;
+  // Crediti AI (fase J): tetti, spesi, ricarica.
   chat_limite_giorno?: number;
+  chat_limite_mese?: number;
+  chat_crediti_oggi?: number;
+  chat_crediti_mese?: number;
+  chat_crediti_ricarica?: number;
   chat_pool?: boolean;
   price_alert_threshold: number | null;
   tema?: "dark" | "light";
@@ -678,7 +683,7 @@ export function AccountClient({
 }) {
   const pianoLabel = etichettaPiano(data.piano);
   const pianoPrezzo = prezzoPiano(data.piano);
-  const chatAi = statoChatAi(data.chat_limite_giorno, data.chat_usate_oggi, data.chat_pool);
+  const chatAi = statoChatAi(data);
 
   // Contesto catena: identità del gruppo + elenco sedi al posto della scheda
   // "Il tuo ristorante" e del piano per-sede. Tema e password restano account-level.
@@ -769,9 +774,15 @@ export function AccountClient({
                     label={chatAi.label}
                     usate={chatAi.usate}
                     limite={chatAi.limite}
-                    avviso="Hai quasi esaurito le domande di oggi."
+                    avviso={chatAi.avviso}
                   />
                   <p className="mt-1.5 text-xs text-muted-foreground">{chatAi.nota}</p>
+                  {chatAi.ricarica > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Ricarica: <span className="font-medium text-foreground">{fmtCrediti(chatAi.ricarica)} crediti</span>,
+                      non scadono: si usano quando finiscono quelli del mese.
+                    </p>
+                  )}
                 </>
               ) : (
                 <div className="flex items-center justify-between text-sm">

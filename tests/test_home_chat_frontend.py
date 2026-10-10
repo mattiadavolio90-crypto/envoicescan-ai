@@ -85,16 +85,54 @@ def test_coda_vuota():
     assert _chiama("codaDaInviare", [[]]) == []
 
 
-# ─── quota rimanente ──────────────────────────────────────────────────────
+# ─── crediti rimasti (fase J, 10/10/2026) ──────────────────────────────────
 
-def test_rimanenti_normale():
-    assert _chiama("domandeRimanenti", [20, 3]) == 17
+LIM = {"limiteGiorno": 100, "limiteMese": 1000}
 
 
-def test_rimanenti_non_va_MAI_sotto_zero():
-    """Un contatore backend piu' alto del limite (piano cambiato in giornata)
-    non deve mostrare "-3 domande rimaste"."""
-    assert _chiama("domandeRimanenti", [20, 25]) == 0
+def _cr(oggi=0, mese=0, ricarica=0):
+    return {"oggi": oggi, "mese": mese, "ricarica": ricarica}
+
+
+def test_rimasti_sono_il_mese_piu_la_ricarica():
+    assert _chiama("creditiRimasti", [LIM, _cr(mese=360, ricarica=300)]) == 940
+
+
+def test_rimasti_non_vanno_MAI_sotto_zero():
+    """Il mese si puo' superare di una domanda (1.002 su 1.000) e la ricarica
+    scendere a -2: niente «-2 crediti»."""
+    assert _chiama("creditiRimasti", [LIM, _cr(mese=1002, ricarica=-2)]) == 0
+
+
+def test_senza_il_mese_si_guarda_il_giorno():
+    """Worker vecchio, che non manda il mese: il contatore resta sul giorno."""
+    assert _chiama("creditiRimasti", [{"limiteGiorno": 100, "limiteMese": 0}, _cr(oggi=30)]) == 70
+
+
+@pytest.mark.parametrize("n,atteso", [(0, "0"), (999, "999"), (1000, "1.000"), (13500, "13.500"), (1234567, "1.234.567"), (-5, "0")])
+def test_i_crediti_si_scrivono_col_punto_delle_migliaia(n, atteso):
+    assert _chiama("fmtCrediti", [n]) == atteso
+
+
+def test_la_quota_della_home_arriva_dal_config():
+    cfg = {"chat_limite_giorno": 150, "chat_limite_mese": 1500, "chat_crediti_oggi": 6,
+           "chat_crediti_mese": 33, "chat_crediti_ricarica": 120}
+    assert _chiama("quotaDaConfig", [cfg]) == {
+        "limiteGiorno": 150, "limiteMese": 1500, "oggi": 6, "mese": 33, "ricarica": 120,
+    }
+    assert _chiama("quotaDaConfig", [None]) == {
+        "limiteGiorno": 0, "limiteMese": 0, "oggi": 0, "mese": 0, "ricarica": 0,
+    }
+
+
+def test_la_quota_della_catena_arriva_dal_gruppo():
+    g = {"enabled": True, "limite_giorno": 150, "limite_mese": 1500, "crediti_oggi": 6,
+         "crediti_mese": 33, "crediti_ricarica": 120}
+    assert _chiama("quotaDaGruppo", [g]) == {
+        "limiteGiorno": 150, "limiteMese": 1500, "oggi": 6, "mese": 33, "ricarica": 120,
+    }
+    # worker vecchio: campi nuovi assenti, niente NaN
+    assert _chiama("quotaDaGruppo", [{"limite_giorno": 30}])["oggi"] == 0
 
 
 # ─── messaggioRisposta: cosa legge l'utente quando qualcosa va storto ─────
@@ -119,7 +157,7 @@ def test_429_spiega_il_limite_giornaliero():
     lasciarlo indovinare.
     """
     out = _chiama("messaggioRisposta", [429, {}])
-    assert "limite di domande" in out
+    assert "limite di crediti" in out
     assert "mezzanotte" in out, (
         "il messaggio non dice quando riparte: «per oggi» da solo non basta, "
         f"il cliente non sa se aspettare un'ora o un giorno. Testo: {out!r}"
@@ -159,29 +197,27 @@ def test_5xx_NON_mostra_il_testo_tecnico(status, error):
     assert out == "L'assistente non è disponibile in questo momento. Riprova tra poco."
 
 
-# ─── contatore: segue il backend, tranne quando tace su un 429 ────────────
+# ─── contatore: segue il backend, tranne quando tace ──────────────────────
 
 def test_contatore_segue_il_backend():
-    assert _chiama("contatoreAggiornato", [200, {"domande_oggi": 7}, 20, 3]) == 7
+    out = _chiama("contatoreAggiornato", [{"crediti_oggi": 9, "crediti_mese": 360, "crediti_ricarica": 297}, _cr(6, 357, 300)])
+    assert out == _cr(9, 360, 297)
 
 
-def test_contatore_su_429_senza_dato_va_a_esaurite():
-    assert _chiama("contatoreAggiornato", [429, {}, 20, 3]) == 20
-
-
-def test_contatore_su_429_CON_dato_usa_il_dato():
-    """Il backend ha l'ultima parola anche sul 429."""
-    assert _chiama("contatoreAggiornato", [429, {"domande_oggi": 18}, 20, 3]) == 18
-
-
-def test_contatore_su_altri_errori_non_si_muove():
-    """Un 500 non consuma una domanda: il contatore resta dov'era."""
-    assert _chiama("contatoreAggiornato", [500, {}, 20, 3]) == 3
+def test_contatore_senza_dato_resta_dov_era():
+    """Un 429 o un 500 non portano crediti: restano quelli di prima (QUALE quota
+    e' finita lo dice `quotaEsaurita`)."""
+    assert _chiama("contatoreAggiornato", [{}, _cr(6, 357, 300)]) == _cr(6, 357, 300)
 
 
 def test_contatore_zero_dal_backend_non_e_confuso_con_assente():
     """`typeof === "number"` e non `||`: lo zero e' un valore, non un'assenza."""
-    assert _chiama("contatoreAggiornato", [200, {"domande_oggi": 0}, 20, 9]) == 0
+    out = _chiama("contatoreAggiornato", [{"crediti_oggi": 0, "crediti_mese": 0, "crediti_ricarica": 0}, _cr(9, 30, 300)])
+    assert out == _cr(0, 0, 0)
+
+
+def test_contatore_con_solo_l_oggi_tiene_mese_e_ricarica():
+    assert _chiama("contatoreAggiornato", [{"crediti_oggi": 3}, _cr(0, 30, 300)]) == _cr(3, 30, 300)
 
 
 # ─── il mobile usa questa libreria, non una sua copia ─────────────────────
@@ -410,10 +446,7 @@ def test_la_chiave_di_sessionstorage_e_per_utente():
     assert a != b and a != "oneflux:chat-messages"
 
 
-def test_contatore_e_attesa():
-    assert _chiama("testoContatore", [1]) == "Ti restano 1 domanda oggi"
-    assert _chiama("testoContatore", [5]) == "Ti restano 5 domande oggi"
-    assert _chiama("testoContatore", [0]).startswith("Limite di oggi raggiunto")
+def test_attesa():
     assert [_chiama("testoAttesa", [i]) for i in (0, 1, 2, 7)] == [
         "Sto cercando...", "Sto leggendo le tue fatture...", "Ci sono quasi, un attimo...", "Ci sono quasi, un attimo...",
     ]
@@ -427,46 +460,82 @@ def test_contatore_e_attesa():
 # scheda aperta, la casella restava bloccata finche' non si ricaricava.
 
 
-def _stato(limite, server, risposta):
-    return _chiama("statoDomande", [limite, server, risposta])
+def _stato(server, risposta, limiti=None):
+    return _chiama("statoCrediti", [limiti or LIM, server, risposta])
+
+
+def _c(oggi=0, mese=0, ricarica=0, alle=100, finita=None):
+    out = {"oggi": oggi, "mese": mese, "ricarica": ricarica, "alle": alle}
+    if finita:
+        out["finita"] = finita
+    return out
 
 
 def test_senza_risposte_conta_il_server():
-    out = _stato(20, {"valore": 3, "alle": 100}, None)
-    assert out == {"usate": 3, "rimanenti": 17, "esaurite": False, "testo": "Ti restano 17 domande oggi"}
+    out = _stato(_c(oggi=9, mese=360), None)
+    assert out == {
+        "crediti": _cr(9, 360, 0), "rimasti": 640, "esaurite": False,
+        "testo": "Ti restano 640 crediti", "breve": "",
+    }
+
+
+def test_la_ricarica_si_somma_e_si_dice():
+    out = _stato(_c(mese=1000, ricarica=300), None)
+    assert out["testo"] == "Ti restano 300 crediti (300 di ricarica)"
+    assert out["esaurite"] is False
 
 
 def test_la_risposta_piu_recente_vince_sul_server():
-    out = _stato(20, {"valore": 3, "alle": 100}, {"valore": 4, "alle": 200})
-    assert out["usate"] == 4
+    out = _stato(_c(oggi=3, alle=100), _c(oggi=6, alle=200))
+    assert out["crediti"]["oggi"] == 6
 
 
 def test_tornando_in_catena_vince_il_server_riletto():
-    """3 domande in catena, 2 nel PV: la Home di catena rilegge 5 dal server."""
-    out = _stato(20, {"valore": 5, "alle": 300}, {"valore": 3, "alle": 200})
-    assert out["usate"] == 5
+    """Domande in catena e nel PV: la Home di catena rilegge 15 dal server."""
+    out = _stato(_c(oggi=15, alle=300), _c(oggi=9, alle=200))
+    assert out["crediti"]["oggi"] == 15
 
 
 def test_il_mattino_dopo_la_casella_si_sblocca():
-    out = _stato(20, {"valore": 0, "alle": 900}, {"valore": 20, "alle": 500})
-    assert out["esaurite"] is False and out["rimanenti"] == 20
+    out = _stato(_c(oggi=0, mese=200, alle=900), _c(oggi=100, mese=200, alle=500))
+    assert out["esaurite"] is False and out["rimasti"] == 800
 
 
-def test_limite_mensile_detto_come_mensile():
-    """Un 429 mensile che dice «si azzera a mezzanotte» fa riprovare domani."""
-    out = _stato(20, {"valore": 2, "alle": 100}, {"valore": 20, "alle": 200, "finita": "mese"})
-    assert out["esaurite"] is True and out["rimanenti"] == 0
+def test_il_tetto_del_giorno_ferma_anche_con_crediti_del_mese():
+    out = _stato(_c(oggi=100, mese=400), None)
+    assert out["esaurite"] is True
+    assert out["testo"] == "Limite di oggi raggiunto — si azzera a mezzanotte"
+    assert out["breve"] == "Limite di oggi raggiunto"
+
+
+def test_mese_e_ricarica_finiti_si_dice_mese():
+    """Prima il mese, come il worker: «si azzera a mezzanotte» fa riprovare
+    domani, e domani sara' fermo di nuovo."""
+    out = _stato(_c(oggi=100, mese=1000, ricarica=0), None)
+    assert out["esaurite"] is True and out["rimasti"] == 0
+    assert out["testo"] == "Crediti del mese finiti — ripartono il 1° del mese"
+    assert out["breve"] == "Crediti del mese finiti"
+
+
+def test_limite_mensile_dal_429_detto_come_mensile():
+    out = _stato(_c(oggi=2, mese=50), _c(oggi=2, mese=50, alle=200, finita="mese"))
+    assert out["esaurite"] is True
     assert "mese" in out["testo"] and "mezzanotte" not in out["testo"]
 
 
-def test_limite_giornaliero_detto_come_giornaliero():
-    out = _stato(20, {"valore": 2, "alle": 100}, {"valore": 20, "alle": 200, "finita": "giorno"})
+def test_limite_giornaliero_dal_429_detto_come_giornaliero():
+    out = _stato(_c(oggi=2), _c(oggi=2, alle=200, finita="giorno"))
     assert out["testo"] == "Limite di oggi raggiunto — si azzera a mezzanotte"
 
 
 def test_una_lettura_nuova_del_server_toglie_il_limite_mensile_vecchio():
-    out = _stato(20, {"valore": 0, "alle": 300}, {"valore": 20, "alle": 200, "finita": "mese"})
+    out = _stato(_c(oggi=0, mese=0, alle=300), _c(oggi=100, mese=1000, alle=200, finita="mese"))
     assert out["esaurite"] is False
+
+
+def test_senza_mese_dal_worker_vecchio_si_ferma_al_giorno():
+    out = _stato(_c(oggi=30), None, {"limiteGiorno": 30, "limiteMese": 0})
+    assert out["esaurite"] is True and out["breve"] == "Limite di oggi raggiunto"
 
 
 def test_sede_senza_id_manda_solo_l_ultima_domanda():
@@ -477,11 +546,11 @@ def test_sede_senza_id_manda_solo_l_ultima_domanda():
     assert _chiama("codaPerVista", [voci, v]) == [{"role": "user", "content": "nuova"}]
 
 
-def test_limite_mensile_blocca_anche_con_domande_di_oggi_rimaste():
-    """Il 429 mensile puo' portare `domande_oggi` (5 su 20): il giorno ne avrebbe
-    ancora 15, ma il mese e' finito. La casella va bloccata."""
-    out = _stato(20, {"valore": 2, "alle": 100}, {"valore": 5, "alle": 200, "finita": "mese"})
-    assert out["rimanenti"] == 0 and out["esaurite"] is True
+def test_limite_mensile_blocca_anche_con_crediti_di_oggi_rimasti():
+    """Il 429 mensile: il giorno ne avrebbe ancora, ma mese e ricarica sono
+    finiti. La casella va bloccata."""
+    out = _stato(_c(oggi=6, mese=500), _c(oggi=6, mese=500, alle=200, finita="mese"))
+    assert out["esaurite"] is True
 
 
 # ─── Domande proposte per settore (regola 7) ───────────────────────────────

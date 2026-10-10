@@ -33,8 +33,80 @@ export function codaDaInviare(messaggi: Msg[]): Msg[] {
   return messaggi.slice(-MAX_STORICO_INVIATO);
 }
 
-export function domandeRimanenti(limiteGiorno: number, domandeOggi: number): number {
-  return Math.max(0, limiteGiorno - domandeOggi);
+/* ─── I crediti AI (fase J, 10/10/2026) ──────────────────────────────────── */
+//
+// L'app conta CREDITI come l'offerta commerciale: una domanda ne costa 3. Il
+// mese e' il vincolo vero, il giorno un freno; finito il mese si spende la
+// ricarica (Boost AI), che non scade. I numeri li decide il worker: qui si
+// mostrano e basta.
+
+/** Cosa ha speso l'account: oggi (tutto), nel mese (solo i crediti del piano),
+ *  e la ricarica che resta. */
+export type Crediti = { oggi: number; mese: number; ricarica: number };
+
+/** Il contatore come arriva alla conversazione dalla pagina: i due tetti
+ *  dell'account e cio' che ha gia' speso. `limiteMese` 0 = worker senza mese. */
+export type QuotaCrediti = Crediti & { limiteGiorno: number; limiteMese: number };
+
+function numero(v: number | null | undefined): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** /api/home/config (Home del locale, `/m`). */
+export function quotaDaConfig(
+  c:
+    | {
+        chat_limite_giorno?: number | null;
+        chat_limite_mese?: number | null;
+        chat_crediti_oggi?: number | null;
+        chat_crediti_mese?: number | null;
+        chat_crediti_ricarica?: number | null;
+      }
+    | null
+    | undefined,
+): QuotaCrediti {
+  return {
+    limiteGiorno: numero(c?.chat_limite_giorno),
+    limiteMese: numero(c?.chat_limite_mese),
+    oggi: numero(c?.chat_crediti_oggi),
+    mese: numero(c?.chat_crediti_mese),
+    ricarica: numero(c?.chat_crediti_ricarica),
+  };
+}
+
+/** /api/gruppo/chat-config (catena, sul computer e su `/m`). */
+export function quotaDaGruppo(
+  g:
+    | {
+        limite_giorno?: number | null;
+        limite_mese?: number | null;
+        crediti_oggi?: number | null;
+        crediti_mese?: number | null;
+        crediti_ricarica?: number | null;
+      }
+    | null
+    | undefined,
+): QuotaCrediti {
+  return {
+    limiteGiorno: numero(g?.limite_giorno),
+    limiteMese: numero(g?.limite_mese),
+    oggi: numero(g?.crediti_oggi),
+    mese: numero(g?.crediti_mese),
+    ricarica: numero(g?.crediti_ricarica),
+  };
+}
+
+/** 1000 -> «1.000», come la landing (il formato di `Intl` per l'italiano non
+ *  separa sempre le migliaia a quattro cifre). */
+export function fmtCrediti(n: number): string {
+  return String(Math.max(0, Math.trunc(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** Quanti crediti puo' ancora spendere: quelli del mese piu' la ricarica. Senza
+ *  il mese (worker vecchio) si guarda il giorno. */
+export function creditiRimasti(q: Pick<QuotaCrediti, "limiteGiorno" | "limiteMese">, c: Crediti): number {
+  const delPiano = q.limiteMese > 0 ? q.limiteMese - c.mese : q.limiteGiorno - c.oggi;
+  return Math.max(0, delPiano) + Math.max(0, c.ricarica);
 }
 
 // Cosa legge l'utente quando la chiamata non porta una risposta. `error` del
@@ -48,7 +120,7 @@ export function messaggioRisposta(
   data: { reply?: string; error?: string },
 ): string {
   if (data.reply) return data.reply;
-  if (status === 429) return data.error || "Hai raggiunto il limite di domande per oggi. Il contatore si azzera a mezzanotte.";
+  if (status === 429) return data.error || "Hai raggiunto il limite di crediti per oggi. Il contatore si azzera a mezzanotte.";
   if (status === 403) return data.error || "La chat non è disponibile nel tuo piano attuale.";
   if (status === 504) return "L'assistente ha impiegato troppo tempo. Riprova.";
   if (status >= 500) return MESSAGGIO_NON_DISPONIBILE;
@@ -71,23 +143,19 @@ export function quotaEsaurita(
   return (data.error ?? "").includes("questo mese") ? "mese" : "giorno";
 }
 
-// Il contatore segue la verita' del backend quando la manda. Il 429 e' il caso
-// in cui spesso non la manda: li' la quota e' esaurita per definizione.
-//
-// ATTENZIONE: su un 429 MENSILE questo porta il contatore del giorno al suo
-// massimo, il che e' vero (il cliente non puo' piu' chattare) ma incompleto —
-// chi mostra il contatore deve usare `quotaEsaurita` per dire QUALE quota e'
-// finita, o il cliente legge «riprova domani» da una barra che parla del giorno.
-// Dal 28/9/2026 la usa il provider dell'assistente, via `statoDomande`.
+// Il contatore segue la verita' del backend quando la manda (ogni risposta
+// riuscita porta i crediti dopo la domanda). Il 429 spesso non la manda: li'
+// restano i numeri di prima, e QUALE quota e' finita lo dice `quotaEsaurita`.
 export function contatoreAggiornato(
-  status: number,
-  data: { domande_oggi?: number },
-  limiteGiorno: number,
-  attuale: number,
-): number {
-  if (typeof data.domande_oggi === "number") return data.domande_oggi;
-  if (status === 429) return limiteGiorno;
-  return attuale;
+  data: { crediti_oggi?: number; crediti_mese?: number; crediti_ricarica?: number },
+  attuale: Crediti,
+): Crediti {
+  if (typeof data.crediti_oggi !== "number") return attuale;
+  return {
+    oggi: data.crediti_oggi,
+    mese: typeof data.crediti_mese === "number" ? data.crediti_mese : attuale.mese,
+    ricarica: typeof data.crediti_ricarica === "number" ? data.crediti_ricarica : attuale.ricarica,
+  };
 }
 
 /* ─── Una conversazione per vista: ogni locale la sua, e la catena la sua ─── */
@@ -329,14 +397,10 @@ export function testoAttesa(passo: number): string {
   return "Ci sono quasi, un attimo...";
 }
 
-export function testoContatore(rimanenti: number, finita: QuotaEsaurita = null): string {
-  // Il 429 mensile non si azzera a mezzanotte: dirlo farebbe riprovare domani.
-  if (finita === "mese") return "Limite del mese raggiunto — riparte il mese prossimo";
-  if (rimanenti <= 0) return "Limite di oggi raggiunto — si azzera a mezzanotte";
-  return `Ti restano ${rimanenti} ${rimanenti === 1 ? "domanda" : "domande"} oggi`;
-}
+export const TESTO_MESE_FINITO = "Crediti del mese finiti — ripartono il 1° del mese";
+export const TESTO_GIORNO_FINITO = "Limite di oggi raggiunto — si azzera a mezzanotte";
 
-/* ─── Il contatore delle domande di oggi ─────────────────────────────────── */
+/* ─── Il contatore dei crediti ───────────────────────────────────────────── */
 
 // Il backend conta UNA quota per account, spesa fra la catena e tutti i punti
 // vendita. Le due fonti del numero sono la pagina (il config letto dal server a
@@ -344,18 +408,31 @@ export function testoContatore(rimanenti: number, finita: QuotaEsaurita = null):
 // mappa per vista, e il provider che non si rimonta mai, un conteggio vecchio
 // vinceva sul server — tornando in catena dopo domande nel PV, o il mattino
 // dopo con la scheda aperta, quando la casella restava bloccata (revisore, 28/9).
-export type Conteggio = { valore: number; alle: number; finita?: QuotaEsaurita };
+export type Conteggio = Crediti & { alle: number; finita?: QuotaEsaurita };
 
-export function statoDomande(
-  limiteGiorno: number,
+// Prima il mese (dura di piu', come nel worker): a crediti del mese e ricarica
+// finiti «si azzera a mezzanotte» sarebbe una promessa falsa.
+export function statoCrediti(
+  limiti: Pick<QuotaCrediti, "limiteGiorno" | "limiteMese">,
   server: Conteggio,
   risposta: Conteggio | null,
-): { usate: number; rimanenti: number; esaurite: boolean; testo: string } {
+): { crediti: Crediti; rimasti: number; esaurite: boolean; testo: string; breve: string } {
   const recente = risposta && risposta.alle > server.alle ? risposta : server;
-  const finita = recente.finita ?? null;
-  const usate = recente.valore;
-  const rimanenti = finita ? 0 : domandeRimanenti(limiteGiorno, usate);
-  return { usate, rimanenti, esaurite: rimanenti <= 0, testo: testoContatore(rimanenti, finita) };
+  const crediti: Crediti = { oggi: recente.oggi, mese: recente.mese, ricarica: recente.ricarica };
+  const rimasti = creditiRimasti(limiti, crediti);
+  const meseFinito = recente.finita === "mese" || (limiti.limiteMese > 0 && rimasti <= 0);
+  const giornoFinito =
+    recente.finita === "giorno" || (limiti.limiteGiorno > 0 && crediti.oggi >= limiti.limiteGiorno) || rimasti <= 0;
+  let testo: string;
+  if (meseFinito) testo = TESTO_MESE_FINITO;
+  else if (giornoFinito) testo = TESTO_GIORNO_FINITO;
+  else {
+    testo = `Ti restano ${fmtCrediti(rimasti)} crediti`;
+    if (crediti.ricarica > 0) testo += ` (${fmtCrediti(crediti.ricarica)} di ricarica)`;
+  }
+  // La meta' prima del trattino: il segnaposto della casella quando e' ferma.
+  const breve = meseFinito || giornoFinito ? testo.split(" — ")[0] : "";
+  return { crediti, rimasti, esaurite: meseFinito || giornoFinito, testo, breve };
 }
 
 /* ─── Le cifre dettate: la card con Conferma (fase 3) ────────────────────── */

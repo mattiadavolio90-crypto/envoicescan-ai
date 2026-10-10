@@ -38,7 +38,7 @@ export function PannelloConversazione({
   onInvia?: () => void;
   placeholder: string;
   bloccato: boolean;
-  /** La riga del contatore: «Ti restano 12 domande oggi». */
+  /** La riga del contatore: «Ti restano 640 crediti». */
   stato: string;
   statoAvviso?: boolean;
   onNuova?: () => void;
