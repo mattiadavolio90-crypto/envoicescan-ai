@@ -3621,10 +3621,14 @@ class ChatRequest(BaseModel):
     # (SUM limiti effettivi sedi). Default "sede" = chat del singolo PV, invariata.
     contesto: str = Field("sede", pattern="^(sede|catena)$")
     # Il client sa mostrare le card dell'assistente (fase 3): quelle con Conferma
-    # delle cifre dettate. La Home si',
-    # `/m` non ancora (fase 8). Senza, niente strumenti che preparano card e
-    # niente regole: un modello che dice «premi Conferma» a chi non vede la card mente.
+    # delle cifre dettate. La Home e `/m` si'. Senza, niente strumenti che
+    # preparano card e niente regole: un modello che dice «premi Conferma» a chi
+    # non vede la card mente.
     card_conferma: bool = False
+    # Il client e' il telefono (`/m`). Non e' `card_conferma`: le card ora le
+    # mostrano entrambi, ma `/m` non ha Osservatorio → Score Fornitori e il
+    # rimando deve dire dove andare (dall'app da computer).
+    mobile: bool = False
 
     @model_validator(mode="after")
     def _cap_caratteri_totali(self) -> "ChatRequest":
@@ -3742,6 +3746,14 @@ def _vede_score(pagine) -> bool:
     return pagine is None or ("prezzi" in pagine and f"{_TAB_OFF_PREFIX}prezzi_score" not in pagine)
 
 
+_DOVE_MOBILE = ", dall'app da computer"
+
+
+def _dove_score(dove: str, mobile: bool) -> str:
+    """Dove si trova Score Fornitori: sul telefono la scheda non c'e'."""
+    return dove + _DOVE_MOBILE if mobile else dove
+
+
 def _riga_trattativa(pagine, dove: str) -> str:
     """Le bozze al fornitore non le scrive l'assistente (Mattia, 3/10/2026): stanno
     gia' pronte in Score Fornitori, e ci si rimanda solo chi quella scheda la vede."""
@@ -3792,7 +3804,7 @@ def _build_chat_system_prompt(
     user: Dict[str, Any], supabase_client, authorization: Optional[str],
     ristorante_id: Optional[str] = None, settore: Optional[str] = None,
     sede_nome: Optional[str] = None, multi_sede: bool = False,
-    cifre_dettate: bool = False,
+    cifre_dettate: bool = False, mobile: bool = False,
 ) -> str:
     """Costruisce il system prompt con i dati freschi del ristorante.
 
@@ -3929,7 +3941,7 @@ def _build_chat_system_prompt(
         "- Le date relative (\"ieri\", \"stamattina\", \"sabato scorso\") calcolale da oggi e "
         "scrivi nella risposta il giorno per esteso.\n"
     ) if _cifre_dettate or _riga_spesa else ""
-    _riga_bozza = _riga_trattativa(_pagine_set, "") + "\n"
+    _riga_bozza = _riga_trattativa(_pagine_set, _dove_score("", mobile)) + "\n"
     _detta_fatturato = (
         ", oppure di dettarti qui il fatturato del mese: prepari tu la registrazione."
         if _cifre_dettate else "."
@@ -4414,7 +4426,7 @@ Regole per gli strumenti:
 def _build_chat_system_prompt_catena(
     user: Dict[str, Any], supabase_client, authorization: Optional[str],
     settore: Optional[str] = None, sedi: Optional[List[str]] = None,
-    cifre_dettate: bool = False,
+    cifre_dettate: bool = False, mobile: bool = False,
 ) -> str:
     """System prompt per la chat in modalità catena: parla del GRUPPO, non del
     singolo PV. Inietta la sintesi di gruppo (KPI + ranking) come contesto, gli
@@ -4465,10 +4477,15 @@ NON inventare benchmark diversi da questi."""
     # (lo stesso client che la mostra lo dichiara anche qui).
     _riga_cifre_catena = (
         "\n- Se il cliente ti detta una cifra da registrare (incasso, spesa, personale, fatturato), "
-        f"qui non si registra: spiega che basta aprire la Home di quel {_singolo_pv} e dirla li'."
+        + (
+            f"qui non si registra: spiega che basta aprire quel {_singolo_pv} dalla Home e dirla li', nella chat."
+            if mobile else
+            f"qui non si registra: spiega che basta aprire la Home di quel {_singolo_pv} e dirla li'."
+        )
     ) if cifre_dettate else ""
     _pagine_catena = _normalize_pagine(user.get("pagine_abilitate"))
-    _riga_bozza_catena = "\n" + _riga_trattativa(_pagine_catena, f", aprendo quel {_singolo_pv}")
+    _riga_bozza_catena = "\n" + _riga_trattativa(
+        _pagine_catena, _dove_score(f", aprendo quel {_singolo_pv}", mobile))
     # Le schede che l'admin ha spento (fase I): il prompt non rimanda a strumenti
     # che il modello non ha, ne' promette coperti che l'account non vede.
     _margini_accesi = _scheda_catena_accesa(_pagine_catena, "margini")
@@ -6462,7 +6479,7 @@ def chat_ai(
         _build_chat_system_prompt_catena(
             user, supabase_client, authorization, settore_chat,
             sedi=[s["nome"] for s in sedi_chat],
-            cifre_dettate=body.card_conferma,
+            cifre_dettate=body.card_conferma, mobile=body.mobile,
         )
         if is_catena
         else _build_chat_system_prompt(
@@ -6470,7 +6487,7 @@ def chat_ai(
             supabase_client, authorization, ristorante_id, settore_chat,
             sede_nome=_chat_nome_sede(ristorante_id, supabase_client) if _piu_sedi_visibili else None,
             multi_sede=_piu_sedi_visibili,
-            cifre_dettate=body.card_conferma,
+            cifre_dettate=body.card_conferma, mobile=body.mobile,
         )
     )
 
@@ -6516,7 +6533,10 @@ def chat_ai(
         logger.info("chat_ai[catena]: user=%s domande_oggi=%d", user.get("email"), domande_oggi)
         reply = _rimando_score(
             _ultima_domanda(body), reply, _normalize_pagine(user.get("pagine_abilitate")),
-            f", aprendo quel {'punto vendita' if settore_chat == SETTORE_RETAIL else 'locale'}",
+            _dove_score(
+                f", aprendo quel {'punto vendita' if settore_chat == SETTORE_RETAIL else 'locale'}",
+                body.mobile,
+            ),
         )
         return ChatResponse(
             reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
@@ -6565,7 +6585,8 @@ def chat_ai(
         client, messages, tools, _esegui_tool, log_ctx="chat[sede]",
     )
     reply = _rimando_score(
-        _ultima_domanda(body), reply, _normalize_pagine(user.get("pagine_abilitate")))
+        _ultima_domanda(body), reply, _normalize_pagine(user.get("pagine_abilitate")),
+        _dove_score("", body.mobile))
 
     # Tracking costi monetari nel ledger AI (fail-safe: non blocca la risposta).
     # Alimenta il ledger dei consumi AI (pannello admin), come la categorizzazione.

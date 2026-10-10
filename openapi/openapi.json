@@ -21434,6 +21434,11 @@
             "type": "boolean",
             "title": "Card Conferma",
             "default": false
+          },
+          "mobile": {
+            "type": "boolean",
+            "title": "Mobile",
+            "default": false
           }
         },
         "type": "object",

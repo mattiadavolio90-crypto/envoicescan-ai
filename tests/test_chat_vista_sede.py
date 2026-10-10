@@ -154,14 +154,14 @@ def test_account_catena_passa_nome_sede_e_multi_sede(monkeypatch):
     _, visto = _prepara(monkeypatch, pool=True)
     with pytest.raises(_Fermo):
         fw.chat_ai(_req(), authorization="Bearer t")
-    assert visto == {"sede_nome": "NAVIGLI", "multi_sede": True, "cifre_dettate": False}
+    assert visto == {"sede_nome": "NAVIGLI", "multi_sede": True, "cifre_dettate": False, "mobile": False}
 
 
 def test_mono_sede_non_legge_il_nome_ne_cambia_il_prompt(monkeypatch):
     sb, visto = _prepara(monkeypatch, pool=False)
     with pytest.raises(_Fermo):
         fw.chat_ai(_req(), authorization="Bearer t")
-    assert visto == {"sede_nome": None, "multi_sede": False, "cifre_dettate": False}
+    assert visto == {"sede_nome": None, "multi_sede": False, "cifre_dettate": False, "mobile": False}
 
 
 def test_sotto_utente_con_una_sola_sede_non_viene_mandato_alla_catena(monkeypatch):
@@ -172,7 +172,7 @@ def test_sotto_utente_con_una_sola_sede_non_viene_mandato_alla_catena(monkeypatc
     monkeypatch.setattr(fw, "_num_sedi_sotto_utente", lambda u: 1)
     with pytest.raises(_Fermo):
         fw.chat_ai(_req(), authorization="Bearer t")
-    assert visto == {"sede_nome": None, "multi_sede": False, "cifre_dettate": False}
+    assert visto == {"sede_nome": None, "multi_sede": False, "cifre_dettate": False, "mobile": False}
 
 
 def test_sotto_utente_con_piu_sedi_resta_nella_regola(monkeypatch):
@@ -181,7 +181,7 @@ def test_sotto_utente_con_piu_sedi_resta_nella_regola(monkeypatch):
     monkeypatch.setattr(fw, "_num_sedi_sotto_utente", lambda u: 2)
     with pytest.raises(_Fermo):
         fw.chat_ai(_req(), authorization="Bearer t")
-    assert visto == {"sede_nome": "NAVIGLI", "multi_sede": True, "cifre_dettate": False}
+    assert visto == {"sede_nome": "NAVIGLI", "multi_sede": True, "cifre_dettate": False, "mobile": False}
 
 
 def test_la_guardia_sulla_sede_a_schermo_non_torna():
