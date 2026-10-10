@@ -94,6 +94,10 @@ DECLARE
     v_caricati INTEGER;
     v_spesi    INTEGER;
 BEGIN
+    -- Un pool NULL non deve far sparire il filtro (nessuna riga contata = nessun
+    -- limite): vale «sede», il caso piu' stretto.
+    p_pool := COALESCE(p_pool, false);
+
     -- Oggi: TUTTO cio' che e' stato speso (il tetto del giorno vale anche sulla
     -- ricarica). Mese: solo i crediti del piano, non quelli pagati con la
     -- ricarica — sono due salvadanai.

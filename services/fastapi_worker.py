@@ -3430,7 +3430,7 @@ _ALERT_PREZZI_EXECUTOR = _concurrent_futures.ThreadPoolExecutor(
 
 
 def _chat_limite_per_piano(piano: Optional[str]) -> int:
-    """Domande/giorno consentite per il piano del cliente.
+    """Crediti al giorno consentiti per il piano del cliente (per sede).
 
     Default = limite "base" per piani non riconosciuti. Il valore e' DERIVATO dal
     budget mensile (`CHAT_QUOTA_GIORNALIERA_PCT`), non scritto a mano.
@@ -3439,7 +3439,7 @@ def _chat_limite_per_piano(piano: Optional[str]) -> int:
 
 
 def _chat_budget_mensile_per_piano(piano: Optional[str]) -> int:
-    """Domande/mese consentite per il piano del cliente.
+    """Crediti al mese consentiti per il piano del cliente (per sede).
 
     Gemello di `_chat_limite_per_piano` e con lo stesso fallback: se i due
     divergessero sul piano sconosciuto, un cliente potrebbe avere budget mensile
@@ -6391,10 +6391,11 @@ def chat_ai(
     # passaggio catena -> punto vendita. Il prompt nomina la sede su cui
     # risponde: se non e' quella che il cliente guarda, lo legge subito.
 
-    # Quota AI: un SOLO pool per account. Multi-sede → limite = somma sedi e
-    # conteggio condiviso per user_id (lo stesso pool è speso tra catena e tutti i
-    # PV); sede singola → limite del piano contato sulla sede. La riga è sempre
-    # loggata con la sede d'origine (p_ristorante_id) per l'attribuzione.
+    # Crediti AI: un SOLO salvadanaio per account. Multi-sede → la sede col piano
+    # piu' alto piena e le altre a meta' (`_chat_budget_da_piani`), conteggio
+    # condiviso per user_id (catena e tutti i PV); sede singola → crediti del
+    # piano contati sulla sede. La riga e' sempre loggata con la sede d'origine
+    # (p_ristorante_id) per l'attribuzione.
     limite, is_pool = _chat_quota_pool(user, supabase_client)
     limite_mensile = _chat_budget_mensile_pool(user, supabase_client)
     rate_ristorante = ristorante_id
@@ -6459,7 +6460,7 @@ def chat_ai(
         if mensile_esaurito:
             # La ricarica la compra il titolare: un collaboratore non ha i Servizi.
             _chi_ricarica = (
-                "il titolare puo' chiedere una ricarica" if _su.e_sotto_utente(user)
+                "il titolare può chiedere una ricarica" if _su.e_sotto_utente(user)
                 else "puoi chiedere una ricarica fra i Servizi"
             )
             raise HTTPException(

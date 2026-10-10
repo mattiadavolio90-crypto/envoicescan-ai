@@ -3196,7 +3196,7 @@ def gruppo_tag_analisi(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# CHAT CATENA — config del pool AI (limite gruppo + domande oggi)
+# CHAT CATENA — crediti AI dell'account (tetti, spesi, ricarica)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class GruppoChatConfig(BaseModel):

@@ -281,7 +281,7 @@ def test_al_collaboratore_la_ricarica_la_chiede_il_titolare(monkeypatch):
     from services import sotto_utenti_service as su
     monkeypatch.setattr(su, "e_sotto_utente", lambda u: True)
     detail = _blocca_con(monkeypatch, "mese")
-    assert detail.endswith("il titolare puo' chiedere una ricarica."), detail
+    assert detail.endswith("il titolare può chiedere una ricarica."), detail
     assert "Servizi" not in detail
 
 

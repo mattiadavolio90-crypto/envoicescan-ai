@@ -188,6 +188,10 @@ def test_i_crediti_si_sommano_non_si_contano(db_sql, sql):
     _riga(db_sql, crediti=5)
     assert _consuma(sql, mese=6, costo=1)["mese"] == 6
     assert _consuma(sql, mese=6, costo=1)["esito"] == "mese"
+    # e la riga scritta pesa il costo chiesto, non i 3 di default
+    assert sql(
+        "SELECT crediti FROM public.chat_usage_log WHERE user_id = %s ORDER BY crediti", UTENTE
+    ) == [(1,), (5,)]
 
 
 def test_una_riga_scritta_senza_crediti_ne_vale_tre(db_sql, sql):
@@ -280,3 +284,86 @@ def test_giorno_comincia_a_mezzanotte_di_roma(db_sql, sql):
     _riga(db_sql, mezzanotte - timedelta(minutes=30))
     _riga(db_sql, mezzanotte + timedelta(minutes=30))
     assert _stato(sql)["oggi"] == 3
+
+
+# ─── due domande nello stesso istante ────────────────────────────────────────
+
+UTENTE_CONC = "99999999-9999-4999-8999-99999999c001"
+SEDE_CONC = "99999999-9999-4999-8999-99999999c002"
+
+
+@pytest.fixture
+def due_connessioni(_server_sql):
+    psycopg = pytest.importorskip("psycopg")
+    a = psycopg.connect(_server_sql, autocommit=False)
+    b = psycopg.connect(_server_sql, autocommit=False)
+    try:
+        yield a, b
+    finally:
+        for conn in (a, b):
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            conn.close()
+        pulizia = psycopg.connect(_server_sql, autocommit=True)
+        try:
+            pulizia.execute("DELETE FROM public.chat_usage_log WHERE user_id = %s", (UTENTE_CONC,))
+            pulizia.execute("DELETE FROM public.ristoranti WHERE id = %s", (SEDE_CONC,))
+            pulizia.execute("DELETE FROM public.users WHERE id = %s", (UTENTE_CONC,))
+        finally:
+            pulizia.close()
+
+
+def test_due_domande_insieme_non_superano_il_mese(due_connessioni):
+    """Budget di 3 crediti, due domande nello stesso istante. A ha registrato e
+    non ha ancora committato: B deve aspettarla (lock per account) e poi leggere
+    il mese finito. Senza il lock B non vedrebbe la riga di A e passerebbe:
+    due domande pagate con un budget da una."""
+    import threading
+
+    a, b = due_connessioni
+    with a.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.users (id, email, password_hash, nome_ristorante) "
+            "VALUES (%s, 'conc@oneflux.test', 'x', 'Conc')", (UTENTE_CONC,),
+        )
+        cur.execute(
+            "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) "
+            "VALUES (%s, %s, 'Conc', '99999999901', true)", (SEDE_CONC, UTENTE_CONC),
+        )
+    a.commit()
+    b.execute("SET lock_timeout = '10s'")
+
+    chiamata = "SELECT public.chat_crediti_check_and_log(%s, %s, false, 100, 3, 3)"
+    with a.cursor() as cur:
+        cur.execute(chiamata, (UTENTE_CONC, SEDE_CONC))
+        assert cur.fetchone()[0]["esito"] == "ok"
+
+    esito_b = {}
+
+    def domanda_di_b():
+        with b.cursor() as cur:
+            cur.execute(chiamata, (UTENTE_CONC, SEDE_CONC))
+            esito_b["v"] = cur.fetchone()[0]
+        b.commit()
+
+    t = threading.Thread(target=domanda_di_b)
+    t.start()
+    t.join(timeout=1.0)
+    assert t.is_alive(), "B non ha aspettato A: le due domande leggono lo stesso stato"
+    a.commit()
+    t.join(timeout=10)
+    assert not t.is_alive()
+    assert esito_b["v"]["esito"] == "mese", esito_b
+    with a.cursor() as cur:
+        cur.execute("SELECT count(*) FROM public.chat_usage_log WHERE user_id = %s", (UTENTE_CONC,))
+        assert cur.fetchone()[0] == 1
+
+
+def test_pool_nullo_conta_per_sede(db_sql, sql):
+    """Un NULL su p_pool non toglie il filtro: senza il COALESCE nessuna riga
+    sarebbe contata e il limite sparirebbe."""
+    _semina(db_sql)
+    _riga(db_sql)
+    assert sql("SELECT public.chat_crediti_stato(%s, %s, NULL)", UTENTE, SEDE)[0][0]["oggi"] == 3
