@@ -1315,6 +1315,21 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # sorgenti possibili (assegnate ai PV + ancora in coda). None se ieri non è
     # arrivato nulla, per non forzare un'apertura vuota.
     arrivate_ieri = _fatture_arrivate_ieri_gruppo(sb, user_id, ids)
+    # «Da collocare» spenta dall'admin (`tab_off_catena_collocare`): la coda non
+    # esiste per questo cliente, e il briefing non deve parlarne ne' contarla
+    # (audio del riquadro, /m, «tutto in ordine»). Pagine illeggibili = si
+    # comporta come prima: meglio una riga in piu' che una coda taciuta.
+    try:
+        coda_accesa = _fw()._scheda_catena_accesa(
+            _fw()._normalize_pagine(_resolve_user_from_token(authorization).get("pagine_abilitate")),
+            "collocare",
+        )
+    except Exception as exc:
+        logger.warning("catena: pagine non lette per la scheda «Da collocare»: %s", exc)
+        coda_accesa = True
+    if not coda_accesa:
+        n_da_collocare = 0
+        arrivate_ieri = {**arrivate_ieri, "n_in_coda": 0}
     n_arrivate_ieri_tot = arrivate_ieri["n_assegnate"] + arrivate_ieri["n_in_coda"]
 
     def _avvisi_aperti() -> Optional[int]:
