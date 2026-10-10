@@ -28,6 +28,12 @@ def test_una_risposta_d_errore_non_si_legge():
         assert _f("leggiRicariche", d) is None, d
 
 
+def test_ricarica_registrata_col_residuo_illeggibile():
+    d = {"ricariche": [], "residuo": None, "crediti_boost": 300}
+    assert _f("leggiRicariche", d) == d, "una ricarica registrata non va letta come errore"
+    assert _f("testoResiduo", d).startswith("Ricarica registrata.")
+
+
 def test_il_residuo_si_dice_coi_punti():
     assert _f("testoResiduo", {"ricariche": [R1], "residuo": 1200, "crediti_boost": 300}) == \
         "Ricarica AI da spendere: 1.200 crediti"

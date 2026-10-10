@@ -11,20 +11,25 @@ export type RicaricaAi = {
   created_at: string;
 };
 
-export type RicaricheAi = { ricariche: RicaricaAi[]; residuo: number; crediti_boost: number };
+/** `residuo` null: la ricarica e' registrata ma il residuo non si e' potuto
+ *  rileggere (dopo un'aggiunta il worker non risponde «riprova»: un secondo clic
+ *  ne registrerebbe un'altra). */
+export type RicaricheAi = { ricariche: RicaricaAi[]; residuo: number | null; crediti_boost: number };
 
 /** Una risposta del worker si legge cosi' com'e' solo se ha la forma attesa. */
 export function leggiRicariche(data: unknown): RicaricheAi | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Partial<RicaricheAi>;
-  if (!Array.isArray(d.ricariche) || typeof d.residuo !== "number" || typeof d.crediti_boost !== "number") {
+  const residuoOk = typeof d.residuo === "number" || d.residuo === null;
+  if (!Array.isArray(d.ricariche) || !residuoOk || typeof d.crediti_boost !== "number") {
     return null;
   }
-  return { ricariche: d.ricariche, residuo: d.residuo, crediti_boost: d.crediti_boost };
+  return { ricariche: d.ricariche, residuo: d.residuo ?? null, crediti_boost: d.crediti_boost };
 }
 
 /** La riga sopra il bottone: quanto resta da spendere. */
 export function testoResiduo(r: RicaricheAi): string {
+  if (r.residuo === null) return "Ricarica registrata. Il residuo non si legge ora: riapri la pagina più tardi.";
   if (r.ricariche.length === 0) return "Nessuna ricarica AI attivata.";
   return `Ricarica AI da spendere: ${fmtCrediti(r.residuo)} crediti`;
 }

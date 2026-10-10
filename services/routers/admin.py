@@ -3402,7 +3402,14 @@ def admin_aggiungi_ricarica_ai(
     logger.warning(
         "RICARICA_AI: cliente=%s crediti=%s | admin=%s", cliente_id, body.crediti, admin_user.get("email"),
     )
-    return _ricariche_ai_del_cliente(sb, cliente_id)
+    # La ricarica e' SCRITTA: da qui un errore non deve dire «riprova», o il
+    # secondo clic ne registra un'altra. Se la rilettura fallisce si conferma la
+    # ricarica e si dice che il residuo non e' leggibile (residuo None).
+    try:
+        return _ricariche_ai_del_cliente(sb, cliente_id)
+    except Exception as exc:
+        logger.warning("RICARICA_AI: registrata, rilettura fallita: %s", exc)
+        return {"ricariche": [], "residuo": None, "crediti_boost": RICARICA_AI_CREDITI}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

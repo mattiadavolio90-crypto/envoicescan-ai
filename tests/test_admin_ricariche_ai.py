@@ -195,3 +195,14 @@ def test_lo_stato_solleva_solo_se_chiesto():
     assert fw._chat_crediti_stato("u", None, True, sb) == {"oggi": 0, "mese": 0, "ricarica": 0}
     with pytest.raises(RuntimeError):
         fw._chat_crediti_stato("u", None, True, sb, solleva=True)
+
+
+def test_ricarica_scritta_e_rilettura_fallita_non_dice_riprova(monkeypatch):
+    """La ricarica e' gia' nel DB: un 503 «riprova» farebbe registrare la
+    seconda al clic successivo. Si conferma, col residuo non leggibile."""
+    db = _db()
+    db.rpc = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("rete"))
+    monkeypatch.setattr(admin, "get_supabase_client", lambda: db)
+    out = admin.admin_aggiungi_ricarica_ai(CLIENTE, admin.RicaricaAiBody(), admin_user=ADMIN)
+    assert len(db.inseriti) == 1
+    assert out == {"ricariche": [], "residuo": None, "crediti_boost": 300}

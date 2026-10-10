@@ -1973,8 +1973,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   per account e il costo scritto nella riga senza presidio, `p_pool` NULL toglieva il
 >   filtro, MAPPA_TECNICA e 4 doc tecnici fermi al sistema vecchio, la scheda admin
 >   mostrava 0 crediti su una lettura fallita (Mattia avrebbe aggiunto una seconda
->   ricarica), data della ricarica in UTC, id non-uuid in 500. **Prove:** mutazione
->   J1 25+3, J2 15, J3 12, J4 13+2+4: tutti uccisi (4 sopravvissuti veri, rafforzati e
+>   ricarica), data della ricarica in UTC, id non-uuid in 500; al terzo giro il mio
+>   fix del 503 valeva anche DOPO una ricarica gia' scritta, e «riprova» ne avrebbe
+>   registrata una seconda (ora la conferma, col residuo «non leggibile»). **Prove:**
+>   mutazione J1 25+3, J2 15, J3 12, J4 13+2+4+3: tutti uccisi (4 sopravvissuti veri, rafforzati e
 >   uccisi); suite `-m "not sql"` a `478d20b9` **18.524 + 58 skip, 0 rossi** (include
 >   `test_brevo_mittente_default.py` non committato di un'altra sessione); `-m sql`
 >   **1.057 + 2 rossi**, gli stessi al commit prima della fase J (`488e8d48`, provato
