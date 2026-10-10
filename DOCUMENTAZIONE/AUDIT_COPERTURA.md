@@ -1929,6 +1929,30 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   «Da collocare» spegnibile lascia la coda senza via d'uscita (decisione di
 >   Mattia); chat di catena e `/m` catena ignorano `tab_off_catena_*` (fase I);
 >   con «Margini» spenta «Vedi quali PV» del MOL ripiega su «Spesa per PV».
+> - **10/10/2026, `2160691b` `94028bd3` `16e000b4` `1a0aa959` `c0a30e44` `917dd0b7`
+>   `edefb5aa` — piano consulente, fase I: `/m` allineato + residui della H.**
+>   **Misurato** (sola lettura): `/m` aveva una chat sua, senza card, senza catena,
+>   senza «Voglio inserire…»; la catena di `/m` era la vecchia card segnali; la chat
+>   di catena e il briefing di gruppo ignoravano `tab_off_catena_*`.
+>   **Fatto:** briefing di gruppo senza coda con «Da collocare» spenta; chat di
+>   catena senza gli strumenti/coperti delle schede spente; «Da fare» per sede su
+>   `/m` (`DaFareCatena`); chat di `/m` sulla conversazione della Home (card
+>   Conferma/Annulla, domande dal briefing con registrazione, vista catena col suo
+>   pool e interruttore); `ChatRequest.mobile` per il rimando a Score («dall'app da
+>   computer»); riga «IVA compresa» nelle spese di `/m`; uscita dall'impersonazione
+>   su `/m` (`ImpersonaBanner inFlusso`). **Trovato** (revisore, 2 giri): descrizione
+>   retail dei margini sostituita con parole della ristorazione; `False` (scheda
+>   riaccesa) letto come spenta senza `_normalize_pagine`; l'estrazione di
+>   `useConversazione` lasciava 5 presidi rossi (cercavano il testo nel vecchio
+>   file); `/m/chat` in catena ignorava l'interruttore di gruppo (403 a ogni
+>   domanda); scroll a ogni tasto; «Tutto in ordine» sopra la coda. **Prove:**
+>   mutazione 20/20 + 11/11 + 3/3 + 4/4 + 14/14 (1 sopravvissuto vero, la riga che
+>   passa le pagine al dispatcher: test rafforzato e ucciso); suite `-m "not sql"` a
+>   `917dd0b7` **18.424 + 58 skip, 5 rossi** (i presidi da riallineare, poi 22/22).
+>   Non rilanciata per intero dopo i fix: solo i file toccati (195 verdi).
+>   **Residui:** `upload-modal.tsx` porta a «Da collocare» anche se spenta (della H);
+>   `raggruppaSegnali` senza chiamanti (solo il suo test); i presidi dei .tsx di `/m`
+>   sono sulla forma del sorgente; Mattia deve provare `/m` da un telefono vero.
 
 ---
 

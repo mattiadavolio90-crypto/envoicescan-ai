@@ -306,7 +306,7 @@ l'assistente **propone**, il cliente preme **Conferma**, e solo allora si scrive
   client mostra le card: senza, niente strumenti `proponi_*`, niente regole nel
   prompt (`cifre_dettate` di `_build_chat_system_prompt` e
   `_build_chat_system_prompt_catena`) e gli avvisi di prima. La Home lo manda;
-  `/m` no (fase 8). Strumenti mappati su `margini` in `_CHAT_TOOL_FLAG` (`proponi_spesa` su
+  `/m` pure (fase I, 10/10/2026: `AssistenteProvider` nel layout di `/m`, hook `useConversazione` condiviso con la Home). Strumenti mappati su `margini` in `_CHAT_TOOL_FLAG` (`proponi_spesa` su
   `agenda`), fuori
   da `_CHAT_TOOLS_SEDE_IN_CATENA` e rifiutati da `_chat_esegui_tool_sede`: in
   catena il prompt rimanda alla Home del locale.
@@ -649,7 +649,25 @@ reale del cliente.
   riga «Ora sei in…» al cambio di sede o di vista. Al backend vanno solo i
   messaggi della vista in cui si scrive (prima catena e PV condividevano la
   chiave `oneflux:chat-messages` e lo storico). La chiave di sessionStorage è
-  per utente. `/m` non cambia (fase 8).
+  per utente. `/m` (fase I) usa lo stesso provider e la stessa
+  conversazione della Home.
+- **Il telefono (fase I, 10/10/2026).** `ChatRequest.mobile` (default `False`,
+  separato da `card_conferma`): il corpo lo compone `corpoRichiestaChat`
+  (`lib/home-chat.ts`), il layout di `/m` monta `AssistenteProvider mobile`. Il
+  worker lo usa solo per il rimando a Score Fornitori, che sul telefono non c'è:
+  `_dove_score` aggiunge «, dall'app da computer» al prompt di sede, a quello di
+  catena e a `_rimando_score`. `/m/chat` in catena usa `vistaCatena()`, il pool e
+  l'interruttore di gruppo (`chatCatenaAttiva(fetchGruppoChatConfig())`).
+- **Schede di catena spente dall'admin (fase I).** `tab_off_catena_<scheda>`
+  (`_scheda_catena_accesa`) vale anche per la chat di catena: `gruppo_margini_coperti`
+  sparisce con `margini` spenta, `gruppo_spesa` con `spesa` spenta
+  (`_chat_tools_gruppo_per_pagine`, e rifiuto nel dispatcher); con `coperti` spenti
+  la descrizione dello strumento non li promette (non per i negozi, che non li
+  hanno) e la risposta perde `coperti`, `scontrino_medio`, `mp_per_coperto`. Il
+  prompt non nomina gli strumenti assenti. Il briefing di gruppo
+  (`gruppo_overview`) con `collocare` spenta non conta la coda (`n_fatture_da_collocare`
+  e «arrivate ieri» in coda a 0): audio, `/m` e «tutto in ordine» la ignorano.
+  Pagine illeggibili = comportamento di prima (la coda si mostra).
 - **19/6/2026 (hardening + SQL)** — limiti domande/giorno **base 10 / plus 20 / pro 30**
   (`CHAT_LIMITI_PIANO`). Loop tool-calling **unificato** su `_chat_loop_openai` (sede
   + catena, niente più duplicazione) con **chiamata finale `tool_choice="none"`** a
