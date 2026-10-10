@@ -124,6 +124,7 @@ def _chat(monkeypatch, *, contesto, pagine, risposta, settore="ristorazione"):
     monkeypatch.setattr("services.get_supabase_client", lambda: sb)
     monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, s: "rid-1")
     monkeypatch.setattr(fw, "_chat_quota_pool", lambda u, s: (30, contesto == "catena"))
+    monkeypatch.setattr(fw, "_chat_crediti_consuma", lambda *a, **k: {"esito": "ok", "oggi": 3, "mese": 3, "ricarica": 0})
     monkeypatch.setattr(fw, "_chat_budget_mensile_pool", lambda u, s: 600)
     monkeypatch.setattr(fw, "_get_assistant_preferences", lambda rid, s: {"chat_ai_enabled": True})
     monkeypatch.setattr(fw, "_gruppo_chat_disabilitata", lambda uid, s: False)

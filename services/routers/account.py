@@ -45,16 +45,12 @@ def _resolve_piano_effettivo(*args, **kwargs):
     return _fw()._resolve_piano_effettivo(*args, **kwargs)
 
 
-def _chat_domande_oggi(*args, **kwargs):
-    return _fw()._chat_domande_oggi(*args, **kwargs)
-
-
 def _chat_limite_per_piano(*args, **kwargs):
     return _fw()._chat_limite_per_piano(*args, **kwargs)
 
 
-def _chat_quota_view(*args, **kwargs):
-    return _fw()._chat_quota_view(*args, **kwargs)
+def _chat_crediti_vista(*args, **kwargs):
+    return _fw()._chat_crediti_vista(*args, **kwargs)
 
 
 def _is_admin_email(*args, **kwargs):
@@ -146,10 +142,10 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Contatore domande Chat AI di oggi (per il rate limit visibile al cliente).
-    # Account multi-sede → pool condiviso del gruppo (stesso contatore in ogni PV e
-    # in catena); sede singola → limite del piano sulla sede.
-    chat_limite_g, chat_oggi, chat_pool = _chat_quota_view(user, sb, ristorante_id)
+    # Crediti AI (fase J): gli stessi numeri che applica la chat. Account
+    # multi-sede → salvadanaio condiviso del gruppo (stesso contatore in ogni PV e
+    # in catena); sede singola → crediti del piano sulla sede.
+    crediti_chat = _chat_crediti_vista(user, sb, ristorante_id)
 
     risposta = {
         "email": row.get("email", user.get("email", "")),
@@ -159,9 +155,12 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "piano": piano_raw,
         "limite_fatture_mese": limite_fatture,
         "fatture_usate_mese": fatture_mese,
-        "chat_usate_oggi": chat_oggi,
-        "chat_limite_giorno": chat_limite_g,
-        "chat_pool": chat_pool,
+        "chat_limite_giorno": crediti_chat["limite_giorno"],
+        "chat_limite_mese": crediti_chat["limite_mese"],
+        "chat_crediti_oggi": crediti_chat["oggi"],
+        "chat_crediti_mese": crediti_chat["mese"],
+        "chat_crediti_ricarica": crediti_chat["ricarica"],
+        "chat_pool": crediti_chat["pool"],
         "price_alert_threshold": row.get("price_alert_threshold"),
         "tema": (row.get("tema") or "dark"),
         # Default acceso come la colonna: un valore assente non e' una disiscrizione.

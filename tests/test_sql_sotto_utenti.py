@@ -1157,11 +1157,11 @@ def test_home_su_due_sedi_strumenti_delle_sue_pagine_e_quota_del_titolare(scenar
     assert "query_margini" in offerti and "query_costi" not in offerti
 
     # Un solo contatore: una domanda registrata dal titolare la vede anche lui.
-    sc.conn.execute("SELECT public.chat_usage_check_and_log(%s, %s, 100, true, NULL)",
+    sc.conn.execute("SELECT public.chat_crediti_check_and_log(%s, %s, true, 100, 1000, 3)",
                     (sc.a.ids["user_id"], sc.a.ids["sede1"]))
-    suo = _chiama(sc, token, "GET", "/api/account/me").json()["chat_usate_oggi"]
-    del_titolare = _chiama(sc, sc.a.token, "GET", "/api/account/me").json()["chat_usate_oggi"]
-    assert suo == del_titolare >= 1
+    suo = _chiama(sc, token, "GET", "/api/account/me").json()["chat_crediti_oggi"]
+    del_titolare = _chiama(sc, sc.a.token, "GET", "/api/account/me").json()["chat_crediti_oggi"]
+    assert suo == del_titolare >= 3
 
     # Le sue due sedi: su entrambe la Home risponde.
     for sede in (sc.a.ids["sede1"], sc.a.ids["sede2"]):

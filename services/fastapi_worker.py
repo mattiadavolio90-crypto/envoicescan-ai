@@ -2897,10 +2897,11 @@ class ConfigResponse(BaseModel):
     nome_referente: str = ""
     topics: List[ConfigTopic]
     chat_ai_enabled: bool = True
-    chat_limite_giorno: int = 30  # 0 = piano free, chat non disponibile
-    # Domande gia' consumate oggi: valore iniziale del contatore "ti restano N"
-    # del widget chat, mostrato gia' all'apertura (prima ancora di chattare).
-    chat_domande_oggi: int = 0
+    # Tutti in CREDITI dal 10/10/2026 (fase J). 0 = piano free, chat non disponibile.
+    chat_limite_giorno: int = 100
+    # Crediti gia' spesi oggi: valore iniziale del contatore del widget chat,
+    # mostrato gia' all'apertura (prima ancora di chattare).
+    chat_crediti_oggi: int = 0
     # Il MESE, accanto al giorno. Senza questi due campi il contatore mentirebbe
     # per due terzi del mese: col giorno al 10% del budget, chi va a pieno regime
     # esaurisce il mese al giorno 10, e dal giorno 11 al 30 il widget direbbe «ti
@@ -2909,7 +2910,9 @@ class ConfigResponse(BaseModel):
     # VISTA. Trovato dal code-reviewer.
     # 0 = nessun budget mensile (il frontend allora mostra solo il giorno).
     chat_limite_mese: int = 0
-    chat_domande_mese: int = 0
+    chat_crediti_mese: int = 0
+    # Ricarica (Boost AI) ancora da spendere: non scade, si usa dopo il mese.
+    chat_crediti_ricarica: int = 0
     # Soglia % alert prezzi (users.price_alert_threshold): da qui si IMPOSTA quando
     # scatta l'avviso "Alert prezzi". In pagina Prezzi resta solo come filtro di
     # visualizzazione, non la salva piu'. Per-utente (non per-ristorante).
@@ -3306,11 +3309,9 @@ def crea_marketplace_lead(
 # CHAT AI — assistente conversazionale sui dati del ristorante
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Limite domande/giorno per piano: rete di sicurezza sui costi OpenAI e leva
-# commerciale. Visibile al cliente nelle Impostazioni (contatore).
-# free = chat disattivata; base 10, plus 20, pro 30.
-# Costo stimato per sede/mese con gpt-4.1-mini (post-ottimizzazione: max_tokens=600, round=2):
-# base ~$0.02, plus ~$0.03, pro ~$0.06. Per 10 clienti tutti Pro: ~$0.63/mese totale.
+# Crediti della chat per piano: rete di sicurezza sui costi OpenAI e leva
+# commerciale (vedi `CHAT_BUDGET_MENSILE_PIANO`). Costo misurato il 10/10/2026
+# (`ai_usage_events`, gpt-4.1-mini): in media $0,0034 a domanda, massimo $0,005.
 # Giorno del mese da cui si sollecita il costo del personale del mese appena
 # chiuso. Prima di questa data il dato non e' ancora disponibile al cliente: la
 # busta paga arriva a meta' mese. Vedi _briefing_dati_mensili.
@@ -3347,38 +3348,48 @@ _GIORNO_SOLLECITO_PERSONALE = 15
 # l'avviso a vuoto. E' il residuo vero dietro questa costante.
 _GIORNO_SOLLECITO_INCASSO = 3
 
-# Budget chat MENSILE per piano, per sede (il pool di un account multi-sede e'
-# la somma delle sue sedi: vedi `_chat_quota_pool`).
+# Crediti AI della chat (fase J, decisioni di Mattia del 10/10/2026). L'app conta
+# CREDITI come l'offerta commerciale: una domanda ne costa
+# `CHAT_CREDITI_PER_DOMANDA`, la stessa proporzione in ogni piano.
 #
-# Il mese e' il vincolo vero, il giorno e' solo un freno perche' nessuno bruci
-# tutto in due giorni (decisione di Mattia, 23/09/2026). Prima esisteva solo il
-# tetto giornaliero (10/20/30) e il mese non aveva alcun limite: un cliente
-# poteva teoricamente fare 300 domande in 30 giorni senza che nulla lo fermasse.
+# Crediti al MESE per sede. Fino al 10/10 il budget era in domande, 300/600/900
+# (= 900/1.800/2.700 crediti): ora crescono col prezzo del piano. Misurato quel
+# giorno sul DB live: il massimo usato da un account in un mese e' 37 domande.
+# Il pool di un account con piu' sedi NON e' la somma: `_chat_budget_da_piani`.
 #
-# I valori nascono dai tetti giornalieri precedenti moltiplicati per 30, quindi
-# il totale mensile e' lo STESSO di prima — cambia solo che ora e' esigibile, e
-# che chi lavora a raffica non resta a secco il primo giorno.
+# Il mese e' il vincolo vero, il giorno solo un freno perche' nessuno bruci
+# tutto in due giorni (decisione di Mattia, 23/09/2026). Finito il mese si
+# spende la ricarica (Boost AI, tabella `chat_ricariche`), che non scade.
+CHAT_CREDITI_PER_DOMANDA = 3
+
+
+def _fmt_crediti(n: int) -> str:
+    """1000 -> «1.000», come la landing e l'app."""
+    return f"{int(n):,}".replace(",", ".")
+
+
 CHAT_BUDGET_MENSILE_PIANO: Dict[str, int] = {
     "free": 0,
-    "base": 300,
-    "plus": 600,
-    "pro": 900,
+    "base": 1000,
+    "plus": 1500,
+    "pro": 2000,
 }
+
+# Peso delle sedi oltre la prima nel salvadanaio di una catena (Mattia,
+# 10/10/2026). Con la somma piena una catena di 5 Pro aveva 4.500 domande al
+# mese, un Base singolo 300: il Boost sarebbe servito solo al piu' piccolo.
+CHAT_PESO_SEDE_AGGIUNTIVA = 0.5
 
 # Quota del budget mensile spendibile in un solo giorno. Al 10% il mese copre
 # almeno 10 giorni di uso pieno: con una percentuale piu' alta (20%) un cliente
 # puo' esaurire il mese in 5 giorni e restare fermo per 25, che e' esattamente
-# il problema che questo meccanismo deve evitare.
-#
-# Effetto collaterale voluto: il tetto giornaliero TRIPLICA rispetto a prima
-# (base 10 -> 30). Misurato sul DB live il 23/09/2026, il tetto stretto ce
-# l'aveva proprio chi usa la chat (2 sedi base, 20/giorno, in crescita) mentre
-# chi ha 150/giorno non la apre.
+# il problema che questo meccanismo deve evitare. Vale anche quando si spende la
+# ricarica (Mattia, 10/10/2026).
 CHAT_QUOTA_GIORNALIERA_PCT = 0.10
 
 
 def _chat_limite_giornaliero_da_mensile(budget_mensile: int) -> int:
-    """Tetto giornaliero derivato dal budget mensile.
+    """Tetto giornaliero (crediti) derivato dal budget mensile.
 
     Non e' una costante separata di proposito: due tabelle di numeri divergono
     al primo ritocco di una sola. Il minimo a 1 evita che un budget piccolo ma
@@ -3439,17 +3450,26 @@ def _chat_budget_mensile_per_piano(piano: Optional[str]) -> int:
     )
 
 
-def _chat_quota_pool(user: Dict[str, Any], supabase_client) -> tuple[int, bool]:
-    """(limite, is_pool) della chat per l'account.
+def _chat_budget_da_piani(piani: List[Optional[str]]) -> int:
+    """Crediti del mese di un account con sedi di questi piani.
 
-    Il limite è la SOMMA dei limiti effettivi di ogni sede attiva: per una sola
-    sede coincide col limite di quel piano; per più sedi è il pool condiviso del
-    gruppo (es. 3 Base 10 + 1 Pro 30 = 60). Ogni sede contribuisce col limite del
-    SUO piano (fallback sede.piano → users.piano → 'base', mai users.piano
-    diretto); le sedi 'free' (0) non contribuiscono. `is_pool` = account multi-sede
-    (>1 sede attiva): in quel caso il conteggio è condiviso per user_id e lo stesso
-    pool è speso tra catena e tutti i punti vendita. Fallback prudente al limite
-    della sede attiva se la lettura sedi fallisce (non blocca la chat)."""
+    La sede col piano piu' alto conta piena, ogni altra sede conta
+    `CHAT_PESO_SEDE_AGGIUNTIVA` del suo (Mattia, 10/10/2026): un salvadanaio
+    unico, speso fra la catena e tutti i punti vendita. Una sede free (0) non
+    aggiunge niente. Es. 2 Base = 1.500, 5 Pro = 6.000.
+    """
+    budget = sorted((_chat_budget_mensile_per_piano(p) for p in piani), reverse=True)
+    if not budget:
+        return 0
+    return budget[0] + int(sum(budget[1:]) * CHAT_PESO_SEDE_AGGIUNTIVA)
+
+
+def _chat_piani_sedi(user: Dict[str, Any], supabase_client) -> Optional[List[str]]:
+    """Il piano di ogni sede attiva dell'account (fallback sede.piano →
+    users.piano → 'base', mai users.piano diretto). Le sedi tecniche non hanno
+    piano e non contano. None se non ci sono sedi o la lettura fallisce: il
+    chiamante ripiega sul piano della sede attiva, prudente, senza bloccare la
+    chat."""
     try:
         sedi = (
             supabase_client.table("ristoranti")
@@ -3459,63 +3479,120 @@ def _chat_quota_pool(user: Dict[str, Any], supabase_client) -> tuple[int, bool]:
             .eq("sede_tecnica", False)   # la sede-contenitore non ha piano né conta per il pool
             .execute()
         ).data or []
-        if sedi:
-            tot = sum(
-                _chat_limite_per_piano(s.get("piano") or user.get("piano") or "base")
-                for s in sedi
-            )
-            return tot, len(sedi) > 1
     except Exception as exc:
-        logger.warning("chat: calcolo pool gruppo fallito, fallback sede: %s", exc)
+        logger.warning("chat: lettura sedi per i crediti fallita, fallback sede: %s", exc)
+        return None
+    if not sedi:
+        return None
+    return [s.get("piano") or user.get("piano") or "base" for s in sedi]
+
+
+def _chat_quota_pool(user: Dict[str, Any], supabase_client) -> tuple[int, bool]:
+    """(tetto del giorno in crediti, is_pool) della chat per l'account.
+
+    Il tetto e' il 10% dei crediti del mese dell'account (`_chat_budget_da_piani`).
+    `is_pool` = account multi-sede (>1 sede attiva): il conteggio e' condiviso
+    per user_id e lo stesso salvadanaio e' speso tra catena e tutti i punti
+    vendita."""
+    piani = _chat_piani_sedi(user, supabase_client)
+    if piani:
+        return _chat_limite_giornaliero_da_mensile(_chat_budget_da_piani(piani)), len(piani) > 1
     return _chat_limite_per_piano(_resolve_piano_effettivo(user, supabase_client)), False
 
 
 def _chat_budget_mensile_pool(user: Dict[str, Any], supabase_client) -> int:
-    """Budget MENSILE della chat per l'account, con la stessa regola del pool.
+    """Crediti del MESE della chat per l'account, con la stessa regola del pool.
 
-    Gemello di `_chat_quota_pool` per la finestra del mese: somma il budget di
-    ogni sede attiva, stesso fallback sede.piano → users.piano → 'base', stessa
-    esclusione delle sedi tecniche. La firma di `_chat_quota_pool` non e' stata
-    allargata di proposito: ha sei chiamanti, e un parametro in piu' li avrebbe
-    toccati tutti per un dato che serve a uno solo.
-
-    Se la lettura sedi fallisce ripiega sul budget della sede attiva, come fa il
-    gemello: prudente, non blocca la chat.
+    Gemello di `_chat_quota_pool` per la finestra del mese, con lo stesso
+    fallback. La firma di `_chat_quota_pool` non e' stata allargata di proposito:
+    ha piu' chiamanti, e un parametro in piu' li avrebbe toccati tutti per un
+    dato che serve a pochi.
     """
-    try:
-        sedi = (
-            supabase_client.table("ristoranti")
-            .select("piano")
-            .eq("user_id", str(user["id"]))
-            .eq("attivo", True)
-            .eq("sede_tecnica", False)
-            .execute()
-        ).data or []
-        if sedi:
-            return sum(
-                _chat_budget_mensile_per_piano(s.get("piano") or user.get("piano") or "base")
-                for s in sedi
-            )
-    except Exception as exc:
-        logger.warning("chat: calcolo budget mensile fallito, fallback sede: %s", exc)
+    piani = _chat_piani_sedi(user, supabase_client)
+    if piani:
+        return _chat_budget_da_piani(piani)
     return _chat_budget_mensile_per_piano(_resolve_piano_effettivo(user, supabase_client))
 
 
-def _chat_limite_pool_gruppo(user: Dict[str, Any], supabase_client) -> int:
-    """Limite chat del POOL di gruppo = SOMMA dei limiti effettivi di ogni sede."""
-    return _chat_quota_pool(user, supabase_client)[0]
+_CREDITI_A_ZERO = {"oggi": 0, "mese": 0, "ricarica": 0}
 
 
-def _chat_quota_view(
+def _chat_crediti_stato(
+    user_id: str, ristorante_id: Optional[str], pool: bool, supabase_client
+) -> Dict[str, int]:
+    """Crediti spesi oggi e nel mese (giorno e mese di Roma) e ricarica residua.
+
+    Li legge la RPC `chat_crediti_stato`, la stessa che usa
+    `chat_crediti_check_and_log` per decidere: le finestre vivono solo in SQL,
+    cosi' il numero mostrato e quello applicato non possono divergere (fino al
+    10/10/2026 c'erano due copie, Python e SQL, tenute allineate a mano).
+    Pool → per account; altrimenti per sede (o per account se la sede manca).
+
+    Serve alla VISTA: una lettura fallita da' zeri, non blocca la pagina.
+    L'enforcement resta della RPC di consumo, che e' fail-closed.
+    """
+    try:
+        r = supabase_client.rpc("chat_crediti_stato", {
+            "p_user_id": user_id,
+            "p_ristorante_id": None if pool else ristorante_id,
+            "p_pool": pool,
+        }).execute()
+        d = r.data if isinstance(r.data, dict) else {}
+        return {
+            "oggi": int(d.get("oggi") or 0),
+            "mese": int(d.get("mese") or 0),
+            # Una domanda iniziata con l'ultimo credito porta il saldo sotto
+            # zero di meno di una domanda: al cliente si mostra 0.
+            "ricarica": max(0, int(d.get("ricarica") or 0)),
+        }
+    except Exception as exc:
+        logger.warning("chat: lettura crediti fallita: %s", exc)
+        return dict(_CREDITI_A_ZERO)
+
+
+def _chat_crediti_vista(
     user: Dict[str, Any], supabase_client, ristorante_id: Optional[str]
-) -> tuple[int, int, bool]:
-    """(limite, usate_oggi, is_pool) coerente con l'enforcement: per gli account
-    multi-sede il pool è condiviso (limite = somma sedi, conteggio per user_id);
-    per la sede singola resta il limite del piano contato sulla sede. Usato per
-    mostrare ovunque lo STESSO contatore che la chat applica davvero."""
-    limite, is_pool = _chat_quota_pool(user, supabase_client)
-    usate = _chat_domande_oggi(None if is_pool else ristorante_id, str(user["id"]), supabase_client)
-    return limite, usate, is_pool
+) -> Dict[str, Any]:
+    """Il contatore dei crediti come lo applica la chat: tetti del giorno e del
+    mese, crediti spesi oggi e nel mese, ricarica residua, e se l'account e' un
+    pool. A chat non disponibile (piano free) solo il tetto a 0, senza letture."""
+    limite_giorno, pool = _chat_quota_pool(user, supabase_client)
+    vista: Dict[str, Any] = {"limite_giorno": limite_giorno, "limite_mese": 0, "pool": pool, **_CREDITI_A_ZERO}
+    if limite_giorno <= 0:
+        return vista
+    vista["limite_mese"] = _chat_budget_mensile_pool(user, supabase_client)
+    vista.update(_chat_crediti_stato(str(user["id"]), ristorante_id, pool, supabase_client))
+    return vista
+
+
+def _chat_crediti_consuma(
+    user_id: str,
+    ristorante_id: Optional[str],
+    pool: bool,
+    crediti_giorno: int,
+    crediti_mese: int,
+    supabase_client,
+) -> Dict[str, Any]:
+    """Controlla i crediti e registra la domanda in un solo statement (RPC
+    `chat_crediti_check_and_log`), PRIMA della chiamata OpenAI: niente race fra
+    richieste concorrenti, niente fail-open di un INSERT dopo la risposta.
+
+    Spende prima i crediti del mese, poi la ricarica; il tetto del giorno vale su
+    entrambi. Ritorna {esito: ok|giorno|mese, oggi, mese, ricarica}. Una risposta
+    illeggibile SOLLEVA: chi chiama e' fail-closed e rifiuta la domanda.
+    """
+    r = supabase_client.rpc("chat_crediti_check_and_log", {
+        "p_user_id": user_id,
+        "p_ristorante_id": ristorante_id,
+        "p_pool": pool,
+        "p_crediti_giorno": crediti_giorno,
+        "p_crediti_mese": crediti_mese,
+        "p_costo": CHAT_CREDITI_PER_DOMANDA,
+    }).execute()
+    d = r.data
+    if not isinstance(d, dict) or d.get("esito") not in ("ok", "giorno", "mese"):
+        raise RuntimeError(f"risposta inattesa da chat_crediti_check_and_log: {d!r}")
+    return d
 
 
 def _gruppo_chat_disabilitata(user_id: str, supabase_client) -> bool:
@@ -3534,69 +3611,6 @@ def _gruppo_chat_disabilitata(user_id: str, supabase_client) -> bool:
     except Exception as exc:
         logger.warning("chat: lettura toggle chat catena fallita: %s", exc)
     return False
-
-
-def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
-    """Conta le domande alla chat fatte oggi (Europe/Rome) per il ristorante (o utente).
-
-    Il giorno e' quello del ristoratore, non quello del server: contando in UTC il
-    contatore si azzerava all'01:00 (CET) o alle 02:00 (CEST) di Roma, e chi
-    chattava dopo mezzanotte spendeva la quota del giorno prima. Misurato sul DB
-    live il 23/09/2026: 1 riga su 95 gia' addebitata al giorno sbagliato. Deve
-    restare allineato alla RPC `chat_usage_check_and_log`, che conta la stessa
-    finestra: se i due fusi divergono, il contatore mostrato e quello applicato
-    non coincidono piu'.
-    """
-    from datetime import datetime as _dt, time as _time
-    from zoneinfo import ZoneInfo as _ZI
-    _roma = _ZI("Europe/Rome")
-    inizio = _dt.combine(_dt.now(_roma).date(), _time.min, tzinfo=_roma).isoformat()
-    try:
-        q = (
-            supabase_client.table("chat_usage_log")
-            .select("id", count="exact")
-            .gte("created_at", inizio)
-        )
-        if ristorante_id:
-            q = q.eq("ristorante_id", ristorante_id)
-        else:
-            q = q.eq("user_id", user_id)
-        return int(q.execute().count or 0)
-    except Exception as exc:
-        logger.warning("chat: conteggio domande oggi fallito: %s", exc)
-        return 0
-
-
-def _chat_domande_mese(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
-    """Domande fatte nel mese corrente (Europe/Rome), stessa regola del giorno.
-
-    Gemello di `_chat_domande_oggi` per la finestra del mese, e deve restare
-    allineato alla RPC come lui: la finestra e' il primo del mese a mezzanotte di
-    Roma, non dell'UTC, o il budget ripartirebbe alle 02:00 del 1°.
-
-    Serve alla VISTA, non all'enforcement: senza, il contatore mostrerebbe solo
-    il giorno e direbbe «ti restano 30 domande» a un cliente che ha esaurito il
-    mese e viene rifiutato a ogni invio.
-    """
-    from datetime import datetime as _dt, time as _time
-    from zoneinfo import ZoneInfo as _ZI
-    _roma = _ZI("Europe/Rome")
-    _oggi = _dt.now(_roma).date()
-    inizio = _dt.combine(_oggi.replace(day=1), _time.min, tzinfo=_roma).isoformat()
-    try:
-        q = (
-            supabase_client.table("chat_usage_log")
-            .select("id", count="exact")
-            .gte("created_at", inizio)
-        )
-        if ristorante_id:
-            q = q.eq("ristorante_id", ristorante_id)
-        else:
-            q = q.eq("user_id", user_id)
-        return int(q.execute().count or 0)
-    except Exception as exc:
-        logger.warning("chat: conteggio domande mese fallito: %s", exc)
-        return 0
 
 
 class ChatMessage(BaseModel):
@@ -3643,11 +3657,14 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-    # Quota giornaliera: dopo ogni risposta il widget mostra quante domande
-    # restano oggi, cosi' il limite non e' una sorpresa (prima si scopriva solo
-    # sbattendo contro il 429). domande_oggi = quante gia' consumate oggi.
-    domande_oggi: int = 0
+    # I crediti dopo questa domanda (fase J): il contatore a schermo si aggiorna
+    # da qui, cosi' il limite non e' una sorpresa (prima si scopriva solo
+    # sbattendo contro il 429). Tutto in CREDITI, non in domande.
     limite_giorno: int = 0
+    limite_mese: int = 0
+    crediti_oggi: int = 0
+    crediti_mese: int = 0
+    crediti_ricarica: int = 0
     # Le cifre dettate che il cliente puo' confermare (fase 3): le prepara il
     # modello con `proponi_*`, le scrive solo POST /api/assistente/registra.
     proposte: List[_PropostaCifra] = Field(default_factory=list)
@@ -6410,23 +6427,16 @@ def chat_ai(
                 detail="La chat dell'assistente è disattivata per questa sede. Riattivala da «Configura assistente».",
             )
 
-    # Rate limit giornaliero atomico (RPC): conta+inserisce in un solo statement
-    # PRIMA della chiamata OpenAI. Elimina la race (N richieste concorrenti che
-    # leggono lo stesso conteggio) e il fail-open del vecchio INSERT post-chiamata.
-    # Se la RPC fallisce -> fail-closed (rifiuta la domanda).
+    # Crediti (RPC atomica): controlla e registra la domanda in un solo statement
+    # PRIMA della chiamata OpenAI. Se la RPC fallisce -> fail-closed.
     try:
-        _rpc = supabase_client.rpc("chat_usage_check_and_log", {
-            "p_user_id": user_id,
-            "p_ristorante_id": rate_ristorante,
-            "p_limite": limite,
-            "p_pool": is_pool,
-            "p_limite_mensile": limite_mensile,
-        }).execute()
-        domande_oggi = int(_rpc.data) if _rpc.data is not None else -1
+        _crediti = _chat_crediti_consuma(
+            user_id, rate_ristorante, is_pool, limite, limite_mensile, supabase_client,
+        )
     except Exception as exc:
         logger.warning("chat: rate-limit RPC fallita (fail-closed): %s", exc)
         raise HTTPException(status_code=503, detail="Servizio temporaneamente non disponibile. Riprova.")
-    if domande_oggi < 0:
+    if _crediti["esito"] != "ok":
         # Un rifiuto va lasciato scritto da qualche parte. Fino al 23/09/2026
         # questo ramo non scriveva NULLA — ne' su DB (la RPC ritorna -1 senza
         # inserire) ne' sul logger, a differenza del fail-closed qui sopra. Un
@@ -6435,11 +6445,11 @@ def chat_ai(
         # ma per assenza dello strumento di misura. Senza questa riga la prossima
         # decisione sui limiti si prende di nuovo alla cieca.
         #
-        # -2 = budget MENSILE esaurito, -1 = tetto giornaliero. Sono due frasi
-        # diverse, e dirgli quella sbagliata e' una promessa falsa: «torna
-        # domani» a chi ha finito il mese lo rimanda a un giorno in cui sara'
-        # fermo di nuovo — lo stesso difetto del «Riprova domani» corretto oggi.
-        mensile_esaurito = domande_oggi == -2
+        # «mese» = crediti del mese E ricarica finiti, «giorno» = tetto del
+        # giorno. Sono due frasi diverse, e dirgli quella sbagliata e' una
+        # promessa falsa: «torna domani» a chi ha finito il mese lo rimanda a un
+        # giorno in cui sara' fermo di nuovo.
+        mensile_esaurito = _crediti["esito"] == "mese"
         logger.warning(
             "chat: %s raggiunto (user=%s ristorante=%s limite_giorno=%s "
             "limite_mese=%s pool=%s)",
@@ -6447,20 +6457,33 @@ def chat_ai(
             user_id, rate_ristorante, limite, limite_mensile, is_pool,
         )
         if mensile_esaurito:
+            # La ricarica la compra il titolare: un collaboratore non ha i Servizi.
+            _chi_ricarica = (
+                "il titolare puo' chiedere una ricarica" if _su.e_sotto_utente(user)
+                else "puoi chiedere una ricarica fra i Servizi"
+            )
             raise HTTPException(
                 status_code=429,
                 detail=(
-                    f"Hai usato tutte le {limite_mensile} domande di questo mese. "
-                    f"Il budget riparte il 1° del mese prossimo."
+                    f"Hai usato tutti i {_fmt_crediti(limite_mensile)} crediti AI di questo mese. "
+                    f"Ripartono il 1° del mese prossimo: per continuare prima "
+                    f"{_chi_ricarica}."
                 ),
             )
         raise HTTPException(
             status_code=429,
             detail=(
-                f"Hai raggiunto il limite di {limite} domande per oggi. "
+                f"Hai raggiunto il limite di {_fmt_crediti(limite)} crediti AI per oggi. "
                 f"Il contatore si azzera a mezzanotte."
             ),
         )
+
+    # I numeri dopo questa domanda: il contatore a schermo si aggiorna da qui.
+    _crediti_ora = {
+        "crediti_oggi": int(_crediti.get("oggi") or 0),
+        "crediti_mese": int(_crediti.get("mese") or 0),
+        "crediti_ricarica": max(0, int(_crediti.get("ricarica") or 0)),
+    }
 
     # Piu' sedi VISIBILI a chi scrive: il pool conta le sedi del titolare, ma un
     # sotto-utente con una sola sede non ha altri locali ne' la vista catena, e
@@ -6532,7 +6555,7 @@ def chat_ai(
             )
         except Exception as exc:
             logger.warning("chat catena: tracking costi fallito (non blocca): %s", exc)
-        logger.info("chat_ai[catena]: user=%s domande_oggi=%d", user.get("email"), domande_oggi)
+        logger.info("chat_ai[catena]: user=%s crediti_oggi=%d", user.get("email"), _crediti_ora["crediti_oggi"])
         reply = _rimando_score(
             _ultima_domanda(body), reply, _normalize_pagine(user.get("pagine_abilitate")),
             _dove_score(
@@ -6542,8 +6565,9 @@ def chat_ai(
         )
         return ChatResponse(
             reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
-            domande_oggi=domande_oggi,
             limite_giorno=limite,
+            limite_mese=limite_mensile,
+            **_crediti_ora,
         )
 
     tools = _chat_tools_sede_offerti(user, settore_chat)
@@ -6607,12 +6631,13 @@ def chat_ai(
 
     # Il log della domanda e' gia' stato scritto atomicamente dalla RPC di
     # rate-limit prima della chiamata OpenAI: niente INSERT qui.
-    logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d proposte=%d",
-                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi, len(proposte))
+    logger.info("chat_ai: user=%s model=%s messages=%d crediti_oggi=%d proposte=%d",
+                user.get("email"), CHAT_MODEL, len(body.messages), _crediti_ora["crediti_oggi"], len(proposte))
     return ChatResponse(
         reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
-        domande_oggi=domande_oggi,
         limite_giorno=limite,
+        limite_mese=limite_mensile,
+        **_crediti_ora,
         # Senza una risposta del modello la card resterebbe senza spiegazione.
         proposte=list(proposte.values()) if reply else [],
     )
@@ -10307,17 +10332,15 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     # chat (che ora scala lo stesso pool da catena e da ogni PV).
     chat_limite, _chat_pool = _chat_quota_pool(user, sb)
 
-    # Domande gia' fatte oggi, solo se la chat e' disponibile (piano > 0 e attiva):
-    # evita una query inutile per i piani free / chat spenta.
-    domande_oggi = 0
+    # Crediti gia' spesi, solo se la chat e' disponibile (piano > 0 e attiva):
+    # evita una lettura inutile per i piani free / chat spenta.
     chat_limite_mese = 0
-    domande_mese = 0
+    crediti = dict(_CREDITI_A_ZERO)
     if chat_limite > 0 and chat_ai_enabled:
-        domande_oggi = _chat_domande_oggi(None if _chat_pool else ristorante_id, str(user["id"]), sb)
         # Il mese accanto al giorno: senza, dal giorno 11 in poi il contatore
-        # direbbe «ti restano 30 oggi» a chi viene rifiutato a ogni invio.
+        # direbbe «ti restano N oggi» a chi viene rifiutato a ogni invio.
         chat_limite_mese = _chat_budget_mensile_pool(user, sb)
-        domande_mese = _chat_domande_mese(None if _chat_pool else ristorante_id, str(user["id"]), sb)
+        crediti = _chat_crediti_stato(str(user["id"]), ristorante_id, _chat_pool, sb)
 
     # Soglia alert prezzi (per-utente): qui si IMPOSTA quando scatta l'avviso.
     try:
@@ -10334,8 +10357,9 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     return ConfigResponse(
         nome_referente=nome, topics=topics,
         chat_ai_enabled=chat_ai_enabled, chat_limite_giorno=chat_limite,
-        chat_domande_oggi=domande_oggi,
-        chat_limite_mese=chat_limite_mese, chat_domande_mese=domande_mese,
+        chat_crediti_oggi=crediti["oggi"],
+        chat_limite_mese=chat_limite_mese, chat_crediti_mese=crediti["mese"],
+        chat_crediti_ricarica=crediti["ricarica"],
         price_alert_threshold=price_alert_threshold,
         alert_prezzi_solo_preferiti=solo_preferiti,
         giorni_chiusura_settimanali=giorni_chiusura,
@@ -10460,13 +10484,11 @@ def home_config_post(
     chat_ai = True if body.chat_ai_enabled is None else bool(body.chat_ai_enabled)
     # Pool condiviso per gli account multi-sede (coerente con l'endpoint chat).
     chat_limite, _chat_pool = _chat_quota_pool(user, sb)
-    domande_oggi = 0
     chat_limite_mese = 0
-    domande_mese = 0
+    crediti = dict(_CREDITI_A_ZERO)
     if chat_limite > 0 and chat_ai:
-        domande_oggi = _chat_domande_oggi(None if _chat_pool else ristorante_id, str(user["id"]), sb)
         chat_limite_mese = _chat_budget_mensile_pool(user, sb)
-        domande_mese = _chat_domande_mese(None if _chat_pool else ristorante_id, str(user["id"]), sb)
+        crediti = _chat_crediti_stato(str(user["id"]), ristorante_id, _chat_pool, sb)
     # Rileggi la flag effettiva: il body puo' non averla passata (None=non toccare),
     # quindi il valore corrente sta nel record salvato o resta quello esistente.
     solo_preferiti = False
@@ -10484,8 +10506,9 @@ def home_config_post(
     return ConfigResponse(
         nome_referente=str(nome or ""), topics=topics,
         chat_ai_enabled=chat_ai, chat_limite_giorno=chat_limite,
-        chat_domande_oggi=domande_oggi,
-        chat_limite_mese=chat_limite_mese, chat_domande_mese=domande_mese,
+        chat_crediti_oggi=crediti["oggi"],
+        chat_limite_mese=chat_limite_mese, chat_crediti_mese=crediti["mese"],
+        chat_crediti_ricarica=crediti["ricarica"],
         price_alert_threshold=soglia,
         alert_prezzi_solo_preferiti=solo_preferiti,
     )

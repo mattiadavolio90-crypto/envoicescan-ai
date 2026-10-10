@@ -133,6 +133,7 @@ def _prepara(monkeypatch, *, pool, attiva="rid-2"):
     monkeypatch.setattr("services.get_supabase_client", lambda: sb)
     monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, s: attiva)
     monkeypatch.setattr(fw, "_chat_quota_pool", lambda u, s: (30, pool))
+    monkeypatch.setattr(fw, "_chat_crediti_consuma", lambda *a, **k: {"esito": "ok", "oggi": 3, "mese": 3, "ricarica": 0})
     monkeypatch.setattr(fw, "_chat_budget_mensile_pool", lambda u, s: 600)
     monkeypatch.setattr(fw, "_get_assistant_preferences", lambda rid, s: {"chat_ai_enabled": True})
     monkeypatch.setattr("services.settore_service.settore_utente", lambda uid, s: "ristorazione")

@@ -1,9 +1,10 @@
-"""Test quota chat esposta da /api/home/config (services.fastapi_worker).
+"""Crediti della chat esposti da /api/home/config (services.fastapi_worker).
 
-Miglioria E: il widget chat mostra "ti restano N domande oggi" gia' all'apertura.
-Il valore iniziale arriva da home_config_get come chat_domande_oggi. Per non
-fare query inutili, il conteggio viene letto SOLO se la chat e' disponibile
-(piano con limite > 0 E chat attiva); altrimenti resta 0.
+Il widget chat mostra i crediti che restano gia' all'apertura. Dal 10/10/2026
+(fase J) tutto e' in CREDITI: spesi oggi, spesi nel mese, ricarica residua,
+letti da `_chat_crediti_stato` (la RPC `chat_crediti_stato`). Per non fare
+letture inutili si leggono SOLO se la chat e' disponibile (piano con limite > 0
+E chat attiva); altrimenti restano 0.
 """
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ import services.fastapi_worker as fw
 
 _USER = {"id": "u-1", "piano": "base", "nome_referente": "Marco"}
 _RID = "rist-abc"
+_STATO = {"oggi": 12, "mese": 180, "ricarica": 300}
 
 
 def _make_sb(pref_row=None):
@@ -26,17 +28,19 @@ def _make_sb(pref_row=None):
     return sb
 
 
-def test_config_include_domande_oggi_se_chat_disponibile():
+def test_config_include_i_crediti_se_chat_disponibile():
     sb = _make_sb()
     with patch.object(fw, "_resolve_user_from_token", return_value=_USER), \
          patch.object(fw, "_get_supabase_client", return_value=sb), \
          patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
          patch.object(fw, "_chat_limite_per_piano", return_value=20), \
-         patch.object(fw, "_chat_domande_oggi", return_value=4) as m_count:
+         patch.object(fw, "_chat_crediti_stato", return_value=_STATO) as m_count:
         resp = fw.home_config_get(authorization="Bearer tok")
 
     assert resp.chat_limite_giorno == 20
-    assert resp.chat_domande_oggi == 4
+    assert resp.chat_crediti_oggi == 12
+    assert resp.chat_crediti_mese == 180
+    assert resp.chat_crediti_ricarica == 300
     m_count.assert_called_once()
 
 
@@ -46,12 +50,13 @@ def test_config_non_conta_se_piano_free():
          patch.object(fw, "_get_supabase_client", return_value=sb), \
          patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
          patch.object(fw, "_chat_limite_per_piano", return_value=0), \
-         patch.object(fw, "_chat_domande_oggi", return_value=4) as m_count:
+         patch.object(fw, "_chat_crediti_stato", return_value=_STATO) as m_count:
         resp = fw.home_config_get(authorization="Bearer tok")
 
     # Piano free: chat non disponibile -> niente query, contatore a 0
     assert resp.chat_limite_giorno == 0
-    assert resp.chat_domande_oggi == 0
+    assert resp.chat_crediti_oggi == 0
+    assert resp.chat_crediti_ricarica == 0
     m_count.assert_not_called()
 
 
@@ -61,11 +66,12 @@ def test_config_non_conta_se_chat_spenta():
          patch.object(fw, "_get_supabase_client", return_value=sb), \
          patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
          patch.object(fw, "_chat_limite_per_piano", return_value=20), \
-         patch.object(fw, "_chat_domande_oggi", return_value=4) as m_count:
+         patch.object(fw, "_chat_crediti_stato", return_value=_STATO) as m_count:
         resp = fw.home_config_get(authorization="Bearer tok")
 
     assert resp.chat_ai_enabled is False
-    assert resp.chat_domande_oggi == 0
+    assert resp.chat_crediti_oggi == 0
+    assert resp.chat_crediti_ricarica == 0
     m_count.assert_not_called()
 
 
@@ -90,16 +96,15 @@ def test_config_include_il_budget_mensile():
          patch.object(fw, "_get_supabase_client", return_value=sb), \
          patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
          patch.object(fw, "_chat_quota_pool", return_value=(30, False)), \
-         patch.object(fw, "_chat_domande_oggi", return_value=4), \
-         patch.object(fw, "_chat_budget_mensile_pool", return_value=300), \
-         patch.object(fw, "_chat_domande_mese", return_value=180) as m_mese:
+         patch.object(fw, "_chat_budget_mensile_pool", return_value=1000), \
+         patch.object(fw, "_chat_crediti_stato", return_value=_STATO) as m_mese:
         resp = fw.home_config_get(authorization="Bearer tok")
 
-    assert resp.chat_limite_mese == 300, (
+    assert resp.chat_limite_mese == 1000, (
         f"il budget mensile non arriva al frontend: {resp.chat_limite_mese}"
     )
-    assert resp.chat_domande_mese == 180, (
-        f"il consumo mensile non arriva al frontend: {resp.chat_domande_mese}"
+    assert resp.chat_crediti_mese == 180, (
+        f"il consumo mensile non arriva al frontend: {resp.chat_crediti_mese}"
     )
     m_mese.assert_called_once()
 
@@ -111,13 +116,12 @@ def test_il_budget_mensile_non_si_conta_a_chat_spenta():
          patch.object(fw, "_get_supabase_client", return_value=sb), \
          patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
          patch.object(fw, "_chat_quota_pool", return_value=(30, False)), \
-         patch.object(fw, "_chat_domande_oggi", return_value=4), \
-         patch.object(fw, "_chat_budget_mensile_pool", return_value=300), \
-         patch.object(fw, "_chat_domande_mese", return_value=180) as m_mese:
+         patch.object(fw, "_chat_budget_mensile_pool", return_value=1000), \
+         patch.object(fw, "_chat_crediti_stato", return_value=_STATO) as m_mese:
         resp = fw.home_config_get(authorization="Bearer tok")
 
     assert resp.chat_limite_mese == 0
-    assert resp.chat_domande_mese == 0
+    assert resp.chat_crediti_mese == 0
     m_mese.assert_not_called()
 
 
@@ -134,13 +138,14 @@ def test_il_budget_mensile_arriva_anche_dal_salvataggio():
          patch.object(fw, "_get_supabase_client", return_value=sb), \
          patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
          patch.object(fw, "_chat_quota_pool", return_value=(60, False)), \
-         patch.object(fw, "_chat_domande_oggi", return_value=2), \
-         patch.object(fw, "_chat_budget_mensile_pool", return_value=600), \
-         patch.object(fw, "_chat_domande_mese", return_value=55):
+         patch.object(fw, "_chat_budget_mensile_pool", return_value=1500), \
+         patch.object(fw, "_chat_crediti_stato", return_value={"oggi": 6, "mese": 55, "ricarica": 9}):
         resp = fw.home_config_post(body, authorization="Bearer tok")
 
-    assert resp.chat_limite_mese == 600, (
+    assert resp.chat_limite_mese == 1500, (
         "dopo un salvataggio il budget mensile sparisce: il contatore torna a "
         f"mostrare solo il giorno. Valore: {resp.chat_limite_mese}"
     )
-    assert resp.chat_domande_mese == 55
+    assert resp.chat_crediti_mese == 55
+    assert resp.chat_crediti_oggi == 6
+    assert resp.chat_crediti_ricarica == 9, "dopo un salvataggio la ricarica sparisce dal contatore"

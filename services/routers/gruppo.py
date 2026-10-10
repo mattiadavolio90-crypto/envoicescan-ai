@@ -51,12 +51,8 @@ def _righe_quote_gruppo(*args, **kwargs):
     return _fw()._righe_quote_gruppo(*args, **kwargs)
 
 
-def _chat_limite_pool_gruppo(*args, **kwargs):
-    return _fw()._chat_limite_pool_gruppo(*args, **kwargs)
-
-
-def _chat_domande_oggi(*args, **kwargs):
-    return _fw()._chat_domande_oggi(*args, **kwargs)
+def _chat_crediti_vista(*args, **kwargs):
+    return _fw()._chat_crediti_vista(*args, **kwargs)
 
 
 def _oggi_rome():
@@ -3204,26 +3200,32 @@ def gruppo_tag_analisi(
 # ═══════════════════════════════════════════════════════════════════════════
 
 class GruppoChatConfig(BaseModel):
-    enabled: bool                 # pool > 0 (almeno una sede non-free)
-    limite_giorno: int            # SOMMA dei limiti effettivi delle sedi
-    domande_oggi: int             # richieste chat dell'account già fatte oggi
+    # Tutto in CREDITI dal 10/10/2026 (fase J), come la Home del punto vendita.
+    enabled: bool                 # salvadanaio > 0 (almeno una sede non-free)
+    limite_giorno: int            # 10% dei crediti del mese dell'account
+    limite_mese: int = 0          # sede col piano piu' alto piena, le altre a meta'
+    crediti_oggi: int = 0         # spesi oggi dall'account (catena + ogni PV)
+    crediti_mese: int = 0         # crediti del mese spesi (esclusa la ricarica)
+    crediti_ricarica: int = 0     # ricarica (Boost AI) ancora da spendere
 
 
 @router.get(
     "/api/gruppo/chat-config",
     tags=["Catena"],
-    summary="Config chat catena: pool AI unico (limite gruppo + domande oggi)",
+    summary="Config chat catena: crediti AI dell'account (tetti, spesi, ricarica)",
     dependencies=[Depends(_verify_worker_key)],
 )
 def gruppo_chat_config(authorization: Optional[str] = Header(None)) -> GruppoChatConfig:
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     user = _resolve_user_from_token(authorization)
-    limite = _chat_limite_pool_gruppo(user, sb)
-    # Domande oggi a livello account: conteggio per user_id (ristorante_id=None) →
-    # tutte le righe chat dell'account (catena + ogni PV), coerente col pool unico.
-    domande = _chat_domande_oggi(None, user_id, sb)
+    # Sede None: si conta a livello account (catena + ogni PV), coerente col
+    # salvadanaio unico.
+    c = _chat_crediti_vista(user, sb, None)
     return GruppoChatConfig(
-        enabled=limite > 0 and not _gruppo_chat_disabilitata(sb, user_id),
-        limite_giorno=limite,
-        domande_oggi=domande,
+        enabled=c["limite_giorno"] > 0 and not _gruppo_chat_disabilitata(sb, user_id),
+        limite_giorno=c["limite_giorno"],
+        limite_mese=c["limite_mese"],
+        crediti_oggi=c["oggi"],
+        crediti_mese=c["mese"],
+        crediti_ricarica=c["ricarica"],
     )

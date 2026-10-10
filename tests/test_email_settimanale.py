@@ -727,7 +727,9 @@ def _account_me(monkeypatch, riga):
     monkeypatch.setattr(account, "_resolve_user_from_token", lambda a: {"id": UID, "email": "a@b.it"})
     monkeypatch.setattr(account, "_get_supabase_client", lambda: sb)
     monkeypatch.setattr(account, "_resolve_ristorante_id", lambda u, s: None)
-    monkeypatch.setattr(account, "_chat_quota_view", lambda u, s, r: (0, 0, False))
+    monkeypatch.setattr(account, "_chat_crediti_vista", lambda u, s, r: {
+        "limite_giorno": 0, "limite_mese": 0, "oggi": 0, "mese": 0, "ricarica": 0, "pool": False,
+    })
     monkeypatch.setattr(account, "_is_admin_email", lambda e: False)
     return account.account_me(authorization="Bearer x"), sb
 

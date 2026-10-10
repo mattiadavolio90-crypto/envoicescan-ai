@@ -17599,7 +17599,7 @@
         "tags": [
           "Catena"
         ],
-        "summary": "Config chat catena: pool AI unico (limite gruppo + domande oggi)",
+        "summary": "Config chat catena: crediti AI dell'account (tetti, spesi, ricarica)",
         "operationId": "gruppo_chat_config_api_gruppo_chat_config_get",
         "parameters": [
           {
@@ -21453,14 +21453,29 @@
             "type": "string",
             "title": "Reply"
           },
-          "domande_oggi": {
-            "type": "integer",
-            "title": "Domande Oggi",
-            "default": 0
-          },
           "limite_giorno": {
             "type": "integer",
             "title": "Limite Giorno",
+            "default": 0
+          },
+          "limite_mese": {
+            "type": "integer",
+            "title": "Limite Mese",
+            "default": 0
+          },
+          "crediti_oggi": {
+            "type": "integer",
+            "title": "Crediti Oggi",
+            "default": 0
+          },
+          "crediti_mese": {
+            "type": "integer",
+            "title": "Crediti Mese",
+            "default": 0
+          },
+          "crediti_ricarica": {
+            "type": "integer",
+            "title": "Crediti Ricarica",
             "default": 0
           },
           "proposte": {
@@ -21737,11 +21752,11 @@
           "chat_limite_giorno": {
             "type": "integer",
             "title": "Chat Limite Giorno",
-            "default": 30
+            "default": 100
           },
-          "chat_domande_oggi": {
+          "chat_crediti_oggi": {
             "type": "integer",
-            "title": "Chat Domande Oggi",
+            "title": "Chat Crediti Oggi",
             "default": 0
           },
           "chat_limite_mese": {
@@ -21749,9 +21764,14 @@
             "title": "Chat Limite Mese",
             "default": 0
           },
-          "chat_domande_mese": {
+          "chat_crediti_mese": {
             "type": "integer",
-            "title": "Chat Domande Mese",
+            "title": "Chat Crediti Mese",
+            "default": 0
+          },
+          "chat_crediti_ricarica": {
+            "type": "integer",
+            "title": "Chat Crediti Ricarica",
             "default": 0
           },
           "price_alert_threshold": {
@@ -22888,16 +22908,31 @@
             "type": "integer",
             "title": "Limite Giorno"
           },
-          "domande_oggi": {
+          "limite_mese": {
             "type": "integer",
-            "title": "Domande Oggi"
+            "title": "Limite Mese",
+            "default": 0
+          },
+          "crediti_oggi": {
+            "type": "integer",
+            "title": "Crediti Oggi",
+            "default": 0
+          },
+          "crediti_mese": {
+            "type": "integer",
+            "title": "Crediti Mese",
+            "default": 0
+          },
+          "crediti_ricarica": {
+            "type": "integer",
+            "title": "Crediti Ricarica",
+            "default": 0
           }
         },
         "type": "object",
         "required": [
           "enabled",
-          "limite_giorno",
-          "domande_oggi"
+          "limite_giorno"
         ],
         "title": "GruppoChatConfig"
       },

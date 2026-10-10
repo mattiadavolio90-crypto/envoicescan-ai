@@ -220,7 +220,7 @@ def _tools_offerti(settore, monkeypatch):
     monkeypatch.setattr("services.get_supabase_client", lambda: sb)
     monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, s: "rid-1")
     monkeypatch.setattr(fw, "_chat_quota_pool", lambda u, s: (30, False))
-    monkeypatch.setattr(fw, "_chat_domande_oggi", lambda *a, **k: 1)
+    monkeypatch.setattr(fw, "_chat_crediti_consuma", lambda *a, **k: {"esito": "ok", "oggi": 3, "mese": 3, "ricarica": 0})
     # **_vista: dal 28/9/2026 chat_ai passa anche sede_nome e multi_sede (il
     # prompt della vista PV nomina la sede aperta); qui conta solo il settore.
     def _prompt_spy(user, sb_, auth, rid, settore_ric=None, **_vista):
@@ -385,7 +385,7 @@ def _tools_gruppo_offerti(settore, monkeypatch):
     monkeypatch.setattr("services.get_supabase_client", lambda: sb)
     monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, s: "rid-1")
     monkeypatch.setattr(fw, "_chat_quota_pool", lambda u, s: (30, True))
-    monkeypatch.setattr(fw, "_chat_domande_oggi", lambda *a, **k: 1)
+    monkeypatch.setattr(fw, "_chat_crediti_consuma", lambda *a, **k: {"esito": "ok", "oggi": 3, "mese": 3, "ricarica": 0})
     monkeypatch.setattr(fw, "_gruppo_chat_disabilitata", lambda uid, s: False)
     monkeypatch.setattr(fw, "_build_chat_system_prompt_catena", lambda *a, **k: "prompt")
     monkeypatch.setattr(fw, "_chat_loop_openai", _loop)
