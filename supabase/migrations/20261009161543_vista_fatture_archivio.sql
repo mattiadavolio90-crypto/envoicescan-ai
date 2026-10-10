@@ -14,3 +14,13 @@ ALTER TABLE public.sotto_utenti ALTER COLUMN vista_fatture SET DEFAULT 'lista_me
 
 UPDATE public.users SET vista_fatture = 'lista_mensile' WHERE vista_fatture = 'agenda';
 UPDATE public.sotto_utenti SET vista_fatture = 'lista_mensile' WHERE vista_fatture = 'agenda';
+
+-- Gli avvisi sulle scadenze gia' salvati portano a '/scadenziario', che ora si
+-- apre su Archivio (senza scadenze). Il codice nuovo li scrive con
+-- '?vista=agenda', ma `upsert_notification_inbox` nel refresh non aggiorna
+-- action_page: sul live il 09/10 erano 5 righe attive (settimana W41, scadono il
+-- 16/10). Si allineano qui, nella stessa finestra del push.
+UPDATE public.notification_inbox
+   SET action_page = '/scadenziario?vista=agenda'
+ WHERE topic_key IN ('scadenza_superata', 'scadenza_imminente')
+   AND action_page = '/scadenziario';

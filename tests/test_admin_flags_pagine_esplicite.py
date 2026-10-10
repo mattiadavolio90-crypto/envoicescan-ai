@@ -6,7 +6,8 @@ nel dict: spegnere UNA pagina su un account NULL salvava `{pagina: False}`, che
 `_normalize_pagine` legge come «solo le pagine a True» — nessuna. Il cliente
 perdeva l'intero menu. Ora le pagine si scrivono per esteso prima della fusione.
 
-Sul live il 09/10/2026: 4 account su 9 hanno `pagine_abilitate` NULL.
+Sul live il 09/10/2026: 5 account su 9 hanno `pagine_abilitate` NULL (2 sono
+account admin, che il pannello non modifica): FISH HOUSE, RECOMA SHOP, ASI.
 """
 from __future__ import annotations
 
