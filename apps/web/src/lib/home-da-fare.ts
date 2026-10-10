@@ -145,10 +145,14 @@ export function daFareCatena(input: {
   erroreAvvisi: boolean;
   nDaCollocare: number | null | undefined;
   archiviati?: Iterable<string>;
+  // false = scheda «Da collocare» spenta dall'admin (`tab_off_catena_collocare`,
+  // Mattia 10/10/2026: OFFSIDE la usa, le catene con P.IVA diverse no). Niente
+  // riga: il «Colloca» porterebbe a una scheda che non c'e'.
+  codaAccesa?: boolean;
 }): DaFareCatena {
   const generali: VoceDaFare[] = [];
   const n = input.nDaCollocare ?? 0;
-  if (n > 0) {
+  if (n > 0 && input.codaAccesa !== false) {
     generali.push({
       id: "coda-gruppo",
       severity: "warning",

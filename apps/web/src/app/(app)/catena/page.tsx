@@ -4,7 +4,7 @@ import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva, deveRedirigereAPuntoVendita } from "@/lib/catena-confronti";
 import { SintesiCatena } from "./sintesi-catena";
 import { BlockRetry } from "../dashboard/block-retry";
-import { linkAnalisiCatena } from "@/lib/catena-schede";
+import { linkAnalisiCatena, schedaCatenaAccesa } from "@/lib/catena-schede";
 import { getCurrentUser } from "@/lib/auth";
 
 // Home della catena: recap e assistenza (28/9/2026). Le funzioni di lavoro
@@ -62,6 +62,7 @@ async function SintesiBlock() {
       }
       linkSpesa={linkAnalisiCatena(utente?.pagine_abilitate, "spesa")}
       linkMargini={linkAnalisiCatena(utente?.pagine_abilitate, "margini")}
+      codaAccesa={schedaCatenaAccesa(utente?.pagine_abilitate, "collocare")}
     />
   );
 }

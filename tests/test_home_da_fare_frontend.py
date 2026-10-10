@@ -21,14 +21,18 @@ MODULO = "lib/home-da-fare"
 _NESSUN_AVVISO = {"notifiche": [], "sedi_non_lette": []}
 
 
-def _catena(segnali=None, errore=False, n=0, avvisi=_NESSUN_AVVISO, errore_avvisi=False, archiviati=None):
+def _catena(segnali=None, errore=False, n=0, avvisi=_NESSUN_AVVISO, errore_avvisi=False, archiviati=None,
+            coda_accesa=None):
+    argomento = {
+        "segnali": segnali, "errore": errore, "nDaCollocare": n,
+        "avvisi": avvisi, "erroreAvvisi": errore_avvisi, "archiviati": archiviati or [],
+    }
+    if coda_accesa is not None:
+        argomento["codaAccesa"] = coda_accesa
     return esegui_ts(
         MODULO,
         "emit(m.daFareCatena(input));",
-        argomento={
-            "segnali": segnali, "errore": errore, "nDaCollocare": n,
-            "avvisi": avvisi, "erroreAvvisi": errore_avvisi, "archiviati": archiviati or [],
-        },
+        argomento=argomento,
         richiede=["daFareCatena"],
     )
 
@@ -124,6 +128,13 @@ def test_la_coda_si_vede_anche_se_i_segnali_falliscono():
 
 
 # ─── Le fatture da collocare ────────────────────────────────────────────────
+
+
+def test_coda_spenta_dall_admin_niente_voce():
+    """Mattia 10/10/2026: «Da collocare» si spegne per le catene con P.IVA
+    diverse. Spenta, la riga porterebbe a una scheda che non c'e'."""
+    assert _catena(n=3, coda_accesa=False)["generali"] == []
+    assert [v["id"] for v in _catena(n=3, coda_accesa=True)["generali"]] == ["coda-gruppo"]
 
 
 @pytest.mark.parametrize("n", [0, None, -2])

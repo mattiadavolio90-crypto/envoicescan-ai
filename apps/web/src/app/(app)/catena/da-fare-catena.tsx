@@ -20,10 +20,12 @@ type Avvisi = { notifiche?: Notifica[]; sedi_non_lette?: string[] };
 // lib/, dove e' provato.
 export function DaFareCatena({
   nDaCollocare,
+  codaAccesa = true,
   vaiAlPV,
   switching,
 }: {
   nDaCollocare: number | null | undefined;
+  codaAccesa?: boolean;
   vaiAlPV: (ristoranteId: string, page?: string) => void;
   switching: boolean;
 }) {
@@ -92,6 +94,7 @@ export function DaFareCatena({
     erroreAvvisi,
     nDaCollocare,
     archiviati,
+    codaAccesa,
   });
 
   const nota = avviso ? <NotaControllo avviso={avviso} onRiprova={carica} /> : null;

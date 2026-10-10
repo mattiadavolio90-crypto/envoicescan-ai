@@ -333,6 +333,7 @@ export function SintesiCatena({
   chat = null,
   linkSpesa = null,
   linkMargini = null,
+  codaAccesa = true,
 }: {
   overview: GruppoOverview;
   /** Quota della chat di catena; null = chat non disponibile (pool a 0). */
@@ -341,6 +342,8 @@ export function SintesiCatena({
    *  scheda spenta dall'admin la prima accesa, null = nessun link. */
   linkSpesa?: string | null;
   linkMargini?: string | null;
+  /** Scheda «Da collocare» accesa (schedaCatenaAccesa): spenta, niente riga. */
+  codaAccesa?: boolean;
 }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
@@ -381,6 +384,7 @@ export function SintesiCatena({
             delle sedi (fase G). Non c'e' piu' «Vedi tutti gli avvisi». */}
         <DaFareCatena
           nDaCollocare={overview.briefing?.n_fatture_da_collocare}
+          codaAccesa={codaAccesa}
           vaiAlPV={vaiAlPV}
           switching={switching}
         />
