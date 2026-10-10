@@ -75,8 +75,8 @@ class TestKeywordNonCatturanoAltro:
         ) == "MANUTENZIONE E ATTREZZATURE"
 
     def test_crostini_snack_restano_shop(self):
-        """'CROSTINI' secco avrebbe spostato i crostini da aperitivo (SHOP)."""
-        assert _pipeline("CROSTINI G.75 DORATI SAN CARLO", "SHOP") == "SHOP"
+        """'CROSTINI' secco avrebbe spostato i crostini da aperitivo (RIVENDITA)."""
+        assert _pipeline("CROSTINI G.75 DORATI SAN CARLO", "RIVENDITA") == "RIVENDITA"
 
     @pytest.mark.parametrize("descrizione,categoria", [
         ("BOND.MAIS&FAG.ROSSI-GR 280", "SCATOLAME E CONSERVE"),

@@ -35,7 +35,7 @@ sb = create_client(
 )
 
 # Categorie "spese generali" e neutre: una divergenza food<->food conta più di altre
-SPESE = {'SERVIZI E CONSULENZE', 'UTENZE E LOCALI', 'MANUTENZIONE E ATTREZZATURE'}
+SPESE = {'SERVIZI E CONSULENZE', 'UTENZE E LOCALI', 'MANUTENZIONE E ATTREZZATURE', 'RAPPRESENTANZA'}
 
 # Estrai tutte le coppie (user, descrizione, categoria) con conteggio righe
 rows = []

@@ -20655,9 +20655,9 @@
             "type": "number",
             "title": "Dolci"
           },
-          "shop": {
+          "rivendita": {
             "type": "number",
-            "title": "Shop"
+            "title": "Rivendita"
           }
         },
         "type": "object",
@@ -20669,7 +20669,7 @@
           "beverage",
           "alcolici",
           "dolci",
-          "shop"
+          "rivendita"
         ],
         "title": "AndamentoMese"
       },
@@ -22697,9 +22697,9 @@
             "title": "Dolci",
             "default": 0.0
           },
-          "shop": {
+          "rivendita": {
             "type": "number",
-            "title": "Shop",
+            "title": "Rivendita",
             "default": 0.0
           }
         },

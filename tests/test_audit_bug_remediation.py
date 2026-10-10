@@ -281,7 +281,7 @@ def test_patch_admin_scrive_sul_record_scelto_non_su_quello_normalizzato(monkeyp
     ]
     admin_router, rec = _patch_env(monkeypatch, rows)
 
-    body = admin_router.MemoriaUpdateBody(categoria="SHOP")
+    body = admin_router.MemoriaUpdateBody(categoria="RIVENDITA")
     out = admin_router.admin_qualita_memoria_update(
         "id-4799", body, admin_user={"email": "md@oneflux.it"}
     )
@@ -290,7 +290,7 @@ def test_patch_admin_scrive_sul_record_scelto_non_su_quello_normalizzato(monkeyp
     assert len(rec["updates"]) == 1, "una sola scrittura, non due"
     target_id, payload = rec["updates"][0]
     assert target_id == "id-4799", "deve aggiornare il record scelto dall'admin"
-    assert payload["categoria"] == "SHOP"
+    assert payload["categoria"] == "RIVENDITA"
 
 
 def test_patch_admin_verified_false_non_viene_sovrascritto(monkeypatch):
@@ -318,17 +318,17 @@ def test_patch_admin_propaga_solo_se_categoria_cambia(monkeypatch):
     assert out["righe_propagate"] == 0
 
     # categoria diversa -> propaga sulla descrizione normalizzata
-    body2 = admin_router.MemoriaUpdateBody(categoria="SHOP")
+    body2 = admin_router.MemoriaUpdateBody(categoria="RIVENDITA")
     out2 = admin_router.admin_qualita_memoria_update("id-1", body2, admin_user={"email": "md@oneflux.it"})
     assert len(rec["propagazioni"]) == 1
-    assert rec["propagazioni"][0][1] == "SHOP"
+    assert rec["propagazioni"][0][1] == "RIVENDITA"
     assert out2["righe_propagate"] == 3
 
 
 def test_patch_admin_404_se_record_inesistente(monkeypatch):
     from fastapi import HTTPException
     admin_router, _ = _patch_env(monkeypatch, [])
-    body = admin_router.MemoriaUpdateBody(categoria="SHOP")
+    body = admin_router.MemoriaUpdateBody(categoria="RIVENDITA")
     with pytest.raises(HTTPException) as exc:
         admin_router.admin_qualita_memoria_update("mancante", body, admin_user={"email": "md@oneflux.it"})
     assert exc.value.status_code == 404
@@ -440,11 +440,11 @@ def test_429_rate_limit_per_ip_non_e_quota_ai(monkeypatch):
     )
     monkeypatch.setattr(
         "services.ai_service.classifica_con_ai",
-        lambda *_a, **_k: (["SHOP"], ["alta"]),
+        lambda *_a, **_k: (["RIVENDITA"], ["alta"]),
     )
 
     cat, conf = wc.classifica_via_worker_con_confidenza(["PANE"], ristorante_id="rid-1")
-    assert cat == ["SHOP"], "il rate limit per IP deve ancora fare fallback locale"
+    assert cat == ["RIVENDITA"], "il rate limit per IP deve ancora fare fallback locale"
 
 
 def test_errore_di_rete_continua_a_fare_fallback_locale(monkeypatch):
@@ -459,11 +459,11 @@ def test_errore_di_rete_continua_a_fare_fallback_locale(monkeypatch):
     monkeypatch.setattr(wc.requests, "post", _boom)
     monkeypatch.setattr(
         "services.ai_service.classifica_con_ai",
-        lambda *_a, **_k: (["SHOP"], ["alta"]),
+        lambda *_a, **_k: (["RIVENDITA"], ["alta"]),
     )
 
     cat, conf = wc.classifica_via_worker_con_confidenza(["PANE"], ristorante_id="rid-1")
-    assert cat == ["SHOP"] and conf == ["alta"]
+    assert cat == ["RIVENDITA"] and conf == ["alta"]
 
 
 def test_eccezione_quota_resta_un_runtimeerror():

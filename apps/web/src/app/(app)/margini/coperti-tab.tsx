@@ -592,7 +592,7 @@ function CopertiCategorieDialog({
                   pesata (spesa totale ÷ coperti totali del periodo).
                 </p>
                 <p className="text-muted-foreground">
-                  Sono escluse le spese generali e lo SHOP (non sono materia prima). I mesi senza
+                  Sono escluse le spese generali e la Rivendita (non sono materia prima). I mesi senza
                   fatture caricate mostrano “—”.
                 </p>
               </InfoPopover>

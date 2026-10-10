@@ -51,7 +51,7 @@ type AndamentoMese = {
   beverage: number;
   alcolici: number;
   dolci: number;
-  shop: number;
+  rivendita: number;
 };
 
 type AnalisiAvanzataResponse = {
@@ -74,7 +74,7 @@ const CENTRO_COLOR: Record<string, string> = {
   BEVERAGE: "var(--grafico-2)",
   ALCOLICI: "var(--grafico-3)",
   DOLCI: "var(--grafico-4)",
-  SHOP: "var(--grafico-5)",
+  RIVENDITA: "var(--grafico-5)",
 };
 
 const CENTRI_FATT = ["FOOD", "BEVERAGE", "ALCOLICI", "DOLCI"] as const;
@@ -732,9 +732,9 @@ function DettaglioCentroDialog({
         return fetch(`/api/margini/fatturato-centri-giorni?anno=${anno}&mese=${mese}`)
           .then((r) => (r.ok ? r.json() : Promise.reject()));
       })
-      .then((d: { data: string; food: number; beverage: number; alcolici: number; dolci: number; shop: number }[] | null) => {
+      .then((d: { data: string; food: number; beverage: number; alcolici: number; dolci: number; rivendita: number }[] | null) => {
         if (d === null) return;
-        const centroKey = centro.toLowerCase() as "food" | "beverage" | "alcolici" | "dolci" | "shop";
+        const centroKey = centro.toLowerCase() as "food" | "beverage" | "alcolici" | "dolci" | "rivendita";
         const byDate = new Map(d.map((row) => [row.data, row[centroKey] ?? 0]));
         const result: GiornoFatturatoCentro[] = [];
         for (let day = 1; day <= lastDay; day++) {
@@ -904,7 +904,7 @@ function AndamentoLineChart({ andamento, centri, mode }: { andamento: AndamentoM
     for (const centro of centriAttivi) {
       const key = centro.toLowerCase() as keyof AndamentoMese;
       const v = (m[key] as number) ?? 0;
-      const total = m.food + m.beverage + m.alcolici + m.dolci + m.shop;
+      const total = m.food + m.beverage + m.alcolici + m.dolci + m.rivendita;
       out[centro] = mode === "perc" ? (total > 0 ? Math.round((v / total) * 1000) / 10 : 0) : v;
     }
     return out;

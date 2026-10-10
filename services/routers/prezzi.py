@@ -8,6 +8,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from config.constants import CATEGORIE_SPESE_GENERALI
+
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
 from utils.ttl_cache import TTLCache
@@ -53,10 +55,10 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
 # protetti uno per uno. E' la rete perche' il 217esimo non nasca aperto.
 router = APIRouter(dependencies=[Depends(_verify_worker_key)])
 
-_CATEGORIE_SPESE_PREZZI = [
-    "SERVIZI E CONSULENZE", "UTENZE E LOCALI",
-    "MANUTENZIONE E ATTREZZATURE", "MATERIALE DI CONSUMO",
-]
+# Derivata dalla costante e non ricopiata: una copia letterale va aggiornata a
+# mano a ogni spesa generale nuova (Fase K: RAPPRESENTANZA), e quella dimenticata
+# finisce fra i prezzi e negli avvisi di rincaro.
+_CATEGORIE_SPESE_PREZZI = list(CATEGORIE_SPESE_GENERALI)
 _PRICE_ALERT_DEFAULT = 5.0
 
 # Il worker salva le note di credito con tipo_documento='TD04'. Il vecchio

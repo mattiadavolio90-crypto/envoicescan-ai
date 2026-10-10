@@ -60,8 +60,8 @@ class TestRegoleFortiCategorizzazione:
         return applica_regole_categoria_forti(descrizione, categoria)
 
     def test_lecca_lecca_piatto_non_scambia_per_stoviglia(self):
-        categoria, motivo = applica_regole_categoria_forti("LECCA LECCA PIATTO G.5 X200 M.LOLL", "SHOP")
-        assert categoria == "SHOP"
+        categoria, motivo = applica_regole_categoria_forti("LECCA LECCA PIATTO G.5 X200 M.LOLL", "RIVENDITA")
+        assert categoria == "RIVENDITA"
         assert motivo is None
 
     @pytest.mark.parametrize(
@@ -69,7 +69,7 @@ class TestRegoleFortiCategorizzazione:
         [
             ("ARANCE DA SPREMUTA (15KG)", "FRUTTA"),
             ("CIF C CANDEG SPRAY ML650 LIMONE", "MATERIALE DI CONSUMO"),
-            ("GOMA WAKAME SALAD (AT) (AT)", "SUSHI VARIE"),
+            ("GOMA WAKAME SALAD (AT) (AT)", "VERDURE"),
             ("SATONO YUKI TOFU FIRM", "LATTICINI"),
             ("CIP. TRECCIA 600 G-GR 600", "VERDURE"),
             ("CASTAGNE D' ACQUA CINESI AT *", "SCATOLAME E CONSERVE"),
@@ -130,13 +130,13 @@ class TestRegoleFortiCategorizzazione:
             ("MACARONS ARTISANALE PZ 432 (12X36) ASSORTITI", "PASTICCERIA"),
             ("MARITOZZO MIDI FARCITO SURG GR 50 PZ 15", "PASTICCERIA"),
             ("MOCCHI CIOCCOLATO 1X10X6PZ", "GELATI E DESSERT"),
-            ("PLN010817 ELFBAR ELFA PREFILLED POD BLUEBERRY ( ) MG", "SHOP"),
-            ("PLN012184 LOST MARY TOCA AIR POD 20MG SPEARMINT", "SHOP"),
-            ("OCB CARTINA NERA CORTA DOPPIA 25LIBRETTIX100FOGLI", "SHOP"),
-            ("SMOKING FILTRI SLIM SIZE LUNGHI 22MMX6MM 30X120UNT", "SHOP"),
-            ("VIVIDENT XYLIT SPEARMINT STICK PZ.40", "SHOP"),
-            ("VIGORSOL AIR ACTION ASTUCCIO PZ.20", "SHOP"),
-            ("RICOLA MELISSA LIMONCELLA PZ.20", "SHOP"),
+            ("PLN010817 ELFBAR ELFA PREFILLED POD BLUEBERRY ( ) MG", "RIVENDITA"),
+            ("PLN012184 LOST MARY TOCA AIR POD 20MG SPEARMINT", "RIVENDITA"),
+            ("OCB CARTINA NERA CORTA DOPPIA 25LIBRETTIX100FOGLI", "RIVENDITA"),
+            ("SMOKING FILTRI SLIM SIZE LUNGHI 22MMX6MM 30X120UNT", "RIVENDITA"),
+            ("VIVIDENT XYLIT SPEARMINT STICK PZ.40", "RIVENDITA"),
+            ("VIGORSOL AIR ACTION ASTUCCIO PZ.20", "RIVENDITA"),
+            ("RICOLA MELISSA LIMONCELLA PZ.20", "RIVENDITA"),
             ("PEDAGGI AUTOSTRADALI", "SERVIZI E CONSULENZE"),
             ("TRATTENIMENTI DAL VIVO SENZA BALLO", "SERVIZI E CONSULENZE"),
             ("TOT. TRX 'UNICAPOS' DIC '25-GEN '26", "SERVIZI E CONSULENZE"),
@@ -152,7 +152,7 @@ class TestRegoleFortiCategorizzazione:
             ("TAZZE+PIAT CAFFE'CELLINI", "MANUTENZIONE E ATTREZZATURE"),
             ("PORTAZUCCHERO CELLINI", "VARIE BAR"),
             ("PREPARATO X GINSENG CON ZUCCH LATT", "CAFFE E THE"),
-            ("GEKKEIKAN SAKE 1,8LT 14,5% 6*1,8LT", "DISTILLATI"),
+            ("GEKKEIKAN SAKE 1,8LT 14,5% 6*1,8LT", "VINI"),
             ("TANQUERAY ALCOHOL FREE 0.0% 700ML -", "DISTILLATI"),
             ("FONTANAVECCHIA FALANG. DEL TAB. DOP ML750 (5X6)", "VINI"),
             ("ROASTBEEF B.A. Q MAIUSCOLA", "CARNE"),
@@ -189,10 +189,10 @@ class TestRegoleFortiCategorizzazione:
             ("VISITA MEDICA MANSIONE BARISTA - CAMERIERE IN DATA 31/03/2026", "SERVIZI E CONSULENZE"),
             ("SPUNTINELLE MORATO GR 700", "PRODOTTI DA FORNO"),
             ("DOLCIFICANTE RISTORA LIGHT 150 BUSTINE", "VARIE BAR"),
-            ("MOROSITAS ASS.SC.24PZ", "SHOP"),
-            ("POCKET COFFEE T5X32PZ - POCKET COFFE", "SHOP"),
+            ("MOROSITAS ASS.SC.24PZ", "RIVENDITA"),
+            ("POCKET COFFEE T5X32PZ - POCKET COFFE", "RIVENDITA"),
             ("PIX-HCG-886461/1 PUNTO METALLICO - MENU MARZO FSC MIX 70% TSUD-COC-001228 058179015468315", "SERVIZI E CONSULENZE"),
-            ("FISHERMAN'S BIANCA X 24 PZ", "SHOP"),
+            ("FISHERMAN'S BIANCA X 24 PZ", "RIVENDITA"),
             ("COMPENSO PER PRESTAZIONE PROFESSIONALE RELATIVA A: RESTYLING GRAFICO E AGGIORNAMENTO CONTENUTI DEI M", "SERVIZI E CONSULENZE"),
             ("APERTURA PRATICA", "SERVIZI E CONSULENZE"),
             ("NPSACCHETTO COMPOST.LE", "MATERIALE DI CONSUMO"),
@@ -502,7 +502,7 @@ class TestPrioritaMemoria:
         """
         self._inject_cache(
             classificazioni_manuali={},
-            prodotti_utente={'CARNE BOVINA KG1': 'SHOP'},
+            prodotti_utente={'CARNE BOVINA KG1': 'RIVENDITA'},
             prodotti_master={},
         )
         result = ai_mod.categorizza_con_memoria(
@@ -513,8 +513,8 @@ class TestPrioritaMemoria:
             supabase_client=None,
             fornitore='MACELLERIA TEST SRL',
         )
-        # La memoria locale (SHOP, scelta manuale utente) deve vincere sul fornitore
-        assert result == 'SHOP', (
+        # La memoria locale (RIVENDITA, scelta manuale utente) deve vincere sul fornitore
+        assert result == 'RIVENDITA', (
             "La memoria locale manuale cliente deve sempre prevalere sulle regole automatiche FORNITORE"
         )
 
@@ -692,10 +692,10 @@ class TestPrioritaMemoria:
 
 
 class TestRegoleProdottiBancoShop:
-    """Regole dominio CASATI 14: prodotti confezionati da banco → SHOP.
+    """Regole dominio CASATI 14: prodotti confezionati da banco → RIVENDITA (ex SHOP).
 
     Materie prime gelati/dolci → PASTICCERIA; dessert serviti al tavolo →
-    GELATI E DESSERT; gelati industriali/snack di marca da banco → SHOP.
+    GELATI E DESSERT; gelati industriali/snack di marca da banco → RIVENDITA.
     """
 
     def _finale(self, descrizione: str):
@@ -716,7 +716,7 @@ class TestRegoleProdottiBancoShop:
         "SUPER TWISTER",
     ])
     def test_gelato_industriale_banco_shop(self, descrizione):
-        assert self._finale(descrizione) == "SHOP"
+        assert self._finale(descrizione) == "RIVENDITA"
 
     @pytest.mark.parametrize("descrizione", [
         "CORNETTO ALGIDA",
@@ -724,7 +724,7 @@ class TestRegoleProdottiBancoShop:
         "CORNETTO MAX PISTACCHIO",
     ])
     def test_cornetto_gelato_shop(self, descrizione):
-        assert self._finale(descrizione) == "SHOP"
+        assert self._finale(descrizione) == "RIVENDITA"
 
     @pytest.mark.parametrize("descrizione", [
         "CORNETTO S GLUTINE S LATTOSIO",
@@ -732,7 +732,7 @@ class TestRegoleProdottiBancoShop:
         "CROISSANT VUOTO",
     ])
     def test_cornetto_brioche_resta_pasticceria(self, descrizione):
-        # Il cornetto/croissant da forno (senza marcatori gelato) NON è SHOP.
+        # Il cornetto/croissant da forno (senza marcatori gelato) NON è RIVENDITA.
         assert self._finale(descrizione) == "PASTICCERIA"
 
     @pytest.mark.parametrize("descrizione", [
@@ -779,7 +779,7 @@ class TestDescrizioneEDubbia:
         assert ai_mod.descrizione_e_dubbia(descrizione, "FORNITORE REGOLARE SRL", categoria) is False
 
     def test_fornitore_non_food_su_categoria_non_food_ok(self):
-        # Esselunga su MATERIALE/SHOP (non food) NON è di per sé dubbia.
+        # Esselunga su MATERIALE/RIVENDITA (non food) NON è di per sé dubbia.
         assert ai_mod.descrizione_e_dubbia("DETERSIVO PIATTI", "ESSELUNGA S.P.A", "MATERIALE DI CONSUMO") is False
 
 
@@ -812,7 +812,7 @@ class TestCategorizzaConMemoriaFallbackFlag:
                 prezzo=2.0, quantita=1.0, user_id=None,
                 supabase_client=None, return_fallback_flag=True,
             )
-        assert cat == "SHOP"
+        assert cat == "RIVENDITA"
         assert is_fallback is False
 
     def test_retrocompat_ritorna_stringa(self):
@@ -825,4 +825,4 @@ class TestCategorizzaConMemoriaFallbackFlag:
                 supabase_client=None,
             )
         assert isinstance(out, str)
-        assert out == "SHOP"
+        assert out == "RIVENDITA"

@@ -336,8 +336,8 @@ def _patch_categorie(monkeypatch, margini_rows, fb_map, overrides=None):
     return R
 
 
-def test_coperti_categorie_esclude_shop_e_ordina(monkeypatch):
-    # 2 mesi, coperti noti; PESCE pesa più di CARNE; SHOP presente ma va escluso
+def test_coperti_categorie_esclude_rivendita_e_ordina(monkeypatch):
+    # 2 mesi, coperti noti; PESCE pesa più di CARNE; RIVENDITA presente ma va esclusa
     margini = [
         {"anno": 2026, "mese": 1, "coperti": 1000},
         {"anno": 2026, "mese": 2, "coperti": 2000},
@@ -345,13 +345,13 @@ def test_coperti_categorie_esclude_shop_e_ordina(monkeypatch):
     fb = {
         (2026, 1, "PESCE"): 5000.0, (2026, 2, "PESCE"): 12000.0,
         (2026, 1, "CARNE"): 1000.0, (2026, 2, "CARNE"): 2000.0,
-        (2026, 1, "SHOP"): 9999.0,  # deve sparire
+        (2026, 1, "RIVENDITA"): 9999.0,  # deve sparire
     }
     R = _patch_categorie(monkeypatch, margini, fb)
     resp = R.get_coperti_categorie(data_da="2026-01-01", data_a="2026-02-28", authorization="x")
 
     cats = [r.categoria for r in resp.righe]
-    assert "SHOP" not in cats
+    assert "RIVENDITA" not in cats
     assert cats[0] == "PESCE"  # media più alta in cima
     # media pesata PESCE = (5000+12000)/(1000+2000) = 5.67
     pesce = resp.righe[0]

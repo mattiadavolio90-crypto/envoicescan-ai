@@ -154,45 +154,50 @@ _memoria_cache = {
 
 ## 3. Le 31 Categorie
 
-### Food & Beverage (25)
+### Food & Beverage (24)
+
+Fase K (10/10/2026, decisioni di Mattia): SHOP si chiama RIVENDITA, SUSHI VARIE non
+esiste piu' (ogni prodotto giapponese sta nella famiglia di cio' che e'), tutto il sake
+e' VINI. Le voci vecchie in memoria si saltano (`CATEGORIE_ABOLITE`) o si rinominano
+(`LEGACY_CATEGORY_ALIASES`).
 
 | # | Categoria | Esempi |
 |---|-----------|--------|
 | 1 | ACQUA | Acqua naturale, frizzante |
 | 2 | AMARI/LIQUORI | Limoncello, Baileys, Sambuca |
 | 3 | BEVANDE | Coca Cola, Aranciata, Succhi |
-| 4 | BIRRE | Lager, Weiss, Stout |
-| 5 | CAFFÈ E THE | Espresso, Capsule, Tisane, Camomilla |
-| 6 | CARNE | Pollo, Manzo, Vitello, Salsiccia |
+| 4 | BIRRE | Lager, Weiss, Stout, Asahi |
+| 5 | CAFFE E THE | Espresso, Capsule, Tisane, Matcha |
+| 6 | CARNE | Pollo, Manzo, Vitello, Salsiccia, Involtini di carne |
 | 7 | DISTILLATI | Vodka, Gin, Whisky, Grappa |
 | 8 | FRUTTA | Mele, Arance, Fragole, Avocado |
-| 9 | GELATI | Gelato, Sorbetto, Semifreddo |
+| 9 | GELATI E DESSERT | Gelato, Sorbetto, Semifreddo, Mochi |
 | 10 | LATTICINI | Parmigiano, Mozzarella, Burrata, Tofu |
-| 11 | OLIO E CONDIMENTI | Olio EVO, Aceto Balsamico |
-| 12 | PASTICCERIA | Torte, Cannoli, Cheesecake, Tiramisù |
-| 13 | PESCE | Salmone, Gamberi, Calamari, Polpo |
-| 14 | PRODOTTI DA FORNO | Pane, Focaccia, Baguette, Pizza |
-| 15 | SALSE E CREME | Pesto, Ragù, Besciamella, Ketchup |
-| 16 | SALUMI | Prosciutto, Mortadella, Speck, Pancetta |
-| 17 | SCATOLAME E CONSERVE | Pelati, Tonno, Fagioli, Olive |
-| 18 | SECCO | Pasta, Riso, Farina, Zucchero |
-| 19 | SHOP | Sigarette, Caramelle, Snack, Gomme |
-| 20 | SPEZIE E AROMI | Pepe, Origano, Curry, Zafferano |
-| 21 | SUSHI VARIE | Nori, Panko, Wasabi, Tobiko, Tempura |
-| 22 | UOVA | Uova fresche, biologiche |
-| 23 | VARIE BAR | Ghiaccio, Zucchero bustine |
-| 24 | VERDURE | Insalata, Pomodori, Zucchine, Funghi |
-| 25 | VINI | Prosecco, Chianti, Barolo, Champagne |
+| 11 | OLIO E CONDIMENTI | Olio EVO, Aceto Balsamico, Mirin, Aceto di riso, Olio di sesamo |
+| 12 | PASTA E CEREALI | Pasta, Riso, Farina, Panko, Tempura, Noodles, Gyoza, Involtini primavera |
+| 13 | PASTICCERIA | Torte, Cannoli, Cheesecake, Tiramisù |
+| 14 | PESCE | Salmone, Gamberi, Polpo, Tobiko, Masago, Katsuobushi, Anguilla |
+| 15 | PRODOTTI DA FORNO | Pane, Focaccia, Baguette, Pizza |
+| 16 | RIVENDITA | Sigarette, Caramelle, Snack, Gomme (comprati per rivenderli tali e quali) |
+| 17 | SALSE E CREME | Pesto, Ragù, Ketchup, Salsa di soia, Teriyaki, Salsa unagi |
+| 18 | SALUMI | Prosciutto, Mortadella, Speck, Pancetta |
+| 19 | SCATOLAME E CONSERVE | Pelati, Fagioli, Olive, Germogli di bambù, Zenzero marinato |
+| 20 | SPEZIE E AROMI | Pepe, Origano, Curry, Wasabi, Sesamo, Dashi |
+| 21 | UOVA | Uova fresche, biologiche |
+| 22 | VARIE BAR | Ghiaccio, Zucchero bustine |
+| 23 | VERDURE | Insalata, Pomodori, Zucchine, Alghe (nori, wakame, kombu), Edamame |
+| 24 | VINI | Prosecco, Chianti, Barolo, Sake (da bere e da cucina) |
 
 ### Materiali (1)
 
-| 26 | MATERIALE DI CONSUMO | Tovaglioli, Pellicola, Guanti, Detersivo, Bicchieri |
+| 25 | MATERIALE DI CONSUMO | Tovaglioli, Pellicola, Guanti, Bacchette, Foglie di bambù |
 
-### Spese Operative (3)
+### Spese Operative (4)
 
-| 27 | SERVIZI E CONSULENZE | Commercialista, HACCP, POS, Marketing |
-| 28 | UTENZE E LOCALI | Bollette, Affitto, Telefono, Gas |
-| 29 | MANUTENZIONE E ATTREZZATURE | Riparazione forno, Lavastoviglie, Arredi |
+| 26 | SERVIZI E CONSULENZE | Commercialista, HACCP, POS, Marketing |
+| 27 | UTENZE E LOCALI | Bollette, Affitto, Telefono, Gas, Carburante |
+| 28 | MANUTENZIONE E ATTREZZATURE | Riparazione forno, Lavastoviglie, Arredi, Vetrine |
+| 29 | RAPPRESENTANZA | Pranzo con un cliente, coperto, pasti in un altro locale |
 
 ### Speciali (2)
 
@@ -203,12 +208,11 @@ _memoria_cache = {
 
 | Centro | Categorie incluse |
 |--------|-------------------|
-| FOOD | Carne, Pesce, Latticini, Salumi, Uova, Scatolame, Olio, Secco, Verdure, Frutta, Salse, Prodotti da Forno, Spezie, Sushi |
+| FOOD | Carne, Pesce, Latticini, Salumi, Uova, Scatolame, Olio, Pasta e cereali, Verdure, Frutta, Salse, Prodotti da Forno, Spezie |
 | BEVERAGE | Acqua, Bevande, Caffè e The, Varie Bar |
 | ALCOLICI | Birre, Vini, Distillati, Amari/Liquori |
-| DOLCI | Pasticceria, Gelati |
-| SHOP | Solo centro di costo |
-| MATERIALE DI CONSUMO | Materiale di Consumo |
+| DOLCI | Pasticceria, Gelati e dessert |
+| RIVENDITA | Rivendita (solo centro di costo: nessun fatturato associato) |
 
 ---
 

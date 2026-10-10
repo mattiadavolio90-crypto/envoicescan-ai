@@ -176,7 +176,9 @@ logger = get_logger('daily_briefing')
 #   35 (09/10): fase H1. Gestione Fatture si apre su Archivio: i pulsanti delle
 #               scadenze portano a `/scadenziario?vista=agenda`. Senza bump lo
 #               snapshot di oggi aprirebbe l'Archivio, che le scadenze non le mostra.
-_BRIEFING_CODE_VERSION = 35
+#   36 (10/10): fase K. SHOP diventa RIVENDITA, SUSHI VARIE non esiste piu', nasce
+#               RAPPRESENTANZA: uno snapshot di oggi nominerebbe le categorie vecchie.
+_BRIEFING_CODE_VERSION = 36
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

@@ -160,12 +160,15 @@ COLORI_PLOTLY = [
 # ============================================
 # CATEGORIE FOOD & BEVERAGE (prodotti vendibili)
 # ============================================
+# Fase K (10/10/2026, decisioni di Mattia): "SHOP" si chiama RIVENDITA (stesso
+# contenuto: merce comprata per rivenderla tale e quale), e SUSHI VARIE non esiste
+# piu' (vedi CATEGORIE_ABOLITE): ogni prodotto giapponese sta nella sua famiglia.
 CATEGORIE_FOOD_BEVERAGE = [
     "CARNE", "PESCE", "LATTICINI", "SALUMI", "UOVA", "SCATOLAME E CONSERVE",
     "OLIO E CONDIMENTI", "PASTA E CEREALI", "VERDURE", "FRUTTA", "SALSE E CREME",
     "ACQUA", "BEVANDE", "CAFFE E THE", "BIRRE", "VINI",
     "VARIE BAR", "DISTILLATI", "AMARI/LIQUORI", "PASTICCERIA",
-    "PRODOTTI DA FORNO", "SPEZIE E AROMI", "GELATI E DESSERT", "SHOP", "SUSHI VARIE"
+    "PRODOTTI DA FORNO", "SPEZIE E AROMI", "GELATI E DESSERT", "RIVENDITA",
 ]
 
 
@@ -186,21 +189,31 @@ LEGACY_CATEGORY_ALIASES = {
     "GELATI": "GELATI E DESSERT",
     # BUG6 FIX: normalizza alias senza emoji alla variante canonica con emoji
     "NOTE E DICITURE": "📝 NOTE E DICITURE",
+    # Fase K (10/10/2026): rinomina pura, il contenuto e' lo stesso.
+    "SHOP": "RIVENDITA",
 }
+
+# Categorie tolte SENZA un erede unico: non si possono rinominare, una riga o una
+# voce di memoria che le porta ancora va riclassificata da capo (dizionario, regole
+# o AI). SUSHI VARIE (Fase K, 10/10/2026): alghe in VERDURE, wasabi in SPEZIE E
+# AROMI, tobiko in PESCE, panko e riso in PASTA E CEREALI, bambu' secondo l'uso.
+CATEGORIE_ABOLITE = frozenset({"SUSHI VARIE"})
 
 
 # ============================================
 # CATEGORIE SPESE OPERATIVE / GENERALI (NON F&B)
 # ============================================
-# Le 4 categorie NON considerate Food & Beverage sono:
+# Le 5 categorie NON considerate Food & Beverage sono:
 # - SERVIZI E CONSULENZE
 # - UTENZE E LOCALI
 # - MANUTENZIONE E ATTREZZATURE
+# - RAPPRESENTANZA (Fase K, 10/10/2026)
 # - MATERIALE DI CONSUMO
 CATEGORIE_SPESE_OPERATIVE = [
     "SERVIZI E CONSULENZE",        # Es: Consulenze HACCP, Commercialista
     "UTENZE E LOCALI",             # Es: Bollette ENEL, Affitto locale
-    "MANUTENZIONE E ATTREZZATURE"  # Es: Riparazione forno, Manutenzione cappa
+    "MANUTENZIONE E ATTREZZATURE", # Es: Riparazione forno, Manutenzione cappa
+    "RAPPRESENTANZA",              # Es: pranzo con un cliente, un pasto in un altro locale
 ]
 CATEGORIE_SPESE_GENERALI = CATEGORIE_SPESE_OPERATIVE + ["MATERIALE DI CONSUMO"]
 
@@ -208,7 +221,7 @@ CATEGORIE_SPESE_GENERALI = CATEGORIE_SPESE_OPERATIVE + ["MATERIALE DI CONSUMO"]
 # ============================================
 # TUTTE LE CATEGORIE (per AI e retrocompatibilità)
 # ============================================
-# NOTA: F&B = 25 categorie, Spese Generali = 4 categorie
+# NOTA: F&B = 24 categorie, Spese Generali = 5 categorie (29 in tutto)
 TUTTE_LE_CATEGORIE = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_SPESE_GENERALI
 
 
@@ -226,7 +239,7 @@ CENTRI_DI_PRODUZIONE = {
         "CARNE", "PESCE", "LATTICINI", "SALUMI", "UOVA",
         "SCATOLAME E CONSERVE", "OLIO E CONDIMENTI", "PASTA E CEREALI",
         "VERDURE", "FRUTTA", "SALSE E CREME",
-        "PRODOTTI DA FORNO", "SPEZIE E AROMI", "SUSHI VARIE"
+        "PRODOTTI DA FORNO", "SPEZIE E AROMI"
     ],
     "BEVERAGE": [
         "ACQUA", "BEVANDE", "CAFFE E THE", "VARIE BAR"
@@ -237,8 +250,8 @@ CENTRI_DI_PRODUZIONE = {
     "DOLCI": [
         "PASTICCERIA", "GELATI E DESSERT"
     ],
-    "SHOP": [
-        "SHOP"
+    "RIVENDITA": [
+        "RIVENDITA"
     ],
 }
 
@@ -597,7 +610,7 @@ DIZIONARIO_CORREZIONI = {
     "FOCACCIA": "PRODOTTI DA FORNO",
     "GRISSINI": "PRODOTTI DA FORNO",
     # Audit 1/9: solo la forma estesa. "CROSTINI" secco non basta: a DB convive
-    # con "CROSTINI DORATI SAN CARLO" (SHOP, snack da aperitivo), che e' un'altra
+    # con "CROSTINI DORATI SAN CARLO" (RIVENDITA, snack da aperitivo), che e' un'altra
     # cosa. Qui parliamo dei crostini di pane per zuppe.
     "CROSTINI PER ZUPPE": "PRODOTTI DA FORNO",
 
@@ -735,13 +748,13 @@ DIZIONARIO_CORREZIONI = {
     "PFANNER": "BEVANDE",
     "NETTARE": "BEVANDE",
     "NETT": "BEVANDE",
-    "DAYGUM": "SHOP",
-    "FRESCORI": "SHOP",
-    "BISCOTTI FORTUNA": "SHOP",
-    "BISCOTTI DELLA FORTUNA": "SHOP",
-    "BISCOTTI PORTAFORTUNA": "SHOP",
-    "STICK VEGAN": "SHOP",
-    "FINTI FRAGOLA": "SHOP",
+    "DAYGUM": "RIVENDITA",
+    "FRESCORI": "RIVENDITA",
+    "BISCOTTI FORTUNA": "RIVENDITA",
+    "BISCOTTI DELLA FORTUNA": "RIVENDITA",
+    "BISCOTTI PORTAFORTUNA": "RIVENDITA",
+    "STICK VEGAN": "RIVENDITA",
+    "FINTI FRAGOLA": "RIVENDITA",
     "HENDRICKS": "DISTILLATI",
     "HENDRICK": "DISTILLATI",
     "DOLCIFICANTE": "VARIE BAR",
@@ -792,8 +805,9 @@ DIZIONARIO_CORREZIONI = {
     # Sfoglie tempura giapponesi (Shidu): impasto -> PASTA E CEREALI
     "PASTELLA": "PASTA E CEREALI",
     "PASTO DI WONTON": "PASTA E CEREALI",
-    # Foglie/alghe fresche per sushi (Asiantrade)
-    "FOGLIE FRESCA": "SUSHI VARIE",
+    # Foglie di bambu' fresche per impiattare (Asiantrade, "100F X 30PZ 30-32 CM"):
+    # non si mangiano, decorano il piatto -> MATERIALE DI CONSUMO (Mattia, 10/10).
+    "FOGLIE FRESCA": "MATERIALE DI CONSUMO",
     # Latticini abbreviati che il GPT non riconosceva
     "MOZZAR": "LATTICINI",          # MOZZAR.JULIENNE; MOZZARELLA/MOZZARELLE gia' coperte
     "FORM GRATTUGIATI": "LATTICINI", # MIX FORM GRATTUGIATI
@@ -944,7 +958,7 @@ DIZIONARIO_CORREZIONI = {
     "GROSTOLI": "PASTICCERIA",
     "ZEPPOLE": "PASTICCERIA",
     "NUTELLA": "PASTICCERIA",
-    "FIAMME": "SHOP",  # Accendini/fiammiferi
+    "FIAMME": "RIVENDITA",  # Accendini/fiammiferi
     
     # ===== GELATI =====
     "GELATO": "GELATI E DESSERT",
@@ -961,63 +975,63 @@ DIZIONARIO_CORREZIONI = {
     "PANDORO": "PASTICCERIA",
     "MACARONS": "PASTICCERIA",
     
-    # ===== SHOP (prodotti di compravendita senza produzione) =====
-    "CICCHE": "SHOP",
-    "SIGARETTE": "SHOP",
-    "TABACCHI": "SHOP",
-    "ELFBAR": "SHOP",
-    "LOST MARY": "SHOP",
-    "OCB": "SHOP",
-    "SMOKING FILTRI": "SHOP",
-    "PREFILLED POD": "SHOP",
-    "TOCA AIR POD": "SHOP",
-    "TP800": "SHOP",
-    "VIVIDENT": "SHOP",
-    "VIGORSOL": "SHOP",
-    "RICOLA": "SHOP",
-    "MOROSITAS": "SHOP",
-    "FINI STRIPS": "SHOP",
-    "BACI PERUGINA": "SHOP",
-    "POCKET COFFEE": "SHOP",
-    "FISHERMAN'S": "SHOP",
-    "FISHERMANS": "SHOP",
-    "CARAMELLE": "SHOP",
-    "GOMME": "SHOP",
-    "GOMMA": "SHOP",
-    "CHEWING GUM": "SHOP",
+    # ===== RIVENDITA (prodotti di compravendita senza produzione) =====
+    "CICCHE": "RIVENDITA",
+    "SIGARETTE": "RIVENDITA",
+    "TABACCHI": "RIVENDITA",
+    "ELFBAR": "RIVENDITA",
+    "LOST MARY": "RIVENDITA",
+    "OCB": "RIVENDITA",
+    "SMOKING FILTRI": "RIVENDITA",
+    "PREFILLED POD": "RIVENDITA",
+    "TOCA AIR POD": "RIVENDITA",
+    "TP800": "RIVENDITA",
+    "VIVIDENT": "RIVENDITA",
+    "VIGORSOL": "RIVENDITA",
+    "RICOLA": "RIVENDITA",
+    "MOROSITAS": "RIVENDITA",
+    "FINI STRIPS": "RIVENDITA",
+    "BACI PERUGINA": "RIVENDITA",
+    "POCKET COFFEE": "RIVENDITA",
+    "FISHERMAN'S": "RIVENDITA",
+    "FISHERMANS": "RIVENDITA",
+    "CARAMELLE": "RIVENDITA",
+    "GOMME": "RIVENDITA",
+    "GOMMA": "RIVENDITA",
+    "CHEWING GUM": "RIVENDITA",
         "CASHBACK": "SERVIZI E CONSULENZE",
         "SCONTIPOSTE": "SERVIZI E CONSULENZE",
         "ECOMAP": "SERVIZI E CONSULENZE",
         "INFOCERT": "SERVIZI E CONSULENZE",
         "NOLEGGIO ESERCENTE": "SERVIZI E CONSULENZE",
         "SPESE INCASSO": "SERVIZI E CONSULENZE",
-    "PATATINE": "SHOP",
-    "CHIPS": "SHOP",
-    "SNACK": "SHOP",
-    "GOLIA": "SHOP",
-    "MENTINE": "SHOP",
-    "CARAMELLA": "SHOP",
-    "LECCA LECCA": "SHOP",
-    "LOLLIPOP": "SHOP",
+    "PATATINE": "RIVENDITA",
+    "CHIPS": "RIVENDITA",
+    "SNACK": "RIVENDITA",
+    "GOLIA": "RIVENDITA",
+    "MENTINE": "RIVENDITA",
+    "CARAMELLA": "RIVENDITA",
+    "LECCA LECCA": "RIVENDITA",
+    "LOLLIPOP": "RIVENDITA",
     "MACINATO BOV": "CARNE",
     "MAGATELLO": "CARNE",
     "TRITA BOV": "CARNE",
     "MORT.": "SALUMI",
     "MORT.MODENA": "SALUMI",
     "VENTRICINA": "SALUMI",
-    "BARRETTE": "SHOP",
-    "BARRETTA": "SHOP",
-    "CIOCCOLATINI": "SHOP",
-    "OVETTI": "SHOP",
-    "KINDER": "SHOP",
-    "MARS": "SHOP",
-    "SNICKERS": "SHOP",
+    "BARRETTE": "RIVENDITA",
+    "BARRETTA": "RIVENDITA",
+    "CIOCCOLATINI": "RIVENDITA",
+    "OVETTI": "RIVENDITA",
+    "KINDER": "RIVENDITA",
+    "MARS": "RIVENDITA",
+    "SNICKERS": "RIVENDITA",
     "CALAM": "PESCE",
-    "TWIX": "SHOP",
+    "TWIX": "RIVENDITA",
     "TAKOYAKI": "PESCE",
-    "BOUNTY": "SHOP",
-    "CIOCCOLATO CONFEZIONATO": "SHOP",
-    "MENTOS": "SHOP",
+    "BOUNTY": "RIVENDITA",
+    "CIOCCOLATO CONFEZIONATO": "RIVENDITA",
+    "MENTOS": "RIVENDITA",
     
     # ===== VARIE BAR (solo prodotti commestibili per servizio bar) =====
     "GHIACCIO": "VARIE BAR",
@@ -1432,56 +1446,71 @@ DIZIONARIO_CORREZIONI = {
     "SPAGNOLA CF": "GELATI E DESSERT",
     
     # ===== INGREDIENTI ASIATICI =====
-    # NOTA: Ingredienti specifici sushi/decorazione → SUSHI VARIE
+    # Fase K (10/10/2026): SUSHI VARIE non esiste piu'. Ogni prodotto sta nella
+    # famiglia di cio' che e' (mappa di Mattia): alghe → VERDURE, uova di pesce e
+    # katsuobushi → PESCE, panko e tempura → PASTA E CEREALI, wasabi → SPEZIE E
+    # AROMI. Il bambu' non ha una voce sua: dipende dall'uso (germogli in conserva,
+    # foglie e utensili) e lo decidono le regole forti.
     # Salse asiatiche generiche restano in SALSE E CREME
-    "NORI": "SUSHI VARIE",
-    "YAKI NORI": "SUSHI VARIE",
-    "GIKU": "SUSHI VARIE",
-    "SUSHI NORI": "SUSHI VARIE",
-    "ALGHE": "SUSHI VARIE",
-    "ALGA": "SUSHI VARIE",
-    "WAKAME": "SUSHI VARIE",
-    "IKURA": "SUSHI VARIE",
-    "KATSUOBUSHI": "SUSHI VARIE",
-    "KONBU": "SUSHI VARIE",
-    "PANKO": "SUSHI VARIE",
+    "NORI": "VERDURE",
+    "YAKI NORI": "VERDURE",
+    "SUSHI NORI": "VERDURE",
+    "ALGHE": "VERDURE",
+    "ALGA": "VERDURE",
+    "WAKAME": "VERDURE",
+    "KONBU": "VERDURE",
+    "KOMBU": "VERDURE",
+    "SEAWEED": "VERDURE",
+    "IKURA": "PESCE",
+    "KATSUOBUSHI": "PESCE",
+    "PANKO": "PASTA E CEREALI",
+    "CARTA TEMPURA": "MATERIALE DI CONSUMO",
+    "MASAGO ARARE": "PASTA E CEREALI",
+    "NUVOLE DI GRAGO": "PASTA E CEREALI",
+    "NUVOLE GRAGO": "PASTA E CEREALI",
+    "XIANYE": "SPEZIE E AROMI",
+    "HONDASHI": "SPEZIE E AROMI",
+    "VETRINA SUSHI": "MANUTENZIONE E ATTREZZATURE",
+    # Asciugamani per il banco sushi ("ASCIUGANI" e' il refuso del fornitore): a DB
+    # tutti gli asciugamani stanno gia' in MATERIALE DI CONSUMO.
+    "ASCIUGAMANI": "MATERIALE DI CONSUMO",
+    "ASCIUGANI": "MATERIALE DI CONSUMO",
     "DASHI": "SPEZIE E AROMI",
     "MISO": "SALSE E CREME",
     "ZENZERO SALAMOIA": "SCATOLAME E CONSERVE",
     "ZENZERO IN SALAMOIA": "SCATOLAME E CONSERVE",
     "SESAMO": "SPEZIE E AROMI",
     "SESAMO NERO": "SPEZIE E AROMI",
-    "WASABI": "SUSHI VARIE",
-    "TEMPURA": "SUSHI VARIE",
+    "WASABI": "SPEZIE E AROMI",
+    "TEMPURA": "PASTA E CEREALI",
     "EDAMAME": "VERDURE",
     "CIPOLLA FRITTA": "SCATOLAME E CONSERVE",
-    "BAMBU": "SUSHI VARIE",
-    "BAMBÙ": "SUSHI VARIE",
-    "FOGLIE BAMBU": "SUSHI VARIE",
-    "FOGLIE DI BAMBU": "SUSHI VARIE",
-    "TOBIKO": "SUSHI VARIE",
-    "EBIKO": "SUSHI VARIE",
-    "MASAGO": "SUSHI VARIE",
-    "SUSHI": "SUSHI VARIE",
-    "TOPPING SUSHI": "SUSHI VARIE",
+    "FOGLIE BAMBU": "MATERIALE DI CONSUMO",
+    "FOGLIE DI BAMBU": "MATERIALE DI CONSUMO",
+    "TOBIKO": "PESCE",
+    "EBIKO": "PESCE",
+    "MASAGO": "PESCE",
         "POLPETTI": "PESCE",
         "GAMB.ROSSO": "PESCE",
         "SEPPIOLINE": "PESCE",
     
-    # ===== "VINO/SAKE da cucina": NON bevanda da tavola → dispensa (scelta dominio Mattia 25/06) =====
-    # Fornitori asiatici vendono sake/vino di riso da CUCINA: non vanno tra i VINI (margini bevande)
-    # ma trattati come ingrediente/conserva. Stringhe lunghe = match prioritario (longest-first).
-    "SAKE PER CUCINA": "SCATOLAME E CONSERVE",
-    "SAKE DA CUCINA": "SCATOLAME E CONSERVE",
+    # ===== SAKE: sempre VINI, da bere e da cucina (Mattia, 10/10/2026) =====
+    # Rovescia la scelta del 25/06 (sake da cucina in dispensa) e del 21/07 (da bere
+    # in DISTILLATI): e' un vino di riso, come lo Shaoxing di _VINO_RISO_RE. Niente
+    # chiave "SAKE" da sola: la regola _SAKE_RE la copre e sa riconoscere gli
+    # oggetti da sake (bicchierini, caraffe), che il dizionario manderebbe in VINI.
+    "SAKE PER CUCINA": "VINI",
+    "SAKE DA CUCINA": "VINI",
     "VINO FERMENTATO": "SCATOLAME E CONSERVE",
     "VINO DI RISO": "SCATOLAME E CONSERVE",
 
     # ===== SALSE ASIATICHE =====
-    "SAKE CUCINA": "SALSE E CREME",
-    "MIRIN": "SALSE E CREME",
+    "SAKE CUCINA": "VINI",
+    # Mirin come l'aceto di riso: condimento (mappa di Mattia, 10/10/2026).
+    "MIRIN": "OLIO E CONDIMENTI",
     "SAMBAL": "SALSE E CREME",
     "SAMBAL OELEK": "SALSE E CREME",
-    "UNAGI": "SALSE E CREME",
+    "UNAGI": "PESCE",
     "UNAGI SAUCE": "SALSE E CREME",
     "TERIYAKI": "SALSE E CREME",
     "HAKUTSURU": "SALSE E CREME",
@@ -1491,7 +1520,7 @@ DIZIONARIO_CORREZIONI = {
     # ===== BEVANDE ASIATICHE =====
     "SPRITE": "BEVANDE",
     "FEVER TREE": "BEVANDE",
-        "GEKKEIKAN SAKE": "DISTILLATI",
+        "GEKKEIKAN SAKE": "VINI",
         "FALANG.": "VINI",
     "SAPPORO": "BIRRE",
     "ASAHI": "BIRRE",
@@ -1793,18 +1822,18 @@ DIZIONARIO_CORREZIONI = {
     "SALE FINO": "SPEZIE E AROMI",
     "SALE GROSSO": "SPEZIE E AROMI",
     "SALE MARINO": "SPEZIE E AROMI",
-    # Shop - snack
-    "TARALLINI": "SHOP",
-    "TARALLI": "SHOP",
-    "TARTINE": "SHOP",
-    "ARACHIDI": "SHOP",
+    # Rivendita - snack
+    "TARALLINI": "RIVENDITA",
+    "TARALLI": "RIVENDITA",
+    "TARTINE": "RIVENDITA",
+    "ARACHIDI": "RIVENDITA",
     # Miele: confezione grande = dispensa → SCATOLAME; bustine monodose bar → VARIE BAR
     "MIELE": "SCATOLAME E CONSERVE",
     "MIELE MILLEFIORI": "SCATOLAME E CONSERVE",
     "MIELE BUSTINE": "VARIE BAR",
     "MIELE IN BUSTINE": "VARIE BAR",
     "MIELE IN BUSTINA": "VARIE BAR",
-    "S.CARLO": "SHOP",
+    "S.CARLO": "RIVENDITA",
     # Salumi
     "SPIANATA": "SALUMI",
     # Prodotti da forno

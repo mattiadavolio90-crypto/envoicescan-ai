@@ -444,7 +444,7 @@ function SezioneSprecoCategorie({ mese }: { mese: number | null }) {
             <span className="font-medium">spesa F&amp;B ÷ coperti</span> dei soli mesi con fatture
             caricate. <span className="text-positivo">verde</span> = il PV
             più efficiente sulla categoria, <span className="text-negativo">rosso</span>{" "}
-            = il più caro. SHOP escluso (merce da rivendita). «—» = nessun dato per quel PV.
+            = il più caro. Rivendita esclusa (merce comprata per rivenderla). «—» = nessun dato per quel PV.
           </p>
         </>
       )}

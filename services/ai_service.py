@@ -82,6 +82,7 @@ from config.constants import (
     MAX_DESC_LENGTH_DB,
     MAX_AI_CALLS_PER_DAY,
     LEGACY_CATEGORY_ALIASES,
+    CATEGORIE_ABOLITE,
     CATEGORIE_SPESE_GENERALI,
     FORNITORI_UTENZE_SEMPRE,
     CATEGORIA_PER_FORNITORE,
@@ -337,6 +338,20 @@ def _normalize_category_name(categoria: str | None) -> str | None:
     if not cat:
         return None
     return LEGACY_CATEGORY_ALIASES.get(cat, cat)
+
+
+def _categoria_di_memoria(categoria: str | None) -> str | None:
+    """La categoria di una voce di memoria, o None se la voce va ignorata.
+
+    Una categoria abolita (Fase K: SUSHI VARIE) non ha un erede unico: la voce
+    che la porta ancora non deve decidere niente, o riporterebbe la riga nella
+    categoria che non esiste piu'. Ignorarla lascia decidere dizionario, regole
+    o AI, come per una descrizione mai vista.
+    """
+    cat = _normalize_category_name(categoria)
+    if cat in CATEGORIE_ABOLITE:
+        return None
+    return cat
 
 
 def _normalize_supplier_name_for_match(fornitore: str) -> str:
@@ -605,7 +620,7 @@ _FORNITORI_NON_FOOD_GENERICI = (
 
 # Categorie food/bevande: una riga di un fornitore non-food generico finita qui è sospetta.
 _CATEGORIE_FOOD_PER_REVIEW = frozenset(TUTTE_LE_CATEGORIE) - frozenset(CATEGORIE_SPESE_GENERALI) - {
-    "MATERIALE DI CONSUMO", "SHOP",
+    "MATERIALE DI CONSUMO", "RIVENDITA",
 }
 
 
@@ -639,7 +654,7 @@ def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
     # Una categoria CONFERMATA da un runtime deterministico (regola forte O dizionario
     # keyword) è ad alta confidenza: le sigle commerciali in testa (KG1, ML10X198, G500,
     # CF X 12 PZ) NON rendono dubbia la riga. Senza questo, prodotti ovvi ma con codici/
-    # quantità ("KG1 BURRO MC"→LATTICINI, "175GR PRINGLES"→SHOP) finivano needs_review
+    # quantità ("KG1 BURRO MC"→LATTICINI, "175GR PRINGLES"→RIVENDITA) finivano needs_review
     # in massa (cert. San Giuliano: ~450 falsi allarmi su 487), svuotando di senso la coda.
     cat_da_regola_forte = False
     if categoria:
@@ -955,7 +970,6 @@ _ESTATHE_RE = re.compile(
     r"\b(?:E\s*STA\s*THE|ESTATHE|ESTATHE['’]?|THE\s+ESTATHE)\b"
 )
 _SANTHE_RE = re.compile(r"\bSAN\s*TH[EÉ']\b|\bSANTHE['’]?\b")
-_SUSHI_VARIE_RE = re.compile(r"\b(BAMBU|BAMBOO|NORI|WASABI|PANKO|MASAGO|TOBIKO)\b")
 _TAZZE_PIATTI_RE = re.compile(r"\bTAZZE?\b.*\bPIAT\w*\b|\bPIAT\w*\b.*\bTAZZE?\b")
 _ACCESSORI_PRODUZIONE_CREMA_RE = re.compile(r"\b(SAC\s*A\s*POCHE|COPPETTA\s*BICAMERA)\b")
 _SERVIZI_NORMATIVI_RE = re.compile(r"\b(HACCP|ADEMPIMENTI\s*NORMATIVI|SICUREZZA\s*SUL\s*LAVORO|FORMAZIONE|CERTIFICAT\w*|RINNOVI?)\b")
@@ -1128,6 +1142,14 @@ _TOFU_PESCE_RE = re.compile(r"\b(SEAFOOD|FISH|PESCE)\b.*\b(TOFU|TOUFU)\b|\b(TOFU
 _CIMI_BIMBA_RE = re.compile(r"\bCIMI\s+DI\s+BIMBA\b")
 _TARTUFO_CARPACCIO_RE = re.compile(r"CARPACCIO.*TARTUF\w*|TARTUF\w*.*CARPACCIO")
 _ACETO_RISO_RE = re.compile(r"\bACETO\b.*\bRISO\b|\bRISO\b.*\bACETO\b")
+# Fase K: mirin e olio di sesamo sono condimenti come l'aceto di riso (mappa di
+# Mattia). Il mirin cadeva in SALSE per la chiave del marchio ("MIZKAN"), l'olio
+# di sesamo in SPEZIE per "SESAMO", piu' lunga di "OLIO".
+_MIRIN_RE = re.compile(r"\bMIRIN\b")
+_OLIO_SESAMO_RE = re.compile(r"\bOLIO\b.*\bSESAM\w*|\bSESAM\w*\b.*\bOLIO\b|\bSESAME\s+OIL\b")
+# La salsa per anguilla e' una salsa: senza questa eccezione "UNAGI SAUCE" finiva
+# in PESCE con la regola dell'anguilla, che batte anche la memoria.
+_UNAGI_SALSA_RE = re.compile(r"\bUNAGI\b.*\b(SAUCE|SALSA|TARE)\b|\b(SAUCE|SALSA|TARE)\b.*\bUNAGI\b")
 _UNAGI_RE = re.compile(r"\bUNAGI\b")
 _DIMSUM_SECCO_RE = re.compile(r"\b(RAVIOLI|SHAO\s?MAI|SIU\s?MAI|GYOZA|HAUKAU|HAR\s?GAU|DIMSUM|DIM\s*SUM)\b")
 _BAO_RIPIENO_RE = re.compile(r"\bBAO\b(?!\s+CREMA)")  # BAO ripieno (maiale, verdure, ecc.) → SECCO; BAO CREMA → PASTICCERIA
@@ -1155,9 +1177,9 @@ _PISELLI_STANDALONE_RE = re.compile(r"\bPISELLI\b")
 _PASTA_RIPIENA_SECCO_RE = re.compile(r"\b(TORTELLI\w*|TORTELLONI|TORTELLINI|AGNOLOTTI|CAPPELLETTI|MEZZELUNE|GIRASOLI)\b")
 _SURGITAL_RE = re.compile(r"\bSURGITAL\b")
 
-# --- Regole prodotti da banco di compravendita → SHOP (cliente CASATI 14) ---
+# --- Regole prodotti da banco di compravendita → RIVENDITA, ex SHOP (cliente CASATI 14) ---
 # Regola di dominio (Mattia 2026-06-15): i prodotti confezionati di marca venduti
-# al banco (gelati industriali Algida, snack, patatine) sono COMPRAVENDITA → SHOP.
+# al banco (gelati industriali Algida, snack, patatine) sono COMPRAVENDITA → RIVENDITA.
 # NON sono GELATI E DESSERT (quelli sono dessert serviti al tavolo) né PASTICCERIA
 # (quelle sono materie prime/dolci da forno).
 # Brand gelato confezionato + linee Algida tipiche da banco.
@@ -1165,7 +1187,7 @@ _GELATO_BANCO_BRAND_RE = re.compile(
     r"\b(MAGNUM|CUCCIOLONE|SOLERO|CREMINO|CALIPPO|WINNER\s*TACO|GHIACCIOL\w*|"
     r"SUPER\s*TWISTER|TWISTER|BIKINI|MINECRAFT|VOLCANIX|CORNETTO\s+ALGIDA|LIUK)\b"
 )
-# CORNETTO è ambiguo (brioche da forno = PASTICCERIA vs gelato Algida = SHOP):
+# CORNETTO è ambiguo (brioche da forno = PASTICCERIA vs gelato Algida = RIVENDITA):
 # lo trattiamo come gelato SOLO con marcatori gelato espliciti (gusti/linee Algida).
 _CORNETTO_GELATO_RE = re.compile(
     r"\bCORNETTO\b.*\b(ALGIDA|CLASSICO|MAX|AMARENA|STRACCIATELLA|MANDORLA|NOCCIOLA|PISTACCHIO|GELATO)\b"
@@ -1176,7 +1198,7 @@ _CORNETTO_GELATO_RE = re.compile(
 
 # === CERTIFICAZIONE SUSHILAND 25/06 — regole forti da pattern errori reali ===
 # GELATO esplicito: deve battere il gusto ("LIMONE"→FRUTTA, "CREMA"→SALSE).
-# Escludo i gelati-banco di marca, già gestiti sopra come SHOP.
+# Escludo i gelati-banco di marca, già gestiti sopra come RIVENDITA.
 _GELATO_PRODOTTO_RE = re.compile(r"\b(GELAT[OI]|SEMIFREDD[OI])\b")
 # Noodle/pasta asiatici: cadevano in BEVANDE ("soia") o VERDURE (fornitore SHIDU).
 _NOODLE_ASIA_RE = re.compile(r"\b(VERMICELLI|NOODLES?|SOBA|RAMEN|UDON|PASTA\s+DI\s+RISO)\b")
@@ -1446,11 +1468,34 @@ _VOCE_BOLLETTA_RE = re.compile(
     r"\bSMC\b|COMP\.?\s*(RE|RS|GS|UG\d+|UC\d+)\b|COMM\.?\s*AL\s*DETTAGLIO|"
     r"BONIFICA\s*VILLORESI|CONSUMO\s*FATTURATO|QUOTA\s*VARIABILE\s*GAS)\b"
 )
-# (3) Fritti/preparazioni giapponesi che l'AI butta nel calderone SUSHI VARIE:
-# TEMPURA/PASTELLA = pastella da friggere → PASTA E CEREALI;
+# (3) Fritti/preparazioni giapponesi, che l'AI buttava nel calderone SUSHI VARIE
+# (abolita nella Fase K, 10/10/2026):
+# TEMPURA/PASTELLA/PANKO = pastella e impanatura da friggere → PASTA E CEREALI,
+# ma non la CARTA per tempura (un foglio assorbente, materiale di consumo);
 # TAKOYAKI = polpette di polpo → PESCE; GYOZA/HARUMAKI sono già in _DIMSUM_RE.
-_GIAPPO_FRITTO_PASTA_RE = re.compile(r"\b(TEMPURA|PASTELLA|TENKASU|KARAAGE\s*MIX)\b")
+_GIAPPO_FRITTO_PASTA_RE = re.compile(r"\b(TEMPURA|PASTELLA|TENKASU|PANKO|KARAAGE\s*MIX)\b")
+_GIAPPO_CARTA_RE = re.compile(r"\bCARTA\b")
 _GIAPPO_PESCE_RE = re.compile(r"\b(TAKOYAKI|EBI\s*FRY|EBIFRY|SURIMI\s*GRANCHIO)\b")
+# Fase K — il bambu' non ha una famiglia sua, la decide l'uso:
+#   germogli/fette/conserva → SCATOLAME E CONSERVE (si mangiano, in scatola);
+#   foglie → MATERIALE DI CONSUMO (decorano il piatto, non si mangiano);
+#   spiedi/bastoncini/bacchette → gia' "oggetto_non_edibile" (MATERIALE).
+# Niente \b dopo BAMBU: "BAMBU'" ha l'apostrofo incollato, "BAMBOO SHOOOTS" un
+# refuso del fornitore. Niente \b prima di FOGLI: "FOGLFOGLIE DI BAMBU" e' reale.
+_BAMBU_CONSERVA_RE = re.compile(
+    r"\bBAMB(?:U|Ù|OO)(?!\w).*\b(CONSERV\w*|SALAMOIA|INVERNO|FETTE|TAGLIAT\w*|SHO+TS?|BRAISED)\b"
+    r"|\b(GERMOGL\w*|CONSERV\w*)\b.*\bBAMB(?:U|Ù|OO)(?!\w)"
+)
+_FOGLIE_BAMBU_RE = re.compile(r"FOGLI\w*\s+(?:DI\s+)?BAMB(?:U|Ù|OO)(?!\w)")
+# Wasabi: la radice (polvere, pasta, kizami) e' SPEZIE E AROMI dal dizionario; un
+# condimento pronto al wasabi e' una salsa. "DERESSING" e "DRE." sono refusi reali.
+_WASABI_SALSA_RE = re.compile(
+    r"\bWASABI\b.*\b(DRESS\w*|DERESS\w*|DRE|CITR\w*|SALSA|SAUCE|MAIONESE|MAYO\w*)\b"
+    r"|\b(DRESS\w*|DERESS\w*|SALSA|SAUCE|MAIONESE|MAYO\w*)\b.*\bWASABI\b"
+)
+# La radice in pasta resta wasabi: senza questa regola "PASTA DI WASABI" va in SALSE
+# con la regola generica "pasta di" (quella del pistacchio).
+_WASABI_RADICE_RE = re.compile(r"\bPASTA\s+(?:DI\s+)?WASABI\b|\bWASABI\b.*\bPASTA\b")
 
 # Cert. SUSHILAND Vimodrone/San Giuliano 21/07: "PESCE <animale di terra>" è un nome
 # commerciale improprio del fornitore (calco di traduzione), non pesce alimentare —
@@ -1462,13 +1507,14 @@ _PESCE_ANIMALE_TERRA_RE = re.compile(
     r"\b(BOVIN[OA]|MANZO|VITELL\w*|MAIALE|SUIN[OA]|POLLO|POLLAME|TACCHINO|AGNELLO|CAVALLO|ANATRA)\b.*\bPESCE\b"
 )
 
-# SAKE: formato/nome distingue la bevanda da bere (bottiglia, ~14-15% vol) dal sake
-# da cucina (tanica 18L/18KG, "PER CUCINA" nel nome, basso pregio) — decisione di
-# dominio cert. SUSHILAND Vimodrone 21/07: da bere → DISTILLATI, da cucina →
-# SCATOLAME E CONSERVE. Prima erano sparsi su 4 categorie diverse per lo stesso
-# prodotto (AMARI/LIQUORI, DISTILLATI, SERVIZI E CONSULENZE, SCATOLAME).
-_SAKE_CUCINA_RE = re.compile(r"\bSAKE\b.*\bCUCINA\b|\bPER\s*CUCINA\b.*\bSAKE\b|\bSAKE\b.*\b1[68]\s*(KG|LT|L)\b")
+# SAKE: sempre VINI, da bere e da cucina (Mattia, 10/10/2026). Rovescia la
+# decisione del 21/07 (da bere → DISTILLATI, tanica da cucina → SCATOLAME): e' un
+# vino di riso come lo Shaoxing di _VINO_RISO_RE. Prima del 21/07 lo stesso
+# prodotto era sparso su 4 categorie (AMARI/LIQUORI, DISTILLATI, SERVIZI, SCATOLAME).
 _SAKE_RE = re.compile(r"\bSAKE\b")
+# Gli oggetti da sake (bicchierini, caraffe) non sono vino: la regola del sake sta
+# in cima, prima di quelle sulle stoviglie, e senza questa eccezione li prenderebbe.
+_SAKE_OGGETTO_RE = re.compile(r"\b(BICCHIER\w*|TAZZ\w*|CARAFF\w*|CALIC\w*|TOKKURI|OCHOKO|SERVIZIO)\b")
 
 # LARIO/officine auto: "FILTRO OLIO" è un ricambio veicolo, non un condimento — la
 # keyword "OLIO" del dizionario base lo intercetta prima. Cert. SUSHILAND Vimodrone
@@ -1495,6 +1541,9 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "topping_bar_specifico",
     "tartufo_carpaccio_conserva",
     "aceto_riso_condimento",
+    "mirin_condimento",
+    "olio_sesamo_condimento",
+    "unagi_salsa",
     "unagi_pesce",
     "mochi_gelato_dessert",
     "dessert_pronto_gelato_dessert",
@@ -1556,6 +1605,7 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "abbigliamento_attrezzatura",
     "giappo_fritto_pasta",
     "giappo_pesce",
+    "sake_vini",
     "pet_food_non_alimento",
     # 26/06 (post-upload San Giuliano): ACQ PANNA/S.PELLEGRINO restavano BEVANDE perché
     # la memoria globale era inquinata e l'override non scattava (acqua non era non-negoziabile).
@@ -1598,18 +1648,11 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         # NON è alimento del ristorante → resta Da Classificare (onesto), MAI PESCE.
         return CATEGORIA_NON_CLASSIFICATA, "pet_food_non_alimento"
 
-    # SAKE: da cucina (tanica/formato grande, "PER CUCINA") → SCATOLAME E CONSERVE;
-    # da bere (bottiglia) → DISTILLATI. Prima erano sparsi su 4 categorie diverse
-    # per lo stesso identico prodotto (AMARI/LIQUORI, DISTILLATI, SERVIZI, SCATOLAME).
-    if _SAKE_RE.search(desc_u):
-        if _SAKE_CUCINA_RE.search(desc_u):
-            mapped = "SCATOLAME E CONSERVE"
-            if cat != mapped:
-                return mapped, "sake_cucina"
-            return cat, None
-        mapped = "DISTILLATI"
+    # SAKE → VINI, da bere e da cucina (Mattia, 10/10/2026: vedi _SAKE_RE).
+    if _SAKE_RE.search(desc_u) and not _SAKE_OGGETTO_RE.search(desc_u):
+        mapped = "VINI"
         if cat != mapped:
-            return mapped, "sake_da_bere"
+            return mapped, "sake_vini"
         return cat, None
 
     # Ricambi officina auto ("FILTRO OLIO", "OLIO FILTRO...") rubati dalla keyword
@@ -1661,7 +1704,8 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
     # TOPPING (per dessert/gelati) → GELATI E DESSERT, ignorando il suffisso "MC"
     # (codice Metro) che confondeva il classificatore facendolo oscillare tra
     # MATERIALE e VARIE BAR. Cert. OFFSIDE 20/07.
-    if re.search(r"\bTOPPING\b", desc_u):
+    # Non il topping di anguilla o da sushi (Fase K): quello e' pesce o condimento.
+    if re.search(r"\bTOPPING\b", desc_u) and not re.search(r"\b(UNAGI|ANGUILLA|SUSHI)\b", desc_u):
         mapped = "GELATI E DESSERT"
         if cat != mapped:
             return mapped, "topping_dessert"
@@ -1725,7 +1769,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "abbigliamento_attrezzatura"
         return cat, None
 
-    if _GIAPPO_FRITTO_PASTA_RE.search(desc_u):
+    if _GIAPPO_FRITTO_PASTA_RE.search(desc_u) and not _GIAPPO_CARTA_RE.search(desc_u):
         mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "giappo_fritto_pasta"
@@ -1737,9 +1781,34 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "giappo_pesce"
         return cat, None
 
+    # Fase K: il bambu' secondo l'uso, il condimento al wasabi fra le salse.
+    if _BAMBU_CONSERVA_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "bambu_conserva"
+        return cat, None
+
+    if _FOGLIE_BAMBU_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "foglie_bambu_consumo"
+        return cat, None
+
+    if _WASABI_SALSA_RE.search(desc_u):
+        mapped = "SALSE E CREME"
+        if cat != mapped:
+            return mapped, "wasabi_salsa"
+        return cat, None
+
+    if _WASABI_RADICE_RE.search(desc_u):
+        mapped = "SPEZIE E AROMI"
+        if cat != mapped:
+            return mapped, "wasabi_radice"
+        return cat, None
+
     # --- Cert. SUSHILAND: regole forti che battono il gusto/keyword generiche ---
     # GELATO domina il gusto (GELATO LIMONE non è FRUTTA). Esclude i gelati-banco
-    # di marca, già intercettati come SHOP dalle regole più sotto.
+    # di marca, già intercettati come RIVENDITA dalle regole più sotto.
     if _GELATO_PRODOTTO_RE.search(desc_u) and not (
         _GELATO_BANCO_BRAND_RE.search(desc_u) or _CORNETTO_GELATO_RE.search(desc_u)
     ):
@@ -1831,11 +1900,11 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "hardware_sicurezza"
         return cat, None
 
-    # --- Prodotti da banco di compravendita → SHOP (regola dominio CASATI 14) ---
+    # --- Prodotti da banco di compravendita → RIVENDITA (regola dominio CASATI 14) ---
     # Devono battere PASTICCERIA (per CORNETTO gelato) e GELATI E DESSERT.
     # Gelato confezionato industriale di marca (Algida & co.) venduto al banco.
     if _GELATO_BANCO_BRAND_RE.search(desc_u) or _CORNETTO_GELATO_RE.search(desc_u):
-        mapped = "SHOP"
+        mapped = "RIVENDITA"
         if cat != mapped:
             return mapped, "gelato_banco_shop"
         return cat, None
@@ -1953,6 +2022,25 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "OLIO E CONDIMENTI"
         if cat != mapped:
             return mapped, "aceto_riso_condimento"
+        return cat, None
+
+    if _MIRIN_RE.search(desc_u):
+        mapped = "OLIO E CONDIMENTI"
+        if cat != mapped:
+            return mapped, "mirin_condimento"
+        return cat, None
+
+    if _OLIO_SESAMO_RE.search(desc_u):
+        mapped = "OLIO E CONDIMENTI"
+        if cat != mapped:
+            return mapped, "olio_sesamo_condimento"
+        return cat, None
+
+    # Salsa per anguilla → salsa (prima della regola dell'anguilla, che la prenderebbe)
+    if _UNAGI_SALSA_RE.search(desc_u):
+        mapped = "SALSE E CREME"
+        if cat != mapped:
+            return mapped, "unagi_salsa"
         return cat, None
 
     # Unagi kabayaki / anguilla preparata → pesce
@@ -2098,13 +2186,13 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _DAYGUM_RE.search(desc_u):
-        mapped = "SHOP"
+        mapped = "RIVENDITA"
         if cat != mapped:
             return mapped, "gomma_confezionata_shop"
         return cat, None
 
     if _FUMO_SHOP_RE.search(desc_u):
-        mapped = "SHOP"
+        mapped = "RIVENDITA"
         if cat != mapped:
             return mapped, "articolo_fumo_shop"
         return cat, None
@@ -2698,19 +2786,6 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "ingrediente_bar_specifico"
         return cat, None
 
-    # Guardie anti-leak SUSHILAND su un pub (cert. OFFSIDE 20/07):
-    # - "ARACHIDI WASABI" = snack al gusto wasabi, non ingrediente sushi.
-    # - "SPIEDI/STECCHINI BAMBU" = stuzzicadenti monouso (MATERIALE), non tappetini
-    #   da sushi. BAMBU/WASABI da soli catturavano queste voci in SUSHI VARIE,
-    #   categoria priva di senso per un pub.
-    if _SUSHI_VARIE_RE.search(desc_u) and not re.search(
-        r"(ARACHID[EI]|NOCCIOLIN[EA]|SPIED[OI]|SPIEDIN[OI]|STECCHIN[OI]|STUZZICA\w*)", desc_u
-    ):
-        mapped = "SUSHI VARIE"
-        if cat != mapped:
-            return mapped, "ingrediente_o_tool_sushi"
-        return cat, None
-
     if _YOGURT_RE.search(desc_u):
         mapped = "LATTICINI"
         if cat != mapped:
@@ -2860,7 +2935,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     # FISH & CHIPS: piatto di pesce impanato, NON patatine da rivendita. "CHIPS" da
-    # solo → SHOP nel dizionario catturava il pesce → SHOP (cert. OFFSIDE 20/07).
+    # solo → SHOP (oggi RIVENDITA) nel dizionario catturava il pesce (cert. OFFSIDE 20/07).
     if re.search(r"\bFISH\b.*\bCHIPS?\b", desc_u):
         mapped = "PESCE"
         if cat != mapped:
@@ -3118,7 +3193,9 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                     desc = str(row.get('descrizione') or '').strip()
                     if not desc:
                         continue
-                    categoria = _normalize_category_name(row.get('categoria')) or row.get('categoria')
+                    categoria = _categoria_di_memoria(row.get('categoria'))
+                    if not categoria:
+                        continue
                     locale_raw[desc] = categoria
                     desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc)
                     if desc_normalized:
@@ -3158,7 +3235,9 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 _degradate_fase6 = 0
                 for row in rows_globale:
                     desc = row['descrizione']
-                    cat = _normalize_category_name(row.get('categoria')) or row.get('categoria')
+                    cat = _categoria_di_memoria(row.get('categoria'))
+                    if not cat:
+                        continue
                     conf = row.get('confidence')
                     streak = row.get('consecutive_correct_classifications', 0) or 0
                     verified = bool(row.get('verified'))
@@ -3193,10 +3272,11 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
             if rows_manuali:
                 _memoria_cache['classificazioni_manuali'] = {
                     row['descrizione']: {
-                        'categoria': (_normalize_category_name(row.get('categoria_corretta')) or row.get('categoria_corretta')),
+                        'categoria': _categoria_di_memoria(row.get('categoria_corretta')),
                         'is_dicitura': row.get('is_dicitura', False)
                     }
                     for row in rows_manuali
+                    if row.get('is_dicitura') or _categoria_di_memoria(row.get('categoria_corretta'))
                 }
                 logger.info(f"📦 Cache MANUALI caricata: {len(rows_manuali)} classificazioni")
         except Exception as e:
@@ -4052,10 +4132,19 @@ _MARCATORI_CONSERVAZIONE = re.compile(
 )
 
 
+# Le alghe si vendono quasi sempre secche o salate: per loro "essiccato" non dice
+# "trasformato", e restano VERDURE (mappa di Mattia, Fase K 10/10/2026).
+_ALGHE_RE = re.compile(r"\b(ALGH?[AE]|NORI|WAKAME|KONBU|KOMBU|SEAWEED)\b")
+
+
 def _ortofrutta_trasformata_in_scatolame(descrizione: str, categoria: str) -> str:
     """Se la categoria e' VERDURE/FRUTTA ma la descrizione indica un prodotto
     trasformato/conservato, riporta a SCATOLAME E CONSERVE (regola dominio 25/06)."""
-    if categoria in _CATEGORIE_ORTOFRUTTA and _MARCATORI_CONSERVAZIONE.search(descrizione or ""):
+    if (
+        categoria in _CATEGORIE_ORTOFRUTTA
+        and _MARCATORI_CONSERVAZIONE.search(descrizione or "")
+        and not _ALGHE_RE.search((descrizione or "").upper())
+    ):
         return "SCATOLAME E CONSERVE"
     return categoria
 
@@ -5550,6 +5639,10 @@ def _chiama_gpt_classificazione(
             confidenze_out.append("bassa")
             mancanti += 1
             continue
+
+        # Un vecchio nome (Fase K: "SHOP") e' la stessa categoria con un altro nome:
+        # si rinomina prima della whitelist, invece di buttare la risposta.
+        cat = _normalize_category_name(cat) or cat
 
         # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
         # Fix B1: una categoria GPT vietata (es. NOTE E DICITURE) viene rimappata dal

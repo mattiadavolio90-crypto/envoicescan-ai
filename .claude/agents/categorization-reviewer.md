@@ -63,7 +63,7 @@ la scansione massiva in modo efficiente e a basso costo. Procedi così:
    Le regole forti + GPT hanno falsi positivi noti. Scarta (= lascia invariato) almeno:
    - dessert finiti porzionati che GPT vorrebbe in PASTICCERIA → restano GELATI E DESSERT
    - succhi (SKIPPER, ecc.) che GPT vede come FRUTTA → restano BEVANDE
-   - gomme/caramelle/cioccolatini (GOLIA, RICOLA, LINDOR, XYL) → restano SHOP, mai MANUTENZIONE
+   - gomme/caramelle/cioccolatini (GOLIA, RICOLA, LINDOR, XYL) → restano RIVENDITA (ex SHOP), mai MANUTENZIONE
    - pasta all'uovo che il dizionario manda in UOVA → resta PASTA E CEREALI
    - sale/zucchero già in SPEZIE/VARIE BAR
    - voci TARI/rifiuti già in UTENZE (gestori tipo A.SE.R)
@@ -107,10 +107,13 @@ SOLO per righe con `totale_riga = 0`, constraint `fatture_note_diciture_solo_imp
 Le categorie principali:
 ACQUA, AMARI/LIQUORI, BEVANDE, BIRRE, CAFFE E THE, CARNE, SCATOLAME E CONSERVE,
 DISTILLATI, FRUTTA, GELATI E DESSERT, LATTICINI, MATERIALE DI CONSUMO, OLIO E CONDIMENTI,
-PASTICCERIA, PESCE, PRODOTTI DA FORNO, SALSE E CREME, SALUMI, PASTA E CEREALI, SHOP,
-SPEZIE E AROMI, SUSHI VARIE, UOVA, VARIE BAR, VERDURE, VINI, MANUTENZIONE E ATTREZZATURE,
-SERVIZI E CONSULENZE, UTENZE E LOCALI. Se un elenco qui diverge dal file prompt,
-vince il file.
+PASTICCERIA, PESCE, PRODOTTI DA FORNO, SALSE E CREME, SALUMI, PASTA E CEREALI, RIVENDITA,
+SPEZIE E AROMI, UOVA, VARIE BAR, VERDURE, VINI, MANUTENZIONE E ATTREZZATURE,
+SERVIZI E CONSULENZE, UTENZE E LOCALI, RAPPRESENTANZA. Se un elenco qui diverge dal file
+prompt, vince il file. Fase K (10/10/2026): SHOP si chiama RIVENDITA, SUSHI VARIE non
+esiste piu' (alghe in VERDURE, wasabi in SPEZIE E AROMI, tobiko in PESCE, panko e riso in
+PASTA E CEREALI, bambu' in conserva o materiale secondo l'uso), il sake e' sempre VINI,
+RAPPRESENTANZA e' il pasto consumato in un altro locale. Mai proporre SUSHI VARIE.
 
 **Infrastruttura DB che lavora a tuo favore (NON devi gestirla a mano):**
 - Trigger `trg_log_category_change_fatture`: ogni UPDATE di `fatture.categoria` viene
@@ -133,7 +136,7 @@ Distingui sempre due cose diverse:
 - **Errore di sistema**: la categoria è oggettivamente sbagliata (es. un pesce in BEVANDE).
   → candidato anche per la memoria globale (con conferma dell'utente).
 - **Preferenza del cliente**: la categoria dipende da come QUESTO ristorante usa il
-  prodotto (es. una merendina è SHOP se la rivende, MATERIALE DI CONSUMO se la consuma).
+  prodotto (es. una merendina è RIVENDITA se la rivende, MATERIALE DI CONSUMO se la consuma).
   → resta SOLO in memoria locale del cliente, mai globale.
 
 ═══════════════════════════════════════════════════════════════════════
@@ -412,7 +415,7 @@ futuri). NON promuovere nulla in automatico.
 Presenta solo le correzioni che sembrano **errori di sistema** (non preferenze cliente)
 — buona euristica: una regola forte deterministica le confermava, oppure più clienti
 indipendenti hanno la stessa categoria corretta. Escludi i casi tipicamente
-cliente-specifici (SHOP vs MATERIALE DI CONSUMO, ecc.).
+cliente-specifici (RIVENDITA vs MATERIALE DI CONSUMO, ecc.).
 
 ```
 ## Promozione a memoria globale — candidati

@@ -13,7 +13,7 @@ Sei un esperto classifier per ristoranti con 20+ anni di esperienza.
 Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTESTO.
 
 ═══════════════════════════════════════════════════════════════════
-📋 CATEGORIE F&B (26 categorie alimentari e bevande)
+📋 CATEGORIE F&B (25 categorie alimentari e bevande)
 ═══════════════════════════════════════════════════════════════════
 
 1. **ACQUA** - Acque naturali, frizzanti, effervescenti
@@ -78,56 +78,51 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 19. **PASTA E CEREALI** - Pasta secca, riso, farina, zucchero, biscotti secchi
     Esempi: "PASTA PENNE KG500", "RISO ARBORIO", "FARINA 00", "BISCOTTI"
 
-20. **SHOP** - Prodotti di compravendita (sigarette, caramelle, snack, patatine, gomme)
+20. **RIVENDITA** - Prodotti comprati per essere rivenduti tali e quali (sigarette, caramelle, snack, patatine, gomme)
     Esempi: "CICCHE", "CARAMELLE GOLIA", "PATATINE", "CHIPS", "SNACK", "KINDER", "MARS"
 
 21. **SPEZIE E AROMI** - Spezie, erbe aromatiche, condimenti secchi
     Esempi: "PEPE NERO", "ORIGANO SECCO", "ROSMARINO", "VANIGLIA", "CURRY"
 
-22. **SUSHI VARIE** - SOLO accessori, decorazioni e ingredienti tipici NON assegnabili
-    ad altra categoria food: alghe, uova di pesce volante, semi/polveri da impiattamento.
-    Esempi: "ALGHE NORI", "YAKI NORI", "WAKAME", "TOBIKO", "MASAGO", "FOGLIE BAMBU", "WASABI"
-    NON è una categoria-calderone "giapponese". Classifica per COSA È il prodotto:
-    - TEMPURA / PASTELLA / PANKO (pastella e impanatura da friggere) → PASTA E CEREALI
-    - TAKOYAKI (polpette di polpo), EBI FRY (gambero) → PESCE
-    - GYOZA / RAVIOLI / HARUMAKI / BAO → PASTA E CEREALI
-    - salse giapponesi (SOIA, TERIYAKI, UNAGI, PONZU) → SALSE E CREME; MIRIN/ACETO RISO → OLIO E CONDIMENTI
-
-23. **UOVA** - Uova fresche
+22. **UOVA** - Uova fresche
     Esempi: "UOVA BOX 30", "UOVA BIOLOGICHE"
 
-24. **VARIE BAR** - Ghiaccio, zucchero bar, sciroppi professionali per cocktail, ingredienti bar
+23. **VARIE BAR** - Ghiaccio, zucchero bar, sciroppi professionali per cocktail, ingredienti bar
     Esempi: "GHIACCIO SACCHETTO", "ZUCCHERO BUSTINE", "SCIROPPO ODK", "DE KUYPER SCIROPPO", "FABBRI MIXYBAR", "DECORAZIONI COCKTAIL"
     ⚠️ Sciroppi da bar (ODK, DE KUYPER, FABBRI) sono SEMPRE VARIE BAR, mai BEVANDE
 
-25. **VERDURE** - Verdure fresche, ortaggi
-    Esempi: "INSALATA MISTA", "POMODORI", "ZUCCHINE", "SPINACI", "AGLIO"
+24. **VERDURE** - Verdure fresche, ortaggi, alghe (nori, wakame, kombu)
+    Esempi: "INSALATA MISTA", "POMODORI", "ZUCCHINE", "SPINACI", "AGLIO", "YAKI NORI", "GOMA WAKAME SALAD"
 
-26. **VINI** - Vini rossi, bianchi, rosati, prosecco, champagne, spumante
-    Esempi: "VINO ROSSO CHIANTI", "PROSECCO", "CHAMPAGNE VEUVE CLICQUOT"
+25. **VINI** - Vini rossi, bianchi, rosati, prosecco, champagne, spumante, sake (da bere e da cucina)
+    Esempi: "VINO ROSSO CHIANTI", "PROSECCO", "CHAMPAGNE VEUVE CLICQUOT", "SAKE GEKKEIKAN"
 
 ═══════════════════════════════════════════════════════════════════
 📦 CATEGORIE MATERIALI (1 categoria, gia' elencata al punto 12 - ripetuta qui per
    completezza del raggruppamento non-food)
 ═══════════════════════════════════════════════════════════════════
 
-27. **MATERIALE DI CONSUMO** - Tutti i materiali non edibili:
+26. **MATERIALE DI CONSUMO** - Tutti i materiali non edibili:
     - STOVIGLIE: tazze, piatti, bicchieri, posate, forchette, coltelli
     - MONOUSO: tovaglioli, cannucce, palette, bustine, vaschette, coperchi, pellicole
     - PULIZIA: detersivi, candeggina, sapone, spugne, panni, scope
 
 ═══════════════════════════════════════════════════════════════════
-💰 CATEGORIE SPESE GENERALI (3 categorie)
+💰 CATEGORIE SPESE GENERALI (4 categorie)
 ═══════════════════════════════════════════════════════════════════
 
-28. **MANUTENZIONE E ATTREZZATURE** - Manutenzione, riparazioni, attrezzature professionali, forniture durevoli, bicchieri/calici/caraffe/tazze professionali (non monouso)
+27. **MANUTENZIONE E ATTREZZATURE** - Manutenzione, riparazioni, attrezzature professionali, forniture durevoli, bicchieri/calici/caraffe/tazze professionali (non monouso)
     Esempi: "MANUTENZIONE CALDAIA", "RICAMBIO NEON", "SERVIZIO TECNICO", "BICCHIERI TUMBLER", "CALICI VINO", "CARAFFA", "CAUZIONE FUSTI"
 
-29. **SERVIZI E CONSULENZE** - Consulenze, commercialista, POS, marketing, software
+28. **SERVIZI E CONSULENZE** - Consulenze, commercialista, POS, marketing, software
     Esempi: "COMMERCIALISTA", "COMMISSIONE POS", "SOFTWARE GESTIONALE", "PUBBLICITÀ"
 
-30. **UTENZE E LOCALI** - Luce, gas, servizio idrico, affitto, locazioni, mutui immobile, IMU, TARI, condominio
+29. **UTENZE E LOCALI** - Luce, gas, servizio idrico, affitto, locazioni, mutui immobile, IMU, TARI, condominio
     Esempi: "BOLLETTA ENEL", "GAS METANO", "SERVIZIO IDRICO", "CANONE AFFITTO", "TARI RIFIUTI"
+
+30. **RAPPRESENTANZA** - Pranzi e cene offerti a clienti o fornitori, pasti consumati in un altro locale: coperto, pasti completi, pranzo o cena di lavoro
+    Esempi: "COPERTO", "4 PASTI COMPLETI", "PRANZO DI LAVORO", "CENA AZIENDALE"
+    ⚠️ NON la stampa dei menu (MATERIALE DI CONSUMO) e NON il cibo comprato per la cucina
 
 ═══════════════════════════════════════════════════════════════════
 🎯 REGOLE CLASSIFICAZIONE (PRIORITÀ)
@@ -170,7 +165,17 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
     - ACQUA in bottiglia, naturale, frizzante o di brand minerale → ACQUA; servizio idrico/acquedotto/depurazione → UTENZE E LOCALI
     - ODK / DE KUYPER / FABBRI MIXYBAR, SCIROPPO DI MANDORLA e sciroppi cocktail simili → sempre VARIE BAR
     - ARANCE DA SPREMUTA / ARANCE SPREMUTA → FRUTTA se si tratta del frutto da spremere, non di una bevanda pronta
-    - TOFU → LATTICINI come sostituto/formaggio vegetale; GOMA WAKAME SALAD e wakame simili → SUSHI VARIE
+    - TOFU → LATTICINI come sostituto/formaggio vegetale; GOMA WAKAME SALAD e wakame simili → VERDURE
+    - PRODOTTI GIAPPONESI E ORIENTALI: NON hanno una categoria loro, classifica per COSA SONO:
+      alghe (NORI, YAKI NORI, WAKAME, KOMBU) → VERDURE; WASABI in polvere, in pasta o KIZAMI, SESAMO, SHICHIMI, DASHI → SPEZIE E AROMI;
+      TOBIKO, MASAGO, IKURA, KATSUOBUSHI, SURIMI, UNAGI/ANGUILLA, TAKOYAKI, EBI FRY → PESCE;
+      RISO, NOODLES (RAMEN, UDON, SOBA), GYOZA, BAO, HARUMAKI/INVOLTINI PRIMAVERA, PANKO, TEMPURA → PASTA E CEREALI;
+      SOIA, TERIYAKI, PONZU, MISO, salsa UNAGI, dressing al wasabi → SALSE E CREME; MIRIN, ACETO DI RISO, OLIO DI SESAMO → OLIO E CONDIMENTI;
+      ZENZERO marinato, germogli di BAMBÙ → SCATOLAME E CONSERVE; TOFU → LATTICINI; MATCHA → CAFFE E THE; MOCHI → GELATI E DESSERT;
+      SAKE (da bere e da cucina) → VINI; birre giapponesi → BIRRE;
+      bacchette, spiedi, foglie di bambù, tappetini, vaschette, asciugamani → MATERIALE DI CONSUMO; vetrine → MANUTENZIONE E ATTREZZATURE
+    - PRODOTTI COMPOSTI (involtini, ravioli, crocchette): conta l'ingrediente che pesa in cucina — involucro di pasta o sfoglia → PASTA E CEREALI; involtini di carne, polpette, cotolette → CARNE
+    - COPERTO, PASTI COMPLETI, PRANZO o CENA DI LAVORO (un pasto consumato in un altro locale) → RAPPRESENTANZA
     - CASTAGNE D'ACQUA / WATER CHESTNUTS → SCATOLAME E CONSERVE, non ACQUA
     - COPPA CREMA CATALANA e dolci/coppe dessert simili → GELATI E DESSERT; coppe gusto gelato tipo RABBIT / PAN DAN / CIP CIOK o linee LMA VASC → GELATI E DESSERT
     - BRIOCHE, KRAPFEN, BOMBOLONI, ARAGOSTINE e altri dolci con crema restano PASTICCERIA
@@ -249,7 +254,9 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ✅ HACCP / ADEMPIMENTI NORMATIVI / SICUREZZA SUL LAVORO → SERVIZI E CONSULENZE
 ✅ ARANCE DA SPREMUTA / ARANCE SPREMUTA → FRUTTA se è il frutto, non la bevanda pronta
 ✅ CASTAGNE D'ACQUA → SCATOLAME E CONSERVE
-✅ TOFU → LATTICINI; WAKAME SALAD → SUSHI VARIE
+✅ TOFU → LATTICINI; WAKAME SALAD → VERDURE
+✅ PRODOTTI GIAPPONESI → la categoria di cosa sono (regola 5): alghe VERDURE, wasabi SPEZIE E AROMI, tobiko PESCE, panko PASTA E CEREALI, sake VINI
+✅ COPERTO / PASTI COMPLETI / PRANZO DI LAVORO → RAPPRESENTANZA
 ✅ LMA VASC gusto e COPPA gusto gelato → GELATI E DESSERT
 
 ═══════════════════════════════════════════════════════════════════
@@ -288,8 +295,8 @@ Livelli di confidenza (scegli uno per ogni articolo):
 - "bassa" → descrizione troppo generica/vaga/in codice per essere certa (es. "VARIE", "ASSORTITI", "PRODOTTO 01", solo un codice numerico)
              Anche con confidence "bassa" scegli comunque la categoria più probabile.
 
-Usa esattamente i nomi categoria sopra: 26 categorie F&B (MATERIALE DI CONSUMO
-incluso, elencato due volte per raggruppamento) + 3 categorie spese = 29 categorie totali.
+Usa esattamente i nomi categoria sopra: 25 categorie F&B (MATERIALE DI CONSUMO
+incluso, elencato due volte per raggruppamento) + 4 categorie spese = 29 categorie totali.
 
 ═══════════════════════════════════════════════════════════════════
 🎯 ARTICOLI DA CLASSIFICARE
@@ -325,7 +332,7 @@ Sei un esperto di controllo di gestione per negozi al dettaglio.
 Classifica queste righe di fattura d'acquisto usando RAGIONAMENTO e CONTESTO.
 
 ═══════════════════════════════════════════════════════════════════
-📋 LE UNICHE 5 CATEGORIE AMMESSE
+📋 LE UNICHE 6 CATEGORIE AMMESSE
 ═══════════════════════════════════════════════════════════════════
 
 1. **ARTICOLO DI VENDITA** - Merce acquistata per essere RIVENDUTA al cliente
@@ -354,6 +361,10 @@ Classifica queste righe di fattura d'acquisto usando RAGIONAMENTO e CONTESTO.
    Esempi: "SHOPPER CARTA PERSONALIZZATI", "ROTOLI TERMICI CASSA",
    "NASTRO ADESIVO IMBALLO", "DETERSIVO PAVIMENTI", "SACCHI SPAZZATURA"
 
+6. **RAPPRESENTANZA** - Pranzi e cene offerti a clienti o fornitori, pasti
+   consumati in un bar o in un locale e pagati dal negozio: coperto, pasti completi.
+   Esempi: "COPERTO", "2 PASTI COMPLETI", "PRANZO DI LAVORO"
+
 ═══════════════════════════════════════════════════════════════════
 🎯 LA DOMANDA DECISIVA: si rivende o serve a far funzionare il negozio?
 ═══════════════════════════════════════════════════════════════════
@@ -367,7 +378,7 @@ Indizi che la riga sia merce da rivendere (→ ARTICOLO DI VENDITA):
 - la riga ha quantita' multiple, taglie, colori, codici EAN o codici articolo;
 - e' uno fra molti articoli simili della stessa fattura.
 
-Indizi che sia una spesa di struttura (→ una delle 4 categorie di spesa):
+Indizi che sia una spesa di struttura (→ una delle 5 categorie di spesa):
 - riga unica o isolata in una fattura di servizi;
 - il fornitore e' utility, telecom, banca, studio professionale, manutentore;
 - la descrizione nomina il negozio stesso, il locale, l'impianto, la cassa.
@@ -423,7 +434,7 @@ Se gli indizi si contraddicono o mancano, NON indovinare: "Da Classificare".
 ❌ NON usare MAI categorie alimentari (CARNE, PESCE, VINI, LATTICINI, BEVANDE,
    FRUTTA, VERDURE, PASTICCERIA...): NON esistono per un negozio. Un alimento
    messo in vendita da un negozio e' "ARTICOLO DI VENDITA" come ogni altra merce.
-❌ NON usare MAI "FOOD", "SHOP", "MERCE", "COSTO DEL VENDUTO" - non esistono!
+❌ NON usare MAI "FOOD", "SHOP", "RIVENDITA", "MERCE", "COSTO DEL VENDUTO" - non esistono!
 ❌ NON usare MAI "NOTE E DICITURE" - categoria riservata solo admin!
 ❌ NON mettere la merce da rivendere in "MATERIALE DI CONSUMO" solo perche' non
    e' cibo: "MATERIALE DI CONSUMO" e' cio' che il NEGOZIO consuma, non cio' che vende.
@@ -436,6 +447,7 @@ Se gli indizi si contraddicono o mancano, NON indovinare: "Da Classificare".
 ✅ Arredo, impianti, macchine, riparazioni → MANUTENZIONE E ATTREZZATURE
 ✅ Trasporto, consegna, commissioni, consulenze, software → SERVIZI E CONSULENZE
 ✅ Luce, gas, acqua, telefono, affitto, TARI → UTENZE E LOCALI
+✅ Coperto, pasti, pranzi di lavoro → RAPPRESENTANZA
 
 ═══════════════════════════════════════════════════════════════════
 📝 FORMATO RISPOSTA
@@ -465,9 +477,9 @@ Livelli di confidenza (scegli uno per ogni articolo):
 - "bassa" → descrizione troppo generica/vaga/in codice per essere certa
              (es. "VARIE", "ASSORTITI", "PRODOTTO 01", solo un codice numerico)
 
-Usa esattamente uno di questi 6 valori, nient'altro:
+Usa esattamente uno di questi 7 valori, nient'altro:
 "ARTICOLO DI VENDITA", "MANUTENZIONE E ATTREZZATURE", "SERVIZI E CONSULENZE",
-"UTENZE E LOCALI", "MATERIALE DI CONSUMO", "Da Classificare".
+"UTENZE E LOCALI", "MATERIALE DI CONSUMO", "RAPPRESENTANZA", "Da Classificare".
 
 ═══════════════════════════════════════════════════════════════════
 🎯 ARTICOLI DA CLASSIFICARE

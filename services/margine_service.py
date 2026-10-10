@@ -134,7 +134,7 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
         # (_calcola_costi_auto_per_periodo): FOOD = ogni costo che NON è spese
         # generali e non è "NOTE E DICITURE". Usare la lista esplicita
         # CATEGORIE_FOOD sottostimava il food per i clienti con categorie legacy
-        # (VERDURE, LATTICINI, SUSHI VARIE…), che non erano né food né spese.
+        # (VERDURE, LATTICINI, l'allora SUSHI VARIE…), che non erano né food né spese.
         df_spese = df[df['categoria'].isin(CATEGORIE_SPESE_GENERALI)]
         df_fb = df[
             ~df['categoria'].isin(CATEGORIE_SPESE_GENERALI)

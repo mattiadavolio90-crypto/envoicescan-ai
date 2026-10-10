@@ -52,7 +52,7 @@ def test_spezza_importo_con_centesimi_dispari():
 
 def test_spezza_peso_trascurabile_scartato():
     # una categoria con peso ~0 non genera una riga da 0.00 spuria.
-    out = _spezza_importo_per_pesi(100.0, {"CARNE": 1.0, "SHOP": 1e-12})
+    out = _spezza_importo_per_pesi(100.0, {"CARNE": 1.0, "RIVENDITA": 1e-12})
     cats = {o["categoria"] for o in out}
     assert cats == {"CARNE"}
     assert sum(o["quota_importo"] for o in out) == 100.0

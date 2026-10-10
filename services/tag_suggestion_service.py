@@ -14,6 +14,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from config.constants import CATEGORIE_SPESE_GENERALI
 from config.logger_setup import get_logger
 from services import get_supabase_client
 from services.db_service import _normalize_custom_tag_key, aggiungi_associazioni, clear_tags_cache, crea_tag
@@ -36,11 +37,7 @@ MAX_POOL_ROWS = 12000
 MAX_SUGGESTIONS_PER_TYPE = 20
 
 # Categorie non-F&B: escluse dai suggerimenti tag (i tag sono solo per prodotti alimentari)
-_CATEGORIE_ESCLUSE = {
-    "SERVIZI E CONSULENZE",
-    "UTENZE E LOCALI",
-    "MANUTENZIONE E ATTREZZATURE",
-    "MATERIALE DI CONSUMO",
+_CATEGORIE_ESCLUSE = set(CATEGORIE_SPESE_GENERALI) | {
     "📝 NOTE E DICITURE",
     "NOTE E DICITURE",
 }

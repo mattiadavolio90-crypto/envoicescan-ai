@@ -183,7 +183,7 @@ def _fatture_dubbie(*descrizioni):
 
 
 def test_suggerisci_ai_salta_regola_forte_e_non_chiama_gpt(monkeypatch):
-    # MAGNUM CLASSICO ha gia' una regola forte (-> SHOP): non deve andare a GPT.
+    # MAGNUM CLASSICO ha gia' una regola forte (-> RIVENDITA): non deve andare a GPT.
     sb = FakeClient({"fatture": _fatture_dubbie("MAGNUM CLASSICO")})
 
     chiamato = {"gpt": False}

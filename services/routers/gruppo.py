@@ -1659,7 +1659,7 @@ def incasso_fuori_norma_per_sede(
 # per categoria"), ma PIVOTATA per confronto tra punti vendita: righe = categoria,
 # colonne = PV. Cella = costo F&B della categoria ÷ coperti, sui SOLI mesi con
 # costo (stesso metodo di margini-coperti: i mesi con coperti ma fatture non
-# ancora arrivate non diluiscono la media). SHOP escluso (merce da rivendita).
+# ancora arrivate non diluiscono la media). RIVENDITA esclusa (merce da rivendita).
 
 
 class SprecoCategoriaCella(BaseModel):
@@ -1686,8 +1686,8 @@ class SprecoCategorieResponse(BaseModel):
     righe: List[SprecoCategoriaRiga]     # ordinate per media gruppo decrescente
 
 
-# SHOP fuori: è merce da rivendita, non materia prima di cucina (come nel PV).
-_SPRECO_CAT_ESCLUSE = {"SHOP"}
+# RIVENDITA fuori: è merce da rivendita, non materia prima di cucina (come nel PV).
+_SPRECO_CAT_ESCLUSE = {"RIVENDITA"}
 
 
 @router.get(
@@ -1966,7 +1966,9 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # voci mancanti con un nome stabile, e `mese`, il mese chiuso. Uno snapshot v5
 # non li ha, e la Home di catena mostrerebbe il segnale accanto all'avviso della
 # sede che dice lo stesso.
-_SEGNALI_CODE_VERSION = 6
+# 7 = 10/10/2026 (fase K): SHOP → RIVENDITA, via SUSHI VARIE, nasce RAPPRESENTANZA.
+# I segnali per categoria di uno snapshot v6 nominerebbero le categorie vecchie.
+_SEGNALI_CODE_VERSION = 7
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti

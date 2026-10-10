@@ -2,14 +2,16 @@
 
 1) BAMBÙ: stessa parola, due nature.
    - Bacchette/bastoncini/spiedini di bambù (monouso, posata) → MATERIALE DI CONSUMO
-   - Germogli / bambù conservato / foglie (commestibile) → SUSHI VARIE
-2) Snack da rivendita (taralli, tartine) → SHOP, non VARIE BAR.
+   - Germogli / bambù conservato → SCATOLAME E CONSERVE (Fase K, 10/10/2026: SUSHI
+     VARIE non esiste piu')
+   - Foglie di bambù (decorano il piatto, non si mangiano) → MATERIALE DI CONSUMO
+2) Snack da rivendita (taralli, tartine) → RIVENDITA (ex SHOP), non VARIE BAR.
 3) Miele: confezione grande = dispensa → SCATOLAME; bustine monodose bar → VARIE BAR.
 
 NB (20/07): il bambù-posata ora è deciso dalla REGOLA UNIVERSALE "oggetto non-edibile"
 in applica_regole_categoria_forti (oggetto ambiguo + materiale-non-edibile), non più da
 toppe per-prodotto nel dizionario. Perciò questi test usano la PIPELINE COMPLETA
-(dizionario + regole forti), non il solo dizionario. Il bambù-CIBO resta SUSHI VARIE.
+(dizionario + regole forti), non il solo dizionario.
 """
 import importlib
 
@@ -44,18 +46,27 @@ def test_bambu_posata_va_in_materiale(desc):
 @pytest.mark.parametrize("desc", [
     "BAMBU CONSERVATO 6X2900G",
     "GERMOGLI DI BAMBU CONSERVATI",
-    "FOGLIE DI BAMBU SOTTOVUOTO",
+    "BAMBU' CONSERVATO 1KG 1KG/10",
+    "FCJ BRAISED BAMBOO SHOOOTS 397G/48",
 ])
-def test_bambu_cibo_resta_sushi_varie(desc):
-    assert f(desc, SENT) == "SUSHI VARIE"
+def test_bambu_da_mangiare_va_in_conserve(desc):
+    assert f(desc, SENT) == "SCATOLAME E CONSERVE"
+
+
+@pytest.mark.parametrize("desc", [
+    "FOGLIE DI BAMBU SOTTOVUOTO",
+    "FOGLFOGLIE DI BAMBU SOTTOVUOTO 30X100X(30-32CM) M",
+])
+def test_foglie_di_bambu_vanno_in_materiale(desc):
+    assert f(desc, SENT) == "MATERIALE DI CONSUMO"
 
 
 @pytest.mark.parametrize("desc", [
     "SMART TARALLI CLASSIC-GR 500",
     "ESSEL. TARTINE GR.500-GR 500",
 ])
-def test_snack_va_in_shop(desc):
-    assert f(desc, SENT) == "SHOP"
+def test_snack_va_in_rivendita(desc):
+    assert f(desc, SENT) == "RIVENDITA"
 
 
 def test_miele_grande_in_scatolame_bustine_in_bar():

@@ -354,7 +354,7 @@ class TestMenuPubAnglofono2007:
             assert self._cat(d) == cat, f"{d} atteso {cat}, avuto {self._cat(d)}"
 
     def test_fish_and_chips_e_pesce_non_shop(self):
-        # "FISH & CHIPS" è pesce impanato, NON patatine da rivendita: "CHIPS"→SHOP
+        # "FISH & CHIPS" è pesce impanato, NON patatine da rivendita: "CHIPS"→RIVENDITA
         # nel dizionario catturava il piatto. Regola forte fish_and_chips lo corregge.
         for d in ["FISH & CHIPS BEER BATT. ALASKA POLLAK 120/130 GR",
                   "FISH AND CHIPS SURGELATO"]:
@@ -362,11 +362,12 @@ class TestMenuPubAnglofono2007:
 
     def test_arachidi_wasabi_non_e_sushi(self):
         # Leak SUSHILAND su un pub: "ARACHIDI WASABI" (snack al gusto wasabi) finiva
-        # in SUSHI VARIE per la keyword WASABI. Non deve più: è uno snack, non sushi.
-        assert self._cat("G800 ARACHIDI WASABI") != "SUSHI VARIE"
-        # ma il wasabi/nori VERI restano SUSHI VARIE
-        assert self._cat("PASTA DI WASABI TUBO 43G") == "SUSHI VARIE"
-        assert self._cat("ALGHE NORI 50 FOGLI") == "SUSHI VARIE"
+        # fra gli ingredienti del sushi per la keyword WASABI. E' uno snack da banco.
+        assert self._cat("G800 ARACHIDI WASABI") == "RIVENDITA"
+        # Il wasabi e il nori veri vanno nella loro famiglia (Fase K, 10/10/2026:
+        # SUSHI VARIE non esiste piu').
+        assert self._cat("PASTA DI WASABI TUBO 43G") == "SPEZIE E AROMI"
+        assert self._cat("ALGHE NORI 50 FOGLI") == "VERDURE"
 
 
 class TestOggettoNonEdibileUniversale2007:
@@ -454,16 +455,15 @@ class TestCertificatoreSemestre2007:
         assert self._cat("SALMONE FRESCO") == "PESCE"
         assert self._cat("BASTONCINI DI PESCE") == "PESCE"
 
-    def test_sake_bere_vs_cucina(self):
+    def test_sake_sempre_vini(self):
         # Cert. SUSHILAND Vimodrone 21/07: stesso prodotto (GEKKEIKAN in bottiglia)
-        # era sparso su 4 categorie diverse. Formato bottiglia/gradazione = da bere
-        # (DISTILLATI); formato tanica/"PER CUCINA" = condimento (SCATOLAME E CONSERVE).
+        # era sparso su 4 categorie diverse. Il 21/07 si separava da bere (DISTILLATI)
+        # e da cucina (SCATOLAME); dal 10/10/2026 (Mattia, Fase K) e' tutto VINI.
         for d in ["SAKE IN BOTTIGLIA GEKKEIKAN 6X1.8LT", "GEKKEIKAN SAKE 1,8LT 14,5% 6*1,8LT",
-                  "SHIRAYUKI SAKE IN BOTTIGLIA 6X1,8LT SAKE"]:
-            assert self._cat(d) == "DISTILLATI", d
-        for d in ["SAKE PER CUCINA(MISURAKI) 18 LT", "SAKE IN SCATOLE 18 LT MISURAKI",
-                  "HUAXIA SAKE GIAPPONESE 18KG"]:
-            assert self._cat(d) == "SCATOLAME E CONSERVE", d
+                  "SHIRAYUKI SAKE IN BOTTIGLIA 6X1,8LT SAKE",
+                  "SAKE PER CUCINA(MISURAKI) 18 LT", "SAKE IN SCATOLE 18 LT MISURAKI",
+                  "HUAXIA SAKE GIAPPONESE 18KG", "GEKKEIKAN SAKE COOKING 18LT 1*18LT 13,5%"]:
+            assert self._cat(d) == "VINI", d
 
     def test_filtro_olio_ricambio_non_e_condimento(self):
         # Cert. SUSHILAND Vimodrone/San Giuliano 21/07: "FILTRO OLIO" da officine

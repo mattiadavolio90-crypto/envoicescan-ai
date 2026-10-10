@@ -9,7 +9,7 @@ e' l'unica fonte di categoria oltre alla memoria locale del cliente.
 
 Quel file NON si tocca: questi test sono la sua copia sul testo retail, piu' i
 vincoli che valgono solo per il retail (nessuna categoria food, nessuna
-categoria fuori dalle 5 ammesse).
+categoria fuori dalle 6 ammesse).
 """
 
 import re
@@ -103,7 +103,7 @@ def test_il_prompt_retail_nomina_la_sua_unica_categoria_merce():
 
 
 @pytest.mark.parametrize("spesa", CATEGORIE_SPESE_GENERALI)
-def test_il_prompt_retail_nomina_le_quattro_spese_generali(spesa):
+def test_il_prompt_retail_nomina_le_spese_generali(spesa):
     assert spesa in PROMPT_CLASSIFICAZIONE_RETAIL
 
 
@@ -122,19 +122,23 @@ def test_il_prompt_retail_non_offre_nessuna_categoria_food_come_uscita():
     """
     ammesse_dal_prompt = []
     for riga in PROMPT_CLASSIFICAZIONE_RETAIL.splitlines():
-        # le 5 voci dell'elenco: "1. **ARTICOLO DI VENDITA** - ..."
+        # le voci dell'elenco: "1. **ARTICOLO DI VENDITA** - ..."
         voce = re.match(r"^\d+\. \*\*([^*]+)\*\* -", riga)
         if voce:
             ammesse_dal_prompt.append(voce.group(1).strip())
-    assert len(ammesse_dal_prompt) == 5, (
-        f"L'elenco delle categorie ammesse non ha 5 voci: {ammesse_dal_prompt}"
+    # Tante voci quante la whitelist del settore: la merce + le spese generali
+    # (6 dalla Fase K, 10/10/2026, con RAPPRESENTANZA).
+    from services.settore_service import categorie_ammesse
+    attese = len(categorie_ammesse(SETTORE_RETAIL))
+    assert len(ammesse_dal_prompt) == attese, (
+        f"L'elenco delle categorie ammesse non ha {attese} voci: {ammesse_dal_prompt}"
     )
     food_proposte = [c for c in ammesse_dal_prompt if c in CATEGORIE_FOOD_BEVERAGE]
     assert not food_proposte, (
         f"Il prompt retail propone categorie food: {food_proposte}"
     )
 
-    blocco = PROMPT_CLASSIFICAZIONE_RETAIL.split("Usa esattamente uno di questi 6 valori")[-1]
+    blocco = PROMPT_CLASSIFICAZIONE_RETAIL.split(f"Usa esattamente uno di questi {attese + 1} valori")[-1]
     valide = set(re.findall(r'"([^"]+)"', blocco.split("\n\n")[0]))
     assert not (valide & set(CATEGORIE_FOOD_BEVERAGE)), (
         f"L'elenco finale dei valori validi contiene food: {valide & set(CATEGORIE_FOOD_BEVERAGE)}"
@@ -148,9 +152,9 @@ def test_il_prompt_retail_vieta_esplicitamente_le_categorie_food():
 
 
 def test_il_prompt_retail_elenca_esattamente_le_uscite_ammesse():
-    """Il blocco di formato deve enumerare le 6 uscite valide e nient'altro.
+    """Il blocco di formato deve enumerare le 7 uscite valide e nient'altro.
 
-    Le uscite sono ARTICOLO DI VENDITA + le 4 spese generali + Da Classificare:
+    Le uscite sono ARTICOLO DI VENDITA + le 5 spese generali + Da Classificare:
     la stessa partizione di `settore_service.categorie_ammesse('retail')` piu'
     la categoria di dominio. Se qualcuno aggiunge una sesta categoria merce al
     prompt senza aggiungerla alla whitelist, l'AI la proporrebbe e la
@@ -160,7 +164,7 @@ def test_il_prompt_retail_elenca_esattamente_le_uscite_ammesse():
     from services.settore_service import categorie_ammesse
 
     blocco = re.search(
-        r'Usa esattamente uno di questi 6 valori.*?\n((?:.*\n)*?)\n',
+        r'Usa esattamente uno di questi 7 valori.*?\n((?:.*\n)*?)\n',
         PROMPT_CLASSIFICAZIONE_RETAIL,
     )
     assert blocco, "Il prompt retail non elenca piu' le uscite ammesse"

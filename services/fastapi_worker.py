@@ -604,6 +604,7 @@ def _build_allowed_origins() -> List[str]:
 
 from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centralizzato
 from config.constants import CATEGORIE_SPESE_GENERALI as _CATEGORIE_SPESE_GENERALI
+from config.constants import CENTRI_DI_PRODUZIONE as _CENTRI_DI_PRODUZIONE_CONST
 from config.constants import CATEGORIA_NON_CLASSIFICATA
 from config.constants import SETTORE_RETAIL
 from services import sotto_utenti_service as _su
@@ -1370,7 +1371,7 @@ _TAB_OFF_PER_SETTORE: Dict[str, frozenset] = {
         "tab_off_workspace_foodcost",
         "tab_off_margini_coperti",
         # I centri di produzione stanno nella tab «Analisi Avanzate» di margini:
-        # sono 5 secchi food (FOOD/BEVERAGE/ALCOLICI/DOLCI/SHOP) con le loro
+        # sono 5 secchi food (FOOD/BEVERAGE/ALCOLICI/DOLCI/RIVENDITA) con le loro
         # icone. Un negozio, che ha UNA categoria merce, li vedrebbe tutti a
         # zero tranne uno — una pagina che non dice niente, con le emoji di un
         # ristorante sopra.
@@ -10905,13 +10906,9 @@ def _serialize_rows(rows: List[Any]) -> List[Dict[str, Any]]:
 # MARGINALITÀ
 # ═══════════════════════════════════════════════════════════════════════════
 
-_CENTRI_DI_PRODUZIONE: Dict[str, List[str]] = {
-    "FOOD": ["CARNE","PESCE","LATTICINI","SALUMI","UOVA","SCATOLAME E CONSERVE","OLIO E CONDIMENTI","PASTA E CEREALI","VERDURE","FRUTTA","SALSE E CREME","PRODOTTI DA FORNO","SPEZIE E AROMI","SUSHI VARIE"],
-    "BEVERAGE": ["ACQUA","BEVANDE","CAFFE E THE","VARIE BAR"],
-    "ALCOLICI": ["BIRRE","VINI","DISTILLATI","AMARI/LIQUORI"],
-    "DOLCI": ["PASTICCERIA","GELATI E DESSERT"],
-    "SHOP": ["SHOP"],
-}
+# Derivato da config/constants.py: la copia letterale che stava qui andava
+# riallineata a mano a ogni categoria (Fase K: SHOP → RIVENDITA, via SUSHI VARIE).
+_CENTRI_DI_PRODUZIONE: Dict[str, List[str]] = {c: list(cats) for c, cats in _CENTRI_DI_PRODUZIONE_CONST.items()}
 _CAT_TO_CENTRO: Dict[str, str] = {cat: c for c, cats in _CENTRI_DI_PRODUZIONE.items() for cat in cats}
 _CATEGORIE_FB_M: List[str] = list(_CAT_TO_CENTRO.keys())
 # Derivata dalla costante condivisa (vedi CATEGORIE_SPESE_GENERALI_WORKER):

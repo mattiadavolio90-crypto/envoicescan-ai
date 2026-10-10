@@ -220,7 +220,7 @@ class TestTipoDaCategoria:
     """La categoria decide il binario contabile. Se questa derivazione sbaglia,
     il totale finisce nella cella sbagliata di margini_mensili e il MOL si muove."""
 
-    @pytest.mark.parametrize("categoria", ["PESCE", "CARNE", "VINI", "SUSHI VARIE", "GELATI E DESSERT"])
+    @pytest.mark.parametrize("categoria", ["PESCE", "CARNE", "VINI", "RIVENDITA", "GELATI E DESSERT"])
     def test_food_beverage_va_su_fb(self, categoria):
         assert workspace._tipo_da_categoria(categoria) == "fb"
 
@@ -230,6 +230,8 @@ class TestTipoDaCategoria:
         "MANUTENZIONE E ATTREZZATURE",
         # Non e' ovvio: la stringa dice "MATERIALE" ma logicamente e' spesa generale.
         "MATERIALE DI CONSUMO",
+        # Fase K (10/10/2026): un pranzo con un cliente non e' food cost.
+        "RAPPRESENTANZA",
     ])
     def test_spese_generali_vanno_su_generale(self, categoria):
         assert workspace._tipo_da_categoria(categoria) == "generale"

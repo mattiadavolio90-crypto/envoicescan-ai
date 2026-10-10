@@ -378,7 +378,7 @@ class FatturatoCentriGiornoItem(BaseModel):
     beverage: float = 0.0
     alcolici: float = 0.0
     dolci: float = 0.0
-    shop: float = 0.0
+    rivendita: float = 0.0
 
 
 def _mese_in_modalita_mensile(sb, ristorante_id: str, anno: int, mese: int) -> bool:
@@ -488,7 +488,7 @@ def get_fatturato_centri_giorni(
             beverage=round(netto_g * frazioni["beverage"], 2),
             alcolici=round(netto_g * frazioni["alcolici"], 2),
             dolci=round(netto_g * frazioni["dolci"], 2),
-            shop=0.0,
+            rivendita=0.0,
         ))
     return items
 
@@ -581,7 +581,7 @@ def get_analisi_centri(
 # ANALISI AVANZATA CENTRI — drill-down categorie + andamento mensile + commenti
 # ═══════════════════════════════════════════════════════════════════════════
 
-_ICONE_CENTRI = {"FOOD": "🍖", "BEVERAGE": "☕", "ALCOLICI": "🍷", "DOLCI": "🍰", "SHOP": "🛒"}
+_ICONE_CENTRI = {"FOOD": "🍖", "BEVERAGE": "☕", "ALCOLICI": "🍷", "DOLCI": "🍰", "RIVENDITA": "🛒"}
 
 
 class CategoriaDetail(BaseModel):
@@ -612,7 +612,7 @@ class AndamentoMese(BaseModel):
     beverage: float
     alcolici: float
     dolci: float
-    shop: float
+    rivendita: float
 
 
 class CommentoKpi(BaseModel):
@@ -774,7 +774,7 @@ def get_analisi_avanzata(
             beverage=round(costi_centri.get("BEVERAGE", 0), 2),
             alcolici=round(costi_centri.get("ALCOLICI", 0), 2),
             dolci=round(costi_centri.get("DOLCI", 0), 2),
-            shop=round(costi_centri.get("SHOP", 0), 2),
+            rivendita=round(costi_centri.get("RIVENDITA", 0), 2),
         ))
 
     # Commenti automatici per centro

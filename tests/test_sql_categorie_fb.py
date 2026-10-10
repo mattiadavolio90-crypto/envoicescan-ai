@@ -179,3 +179,15 @@ def test_peso_categoria_esclude_le_spese_generali(db_sql, sql):
         f"i pesi sommano a {totale:.2f} invece di 100: la base del calcolo "
         "include righe che non compaiono nel risultato"
     )
+
+
+@pytest.mark.parametrize("nome_tolto", ["SHOP", "SUSHI VARIE"])
+def test_i_nomi_tolti_nella_fase_k_non_pesano_piu_sul_fb(scalare, nome_tolto):
+    """Fase K (10/10/2026): SHOP e' diventata RIVENDITA, SUSHI VARIE e' abolita.
+
+    I test sopra provano che le categorie di OGGI sono F&B; nessuno prova che
+    un nome uscito dall'elenco sia uscito anche dalla copia SQL. Una riga rimasta
+    con il nome vecchio deve finire nel secchio che Python le darebbe (spesa,
+    come ogni categoria che l'app non conosce), non in un F&B fantasma.
+    """
+    assert scalare("SELECT public._riparto_categoria_is_fb(%s)", nome_tolto) is False

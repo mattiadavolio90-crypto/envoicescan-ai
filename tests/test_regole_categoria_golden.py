@@ -80,6 +80,22 @@ Effetto: 15 casi cambiati su 8378 — 3 descrizioni x 5 categorie di input, tutt
 MATERIALE DI CONSUMO -> LATTICINI, nessuna finita in coda. Sull'intero catalogo reale
 (6.959 descrizioni distinte) la modifica tocca esattamente quelle 4 righe e nient'altro.
 Vedi tests/test_vaschetta_contenitore_o_cibo.py per i 24 casi reali e le controprove.
+
+Aggiornato 10/10/2026 (Fase K, decisioni di Mattia): SHOP si chiama RIVENDITA, SUSHI
+VARIE non esiste piu', tutto il sake e' VINI. Effetto: 116 casi su 8378, 28 descrizioni,
+tutti voluti:
+  - 25 SHOP -> RIVENDITA (DAYGUM, SMOKING FILTRI): stessa regola, nome nuovo;
+  - 85 ex SUSHI VARIE: bambu' in conserva -> SCATOLAME (bambu_conserva), foglie ->
+    MATERIALE (foglie_bambu_consumo), panko -> PASTA (giappo_fritto_pasta), pasta di
+    wasabi -> SPEZIE (wasabi_radice), dressing al wasabi -> SALSE (wasabi_salsa); nori,
+    tobiko, wasabi in polvere/kizami e riso arare non hanno piu' una regola forte e qui
+    restano sull'input: li decide il DIZIONARIO (VERDURE, PESCE, SPEZIE, PASTA),
+    provato in tests/test_fase_k_categorie.py sulla pipeline intera;
+  - 4 sake DISTILLATI/SCATOLAME -> VINI (sake_vini);
+  - 5 UNAGI SAUCE PESCE -> SALSE (unagi_salsa: la salsa non e' l'anguilla);
+  - 3 mirin e olio di sesamo Da Classificare -> OLIO E CONDIMENTI.
+Sull'intero catalogo reale (7.173 descrizioni distinte, nucleo deterministico intero)
+cambiano 71 descrizioni, tutte di queste famiglie, oltre alla sola rinomina di SHOP.
 """
 import json
 import os

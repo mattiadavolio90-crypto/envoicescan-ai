@@ -30,7 +30,13 @@ import services.routers.admin as admin
 
 RADICE = Path(__file__).resolve().parents[1]
 WORKFLOW = RADICE / ".github" / "workflows" / "retail_settore_check.yml"
-VIEW_SQL = RADICE / "supabase" / "migrations" / "20260911170000_v_categorie_settore_incoerenti.sql"
+# La view e' ridefinita da piu' migration (la Fase K del 10/10/2026 ne ha
+# aggiornato le liste): fa fede l'ULTIMA, quella che il DB applica per ultima.
+# Leggere la prima farebbe controllare un testo che il database non usa piu'.
+VIEW_SQL = sorted(
+    p for p in (RADICE / "supabase" / "migrations").glob("*.sql")
+    if "CREATE OR REPLACE VIEW public.v_categorie_settore_incoerenti" in p.read_text(encoding="utf-8")
+)[-1]
 
 ROTTA = "/api/admin/retail/categorie-incoerenti"
 
@@ -247,11 +253,25 @@ def test_la_lista_food_della_view_e_quella_delle_costanti():
     """La view ripete in SQL la lista di CATEGORIE_FOOD_BEVERAGE. Se le due
     divergono, la classe 2 smette di vedere proprio le categorie aggiunte dopo —
     in silenzio, perche' nessuna query fallisce."""
-    from config.constants import CATEGORIE_FOOD_BEVERAGE
+    from config.constants import (
+        CATEGORIE_ABOLITE,
+        CATEGORIE_FOOD_BEVERAGE,
+        LEGACY_CATEGORY_ALIASES,
+    )
 
     blocco = VIEW_SQL.read_text(encoding="utf-8").split("l.new_categoria IN (")[1].split(");")[0]
     nella_view = set(re.findall(r"'([^']+)'", blocco))
-    assert nella_view == set(CATEGORIE_FOOD_BEVERAGE)
+    assert set(CATEGORIE_FOOD_BEVERAGE) <= nella_view, (
+        f"food mancanti nella view: {sorted(set(CATEGORIE_FOOD_BEVERAGE) - nella_view)}"
+    )
+    # La view legge il REGISTRO dei cambi, che conserva i nomi di allora: oltre
+    # alle food di oggi puo' tenere solo nomi tolti o rinominati (SHOP, SUSHI VARIE).
+    storici = set(CATEGORIE_ABOLITE) | {
+        vecchio for vecchio, nuovo in LEGACY_CATEGORY_ALIASES.items()
+        if nuovo in CATEGORIE_FOOD_BEVERAGE
+    }
+    estranei = nella_view - set(CATEGORIE_FOOD_BEVERAGE) - storici
+    assert not estranei, f"nella view categorie che non sono food ne' nomi storici: {sorted(estranei)}"
 
 
 def test_la_rotta_resta_protetta_anche_senza_la_guardia_del_router():

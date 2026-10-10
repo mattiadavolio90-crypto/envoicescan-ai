@@ -1242,9 +1242,9 @@ def get_coperti_analisi(
 
 # ── Costo materia prima per coperto, PER CATEGORIA (dialog approfondimento) ────
 # Tabella categoria × mese: costo F&B della categoria nel mese ÷ coperti del mese.
-# Solo categorie materia prima reali; SHOP escluso (merce da rivendita, non spreco
+# Solo categorie materia prima reali; RIVENDITA esclusa (merce da rivendita, non spreco
 # di cucina). Spese generali già fuori (la helper aggrega solo le F&B).
-_SHOP_ESCLUSO = {"SHOP"}
+_RIVENDITA_ESCLUSA = {"RIVENDITA"}
 
 
 class CategoriaCopertoMese(BaseModel):
@@ -1328,9 +1328,9 @@ def get_coperti_categorie(
         logger.warning("coperti-categorie: aggregazione fatture fallita: %s", exc)
         cat_map = {}
 
-    # Categorie presenti, SHOP escluso.
+    # Categorie presenti, RIVENDITA esclusa.
     categorie = sorted({
-        cat for (_, _, cat) in cat_map.keys() if cat not in _SHOP_ESCLUSO
+        cat for (_, _, cat) in cat_map.keys() if cat not in _RIVENDITA_ESCLUSA
     })
 
     mesi_label = [f"{_MESI_SHORT[m]} {y}" for (y, m) in mesi_con_coperti]

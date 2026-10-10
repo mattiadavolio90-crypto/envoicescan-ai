@@ -43,7 +43,7 @@ def test_zero_lavorazione_is_not_dicitura():
 def test_negative_reso_is_storno():
     result = classify_special_row(
         descrizione='BISCOTTI FORTUNA 275PZ RESO',
-        categoria='SHOP',
+        categoria='RIVENDITA',
         prezzo=-10,
         totale_riga=-10,
     )

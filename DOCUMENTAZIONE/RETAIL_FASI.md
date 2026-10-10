@@ -141,7 +141,7 @@ Il cliente retail ha già il suo gestionale di cassa per il venduto; da ONEFLUX 
 
 Decise da Mattia nel brainstorming del 7/9 e nelle revisioni del 10/9:
 
-- **Una sola categoria merce, `ARTICOLO DI VENDITA`**, più le 4 spese generali esistenti.
+- **Una sola categoria merce, `ARTICOLO DI VENDITA`**, più le spese generali esistenti (4 all'apertura, 5 dalla Fase K del 10/10/2026 con `RAPPRESENTANZA`).
   Niente tassonomia retail da progettare, niente 1.280 keyword da riscrivere. La
   profondità d'analisi (un ferramenta, una libreria) la danno i **tag custom**, che
   esistono già con KPI, trend e fornitori (`services/tag_analytics_service.py`) e si
@@ -455,7 +455,7 @@ risolve il settore). Check baseline a zero prima e dopo la mutazione.
       proposta AI quando il dizionario è certo. Saltare se retail
 
 **Chiusa il 10/9 sera.** `categorie_ammesse(settore)` in `settore_service` (ristorazione →
-`TUTTE_LE_CATEGORIE` identica; retail → `ARTICOLO DI VENDITA` + 4 spese generali; la costante
+`TUTTE_LE_CATEGORIE` identica; retail → `ARTICOLO DI VENDITA` + le spese generali (5 dal 10/10/2026); la costante
 `CATEGORIA_ARTICOLO_DI_VENDITA` sta in `config/constants.py` **fuori** da ogni lista
 condivisa). `_chiama_gpt_classificazione` e `classifica_con_ai` prendono `settore=None` in
 coda; la validazione usa la whitelist del settore e per il retail **non** recupera dal
@@ -926,7 +926,7 @@ debba proporla.
   `get_prompt_classificazione(articoli_json)`); l'unico consumatore è
   `_chiama_gpt_classificazione` in `services/ai_service.py`, che ha già il kwarg `settore` e
   lo usa solo per la **validazione** dell'uscita (`_categorie_ammesse_per(settore)`: per un
-  negozio `ARTICOLO DI VENDITA` + le 4 spese generali; una food o una categoria inventata →
+  negozio `ARTICOLO DI VENDITA` + le spese generali (5 dal 10/10/2026); una food o una categoria inventata →
   «Da Classificare», nessun recupero dal dizionario). La scelta del prompt per settore va
   fatta lì: `get_prompt_classificazione(articoli_json, settore=settore)`, kwarg additivo, con
   `None`/'ristorazione' che ritorna **letteralmente** il testo di oggi (test: uguaglianza con
