@@ -58,12 +58,36 @@ def test_ogni_prodotto_va_nella_sua_famiglia(descrizione, attesa):
     "BICCHIERI SAKE CERAMICA 6PZ",
     "CARAFFA SAKE 300ML",
     "SET SAKE TOKKURI OCHOKO",
+    "TAZZINE SAKE 6PZ",
+    "SERVIZIO SAKE CERAMICA",
 ])
 def test_gli_oggetti_da_sake_non_sono_vino(descrizione):
     """La regola del sake sta in cima, prima delle stoviglie: senza eccezione un
     servizio da sake finirebbe fra i vini (e nel food cost delle bevande)."""
     categoria, _motivo, _conf = ai_mod.decisione_deterministica(descrizione)
     assert categoria != "VINI", descrizione
+
+
+@pytest.mark.parametrize("descrizione,non_deve_essere", [
+    # le parole devono stare vicine: un grissino con olio e sesamo e' un grissino
+    ("GRISSINI ALL'OLIO E SESAMO", "OLIO E CONDIMENTI"),
+    ("TARALLI SESAMO E OLIO", "OLIO E CONDIMENTI"),
+    ("FOCACCIA OLIO E SESAMO", "OLIO E CONDIMENTI"),
+    # l'anguilla venduta con la sua salsa e' pesce
+    ("ANGUILLA UNAGI CON SALSA", "SALSE E CREME"),
+    # "SHOT" non e' "SHOOTS": un bicchierino non e' una conserva
+    ("BAMBOO SHOT GLASS", "SCATOLAME E CONSERVE"),
+    # la chiave delle foglie di bambu' vuole la taglia: la menta non e' un piatto
+    ("FOGLIE FRESCA DI MENTA", "MATERIALE DI CONSUMO"),
+    # pesce e carne impanati restano pesce e carne (regola dei composti)
+    ("GAMBERI PANKO 1KG", "PASTA E CEREALI"),
+    ("POLLO PANKO", "PASTA E CEREALI"),
+])
+def test_le_regole_nuove_non_prendono_troppo(descrizione, non_deve_essere):
+    """Casi trovati dal revisore di K1: regole forti che prendevano troppo, e
+    non negoziabili, quindi senza nemmeno passare dalla coda di revisione."""
+    categoria, _motivo, _conf = ai_mod.decisione_deterministica(descrizione)
+    assert categoria != non_deve_essere, f"{descrizione!r} finisce in {categoria}"
 
 
 # ── l'elenco ─────────────────────────────────────────────────────────────────
@@ -195,6 +219,24 @@ def test_una_voce_abolita_in_memoria_non_decide_la_riga(cache_pulita):
     assert categoria == "VERDURE"
 
 
+@pytest.mark.parametrize("descrizione,memoria_vecchia,attesa", [
+    ("MIZKAN MIRIN 18L Y", "SALSE E CREME", "OLIO E CONDIMENTI"),
+    ("OLIO SESAMO 1,8LT", "SPEZIE E AROMI", "OLIO E CONDIMENTI"),
+    ("UNAGI SAUCE NIPPON SHOKKEN 6*2KG", "PESCE", "SALSE E CREME"),
+    ("SAKE IN SCATOLE MISURAKI", "DISTILLATI", "VINI"),
+])
+def test_le_regole_della_fase_k_battono_la_memoria_vecchia(cache_pulita, descrizione, memoria_vecchia, attesa):
+    """Sul live la memoria dei clienti porta ancora le categorie di prima (sake in
+    DISTILLATI, mirin in SALSE...): le regole nuove devono essere non negoziabili,
+    o la voce vecchia deciderebbe ogni fattura nuova."""
+    _cache, supabase = _carica({"prodotti_utente": [{"descrizione": descrizione, "categoria": memoria_vecchia}]})
+    categoria = ai_mod.categorizza_con_memoria(
+        descrizione=descrizione, prezzo=40.0, quantita=1, user_id="user-k",
+        supabase_client=supabase, pending_local_saves=[],
+    )
+    assert categoria == attesa
+
+
 def _risposta_ai(categorie):
     payload = {"risultati": [{"idx": i, "categoria": c, "confidence": "alta"}
                              for i, c in enumerate(categorie)]}
@@ -259,6 +301,26 @@ def test_il_prompt_dei_ristoranti_elenca_esattamente_le_29():
                          ids=["ristoranti", "retail"])
 def test_nessun_prompt_propone_sushi_varie(prompt):
     assert "SUSHI VARIE" not in prompt
+
+
+@pytest.mark.parametrize("frase", [
+    r"SAKE \(da bere e da cucina\) → VINI",
+    r"alghe \(NORI, YAKI NORI, WAKAME, KOMBU\) → VERDURE",
+    r"TOBIKO, MASAGO, IKURA, KATSUOBUSHI[^\n]*→ PESCE",
+    r"MIRIN, ACETO DI RISO, OLIO DI SESAMO → OLIO E CONDIMENTI",
+    r"COPERTO, PASTI COMPLETI, PRANZO o CENA DI LAVORO[^\n]*→ RAPPRESENTANZA",
+])
+def test_il_prompt_dei_ristoranti_dice_le_decisioni_di_mattia(frase):
+    """Il prompt e' l'unica cosa che l'AI legge: la mappa decisa da Mattia deve
+    starci scritta, non solo nel dizionario."""
+    assert re.search(frase, PROMPT_CLASSIFICAZIONE_AI), frase
+
+
+def test_il_prompt_retail_vieta_rivendita():
+    """RIVENDITA e' la parola che un'AI userebbe per la merce di un negozio, che
+    invece e' ARTICOLO DI VENDITA."""
+    divieto = next(r for r in PROMPT_CLASSIFICAZIONE_RETAIL.splitlines() if r.startswith("❌ NON usare MAI \"FOOD\""))
+    assert '"RIVENDITA"' in divieto
 
 
 # ── il client ────────────────────────────────────────────────────────────────

@@ -2,8 +2,8 @@
 
 Il perimetro
 ============
-`config/constants.py` dichiara le 25 categorie Food & Beverage e le 4 di spese
-generali. Quelle stesse liste sono RICOPIATE, a mano, dentro tre funzioni del
+`config/constants.py` dichiara le categorie Food & Beverage e quelle di spese
+generali (24 e 5 dalla Fase K del 10/10/2026). Quelle stesse liste sono RICOPIATE, a mano, dentro tre funzioni del
 database (misurato il 7/9/2026 leggendo i corpi dal DB live):
 
   * `_riparto_categoria_is_fb`  — decide se una quota di riparto pesa sul F&B o
@@ -186,8 +186,9 @@ def test_i_nomi_tolti_nella_fase_k_non_pesano_piu_sul_fb(scalare, nome_tolto):
     """Fase K (10/10/2026): SHOP e' diventata RIVENDITA, SUSHI VARIE e' abolita.
 
     I test sopra provano che le categorie di OGGI sono F&B; nessuno prova che
-    un nome uscito dall'elenco sia uscito anche dalla copia SQL. Una riga rimasta
-    con il nome vecchio deve finire nel secchio che Python le darebbe (spesa,
-    come ogni categoria che l'app non conosce), non in un F&B fantasma.
+    un nome uscito dall'elenco sia uscito anche dalla copia SQL. Un nome tolto
+    rimasto nel riparto continuerebbe a pesare sul F&B per una categoria che
+    l'app non usa piu'. (I dati SHOP li rinomina la migration dei dati della
+    fase K, nella stessa finestra di deploy.)
     """
     assert scalare("SELECT public._riparto_categoria_is_fb(%s)", nome_tolto) is False

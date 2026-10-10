@@ -611,17 +611,9 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
 _CATEGORIE_PLACEHOLDER = {"", "DA CLASSIFICARE"}
 _FALLBACK_CATEGORIA_NON_CLASSIFICATO = CATEGORIA_FALLBACK  # centralizzato in config.constants
 
-# Fornitori generici non-food (GDO/casalinghi): vendono di tutto, quindi una loro
-# riga categorizzata food merita una verifica manuale (alto tasso di errore osservato).
-_FORNITORI_NON_FOOD_GENERICI = (
-    "ESSELUNGA", "MAISONS DU MONDE", "MAISON DU MONDE", "KASANOVA", "IKEA",
-    "LEROY MERLIN", "ZARA HOME", "AMAZON",
-)
-
-# Categorie food/bevande: una riga di un fornitore non-food generico finita qui è sospetta.
-_CATEGORIE_FOOD_PER_REVIEW = frozenset(TUTTE_LE_CATEGORIE) - frozenset(CATEGORIE_SPESE_GENERALI) - {
-    "MATERIALE DI CONSUMO", "RIVENDITA",
-}
+# (Fase K, 10/10/2026: tolti _FORNITORI_NON_FOOD_GENERICI e _CATEGORIE_FOOD_PER_REVIEW,
+# senza lettori dal 26/06, quando descrizione_e_dubbia ha smesso di guardare il
+# fornitore GDO: un mutante che rimetteva SHOP nel secondo sopravviveva per questo.)
 
 
 def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
@@ -1146,10 +1138,17 @@ _ACETO_RISO_RE = re.compile(r"\bACETO\b.*\bRISO\b|\bRISO\b.*\bACETO\b")
 # Mattia). Il mirin cadeva in SALSE per la chiave del marchio ("MIZKAN"), l'olio
 # di sesamo in SPEZIE per "SESAMO", piu' lunga di "OLIO".
 _MIRIN_RE = re.compile(r"\bMIRIN\b")
-_OLIO_SESAMO_RE = re.compile(r"\bOLIO\b.*\bSESAM\w*|\bSESAM\w*\b.*\bOLIO\b|\bSESAME\s+OIL\b")
+# Le parole devono stare vicine ("OLIO DI SESAMO", "OLIO SESAMO", "SESAME OIL"):
+# "GRISSINI ALL'OLIO E SESAMO" e' un grissino, non un condimento (revisore K1).
+_OLIO_SESAMO_RE = re.compile(r"\bOLIO\s+(?:DI\s+|AL\s+)?(?:SEMI\s+DI\s+)?SESAM\w*\b|\bSESAME\s+OIL\b")
 # La salsa per anguilla e' una salsa: senza questa eccezione "UNAGI SAUCE" finiva
-# in PESCE con la regola dell'anguilla, che batte anche la memoria.
-_UNAGI_SALSA_RE = re.compile(r"\bUNAGI\b.*\b(SAUCE|SALSA|TARE)\b|\b(SAUCE|SALSA|TARE)\b.*\bUNAGI\b")
+# in PESCE con la regola dell'anguilla, che batte anche la memoria. La salsa deve
+# essere IL prodotto: "UNAGI KABAYAKI CON SALSA" e' anguilla venduta con la sua
+# salsa, cioe' pesce (revisore K1).
+_UNAGI_SALSA_RE = re.compile(
+    r"\bUNAGI\s+(?:NO\s+)?(?:SAUCE|TARE)\b"
+    r"|\b(?:SALSA|SAUCE)\s+(?:PER\s+|DI\s+|ALL['’]?\s*)?(?:UNAGI|ANGUILLA)\b"
+)
 _UNAGI_RE = re.compile(r"\bUNAGI\b")
 _DIMSUM_SECCO_RE = re.compile(r"\b(RAVIOLI|SHAO\s?MAI|SIU\s?MAI|GYOZA|HAUKAU|HAR\s?GAU|DIMSUM|DIM\s*SUM)\b")
 _BAO_RIPIENO_RE = re.compile(r"\bBAO\b(?!\s+CREMA)")  # BAO ripieno (maiale, verdure, ecc.) → SECCO; BAO CREMA → PASTICCERIA
@@ -1470,12 +1469,20 @@ _VOCE_BOLLETTA_RE = re.compile(
 )
 # (3) Fritti/preparazioni giapponesi, che l'AI buttava nel calderone SUSHI VARIE
 # (abolita nella Fase K, 10/10/2026):
-# TEMPURA/PASTELLA/PANKO = pastella e impanatura da friggere → PASTA E CEREALI,
-# ma non la CARTA per tempura (un foglio assorbente, materiale di consumo);
+# TEMPURA/PASTELLA = pastella da friggere → PASTA E CEREALI, ma non la CARTA per
+# tempura (un foglio assorbente, materiale di consumo). Il PANKO da solo lo decide
+# il dizionario: in una regola forte avrebbe preso anche "EBI FRY PANKO" o
+# "COTOLETTA PANKO", che sono pesce e carne impanati (revisore K1).
 # TAKOYAKI = polpette di polpo → PESCE; GYOZA/HARUMAKI sono già in _DIMSUM_RE.
-_GIAPPO_FRITTO_PASTA_RE = re.compile(r"\b(TEMPURA|PASTELLA|TENKASU|PANKO|KARAAGE\s*MIX)\b")
+# Uova di pesce e katsuobushi sono PESCE anche col gusto ("TOBIKO WASABI"): con la
+# sola chiave del dizionario vinceva WASABI, lunga uguale e inserita prima.
+# "RISO MASAGO ARARE" no: e' un cracker di riso.
+_GIAPPO_FRITTO_PASTA_RE = re.compile(r"\b(TEMPURA|PASTELLA|TENKASU|KARAAGE\s*MIX)\b")
 _GIAPPO_CARTA_RE = re.compile(r"\bCARTA\b")
-_GIAPPO_PESCE_RE = re.compile(r"\b(TAKOYAKI|EBI\s*FRY|EBIFRY|SURIMI\s*GRANCHIO)\b")
+_GIAPPO_PESCE_RE = re.compile(
+    r"\b(TAKOYAKI|EBI\s*FRY|EBIFRY|SURIMI\s*GRANCHIO|TOBIKO|EBIKO|IKURA|KATSUOBUSHI)\b"
+    r"|\bMASAGO\b(?!\s+ARARE)"
+)
 # Fase K — il bambu' non ha una famiglia sua, la decide l'uso:
 #   germogli/fette/conserva → SCATOLAME E CONSERVE (si mangiano, in scatola);
 #   foglie → MATERIALE DI CONSUMO (decorano il piatto, non si mangiano);
@@ -1483,7 +1490,7 @@ _GIAPPO_PESCE_RE = re.compile(r"\b(TAKOYAKI|EBI\s*FRY|EBIFRY|SURIMI\s*GRANCHIO)\
 # Niente \b dopo BAMBU: "BAMBU'" ha l'apostrofo incollato, "BAMBOO SHOOOTS" un
 # refuso del fornitore. Niente \b prima di FOGLI: "FOGLFOGLIE DI BAMBU" e' reale.
 _BAMBU_CONSERVA_RE = re.compile(
-    r"\bBAMB(?:U|Ù|OO)(?!\w).*\b(CONSERV\w*|SALAMOIA|INVERNO|FETTE|TAGLIAT\w*|SHO+TS?|BRAISED)\b"
+    r"\bBAMB(?:U|Ù|OO)(?!\w).*\b(CONSERV\w*|SALAMOIA|INVERNO|FETTE|TAGLIAT\w*|SHO{2,}TS?)\b"
     r"|\b(GERMOGL\w*|CONSERV\w*)\b.*\bBAMB(?:U|Ù|OO)(?!\w)"
 )
 _FOGLIE_BAMBU_RE = re.compile(r"FOGLI\w*\s+(?:DI\s+)?BAMB(?:U|Ù|OO)(?!\w)")
@@ -1494,8 +1501,9 @@ _WASABI_SALSA_RE = re.compile(
     r"|\b(DRESS\w*|DERESS\w*|SALSA|SAUCE|MAIONESE|MAYO\w*)\b.*\bWASABI\b"
 )
 # La radice in pasta resta wasabi: senza questa regola "PASTA DI WASABI" va in SALSE
-# con la regola generica "pasta di" (quella del pistacchio).
-_WASABI_RADICE_RE = re.compile(r"\bPASTA\s+(?:DI\s+)?WASABI\b|\bWASABI\b.*\bPASTA\b")
+# con la regola generica "pasta di" (quella del pistacchio). "WASABI IN PASTA" non ne
+# ha bisogno: la regola generica non la prende e decide il dizionario.
+_WASABI_RADICE_RE = re.compile(r"\bPASTA\s+(?:DI\s+)?WASABI\b")
 
 # Cert. SUSHILAND Vimodrone/San Giuliano 21/07: "PESCE <animale di terra>" è un nome
 # commerciale improprio del fornitore (calco di traduzione), non pesce alimentare —
@@ -1736,8 +1744,8 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
     # TOPPING (per dessert/gelati) → GELATI E DESSERT, ignorando il suffisso "MC"
     # (codice Metro) che confondeva il classificatore facendolo oscillare tra
     # MATERIALE e VARIE BAR. Cert. OFFSIDE 20/07.
-    # Non il topping di anguilla o da sushi (Fase K): quello e' pesce o condimento.
-    if re.search(r"\bTOPPING\b", desc_u) and not re.search(r"\b(UNAGI|ANGUILLA|SUSHI)\b", desc_u):
+    # Non il topping di anguilla (Fase K): "UNAGI TOPPING ANGUILLA A FETTE" e' pesce.
+    if re.search(r"\bTOPPING\b", desc_u) and not re.search(r"\b(UNAGI|ANGUILLA)\b", desc_u):
         mapped = "GELATI E DESSERT"
         if cat != mapped:
             return mapped, "topping_dessert"
@@ -1801,7 +1809,13 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "abbigliamento_attrezzatura"
         return cat, None
 
-    if _GIAPPO_FRITTO_PASTA_RE.search(desc_u) and not _GIAPPO_CARTA_RE.search(desc_u):
+    if _GIAPPO_FRITTO_PASTA_RE.search(desc_u):
+        if _GIAPPO_CARTA_RE.search(desc_u):
+            # "CARTA PER TEMPURA": il foglio, non la pastella.
+            mapped = "MATERIALE DI CONSUMO"
+            if cat != mapped:
+                return mapped, "carta_tempura_consumo"
+            return cat, None
         mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "giappo_fritto_pasta"

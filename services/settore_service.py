@@ -123,7 +123,8 @@ def categorie_ammesse(settore: Optional[str]) -> list[str]:
     """Le categorie che una riga di questo settore puo' avere.
 
     Ristorazione (e settore ignoto): TUTTE_LE_CATEGORIE, la stessa lista di oggi.
-    Retail: l'unica categoria merce piu' le 4 spese generali. Sempre una lista
+    Retail: l'unica categoria merce piu' le spese generali (5 dalla Fase K del
+    10/10/2026, con RAPPRESENTANZA). Sempre una lista
     nuova: chi la riceve non puo' modificare le costanti condivise.
     """
     if settore == SETTORE_RETAIL:

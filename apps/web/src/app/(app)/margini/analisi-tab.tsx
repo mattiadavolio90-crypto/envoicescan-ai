@@ -904,7 +904,9 @@ function AndamentoLineChart({ andamento, centri, mode }: { andamento: AndamentoM
     for (const centro of centriAttivi) {
       const key = centro.toLowerCase() as keyof AndamentoMese;
       const v = (m[key] as number) ?? 0;
-      const total = m.food + m.beverage + m.alcolici + m.dolci + m.rivendita;
+      // `?? 0`: per i minuti in cui Vercel e Railway non sono allineati il worker
+      // vecchio manda `shop`, e un undefined farebbe NaN di tutte le percentuali.
+      const total = m.food + m.beverage + m.alcolici + m.dolci + (m.rivendita ?? 0);
       out[centro] = mode === "perc" ? (total > 0 ? Math.round((v / total) * 1000) / 10 : 0) : v;
     }
     return out;

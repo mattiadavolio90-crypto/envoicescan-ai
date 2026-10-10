@@ -25203,31 +25203,31 @@
   "NS SALSA ANGUILLA 2KG/6",
   "Da Classificare",
   "SALSE E CREME",
-  "base_salsa_crema"
+  "unagi_salsa"
  ],
  [
   "NS SALSA ANGUILLA 2KG/6",
   "BEVANDE",
   "SALSE E CREME",
-  "base_salsa_crema"
+  "unagi_salsa"
  ],
  [
   "NS SALSA ANGUILLA 2KG/6",
   "VERDURE",
   "SALSE E CREME",
-  "base_salsa_crema"
+  "unagi_salsa"
  ],
  [
   "NS SALSA ANGUILLA 2KG/6",
   "SERVIZI E CONSULENZE",
   "SALSE E CREME",
-  "base_salsa_crema"
+  "unagi_salsa"
  ],
  [
   "NS SALSA ANGUILLA 2KG/6",
   "UTENZE E LOCALI",
   "SALSE E CREME",
-  "base_salsa_crema"
+  "unagi_salsa"
  ],
  [
   "ODK POLPA COCCO KG1***",
@@ -26672,62 +26672,62 @@
  [
   "PANKO DA SACCO 10KG",
   "Da Classificare",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "Da Classificare",
+  null
  ],
  [
   "PANKO DA SACCO 10KG",
   "BEVANDE",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "BEVANDE",
+  null
  ],
  [
   "PANKO DA SACCO 10KG",
   "VERDURE",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "VERDURE",
+  null
  ],
  [
   "PANKO DA SACCO 10KG",
   "SERVIZI E CONSULENZE",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "SERVIZI E CONSULENZE",
+  null
  ],
  [
   "PANKO DA SACCO 10KG",
   "UTENZE E LOCALI",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "UTENZE E LOCALI",
+  null
  ],
  [
   "PANKO DA SACCO 9,07KG",
   "Da Classificare",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "Da Classificare",
+  null
  ],
  [
   "PANKO DA SACCO 9,07KG",
   "BEVANDE",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "BEVANDE",
+  null
  ],
  [
   "PANKO DA SACCO 9,07KG",
   "VERDURE",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "VERDURE",
+  null
  ],
  [
   "PANKO DA SACCO 9,07KG",
   "SERVIZI E CONSULENZE",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "SERVIZI E CONSULENZE",
+  null
  ],
  [
   "PANKO DA SACCO 9,07KG",
   "UTENZE E LOCALI",
-  "PASTA E CEREALI",
-  "giappo_fritto_pasta"
+  "UTENZE E LOCALI",
+  null
  ],
  [
   "PASSATA ALBICOCCA GRAN REALE CREMOSA KG 10,5",
@@ -38126,32 +38126,32 @@
  [
   "TOBIKO ROSSO 12X500G",
   "Da Classificare",
-  "Da Classificare",
-  null
+  "PESCE",
+  "giappo_pesce"
  ],
  [
   "TOBIKO ROSSO 12X500G",
   "BEVANDE",
-  "BEVANDE",
-  null
+  "PESCE",
+  "giappo_pesce"
  ],
  [
   "TOBIKO ROSSO 12X500G",
   "VERDURE",
-  "VERDURE",
-  null
+  "PESCE",
+  "giappo_pesce"
  ],
  [
   "TOBIKO ROSSO 12X500G",
   "SERVIZI E CONSULENZE",
-  "SERVIZI E CONSULENZE",
-  null
+  "PESCE",
+  "giappo_pesce"
  ],
  [
   "TOBIKO ROSSO 12X500G",
   "UTENZE E LOCALI",
-  "UTENZE E LOCALI",
-  null
+  "PESCE",
+  "giappo_pesce"
  ],
  [
   "TOFU DI SOIA ESSICCATO",
@@ -45158,8 +45158,8 @@
  [
   "KATSUOBUSHI 500G",
   "Da Classificare",
-  "Da Classificare",
-  null
+  "PESCE",
+  "giappo_pesce"
  ],
  [
   "KETCHUP 100%IT SECC KG5 BIFFI",
@@ -46256,8 +46256,8 @@
  [
   "MUSHOLM IKURA 500G*24PZ",
   "Da Classificare",
-  "Da Classificare",
-  null
+  "PESCE",
+  "giappo_pesce"
  ],
  [
   "MUSICA D'AMBIENTE APPARECCHIO RADIORIC",

@@ -10,7 +10,7 @@ export type { Settore };
 // tenevano una copia letterale a testa. Quattro liste che dovevano restare
 // identiche per sempre significa che prima o poi divergono, e una categoria
 // finita nel gruppo sbagliato sposta soldi tra i secchi del MOL senza dare
-// errore. Chi serve queste 4 stringhe importa DA QUI.
+// errore. Chi serve queste stringhe importa DA QUI.
 export const SPESE_GENERALI_SET = new Set([
   "SERVIZI E CONSULENZE",
   "UTENZE E LOCALI",

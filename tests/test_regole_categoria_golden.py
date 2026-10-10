@@ -81,21 +81,23 @@ MATERIALE DI CONSUMO -> LATTICINI, nessuna finita in coda. Sull'intero catalogo 
 (6.959 descrizioni distinte) la modifica tocca esattamente quelle 4 righe e nient'altro.
 Vedi tests/test_vaschetta_contenitore_o_cibo.py per i 24 casi reali e le controprove.
 
-Aggiornato 10/10/2026 (Fase K, decisioni di Mattia): SHOP si chiama RIVENDITA, SUSHI
-VARIE non esiste piu', tutto il sake e' VINI. Effetto: 116 casi su 8378, 28 descrizioni,
-tutti voluti:
+Aggiornato 10/10/2026 (Fase K, decisioni di Mattia; ritoccato dopo il revisore):
+SHOP si chiama RIVENDITA, SUSHI VARIE non esiste piu', tutto il sake e' VINI.
+Effetto rispetto al golden di prima: 123 casi su 8378, 31 descrizioni, tutti voluti:
   - 25 SHOP -> RIVENDITA (DAYGUM, SMOKING FILTRI): stessa regola, nome nuovo;
-  - 85 ex SUSHI VARIE: bambu' in conserva -> SCATOLAME (bambu_conserva), foglie ->
-    MATERIALE (foglie_bambu_consumo), panko -> PASTA (giappo_fritto_pasta), pasta di
-    wasabi -> SPEZIE (wasabi_radice), dressing al wasabi -> SALSE (wasabi_salsa); nori,
-    tobiko, wasabi in polvere/kizami e riso arare non hanno piu' una regola forte e qui
-    restano sull'input: li decide il DIZIONARIO (VERDURE, PESCE, SPEZIE, PASTA),
-    provato in tests/test_fase_k_categorie.py sulla pipeline intera;
-  - 4 sake DISTILLATI/SCATOLAME -> VINI (sake_vini);
-  - 5 UNAGI SAUCE PESCE -> SALSE (unagi_salsa: la salsa non e' l'anguilla);
-  - 3 mirin e olio di sesamo Da Classificare -> OLIO E CONDIMENTI.
+  - 80 ex SUSHI VARIE: bambu' in conserva -> SCATOLAME (bambu_conserva), foglie ->
+    MATERIALE (foglie_bambu_consumo), pasta di wasabi -> SPEZIE (wasabi_radice),
+    dressing al wasabi -> SALSE (wasabi_salsa), tobiko -> PESCE (giappo_pesce); nori,
+    panko, wasabi in polvere/kizami e riso arare non hanno una regola forte e qui
+    restano sull'input: li decide il DIZIONARIO (VERDURE, PASTA, SPEZIE), provato in
+    tests/test_fase_k_categorie.py sulla pipeline intera;
+  - 3 sake DISTILLATI/SCATOLAME -> VINI (sake_vini);
+  - 5 UNAGI SAUCE PESCE -> SALSE (unagi_salsa) e 5 NS SALSA ANGUILLA, gia' SALSE, che
+    cambia solo motivo (base_salsa_crema -> unagi_salsa);
+  - 3 mirin e olio di sesamo Da Classificare -> OLIO E CONDIMENTI;
+  - 2 KATSUOBUSHI e IKURA Da Classificare -> PESCE (giappo_pesce).
 Sull'intero catalogo reale (7.173 descrizioni distinte, nucleo deterministico intero)
-cambiano 71 descrizioni, tutte di queste famiglie, oltre alla sola rinomina di SHOP.
+cambiano solo descrizioni di queste famiglie, oltre alla rinomina di SHOP.
 """
 import json
 import os

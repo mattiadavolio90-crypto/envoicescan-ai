@@ -805,9 +805,11 @@ DIZIONARIO_CORREZIONI = {
     # Sfoglie tempura giapponesi (Shidu): impasto -> PASTA E CEREALI
     "PASTELLA": "PASTA E CEREALI",
     "PASTO DI WONTON": "PASTA E CEREALI",
-    # Foglie di bambu' fresche per impiattare (Asiantrade, "100F X 30PZ 30-32 CM"):
-    # non si mangiano, decorano il piatto -> MATERIALE DI CONSUMO (Mattia, 10/10).
-    "FOGLIE FRESCA": "MATERIALE DI CONSUMO",
+    # Foglie di bambu' fresche per impiattare (Asiantrade, "FOGLIE FRESCA M 100FX30PZ
+    # 30-32"): non si mangiano, decorano il piatto -> MATERIALE DI CONSUMO (Mattia,
+    # 10/10). Con la taglia nella chiave: "FOGLIE FRESCA" da sola prenderebbe anche
+    # la menta.
+    "FOGLIE FRESCA M": "MATERIALE DI CONSUMO",
     # Latticini abbreviati che il GPT non riconosceva
     "MOZZAR": "LATTICINI",          # MOZZAR.JULIENNE; MOZZARELLA/MOZZARELLE gia' coperte
     "FORM GRATTUGIATI": "LATTICINI", # MIX FORM GRATTUGIATI
@@ -1502,7 +1504,7 @@ DIZIONARIO_CORREZIONI = {
     "SAKE PER CUCINA": "VINI",
     "SAKE DA CUCINA": "VINI",
     "VINO FERMENTATO": "SCATOLAME E CONSERVE",
-    "VINO DI RISO": "SCATOLAME E CONSERVE",
+    "VINO DI RISO": "VINI",
 
     # ===== SALSE ASIATICHE =====
     "SAKE CUCINA": "VINI",
