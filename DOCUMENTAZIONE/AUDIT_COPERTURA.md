@@ -653,12 +653,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   chat si spegne per tutti**. La vecchia firma a 4 parametri resta viva apposta
 >   (nessun `DROP`), cosi' durante la finestra un worker non aggiornato continua a
 >   funzionare. **Migration PRIMA del push.**
->   **Da pianificare, non fatto** (Mattia, 23/09): il **«Boost AI» fra i Servizi**
->   — `lib/trigger-servizi.ts` ha gia' l'impianto (4 trigger soft, banner
->   discreto, max 1 per pagina, dismissibile) e `lib/assistenza.ts` i 6 servizi,
->   ma **nessuno e' il boost AI**: va aggiunto. Modello da definire con lui: X€ al
->   mese per N domande in piu' al giorno. Il tono deve restare quello degli altri
->   trigger, non un blocco che vende.
+>   **Il «Boost AI» fra i Servizi** (Mattia, 23/09), allora da pianificare: **fatto
+>   il 10/10/2026** nella fase J del piano consulente, come ricarica una tantum (10 €,
+>   300 crediti che non scadono), non come abbonamento mensile — vedi il verbale
+>   della fase J piu' sotto.
 >   **Cinque rilievi del reviewer, tutti chiusi.** (1) **Un quarto punto del
 >   messaggio che avevo mancato**: `chat-widget.tsx:189` diceva ancora «torna
 >   domani» — l'header del widget, che il cliente legge **prima** del 429 ed e'
@@ -1955,6 +1953,38 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `raggruppaSegnali` senza chiamanti (solo il suo test, che porta anche la
 >   spiegazione richiamata da altri tre test); i presidi dei .tsx di `/m` sono sulla
 >   forma del sorgente; Mattia deve provare `/m` da un telefono vero.
+> - **10/10/2026, `866c4874`..`478d20b9` + correzioni — piano consulente, fase J:
+>   Boost AI e crediti.** **Misurato** (sola lettura, DB live): l'app contava 300/600/900
+>   DOMANDE al mese, la landing prometteva 1.000/2.000/3.000 CREDITI; una catena
+>   sommava le sedi (5 Pro = 4.500 domande); massimo usato da un account in un mese
+>   37 domande; costo per domanda medio $0,0034, massimo $0,005. **Fatto** (decisioni
+>   di Mattia del 10/10): crediti nel motore, 1 domanda = 3 crediti, Base/Plus/Pro
+>   1.000/1.500/2.000 per sede, catena = sede piu' alta piena + le altre a meta';
+>   migration `20261010135911` (`chat_ricariche`, `crediti`/`da_ricarica`, RPC nuove
+>   `chat_crediti_stato` e `chat_crediti_check_and_log`: mese → ricarica → giorno, lock
+>   per account; la vecchia RPC resta per il worker vecchio); contatore in crediti
+>   (Home, catena, `/m`, Impostazioni: chiude il residuo «budget del mese mai a
+>   schermo» della fase 2); Boost AI fra i Servizi (10 €, 300 crediti, non scade) col
+>   banner al 75% del mese (solo titolare, ricarica a zero); «Aggiungi ricarica AI» in
+>   Admin › cliente › Azioni; landing 1.000/1.500/2.000, righe catena e Boost. Il
+>   conteggio Python delle domande e' sparito: le finestre vivono solo in SQL, e
+>   l'isolamento fra clienti (residuo §5 della fase 2, «il piu' serio») e' provato su
+>   Postgres con un secondo cliente rumoroso. **Trovato** (revisore, 2 giri): il lock
+>   per account e il costo scritto nella riga senza presidio, `p_pool` NULL toglieva il
+>   filtro, MAPPA_TECNICA e 4 doc tecnici fermi al sistema vecchio, la scheda admin
+>   mostrava 0 crediti su una lettura fallita (Mattia avrebbe aggiunto una seconda
+>   ricarica), data della ricarica in UTC, id non-uuid in 500. **Prove:** mutazione
+>   J1 25+3, J2 15, J3 12, J4 13+2+4: tutti uccisi (4 sopravvissuti veri, rafforzati e
+>   uccisi); suite `-m "not sql"` a `478d20b9` **18.524 + 58 skip, 0 rossi** (include
+>   `test_brevo_mittente_default.py` non committato di un'altra sessione); `-m sql`
+>   **1.057 + 2 rossi**, gli stessi al commit prima della fase J (`488e8d48`, provato
+>   su un worktree): `claim_batch_for_processing` prende piu' righe del lotto quando
+>   gira dopo certi test — codice della coda fatture, non della J. **Prima del push:**
+>   applicare `20261010135911` sul live (OK di Mattia) e `get_advisors security`.
+>   **Residui:** drop della vecchia `chat_usage_check_and_log` a deploy fatto; Boost
+>   non proposto su `/m`; prezzo «10€» senza «+IVA» e Termini che non nominano il
+>   Boost (decisioni di Mattia); un cliente che passa a free non puo' piu' usare la
+>   ricarica gia' pagata.
 
 ---
 
