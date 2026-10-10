@@ -88,6 +88,10 @@ def _log_review_action(*args, **kwargs):
     return _fw()._log_review_action(*args, **kwargs)
 
 
+def _chat_crediti_stato(*args, **kwargs):
+    return _fw()._chat_crediti_stato(*args, **kwargs)
+
+
 def _invalidate_fatture_rows_cache(*args, **kwargs):
     return _fw()._invalidate_fatture_rows_cache(*args, **kwargs)
 
@@ -3322,6 +3326,76 @@ def admin_attiva_trial(cliente_id: str, admin_user: dict = Depends(_verify_admin
         raise HTTPException(status_code=400, detail=msg)
     logger.info("admin_attiva_trial: cliente=%s | admin=%s", cliente_id, admin_user.get("email"))
     return {"ok": True, "message": msg}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BOOST AI — ricariche dei crediti dell'assistente (fase J, 10/10/2026)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Il Boost AI: 10 € una tantum per 300 crediti che non scadono (decisione di
+# Mattia del 10/10/2026). L'attivazione e' a mano, da qui, dopo la richiesta
+# del cliente fra i Servizi. Lo stesso numero sta nel testo del servizio
+# (`apps/web/src/lib/assistenza.ts`): un test li tiene allineati.
+RICARICA_AI_CREDITI = 300
+
+
+class RicaricaAiBody(BaseModel):
+    # Il default e' il Boost; un numero diverso resta possibile (un omaggio, una
+    # correzione) ma entro un tetto, perche' un refuso non regali 30.000 crediti.
+    crediti: int = Field(RICARICA_AI_CREDITI, ge=1, le=3000)
+    nota: str = Field("", max_length=200)
+
+
+def _ricariche_ai_del_cliente(sb, cliente_id: str) -> Dict[str, Any]:
+    """Le ricariche del cliente (le piu' recenti prima) e il residuo, letto
+    dalla stessa RPC che usa la chat: il numero che vede l'admin e' quello che
+    il cliente spendera'."""
+    righe = (
+        sb.table("chat_ricariche")
+        .select("id,crediti,nota,creata_da,created_at")
+        .eq("user_id", cliente_id)
+        .order("created_at", desc=True)
+        .limit(20)
+        .execute()
+    ).data or []
+    stato = _chat_crediti_stato(cliente_id, None, True, sb)
+    return {"ricariche": righe, "residuo": stato["ricarica"], "crediti_boost": RICARICA_AI_CREDITI}
+
+
+def _cliente_esiste(sb, cliente_id: str) -> None:
+    r = sb.table("users").select("id").eq("id", cliente_id).limit(1).execute()
+    if not r.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+
+
+@router.get("/api/admin/clienti/{cliente_id}/ricariche-ai", tags=["Admin"],
+            dependencies=[Depends(_verify_admin)])
+def admin_ricariche_ai(cliente_id: str) -> Dict[str, Any]:
+    """Ricariche dei crediti AI del cliente e residuo (Boost AI)."""
+    sb = get_supabase_client()
+    _cliente_esiste(sb, cliente_id)
+    return _ricariche_ai_del_cliente(sb, cliente_id)
+
+
+@router.post("/api/admin/clienti/{cliente_id}/ricariche-ai", tags=["Admin"])
+def admin_aggiungi_ricarica_ai(
+    cliente_id: str, body: RicaricaAiBody, admin_user: dict = Depends(_verify_admin),
+) -> Dict[str, Any]:
+    """Aggiunge una ricarica (Boost AI) all'account del cliente. Non scade: si
+    spende dopo i crediti del mese. Non si annulla da qui: una ricarica gia'
+    spesa in parte non ha un «indietro» pulito."""
+    sb = get_supabase_client()
+    _cliente_esiste(sb, cliente_id)
+    sb.table("chat_ricariche").insert({
+        "user_id": cliente_id,
+        "crediti": body.crediti,
+        "nota": body.nota.strip() or None,
+        "creata_da": admin_user.get("email"),
+    }).execute()
+    logger.warning(
+        "RICARICA_AI: cliente=%s crediti=%s | admin=%s", cliente_id, body.crediti, admin_user.get("email"),
+    )
+    return _ricariche_ai_del_cliente(sb, cliente_id)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

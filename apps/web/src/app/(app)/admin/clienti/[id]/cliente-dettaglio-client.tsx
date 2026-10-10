@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RicaricheAiCliente } from "./ricariche-ai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -506,6 +507,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <Clock className="size-4 mr-2" /> Attiva trial 7 giorni
               </Button>
             )}
+            <RicaricheAiCliente clienteId={c.id} />
           </CardContent>
         </Card>
 

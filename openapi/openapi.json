@@ -16036,6 +16036,168 @@
         }
       }
     },
+    "/api/admin/clienti/{cliente_id}/ricariche-ai": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Ricariche Ai",
+        "description": "Ricariche dei crediti AI del cliente e residuo (Boost AI).",
+        "operationId": "admin_ricariche_ai_api_admin_clienti__cliente_id__ricariche_ai_get",
+        "parameters": [
+          {
+            "name": "cliente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cliente Id"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Admin Ricariche Ai Api Admin Clienti  Cliente Id  Ricariche Ai Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Aggiungi Ricarica Ai",
+        "description": "Aggiunge una ricarica (Boost AI) all'account del cliente. Non scade: si\nspende dopo i crediti del mese. Non si annulla da qui: una ricarica gia'\nspesa in parte non ha un «indietro» pulito.",
+        "operationId": "admin_aggiungi_ricarica_ai_api_admin_clienti__cliente_id__ricariche_ai_post",
+        "parameters": [
+          {
+            "name": "cliente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cliente Id"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RicaricaAiBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Admin Aggiungi Ricarica Ai Api Admin Clienti  Cliente Id  Ricariche Ai Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/retail/categorie-incoerenti": {
       "get": {
         "tags": [
@@ -26383,6 +26545,25 @@
           "email"
         ],
         "title": "ResetRequestBody"
+      },
+      "RicaricaAiBody": {
+        "properties": {
+          "crediti": {
+            "type": "integer",
+            "maximum": 3000.0,
+            "minimum": 1.0,
+            "title": "Crediti",
+            "default": 300
+          },
+          "nota": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Nota",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "RicaricaAiBody"
       },
       "RicaviBatchUpsertRequest": {
         "properties": {
