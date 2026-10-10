@@ -14,6 +14,7 @@ import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
 import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
 import { AssistenteProvider } from "@/components/home/assistente-provider";
+import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 import type { Metadata } from "next";
 
 // Come (app)/layout.tsx: dentro l'app la tab mostra il brand, non il claim
@@ -82,6 +83,9 @@ export default async function MobileLayout({ children }: { children: React.React
     <AssistenteProvider key={idPersona(user)} utenteId={idPersona(user)} mobile>
     <div className="flex min-h-dvh flex-col bg-background">
       <PrivacyConsentModal needsConsent={user.privacy_accepted === false} />
+      {/* L'admin che guarda l'app come un cliente deve poterne uscire anche dal
+          telefono, come dal desktop. */}
+      <ImpersonaBanner inFlusso />
       {/* Header compatto: solo logo + nome ristorante, niente sidebar */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-2.5 border-b border-border bg-background/95 px-4 backdrop-blur-sm"

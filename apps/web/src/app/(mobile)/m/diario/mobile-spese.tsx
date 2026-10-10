@@ -174,6 +174,10 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Di
               />
             </div>
           </div>
+          {/* Niente scorporo (Mattia, 5/10): senza fattura l'IVA non si scarica, e' costo. */}
+          <p className="-mt-1 text-[11px] text-muted-foreground">
+            Scrivi quanto hai pagato, IVA compresa: senza fattura l&apos;IVA è un costo.
+          </p>
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Descrizione *</label>
             <Input value={descrizione} onChange={(e) => setDescrizione(e.target.value)} placeholder="es. Pesce dal mercato, bolletta gas…" autoFocus />

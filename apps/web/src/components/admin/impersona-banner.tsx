@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-export function ImpersonaBanner() {
+// `inFlusso`: sul telefono (/m) la barra sta in cima alla pagina e scorre con
+// essa; a posizione fissa coprirebbe l'intestazione con le notifiche e il menu.
+export function ImpersonaBanner({ inFlusso = false }: { inFlusso?: boolean }) {
   const router = useRouter();
   const [targetEmail, setTargetEmail] = useState<string | null>(null);
 
@@ -35,7 +37,13 @@ export function ImpersonaBanner() {
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950">
+    <div
+      className={
+        inFlusso
+          ? "flex items-center justify-between bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
+          : "fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
+      }
+    >
       <span>
         Stai vedendo l&apos;app come <strong>{targetEmail}</strong>
       </span>
