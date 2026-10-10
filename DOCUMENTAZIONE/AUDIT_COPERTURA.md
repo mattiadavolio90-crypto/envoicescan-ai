@@ -1948,8 +1948,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   perche' avevo rilanciato solo i file toccati; `/m/chat` in catena ignorava
 >   l'interruttore di gruppo (403 a ogni domanda); scroll a ogni tasto; «Tutto in
 >   ordine» sopra la coda. **Prove:** mutazione sulle guardie nuove (worker 20+11+3+3,
->   frontend 9+4+14+7: tutti uccisi; 3 sopravvissuti veri, rafforzati e uccisi);
->   suite `-m "not sql"` a `a96d7d05` **18.441 + 58 skip, 0 rossi**. **Residui:**
+>   frontend 9+4+14+8: tutti uccisi; 2 sopravvissuti veri, rafforzati e uccisi);
+>   suite `-m "not sql"` a `a96d7d05` **18.439 + 58 skip, 0 rossi** (la prova e'
+>   stata 18.441: include 2 test non committati di un'altra sessione,
+>   `test_brevo_mittente_default.py`). **Residui:**
 >   `raggruppaSegnali` senza chiamanti (solo il suo test, che porta anche la
 >   spiegazione richiamata da altri tre test); i presidi dei .tsx di `/m` sono sulla
 >   forma del sorgente; Mattia deve provare `/m` da un telefono vero.
