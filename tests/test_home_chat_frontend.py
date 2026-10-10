@@ -187,43 +187,68 @@ def test_contatore_zero_dal_backend_non_e_confuso_con_assente():
 # ─── il mobile usa questa libreria, non una sua copia ─────────────────────
 
 def test_la_chat_mobile_non_ricopia_la_decisione_sui_messaggi():
-    """`/m/chat` deve CHIAMARE `messaggioRisposta`, non duplicarla.
+    """`/m/chat` non deve avere una sua copia di come si parla con l'assistente.
 
-    Fino al 23/09/2026 `mobile-chat.tsx` aveva la stessa catena di `if`
-    ricopiata a mano, identica riga per riga. Due copie della stessa decisione
-    di cui l'harness ne esegue **una sola**: quando il messaggio del 429 e'
-    stato corretto perche' diceva il falso, la copia mobile e' rimasta indietro
-    e nessun test se ne e' accorto (il reviewer l'ha ucciso con un mutante che
-    sopravviveva).
+    Fino al 23/09/2026 `mobile-chat.tsx` aveva la stessa catena di `if` di
+    `messaggioRisposta` ricopiata a mano, identica riga per riga. Due copie della
+    stessa decisione di cui l'harness ne esegue **una sola**: quando il messaggio
+    del 429 e' stato corretto perche' diceva il falso, la copia mobile e' rimasta
+    indietro e nessun test se ne e' accorto.
 
-    Il presidio guarda la FORMA del .tsx perche' l'harness non esegue i
-    componenti: e' un limite dichiarato, non una svista. Uccide il mutante
-    realistico — reintrodurre la copia — e la logica vera resta provata dai
-    test di `messaggioRisposta` qui sopra, che la eseguono.
+    Dalla fase I (10/10/2026) il telefono non chiama piu' /api/chat da solo:
+    passa dal provider della Home (`useConversazione` -> `AssistenteProvider`),
+    che usa `messaggioRisposta`. Il presidio guarda la FORMA dei .tsx perche'
+    l'harness non esegue i componenti: e' un limite dichiarato, non una svista.
+    Uccide il mutante realistico — reintrodurre una chiamata o una copia nel
+    telefono — e la logica vera resta provata dai test qui sopra, che la eseguono.
     """
     from pathlib import Path
 
-    sorgente = Path("apps/web/src/app/(mobile)/m/chat/mobile-chat.tsx").read_text(
-        encoding="utf-8"
-    )
+    web = Path("apps/web/src")
+    sorgente = (web / "app/(mobile)/m/chat/mobile-chat.tsx").read_text(encoding="utf-8")
+    provider = (web / "components/home/assistente-provider.tsx").read_text(encoding="utf-8")
 
-    assert "messaggioRisposta" in sorgente, (
-        "la chat mobile non chiama messaggioRisposta: se ha ricopiato la "
-        "decisione, il prossimo messaggio corretto restera' sbagliato qui"
+    assert "useConversazione" in sorgente, "la chat mobile non usa la conversazione condivisa"
+    assert "fetch(" not in sorgente, (
+        "la chat mobile chiama /api/chat da sola: la decisione sui messaggi e' di nuovo duplicata"
     )
-    assert 'from "@/lib/home-chat"' in sorgente, (
-        "messaggioRisposta deve arrivare da lib/home-chat, l'unica copia "
-        "eseguita dai test"
+    assert "messaggioRisposta" in provider and 'from "@/lib/home-chat"' in provider, (
+        "il provider deve prendere messaggioRisposta da lib/home-chat, l'unica copia eseguita dai test"
     )
     for testo in ("Hai raggiunto il limite di domande",
                   "La chat non è disponibile nel tuo piano"):
-        assert testo not in sorgente, (
-            f"il .tsx contiene ancora il testo {testo!r}: e' una seconda copia "
-            "del messaggio, e vivrebbe fuori dalla portata dei test"
-        )
+        for nome, src in (("mobile-chat", sorgente), ("assistente-provider", provider)):
+            assert testo not in src, (
+                f"{nome}.tsx contiene il testo {testo!r}: e' una seconda copia "
+                "del messaggio, e vivrebbe fuori dalla portata dei test"
+            )
 
 
-# ─── quotaEsaurita: giorno o mese, non «un 429 generico» ──────────────────
+def test_il_telefono_mostra_le_card_con_conferma():
+    """Senza la card il cliente leggerebbe «premi Conferma» e non troverebbe niente
+    da premere. Forma del .tsx: il render non si esegue, la logica delle card si'
+    (`cardDaProposte`, `esitoConferma` qui sopra)."""
+    from pathlib import Path
+
+    m = Path("apps/web/src/app/(mobile)/m/chat/mobile-chat.tsx").read_text(encoding="utf-8")
+    assert "<CardCifraDettata" in m and "onConferma={c.conferma}" in m and "onAnnulla={c.annulla}" in m
+
+
+def test_il_telefono_dice_al_worker_di_essere_il_telefono():
+    """Il layout di /m monta il provider con `mobile`: senza, il corpo non porta il
+    flag e il worker rimanda a una scheda (Score Fornitori) che sul telefono non c'e'.
+    Forma del .tsx, come sopra: il corpo vero e' provato da `corpoRichiestaChat`."""
+    from pathlib import Path
+
+    web = Path("apps/web/src")
+    layout = (web / "app/(mobile)/m/layout.tsx").read_text(encoding="utf-8")
+    provider = (web / "components/home/assistente-provider.tsx").read_text(encoding="utf-8")
+    assert "<AssistenteProvider" in layout and " mobile>" in layout
+    assert "corpoRichiestaChat(vociRef.current, vista, mobile)" in provider
+    # La Home non lo dice: il suo corpo resta quello di prima.
+    app_layout = (web / "app/(app)/layout.tsx").read_text(encoding="utf-8")
+    assert "<AssistenteProvider" in app_layout and "mobile" not in app_layout.split("<AssistenteProvider")[1].split(">")[0]
+
 
 def test_429_mensile_riconosciuto_come_mese():
     """Col budget mensile esaurito il cliente NON deve sentirsi dire «domani».
@@ -908,8 +933,8 @@ def test_rincari_e_ribassi_con_lo_strumento_degli_avvisi():
 
 
 def test_registrare_solo_dove_c_e_la_conferma():
-    """Sul telefono la card «Conferma» arriva con la fase I: niente «Voglio
-    inserire…» che l'assistente non saprebbe registrare."""
+    """Una vista che non mostra le card «Conferma» non propone «Voglio
+    inserire…»: l'assistente non saprebbe registrarlo."""
     temi = ["costo_personale_mancante", "fatturato_mancante", "incasso_mancante"]
     assert _domande(temi, registra=True)[:3] == [
         "Voglio inserire il costo del personale",
@@ -935,3 +960,45 @@ def test_ogni_tema_della_tabella_esiste_nel_worker():
             assert k.split(":", 1)[1] in tipi_buona, k
         else:
             assert k in dbs._TOPIC_PRIORITY, k
+
+
+# ─── Il corpo di POST /api/chat (fase I: la chat del telefono) ───────────────
+
+def _corpo(voci, vista, mobile=None):
+    args = [voci, vista] if mobile is None else [voci, vista, mobile]
+    return _chiama("corpoRichiestaChat", args)
+
+
+_VOCI_SEDE = [
+    {"role": "user", "content": "ciao", "vista": "sede:r-1"},
+    {"role": "assistant", "content": "salve", "vista": "sede:r-1"},
+    {"role": "user", "content": "altro locale", "vista": "sede:r-2"},
+]
+_SEDE = {"chiave": "sede:r-1", "contesto": "sede"}
+
+
+def test_corpo_desktop_resta_quello_di_prima():
+    """Dalla Home il corpo e' esattamente { messages, contesto, card_conferma }:
+    niente chiave `mobile`, nemmeno a false."""
+    assert _corpo(_VOCI_SEDE, _SEDE) == {
+        "messages": [{"role": "user", "content": "ciao"}, {"role": "assistant", "content": "salve"}],
+        "contesto": "sede",
+        "card_conferma": True,
+    }
+    assert "mobile" not in _corpo(_VOCI_SEDE, _SEDE, False)
+
+
+def test_corpo_telefono_dice_di_essere_il_telefono():
+    out = _corpo(_VOCI_SEDE, _SEDE, True)
+    assert out["mobile"] is True and out["card_conferma"] is True
+
+
+def test_corpo_porta_solo_i_messaggi_della_vista():
+    out = _corpo(_VOCI_SEDE, {"chiave": "sede:r-2", "contesto": "sede"}, True)
+    assert out["messages"] == [{"role": "user", "content": "altro locale"}]
+
+
+def test_corpo_catena_ha_il_contesto_catena():
+    voci = [{"role": "user", "content": "margini?", "vista": "catena"}]
+    out = _corpo(voci, {"chiave": "catena", "contesto": "catena"}, True)
+    assert out["contesto"] == "catena" and out["messages"] == [{"role": "user", "content": "margini?"}]

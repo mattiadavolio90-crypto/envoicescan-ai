@@ -108,10 +108,14 @@ def test_la_conversazione_usa_i_temi_solo_nella_sede_e_con_la_conferma():
             ':suggerimentiPer(vista.contesto,settore)') in c
 
 
-def test_il_telefono_usa_i_temi_senza_registrare():
+def test_il_telefono_usa_i_temi_e_registra_come_la_home():
+    """Dalla fase I `/m` mostra le card con Conferma: stessa espressione della Home
+    (e il briefing di catena non ha temi: li' restano le domande fisse)."""
     p = _n(_M_PAGE)
-    assert "domandeDalBriefing(briefing?.temi,utente?.tipo_attivita,{registra:false})" in p
-    assert "<MobileChatsuggerimenti={suggerimenti}/>" in p
+    assert "temi={inChain?undefined:briefing?.temi}" in p
+    m = _n(_M_CHAT)
+    assert ('vista.contesto==="sede"&&temi?.length?domandeDalBriefing(temi,settore,{registra:true})'
+            ':suggerimentiPer(vista.contesto,settore)') in m
 
 
 def test_il_telefono_non_ha_piu_le_domande_scritte_nel_componente():

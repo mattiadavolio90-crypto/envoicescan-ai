@@ -6,12 +6,12 @@ import {
   CHIAVE_VECCHIA,
   cardDaProposte,
   chiaveConversazione,
-  codaPerVista,
   conCard,
   conRisposta,
   confermabile,
   contatoreAggiornato,
   corpoConferma,
+  corpoRichiestaChat,
   esitoConferma,
   trovaCard,
   quotaEsaurita,
@@ -61,7 +61,16 @@ export function useAssistente(): StatoAssistente {
   return c;
 }
 
-export function AssistenteProvider({ utenteId, children }: { utenteId: string; children: React.ReactNode }) {
+export function AssistenteProvider({
+  utenteId,
+  mobile = false,
+  children,
+}: {
+  utenteId: string;
+  /** Il telefono (`/m`): il worker lo sa, perche' li' Score Fornitori non c'e'. */
+  mobile?: boolean;
+  children: React.ReactNode;
+}) {
   const chiave = chiaveConversazione(utenteId);
   const [voci, setVoci] = useState<VoceChat[]>([]);
   const vociRef = useRef<VoceChat[]>([]);
@@ -127,9 +136,7 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // card_conferma: questo client mostra le card con Conferma, quindi il
-          // worker puo' offrire all'assistente gli strumenti che le preparano.
-          body: JSON.stringify({ messages: codaPerVista(vociRef.current, vista), contesto: vista.contesto, card_conferma: true }),
+          body: JSON.stringify(corpoRichiestaChat(vociRef.current, vista, mobile)),
         });
         const data = (await res.json()) as {
           reply?: string;
@@ -157,7 +164,7 @@ export function AssistenteProvider({ utenteId, children }: { utenteId: string; c
         setInCorso(null);
       }
     },
-    [aggiorna],
+    [aggiorna, mobile],
   );
 
   const nuova = useCallback((vistaChiave: string) => aggiorna((v) => senzaVista(v, vistaChiave)), [aggiorna]);

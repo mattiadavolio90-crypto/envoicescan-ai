@@ -143,8 +143,8 @@ export function suggerimentiPer(
 // contesto del briefing»). `temi` arriva dal worker nell'ordine del briefing;
 // ogni domanda deve avere uno strumento dell'assistente che la sappia
 // rispondere. `registra` = la vista sa confermare le cifre dettate (card
-// «Conferma»): sul telefono non ancora (fase I), quindi niente «Voglio
-// inserire…». I posti liberi si riempiono con le domande fisse. Rincari e
+// «Conferma»): la Home e `/m` si' (dalla fase I), una vista che non mostra le
+// card non deve proporre «Voglio inserire…». I posti liberi si riempiono con le domande fisse. Rincari e
 // ribassi li risponde `avvisi_prezzi` (strumenti delle pagine, fase F).
 export const DOMANDE_PER_TEMA: Record<string, string> = {
   "buona_notizia:mol_mese": "Come si è chiuso il mese scorso?",
@@ -268,6 +268,24 @@ export function codaPerVista(voci: VoceChat[], vista: Vista): Msg[] {
     .filter((v) => v.vista === vista.chiave)
     .map((v) => ({ role: v.role, content: v.content }));
   return codaDaInviare(vista.chiave.endsWith(":") ? della.slice(-1) : della);
+}
+
+// Il corpo di POST /api/chat. `mobile` solo sul telefono: il worker lo usa per dire
+// dove si trova Score Fornitori (che sul telefono non c'e'); dal desktop il corpo
+// resta quello di prima.
+export function corpoRichiestaChat(
+  voci: VoceChat[],
+  vista: Vista,
+  mobile = false,
+): { messages: Msg[]; contesto: "sede" | "catena"; card_conferma: true; mobile?: true } {
+  return {
+    messages: codaPerVista(voci, vista),
+    contesto: vista.contesto,
+    // Questo client mostra le card con Conferma: il worker puo' offrire
+    // all'assistente gli strumenti che le preparano.
+    card_conferma: true,
+    ...(mobile ? { mobile: true as const } : {}),
+  };
 }
 
 // Le domande proposte si vedono finche' in questa vista non si e' scritto niente.

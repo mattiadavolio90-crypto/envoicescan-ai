@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { WifiOff } from "lucide-react";
 import { getCurrentSession } from "@/lib/auth";
-import { haCatena, tabMobileNascoste } from "@/lib/sotto-utente";
+import { haCatena, idPersona, tabMobileNascoste } from "@/lib/sotto-utente";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { fetchConfig } from "@/lib/home";
 import { Logo } from "@/components/brand/logo";
@@ -13,6 +13,7 @@ import { NotificheBell } from "./notifiche-bell";
 import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
 import { PrivacyConsentModal } from "@/components/legal/privacy-consent-modal";
+import { AssistenteProvider } from "@/components/home/assistente-provider";
 import type { Metadata } from "next";
 
 // Come (app)/layout.tsx: dentro l'app la tab mostra il brand, non il claim
@@ -75,6 +76,10 @@ export default async function MobileLayout({ children }: { children: React.React
   const chatEnabled = (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
 
   return (
+    // La conversazione con l'assistente sta qui, come nel layout di (app): sopravvive
+    // al cambio di scheda e di locale. `mobile` dice al worker che Score Fornitori
+    // sul telefono non c'e'. Per PERSONA, non per account (idPersona).
+    <AssistenteProvider key={idPersona(user)} utenteId={idPersona(user)} mobile>
     <div className="flex min-h-dvh flex-col bg-background">
       <PrivacyConsentModal needsConsent={user.privacy_accepted === false} />
       {/* Header compatto: solo logo + nome ristorante, niente sidebar */}
@@ -102,5 +107,6 @@ export default async function MobileLayout({ children }: { children: React.React
       <InstallPrompt />
       <BottomNav chatEnabled={chatEnabled} nascoste={tabMobileNascoste(user)} />
     </div>
+    </AssistenteProvider>
   );
 }
