@@ -1,33 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  Sparkles,
-  AlertTriangle,
-  TrendingDown,
-  Tag,
-  CalendarX,
-  CheckCircle2,
-  ChevronRight,
-  ArrowRight,
-  ClipboardList,
-} from "lucide-react";
+import { Sparkles, AlertTriangle, ChevronRight, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
-import type { GruppoOverview, Osservazione, Segnale, SegnaliGruppo } from "@/lib/gruppo";
+import type { GruppoOverview } from "@/lib/gruppo";
 import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
-import { raggruppaSegnali } from "@/lib/catena-segnali";
-import { haDestinazione, osservazioniDaMostrare } from "@/lib/catena-osservazioni";
 import { SALUTE_TINT, ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
+import { DaFareCatena } from "@/app/(app)/catena/da-fare-catena";
 
-const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
-  dati_mancanti: ClipboardList,
-  margine_calo: TrendingDown,
-  prezzi_sopra: Tag,
-  ricavi_mancanti: CalendarX,
-};
 // Punto e testo per colore della Salute: dalla palette unica (lib/salute-tint).
 // Qui vivevano la terza e la quarta copia, gia' identiche per caso (9/9/2026).
 const DOT: Record<string, string> = Object.fromEntries(
@@ -45,38 +28,13 @@ function pct(n: number | null): string {
   return `${n.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`;
 }
 
-// Vista catena su mobile (monitoraggio): briefing di gruppo + conti + salute +
-// segnali + ranking, tutto impilato. Toccare un PV ci SCENDE: cambia sede, passa
-// in modalità PV (cookie) e torna alla home mobile, che mostrerà quel locale.
+// Vista catena su mobile (monitoraggio): briefing di gruppo + «Da fare» per punto
+// vendita + conti + salute + ranking, tutto impilato. Toccare un PV ci SCENDE:
+// cambia sede, passa in modalità PV (cookie) e torna alla home mobile, che
+// mostrerà quel locale.
 export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
-  const [segnali, setSegnali] = useState<Segnale[] | null>(null);
-  const [osservazioni, setOsservazioni] = useState<Osservazione[]>([]);
-  const [segnaliError, setSegnaliError] = useState(false);
-  const segnaliReqRef = useRef(0);
-
-  // Come sul desktop (lib/home-da-fare): un errore non deve diventare lista vuota, che
-  // qui si legge "tutto sotto controllo" — rassicurazione falsa proprio sugli avvisi.
-  const caricaSegnali = useCallback(() => {
-    const my = ++segnaliReqRef.current;
-    setSegnaliError(false);
-    fetch("/api/gruppo/segnali", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j: SegnaliGruppo | null) => {
-        if (my === segnaliReqRef.current) {
-          setSegnali(j?.segnali ?? []);
-          setOsservazioni(osservazioniDaMostrare(j));
-        }
-      })
-      .catch(() => {
-        if (my === segnaliReqRef.current) setSegnaliError(true);
-      });
-  }, []);
-
-  useEffect(() => {
-    caricaSegnali();
-  }, [caricaSegnali]);
 
   async function drill(id: string) {
     if (switching) return;
@@ -151,6 +109,12 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
           </p>
         )}
       </div>
+
+      {/* «Da fare oggi» come nella Home desktop (fase G): un elenco solo, una riga
+          per punto vendita con segnali, osservazioni e avvisi. La coda da collocare
+          non c'e': su /m non si raggiunge, ne parla il riquadro qui sopra. Toccare
+          «Vedi PV» scende nel locale (la pagina del desktop si ignora). */}
+      <DaFareCatena nDaCollocare={null} vaiAlPV={(id) => void drill(id)} switching={switching} />
 
       {/* Conti del gruppo (compatto) — il MOL sempre; ambra finche' non e' reale */}
       <div
@@ -254,109 +218,6 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
             </li>
           ))}
         </ul>
-      </div>
-
-      {/* Da vedere nella catena */}
-      <div className="rounded-2xl border bg-card p-4">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          <AlertTriangle className="size-4" />
-          Da vedere nella catena
-        </div>
-        {/* Osservazioni da consulente (fase 6): sopra i segnali e fuori dal
-            loro conteggio. Il desktop dal 28/9/2026 le mette nel «Da fare»
-            (lib/home-da-fare): /m si allinea in fase 8. */}
-        {osservazioni.length > 0 ? (
-          <div className="mt-3">
-            <div className="text-xs font-medium text-muted-foreground">Da sapere</div>
-            <ul className="mt-2 space-y-2">
-              {osservazioni.map((o, i) => (
-                <li key={`${o.tipo}-${o.ristorante_id}-${i}`}>
-                  {haDestinazione(o) ? (
-                    <button
-                      type="button"
-                      disabled={switching}
-                      onClick={() => drill(o.ristorante_id)}
-                      className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left active:bg-accent disabled:opacity-50"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={o.pv_nome}>{o.pv_nome}</span>
-                        <span className="block text-sm">{o.testo}</span>
-                      </span>
-                      <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary-text" />
-                    </button>
-                  ) : (
-                    <div className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left">
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={o.pv_nome}>{o.pv_nome}</span>
-                        <span className="block text-sm">{o.testo}</span>
-                      </span>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        {segnaliError && segnali === null ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <AlertTriangle className="size-4 text-rose-500" />
-            Non è stato possibile controllare i punti vendita.
-            <button
-              type="button"
-              onClick={caricaSegnali}
-              className="text-xs font-medium text-primary transition-colors hover:underline"
-            >
-              Riprova
-            </button>
-          </div>
-        ) : segnali === null ? (
-          <p className="mt-3 text-sm text-muted-foreground">Controllo i punti vendita…</p>
-        ) : segnali.length === 0 ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle2 className="size-4 text-emerald-500" />
-            Tutto sotto controllo.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {raggruppaSegnali(segnali).map((s, i) => {
-              const Icon = ICONA[s.tipo] ?? AlertTriangle;
-              const nomi = s.pv.map((p) => p.pv_nome).join(" \u00b7 ");
-              const etichetta = s.pv.length > 1 ? `${s.pv.length} punti vendita \u00b7 ${nomi}` : nomi;
-              return (
-                <li key={`${s.tipo}-${s.pv[0].ristorante_id}-${i}`}>
-                  {/* Senza ristorante_id il segnale non porta da nessuna parte
-                      (es. "non e' stato possibile controllare"): toccarlo
-                      cambierebbe sede al cliente. Riga non cliccabile. Stesso
-                      motivo quando il gruppo tiene piu' PV: la destinazione
-                      sarebbe una fra cinque, scelta a caso. */}
-                  {s.pv.length === 1 && s.pv[0].ristorante_id ? (
-                    <button
-                      type="button"
-                      disabled={switching}
-                      onClick={() => drill(s.pv[0].ristorante_id)}
-                      className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left active:bg-accent disabled:opacity-50"
-                    >
-                      <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={nomi}>{etichetta}</span>
-                        <span className="block text-sm">{s.testo}</span>
-                      </span>
-                      <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary" />
-                    </button>
-                  ) : (
-                    <div className="flex w-full items-start gap-3 rounded-xl border bg-background/40 p-3 text-left">
-                      <Icon className="mt-0.5 size-4 shrink-0 text-amber-500" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-semibold text-muted-foreground" title={nomi}>{etichetta}</span>
-                        <span className="block text-sm">{s.testo}</span>
-                      </span>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </div>
 
       {/* Ranking punti vendita */}
