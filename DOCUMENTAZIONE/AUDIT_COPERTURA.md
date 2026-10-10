@@ -1996,6 +1996,34 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   MATERIALIZED. Prova: `-m sql` 1.059 verdi due volte col fix, gli stessi 2 rossi
 >   togliendolo. Non sono riuscito a forzare quel piano in un test deterministico:
 >   il presidio restano i due test esistenti, che lo avevano preso.
+> - **10/10/2026, `90f3a665`..`d9ba2677` — piano consulente, fase K (K1-K3): categorie.**
+>   Decisioni di Mattia: nasce RAPPRESENTANZA (spesa generale, anche retail), SHOP si
+>   chiama RIVENDITA, SUSHI VARIE e' abolita (ogni prodotto nella sua famiglia), tutto il
+>   sake e' VINI, la fattura col coperto va tutta in RAPPRESENTANZA; totale sempre 29.
+>   **Misurato** (DB live, sola lettura): SUSHI VARIE 426 righe / 52.244 EUR su un cliente,
+>   con intrusi (panko, riso, vetrine) perche' il dizionario stesso li mandava li'; mirin in
+>   SALSE per la chiave MIZKAN, olio di sesamo in SPEZIE, «UNAGI SAUCE» in PESCE; la
+>   fattura di RISTORANTE MONOPOLI in 9 categorie food. **Fatto:** K1 elenco ovunque
+>   (costanti, dizionario e regole per famiglia, memoria che salta le categorie abolite,
+>   alias SHOP sulla memoria e sull'AI, prompt ristoranti e retail, centri `shop`→`rivendita`,
+>   copie derivate dalla costante, client, bump briefing 36 e segnali 7, migration
+>   `20261010212005` liste SQL); K2 riconoscimento (riga coperto/pasti/menu fisso, regola
+>   di DOCUMENTO in `estrai_dati_da_xml` con fonte certa `L0_documento_pasto`, esenzione
+>   dal guardrail IVA bassa, migration `20261010215817` comment); K3 dati preparati
+>   (migration `20261010223829`: tabella `categorie` e rinomina SHOP ovunque, attribuita;
+>   `scripts/fase_k_categorie.py` giappone/pasti/residui, dry-run di default). **Trovato**
+>   (revisore, primo giro 🟡): tre regole forti non negoziabili prendevano troppo (olio e
+>   sesamo nei grissini, anguilla «con salsa», «EBI FRY PANKO»), tobiko al wasabi in
+>   spezie, 23 mutanti vivi, due cifre del golden sbagliate; corretti in `820cebef`.
+>   **Prove:** anti-collisione su 7.173 descrizioni reali: cambiano 71 descrizioni delle
+>   famiglie decise + 3 di pasto, nient'altro; golden 123/8.378 casi; mutazione K1 28+25
+>   (1 ridondante: VINO DI RISO, vince la regola), K2 12, K3 14, tutti uccisi; dry-run live
+>   giappone 516 righe (le 426 SUSHI VARIE tutte decise), pasti 31 + 11 saltate perche'
+>   decise a mano. Suite a `820cebef`+K3: `-m "not sql"` **18.759 + 58 skip, 0 rossi**
+>   (include `test_brevo_mittente_default.py` non committato di un'altra sessione), `-m sql`
+>   **1.068**. **Da fare in K4:** script giappone, le tre migration, push, script tutto.
+>   **Per Mattia:** una voce di memoria di un cliente («SAKE PER CUCINA» → SCATOLAME, scelta a
+>   mano) resta com'e', ma la regola nuova manda in VINI le righe nuove e quelle storiche.
 
 ---
 
