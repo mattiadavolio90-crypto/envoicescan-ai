@@ -324,8 +324,8 @@ docker-compose -f docker/docker-compose.prod.yml up -d
 | Max dimensione upload Next.js | 4.5 MB | Vercel default |
 | Max righe per utente | 100.000 | `app.py` |
 | Max chiamate AI classificazione/giorno | 1.000 per ristorante | `constants.py` |
-| Max domande chat AI/mese | 0–900 (per piano) | `CHAT_BUDGET_MENSILE_PIANO` |
-| Max domande chat AI/giorno | 0–90 (10% del mese, derivate) | `CHAT_QUOTA_GIORNALIERA_PCT` |
+| Max crediti chat AI/mese per sede | 0–2.000 (per piano; 3 a domanda) | `CHAT_BUDGET_MENSILE_PIANO` |
+| Max crediti chat AI/giorno | 0–200 (10% del mese, derivati) | `CHAT_QUOTA_GIORNALIERA_PCT` |
 | Batch AI | 50 articoli per chiamata | `ai_service.py` |
 | TTL cache fatture | 120 secondi | `db_service.py` |
 | TTL cache margini | 300 secondi | `margine_service.py` |

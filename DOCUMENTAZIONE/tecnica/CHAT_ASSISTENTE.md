@@ -47,8 +47,8 @@ route.ts (apps/web/.../api/chat)        ← inoltra al worker con Bearer + X-Wor
         ▼
 chat_ai()  [fastapi_worker.py]          ← ENDPOINT
    ├─ _resolve_user_from_token          ← chi è
-   ├─ _chat_limite_per_piano            ← quante domande/giorno (per piano)
-   ├─ RPC chat_usage_check_and_log      ← rate-limit ATOMICO (conta+logga); fail-closed
+   ├─ _chat_quota_pool / _budget_mensile ← crediti del giorno e del mese (piano, catena)
+   ├─ RPC chat_crediti_check_and_log    ← crediti ATOMICI (mese → ricarica → giorno); fail-closed
    ├─ _build_chat_system_prompt         ← contesto: KPI Home + top categorie/fornitori + agenda di oggi
    ├─ gate tool per pagine_abilitate    ← filtra i tool offerti al modello (§5.1)
    ├─ loop tool-calling (max 3 round)   ← l'LLM chiama gli strumenti che gli servono
@@ -56,7 +56,7 @@ chat_ai()  [fastapi_worker.py]          ← ENDPOINT
    └─ track_ai_usage                    ← costo €  nel ledger AI (come categorizzazione)
         │
         ▼
-ChatResponse { reply, domande_oggi, limite_giorno }
+ChatResponse { reply, crediti_oggi, crediti_mese, crediti_ricarica, limite_giorno, limite_mese }
 ```
 
 **Regola d'oro (come il briefing):** il "cosa dire" sui numeri viene **sempre da
@@ -76,45 +76,40 @@ uno strumento che legge il DB**, mai dalla memoria del modello. L'LLM decide
 | Retry su timeout/5xx | 1 | loop interno |
 | Timeout OpenAI | 30s (worker) / 35s (route.ts) | client OpenAI + `CHAT_TIMEOUT_MS` |
 
-**Budget per piano** (dal 23/09/2026 il vincolo primario è il **mese**):
+**Crediti per piano** (dal 10/10/2026, fase J del piano «Assistente consulente»: l'app
+conta **crediti** come l'offerta commerciale; una domanda costa
+`CHAT_CREDITI_PER_DOMANDA` = **3**):
 
-| Piano | Domande/mese (`CHAT_BUDGET_MENSILE_PIANO`) | Domande/giorno (derivate) |
-|---|---|---|
-| `free` | 0 (chat non disponibile → 403) | 0 |
-| `base` | 300 | 30 |
-| `plus` | 600 | 60 |
-| `pro` | 900 | 90 |
+| Piano | Crediti/mese per sede (`CHAT_BUDGET_MENSILE_PIANO`) | Crediti/giorno (derivati) | ≈ domande/mese |
+|---|---|---|---|
+| `free` | 0 (chat non disponibile → 403) | 0 | 0 |
+| `base` | 1.000 | 100 | ~333 |
+| `plus` | 1.500 | 150 | 500 |
+| `pro` | 2.000 | 200 | ~666 |
 
+> **Catena**: un salvadanaio unico per l'account. La sede col piano **più alto**
+> conta per intero, ogni altra sede per **metà** (`CHAT_PESO_SEDE_AGGIUNTIVA`,
+> `_chat_budget_da_piani`): 2 Base = 1.500, 5 Pro = 6.000. Fino al 10/10 era la
+> somma piena (5 Pro = 4.500 domande al mese contro le 300 di un Base singolo).
+> Misurato quel giorno sul DB live: il massimo usato da un account in un mese era
+> 37 domande, nessun cliente toccato dal taglio.
+>
 > Il tetto giornaliero **non si scrive a mano**: è `CHAT_QUOTA_GIORNALIERA_PCT`
-> (10%) applicata al budget mensile, e `CHAT_LIMITI_PIANO` è costruito da quello.
-> Due tabelle di numeri divergono al primo ritocco di una sola.
+> (10%) applicata ai crediti del mese, e `CHAT_LIMITI_PIANO` è costruito da quello.
+> **Perché il 10%**: il mese deve coprire almeno 10 giorni di uso pieno.
 >
-> **Perché il 10%**: il mese deve coprire almeno 10 giorni di uso pieno. Al 20%
-> un cliente esaurirebbe il mese in 5 giorni restando fermo per 25 — il problema
-> che questo meccanismo esiste per evitare.
+> **Ricarica (Boost AI)**: 10 € una tantum per **300 crediti che non scadono**
+> (tabella `chat_ricariche`, una riga per ricarica; il residuo è la somma meno i
+> crediti spesi da ricarica, mai una colonna). Si spendono **prima** i crediti
+> del mese, **poi** la ricarica; il tetto del giorno vale anche sulla ricarica.
+> L'offerta compare in fondo alla Home (sede e catena) al **75%** dei crediti del
+> mese, solo a ricarica zero e solo al titolare (`lib/trigger-servizi.ts`,
+> `SOGLIA_BOOST`); Mattia la attiva a mano da Admin › cliente › Azioni
+> (`/api/admin/clienti/{id}/ricariche-ai`, `RICARICA_AI_CREDITI`).
 >
-> Il totale mensile è lo **stesso** di prima (i vecchi 10/20/30 al giorno × 30),
-> ma ora è esigibile: fino al 23/09/2026 esisteva solo il tetto giornaliero e il
-> mese non aveva alcun limite.
->
-> La RPC applica **entrambe** le finestre e dice quale è scattata: `-1` giorno,
-> `-2` mese. Il mese è controllato **per primo** perché dura di più — dire «torna
-> domani» a chi ha finito il mese lo rimanda a un giorno in cui sarà fermo di
-> nuovo. `p_limite_mensile` NULL = comportamento pre-23/09/2026.
->
-> ⚠️ **Ordine di deploy OBBLIGATO** per `20260923152816_chat_budget_mensile.sql`:
-> la firma della RPC cambia (parametro nuovo), il codice è fail-closed, quindi
-> **la migration va applicata PRIMA del push** o la chat si spegne per tutti.
->
-> La migration **droppa** la vecchia firma a 4 parametri, e il `DROP` non è
-> opzionale. La prima stesura la lasciava viva «così un worker non aggiornato
-> continua a funzionare»: **misurato su Postgres vero, fa l'opposto.** Con
-> `p_limite_mensile DEFAULT NULL` la firma a 5 è chiamabile anche con 4
-> argomenti, quindi le due sono entrambe candidate e Postgres solleva
-> `AmbiguousFunction` — il worker vecchio si rompe, e con il fail-closed la chat
-> si spegne per tutti. La retrocompatibilità la dà già il `DEFAULT NULL`: una
-> chiamata a 4 argomenti risolve sulla firma a 5 e si comporta come prima.
-> Stesso `DROP` di `20260619100000_chat_usage_pool.sql`, che è il precedente.
+> Costo misurato il 10/10/2026 (`ai_usage_events`, da settembre): in media
+> $0,0034 a domanda, p90 $0,0049, massimo $0,005. Una ricarica costa in media
+> ~0,35 € (al peggio ~2 €).
 
 > ⚠️ Il modello chat (`gpt-4.1-mini`) è lo stesso della categorizzazione (dal
 > 5/7/2026, dopo A/B test su dati reali), ma **diverso** dal briefing (`gpt-4o-mini`,
@@ -132,43 +127,50 @@ chiamanti runtime).
 ## 4. Rate-limit atomico (anti-abuso, anti-race)
 
 La quota **non** si conta con un SELECT seguito da INSERT (race tra richieste
-concorrenti + fail-open). Si usa la RPC **`chat_usage_check_and_log`** che, in un
-solo statement, conta le domande di oggi e logga quella nuova solo se sotto soglia:
+concorrenti + fail-open). Dal 10/10/2026 si usa la RPC
+**`chat_crediti_check_and_log`** (migration `20261010135911_chat_crediti_ricariche.sql`)
+che, in un solo statement e in fila per account (`pg_advisory_xact_lock`), legge i
+crediti spesi e registra la domanda solo se c'è spazio. Ritorna un JSON:
 
-- ritorna il **numero di domande consumate oggi** se OK;
-- ritorna `-1` se è finito il **tetto giornaliero** → `429`;
-- ritorna `-2` se è finito il **budget mensile** → `429` con un messaggio diverso.
+- `{"esito": "ok", oggi, mese, ricarica, da_ricarica}` — i numeri **dopo** la domanda;
+- `{"esito": "giorno", …}` → `429` «limite di oggi, si azzera a mezzanotte»;
+- `{"esito": "mese", …}` → `429` «crediti del mese finiti, ripartono il 1°»: vuol
+  dire mese **e** ricarica finiti, e vince sul giorno (dire «torna domani» a chi
+  ha finito il mese lo rimanda a un giorno in cui sarà fermo di nuovo).
 
-> I due casi sono frasi diverse, ed è il motivo per cui il ritorno non è più un
-> `-1` secco: «torna domani» a chi ha esaurito il **mese** lo rimanda a un giorno
-> in cui sarà fermo di nuovo. Il mese è controllato **per primo** perché dura di
-> più. Un chiamante che conosce solo il vecchio contratto legge `-2` come
-> "negativo" e blocca comunque: il fail-safe resta dalla parte giusta.
+Un ritorno che non si legge è un rifiuto (`503`), non un via libera.
+
+I numeri li legge **`chat_crediti_stato`** (sola lettura), la stessa funzione
+che usa la RPC di consumo: le finestre (giorno e mese di **Europe/Rome**) vivono
+solo in SQL. Fino al 10/10/2026 il conteggio aveva una copia Python
+(`_chat_domande_oggi`/`_mese`) tenuta allineata a mano; ora la vista
+(`_chat_crediti_stato`, `_chat_crediti_vista`) chiede alla RPC. `oggi` conta
+tutto ciò che è stato speso; `mese` solo i crediti del piano (non quelli pagati
+con la ricarica); `ricarica` è dell'account, qualunque sede l'abbia spesa.
+
+> La vecchia `chat_usage_check_and_log` (domande, ritorno `-1`/`-2`) resta sul DB
+> perché il worker vecchio la chiama fra migration e push: si toglie con una
+> migration successiva, a deploy fatto. Le sue righe prendono `crediti = 3`.
 
 **Fail-closed:** se la RPC fallisce, l'endpoint **rifiuta** la domanda (`503`), non
 la lascia passare. Il log della domanda è già scritto dalla RPC prima della
 chiamata OpenAI → niente INSERT a valle.
 
-Il conteggio è per **ristorante** (`ristorante_id`) se presente, altrimenti per
-utente. La finestra è il **giorno di Europe/Rome**: il contatore si azzera a
-mezzanotte per il ristoratore, non per il server.
+Il conteggio è per **ristorante** (`ristorante_id`) se l'account ha una sede sola,
+per **account** (`user_id`) se è un pool multi-sede. La finestra è il **giorno di
+Europe/Rome**: il contatore si azzera a mezzanotte per il ristoratore.
 
-> Fino al 23/09/2026 la finestra era il giorno **UTC**, cioè l'01:00 di Roma
-> d'inverno e le 02:00 d'estate: chi chattava dopo mezzanotte spendeva la quota
-> del giorno prima (misurato sul DB live: 1 riga su 95 già addebitata al giorno
-> sbagliato). Il fuso vive in **due punti che devono restare allineati** — la RPC
-> (`20260923141755_chat_quota_giorno_di_roma.sql`) e il gemello Python
-> `_chat_domande_oggi`: se divergono, il contatore mostrato al cliente e quello
-> applicato non coincidono più. Presidio: `tests/test_chat_quota_giorno_di_roma.py`.
+> Fino al 23/09/2026 la finestra era il giorno **UTC**: chi chattava dopo
+> mezzanotte spendeva la quota del giorno prima (misurato: 1 riga su 95).
+> Presidio delle finestre: `tests/test_sql_chat_crediti.py` (Postgres vero).
 
-**Un blocco lascia traccia nei log** (`logger.warning`, dal 23/09/2026). Prima non
-la lasciava da nessuna parte: la RPC ritorna `-1` **senza inserire**, e il ramo
-`429` non scriveva né su DB né sul logger. Un rifiuto era quindi invisibile, e la
-domanda «il tetto ha mai fermato un cliente?» non era rispondibile — non per
-assenza di blocchi, ma per assenza dello strumento di misura.
+**Un blocco lascia traccia nei log** (`logger.warning`, dal 23/09/2026): senza,
+la domanda «il tetto ha mai fermato un cliente?» non era rispondibile.
 
-Il widget mostra le domande rimaste e si sincronizza con la verità del backend a
-ogni risposta (`domande_oggi` / `limite_giorno` in `ChatResponse`).
+Il widget mostra i crediti rimasti — «Ti restano 640 crediti (300 di ricarica)» —
+e si sincronizza con la verità del backend a ogni risposta (`crediti_oggi`,
+`crediti_mese`, `crediti_ricarica` in `ChatResponse`; logica in
+`lib/home-chat.ts`, `statoCrediti`).
 
 ---
 
@@ -519,7 +521,8 @@ gennaio a oggi).
 | Voglio… | File / funzione |
 |---|---|
 | Cambiare modello o parametri (temp, max_tokens, round) | `CHAT_MODEL`, loop in `chat_ai` (fastapi_worker.py) |
-| Cambiare il budget mensile per piano | `CHAT_BUDGET_MENSILE_PIANO` (il giornaliero si ricalcola da solo) |
+| Cambiare i crediti al mese per piano | `CHAT_BUDGET_MENSILE_PIANO` (il giornaliero si ricalcola da solo); quanto costa una domanda: `CHAT_CREDITI_PER_DOMANDA`; il peso delle sedi in più di una catena: `CHAT_PESO_SEDE_AGGIUNTIVA` |
+| Cambiare il Boost AI | crediti di una ricarica: `RICARICA_AI_CREDITI` (`routers/admin.py`) + testo in `lib/assistenza.ts` e `lib/trigger-servizi.ts`; soglia dell'offerta: `SOGLIA_BOOST` |
 | Cambiare quanto se ne puo' spendere in un giorno | `CHAT_QUOTA_GIORNALIERA_PCT` |
 | Aggiungere un nuovo strumento | `_CHAT_TOOLS_SEDE` + `_chat_esegui_tool_sede` + nuova `_chat_*` + voce in `_CHAT_TOOL_FLAG` (§5.1); se vale anche in catena, `_CHAT_TOOLS_SEDE_IN_CATENA` (§5.3) |
 | Cambiare a quale pagina è legato uno strumento | mappa `_CHAT_TOOL_FLAG` |
@@ -527,7 +530,7 @@ gennaio a oggi).
 | Cambiare le regole di comportamento/tono | testo `sistema` in `_build_chat_system_prompt` |
 | Cambiare la ricerca tollerante (singolare/plurale) | `_varianti` in `_chat_query_costi` |
 | Cambiare la gestione "mese corrente vuoto" | coda di `_chat_query_costi` (`mese_non_ancora_caricato`) |
-| Cambiare il rate-limit | RPC `chat_usage_check_and_log` (DB) + `_chat_limite_per_piano` |
+| Cambiare il rate-limit | RPC `chat_crediti_check_and_log` / `chat_crediti_stato` (DB) + `_chat_crediti_consuma` |
 | Cambiare timeout | `OpenAI(timeout=...)` (worker) + `CHAT_TIMEOUT_MS` (route.ts) |
 | Cambiare le domande proposte | Punto vendita (Home e `/m/chat`): `DOMANDE_PER_TEMA` / `DOMANDE_PER_REGISTRARE` in `lib/home-chat.ts` (`domandeDalBriefing`, dai `temi` del briefing, fase F 8/10/2026); i posti liberi e la catena: `SUGGERIMENTI_SEDE` / `SUGGERIMENTI_CATENA` |
 | Cambiare il feedback d'attesa | `testoAttesa` in `lib/home-chat.ts` + effetto in `assistente-provider.tsx` |
@@ -564,7 +567,8 @@ reale del cliente.
 | `diario_eventi` | fonte di `query_appuntamenti` + "appuntamenti di oggi" nel prompt (scoped `ristorante_id`) |
 | `users` | `piano` (limite chat), **`pagine_abilitate`** (gate tool §5.1), `price_alert_threshold` (non usata dalla chat; si imposta dal **configuratore assistente**, vedi `BRIEFING_HOME.md` §11) |
 | `sessioni` | autenticazione token (chat e resto dell'app) |
-| `chat_usage_log` | log domande per il rate-limit giornaliero |
+| `chat_usage_log` | una riga per domanda: `crediti` spesi, `da_ricarica` |
+| `chat_ricariche` | ricariche del Boost AI (una riga per ricarica, non scadono) |
 | `ai_cost_log` (ledger) | costo € della chat (via `track_ai_usage`) |
 | `margini_mensili` + costi auto | fonte MOL/food cost (via `home_kpi`/`_kpi_periodo`) |
 
@@ -582,7 +586,7 @@ reale del cliente.
 | `apps/web/src/lib/home-chat.ts` | logica pura: messaggi della vista aperta, coda da inviare, contatore, card delle cifre dettate |
 | `services/routers/assistente.py` | cifre dettate: proposta (`proponi`) e Conferma (`POST /api/assistente/registra`) (§5.4) |
 | `apps/web/src/components/home/card-cifra.tsx` | la card con Conferma / Annulla |
-| RPC `chat_usage_check_and_log` (DB) | rate-limit atomico |
+| RPC `chat_crediti_check_and_log` / `chat_crediti_stato` (DB) | crediti atomici / lettura dei crediti |
 | `services/ai_cost_service.py` | `track_ai_usage` (ledger costi) |
 
 ---

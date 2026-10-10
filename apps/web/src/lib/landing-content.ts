@@ -134,8 +134,10 @@ export const LANDING = {
   // --- SCENA 7 — Piani (fondo pagina, minimal) -------------------------------
   // Numeri reali dal prodotto: fatture/mese 50/100/200 (confermati da Mattia),
   // prezzi 39/59/79 +IVA. Crediti AI/mese: cifra grande che comunica potenza, con
-  // riferimento concreto piccolo sotto (~10/20/30 richieste/giorno). Termine
-  // "crediti AI" (NON "token"). Cifre tonde mappate da 10/20/30 domande/giorno.
+  // riferimento concreto piccolo sotto (richieste/giorno). Termine "crediti AI"
+  // (NON "token"). Sono i crediti VERI dell'app dal 10/10/2026 (fase J, decisi
+  // da Mattia): 1.000/1.500/2.000, una richiesta = 3 crediti, quindi ~11/16/22
+  // al giorno (CHAT_BUDGET_MENSILE_PIANO nel worker; un test li tiene allineati).
   piani: {
     title: "Tutto incluso, in ogni piano",
     // Nessun piano "consigliato": tutti full optional, cambia solo il volume.
@@ -146,8 +148,8 @@ export const LANDING = {
     // piccola sotto la riga crediti (quanti crediti ≈ quante richieste/giorno).
     lista: [
       { nome: "Base", prezzo: "39€", fatture: "Fino a 50 fatture / mese", crediti: "1.000 crediti AI / mese", creditiNota: "~10 richieste al giorno" },
-      { nome: "Plus", prezzo: "59€", fatture: "Fino a 100 fatture / mese", crediti: "2.000 crediti AI / mese", creditiNota: "~20 richieste al giorno" },
-      { nome: "Pro", prezzo: "79€", fatture: "Fino a 200 fatture / mese", crediti: "3.000 crediti AI / mese", creditiNota: "~30 richieste al giorno" },
+      { nome: "Plus", prezzo: "59€", fatture: "Fino a 100 fatture / mese", crediti: "1.500 crediti AI / mese", creditiNota: "~15 richieste al giorno" },
+      { nome: "Pro", prezzo: "79€", fatture: "Fino a 200 fatture / mese", crediti: "2.000 crediti AI / mese", creditiNota: "~20 richieste al giorno" },
     ],
     // Voci uguali in ogni piano (oltre a fatture/crediti).
     sdi: "Ricezione fatture via SDI inclusa",
@@ -158,6 +160,12 @@ export const LANDING = {
     catena: "Più locali? Tutte le sedi confrontate in un colpo d'occhio, anche da casa — modalità catena, su ogni piano",
     // chiarimento sotto la riga catena: i prezzi sono per singola sede.
     perPuntoVendita: "I prezzi esposti sono per punto vendita",
+    // I crediti di una catena (Mattia, 10/10/2026): un salvadanaio unico, non
+    // la somma piena — `_chat_budget_da_piani` nel worker.
+    creditiCatena:
+      "Con più punti vendita i crediti AI si sommano: il piano più alto vale per intero, ogni altro punto vendita per metà",
+    // Boost AI (fase J): la ricarica una tantum, per chi ne vuole di più.
+    boost: "Ti servono più crediti? Boost AI: 300 crediti a 10€, una tantum, senza scadenza",
     // Attivazione in 3 passi sopra la CTA finale: ammazza l'obiezione "sarà
     // complicato / non sono capace" nel momento esatto in cui riaffiora.
     attivazione: [

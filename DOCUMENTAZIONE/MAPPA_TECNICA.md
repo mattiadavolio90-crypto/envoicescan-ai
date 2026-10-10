@@ -175,7 +175,7 @@ beneficio; lo shim costa zero e non mente.
 Sul live vivono **75 funzioni `public`, 26 trigger, 96 policy** (ri-misurati
 l'08/09/2026). Non è codice accessorio: `gruppo_spesa_pivot` calcola il pivot
 della pagina Catena, `articoli_da_fatture` i prezzi da cui parte il foodcost,
-`chat_usage_check_and_log` il limite giornaliero della chat.
+`chat_crediti_check_and_log` i crediti della chat.
 
 **Le migration del repo non ricostruiscono il database** — applicarle su un
 Postgres vuoto dà 18 tabelle su 59. Il DB dei test si monta invece da

@@ -438,6 +438,10 @@ export function LandingPage() {
             <p className="mt-1.5 text-center text-xs text-muted-foreground/70">
               {LANDING.piani.perPuntoVendita}
             </p>
+            <p className="mt-1.5 text-center text-xs text-muted-foreground/70">
+              {LANDING.piani.creditiCatena}
+            </p>
+            <p className="mt-3 text-center text-sm text-muted-foreground">{LANDING.piani.boost}</p>
             {/* Attivazione in 3 passi sopra la CTA finale: l'obiezione "sarà
                 complicato" riaffiora esattamente qui, davanti al bottone. */}
             {/* Su mobile lista in colonna allineata a sinistra (col testo su due

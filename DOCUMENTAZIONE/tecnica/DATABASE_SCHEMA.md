@@ -379,16 +379,30 @@ Indici: `(ristorante_id, created_at DESC)`, `(operation_type)`.
 | undone_at | TIMESTAMPTZ (nullable) | Se annullata |
 | created_at | TIMESTAMPTZ | |
 
-### `chat_usage_log` — Contatore chat AI per piano
+### `chat_usage_log` — Una riga per domanda alla chat AI
 
 | Colonna | Tipo | Note |
 |---------|------|------|
-| id | BIGSERIAL (PK) | |
-| user_id | UUID | |
-| ristorante_id | UUID | |
-| data | DATE | Giorno (reset a mezzanotte) |
-| count | INT | Domande effettuate |
-| — | UNIQUE(user_id, ristorante_id, data) | |
+| id | UUID (PK) | |
+| user_id | UUID | titolare (anche per un sotto-utente) |
+| ristorante_id | UUID | sede d'origine, anche in pool |
+| created_at | TIMESTAMPTZ | finestre giorno/mese sul fuso Europe/Rome |
+| crediti | INT NOT NULL DEFAULT 3 | crediti spesi (dal 10/10/2026) |
+| da_ricarica | BOOLEAN NOT NULL DEFAULT false | pagata con la ricarica invece che col mese |
+
+### `chat_ricariche` — Ricariche dei crediti AI (Boost AI)
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | UUID (PK) | |
+| user_id | UUID FK users ON DELETE CASCADE | la ricarica e' dell'account |
+| crediti | INT CHECK > 0 | 300 per il Boost |
+| nota | TEXT | facoltativa |
+| creata_da | TEXT | email dell'admin |
+| created_at | TIMESTAMPTZ | |
+
+Il residuo non e' una colonna: somma delle ricariche meno i crediti `da_ricarica`
+(RPC `chat_crediti_stato`). Le ricariche non scadono.
 
 ---
 

@@ -491,10 +491,10 @@ track_ai_usage(
 - GPT-4o-mini (briefing): Input $0.15 / Output $0.60 per 1M token
 - GPT-4.1-mini (categorizzazione, chat): Input $0.40 / Output $1.60 per 1M token
 
-**Budget chat AI:**
-- Free: 0 domande/giorno
-- Base: 10 | Plus: 20 | Pro: 30
-- Target Pro: ≤ €3/mese
+**Budget chat AI** (crediti, dal 10/10/2026; una domanda = 3 crediti):
+- Free: 0
+- Base: 1.000 crediti/mese | Plus: 1.500 | Pro: 2.000 (giorno = 10% del mese)
+- Ricarica Boost AI: 300 crediti, non scadono — dettaglio in `CHAT_ASSISTENTE.md` §3
 
 **Admin Panel** (`/admin/sistema` → Costi AI): aggregazione per cliente/ristorante, periodi 7/30/90 giorni, quota vision giornaliera per ristorante.
 

@@ -26,7 +26,7 @@ const FAQ = [
   },
   {
     q: "Quanto costa ONEFLUX?",
-    a: "Tre piani: Base 39€, Plus 59€ e Pro 79€ al mese (IVA esclusa). Tutte le funzioni sono incluse in ogni piano: cambia solo il volume di fatture e di domande all'assistente. La prova è gratis per 7 giorni, senza carta.",
+    a: "Tre piani: Base 39€, Plus 59€ e Pro 79€ al mese (IVA esclusa). Tutte le funzioni sono incluse in ogni piano: cambia solo il volume di fatture e di crediti AI per l'assistente. La prova è gratis per 7 giorni, senza carta.",
   },
   {
     q: "Ho più locali: ONEFLUX li gestisce insieme?",
