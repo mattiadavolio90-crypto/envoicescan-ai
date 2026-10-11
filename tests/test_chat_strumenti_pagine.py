@@ -295,3 +295,25 @@ def test_gli_avvisi_dicono_che_sono_al_massimo_tre():
     with patch.object(pis, "calcola_alert_prezzi_impatto", return_value=AP):
         out = _esegui("avvisi_prezzi")
     assert "al massimo i 3 rincari" in out["nota"]
+
+
+# ── Lo strumento della spesa parla le categorie del settore (regola 7) ────────
+
+def _enum_spesa(settore):
+    [t] = [t for t in fw._chat_tools_sede_offerti({"id": "u", "pagine_abilitate": None}, settore)
+           if t["function"]["name"] == "proponi_spesa"]
+    return t["function"]["parameters"]["properties"]["categoria"]["enum"]
+
+
+def test_al_negozio_la_spesa_offre_merce_e_spese_generali():
+    from services.routers import assistente as A
+    assert _enum_spesa("retail") == list(A.categorie_spesa_per_settore("retail"))
+    assert "CARNE" not in _enum_spesa("retail") and "ARTICOLO DI VENDITA" in _enum_spesa("retail")
+
+
+def test_al_ristorante_la_spesa_offre_le_29_di_sempre_e_la_lista_condivisa_non_cambia():
+    from services.routers import assistente as A
+    _enum_spesa("retail")
+    assert _enum_spesa("ristorazione") == list(A.CATEGORIE_SPESA)
+    [orig] = [t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == "proponi_spesa"]
+    assert orig["function"]["parameters"]["properties"]["categoria"]["enum"] == list(A.CATEGORIE_SPESA)

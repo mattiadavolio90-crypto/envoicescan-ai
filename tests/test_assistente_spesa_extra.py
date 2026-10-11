@@ -186,3 +186,43 @@ def test_la_proposta_registra_la_cifra_pagata_anche_se_il_modello_passa_l_iva():
     proposta, al_modello = A._proponi_spesa(args, _Sb(), "r-1", "CASATI 14", OGGI)
     assert proposta.importo == 150 and al_modello["si_registra"] == 150.0
     assert "iva_inclusa" not in proposta.model_dump() and "importo_netto" not in proposta.model_dump()
+
+
+# ─── Il settore della sede (regola 7, 11/10/2026) ─────────────────────────────
+def test_le_categorie_del_negozio_sono_quelle_che_la_conferma_accetta():
+    """Prima lo strumento offriva Carne e Pesce anche a un negozio: la spesa
+    dettata finiva in una categoria che il modulo Spese gli rifiutava."""
+    retail = A.categorie_spesa_per_settore("retail")
+    assert retail[0] == "ARTICOLO DI VENDITA" and "CARNE" not in retail
+    for cat in retail:
+        assert A.valida_spesa(_spesa(categoria=cat), OGGI, "retail")["categoria"] == cat
+    assert _codice(A.valida_spesa, _spesa(categoria="CARNE"), OGGI, "retail") == 400
+    assert A.valida_spesa(_spesa(categoria="ARTICOLO DI VENDITA"), OGGI, "retail")["tipo"] == "fb"
+
+
+@pytest.mark.parametrize("settore", [None, "ristorazione"])
+def test_i_ristoranti_restano_com_erano(settore):
+    assert A.categorie_spesa_per_settore(settore) == A.CATEGORIE_SPESA
+    assert _codice(A.valida_spesa, _spesa(categoria="ARTICOLO DI VENDITA"), OGGI, settore) == 400
+    assert A.valida_spesa(_spesa(), OGGI, settore)["categoria"] == "LATTICINI"
+
+
+def test_la_conferma_legge_il_settore_della_sede(oggi, monkeypatch):
+    letti = []
+    monkeypatch.setattr(A, "settore_sede", lambda rid, sb: letti.append(rid) or "retail")
+    valori = A._registra_spesa(_Sb(), {"id": "u-1"}, "r-1", _spesa(categoria="ARTICOLO DI VENDITA"))
+    assert letti == ["r-1"] and valori["categoria"] == "ARTICOLO DI VENDITA" and valori["tipo"] == "fb"
+    monkeypatch.setattr(A, "settore_sede", lambda rid, sb: "ristorazione")
+    assert _codice(A._registra_spesa, _Sb(), {"id": "u-1"}, "r-1", _spesa(categoria="ARTICOLO DI VENDITA")) == 400
+
+
+def test_la_proposta_usa_il_settore_della_richiesta(monkeypatch):
+    monkeypatch.setattr(A, "sede_scrivibile", lambda user, sb, rid: rid)
+    monkeypatch.setattr(A, "_oggi", lambda: OGGI)
+    args = {"data": "2026-01-05", "descrizione": "Caramelle", "categoria": "ARTICOLO DI VENDITA", "importo": 30}
+    proposta, _ = A.proponi("proponi_spesa", args, user={"id": "u-1"}, sb=_Sb(),
+                            ristorante_id="r-1", sede_nome="Negozio", settore="retail")
+    assert proposta is not None and proposta.categoria == "ARTICOLO DI VENDITA"
+    proposta, letto = A.proponi("proponi_spesa", args, user={"id": "u-1"}, sb=_Sb(),
+                                ristorante_id="r-1", sede_nome="Trattoria", settore="ristorazione")
+    assert proposta is None and "errore" in letto

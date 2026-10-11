@@ -6091,6 +6091,18 @@ def _chat_tool_fase_f_permesso(nome: str, pagine) -> bool:
     return not scheda or f"{_TAB_OFF_PREFIX}{scheda}" not in set(pagine)
 
 
+def _tool_spesa_per_settore(tool: Dict[str, Any], settore: Optional[str]) -> Dict[str, Any]:
+    """`proponi_spesa` con le categorie del settore nell'enum (regola 7,
+    11/10/2026): a un negozio la merce e le spese generali, non Carne e Pesce.
+    Una COPIA: `_CHAT_TOOLS_SEDE` e' condivisa fra le richieste."""
+    import copy
+    copia = copy.deepcopy(tool)
+    copia["function"]["parameters"]["properties"]["categoria"]["enum"] = list(
+        _assistente.categorie_spesa_per_settore(settore)
+    )
+    return copia
+
+
 def _chat_tools_sede_offerti(user: Dict[str, Any], settore: Optional[str]) -> List[Dict[str, Any]]:
     """Gli strumenti di sede che il modello puo' vedere, dopo i due gate."""
     tools = list(_CHAT_TOOLS_SEDE)
@@ -6113,7 +6125,8 @@ def _chat_tools_sede_offerti(user: Dict[str, Any], settore: Optional[str]) -> Li
     # coperti toglierebbe anche i margini — che al negozio servono.
     if settore == SETTORE_RETAIL:
         tools = [
-            t for t in tools
+            _tool_spesa_per_settore(t, settore) if t["function"]["name"] == "proponi_spesa" else t
+            for t in tools
             if t["function"]["name"] not in _TOOL_VIETATI_PER_SETTORE[SETTORE_RETAIL]
         ]
     return tools

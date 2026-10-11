@@ -37,6 +37,7 @@ from config.constants import (
 from config.logger_setup import get_logger
 from services import sotto_utenti_service as _su
 from services.routers.workspace import _tipo_da_categoria, _valida_categoria_spesa
+from services.settore_service import categorie_ammesse, settore_sede
 
 logger = get_logger("router_assistente")
 
@@ -76,6 +77,16 @@ TETTO_PERSONALE_MESE = 300_000.0
 TETTO_SPESA = 50_000.0
 # Le categorie di una spesa extra, nell'ordine del form dell'Agenda.
 CATEGORIE_SPESA = tuple(CATEGORIE_FOOD_BEVERAGE) + tuple(CATEGORIE_SPESE_GENERALI)
+
+
+def categorie_spesa_per_settore(settore: Optional[str] = None) -> Tuple[str, ...]:
+    """Le categorie che lo strumento offre al modello e che la Conferma accetta,
+    per settore (regola di dominio 7, 11/10/2026): un negozio ha la merce
+    (ARTICOLO DI VENDITA) e le spese generali, come nel modulo Spese dell'Agenda;
+    un ristorante, o un settore ignoto, le 29 di sempre."""
+    if settore == SETTORE_RETAIL:
+        return tuple(categorie_ammesse(settore))
+    return CATEGORIE_SPESA
 DESCRIZIONE_MAX = 200
 GIORNI_INDIETRO_INCASSO = 60
 MESI_INDIETRO = 12  # il mese corrente e i 12 prima
@@ -199,12 +210,13 @@ def valida_giorno_spesa(testo: Optional[str], oggi: date) -> date:
     return giorno
 
 
-def valida_spesa(body: RegistraRequest, oggi: date) -> Dict[str, Any]:
+def valida_spesa(body: RegistraRequest, oggi: date, settore: Optional[str] = None) -> Dict[str, Any]:
     """La riga di `spese_extra` che la Conferma inserisce, con le regole del form
-    dell'Agenda (`ws_spese_crea`): categoria ammessa e tipo derivato da lei,
-    descrizione obbligatoria, importo salvato com'e' stato pagato."""
+    dell'Agenda (`ws_spese_crea`): categoria ammessa per il settore della sede e
+    tipo derivato da lei, descrizione obbligatoria, importo salvato com'e' stato
+    pagato."""
     giorno = valida_giorno_spesa(body.data, oggi)
-    categoria = _valida_categoria_spesa(body.categoria or "")
+    categoria = _valida_categoria_spesa(body.categoria or "", settore)
     descrizione = (body.descrizione or "").strip()
     if not descrizione:
         raise HTTPException(status_code=400, detail="Manca la descrizione della spesa")
@@ -504,7 +516,7 @@ def _registra_spesa(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]
     confrontare. Il doppione lo evita l'id della proposta: se l'insert fallisce
     perche' la riga c'e' gia' (Conferma ripetuta, risposta persa) e' la stessa
     spesa, ed e' un successo."""
-    riga = valida_spesa(body, _oggi())
+    riga = valida_spesa(body, _oggi(), settore_sede(rid, sb))
     try:
         sb.table("spese_extra").insert(
             {**riga, "ristorante_id": rid, "user_id": str(user["id"])}
@@ -650,7 +662,7 @@ def proponi(nome: str, args: Dict[str, Any], *, user: Dict[str, Any], sb,
         if nome == "proponi_personale":
             return _proponi_personale(args, sb, rid, sede_nome, oggi)
         if nome == "proponi_spesa":
-            return _proponi_spesa(args, sb, rid, sede_nome, oggi)
+            return _proponi_spesa(args, sb, rid, sede_nome, oggi, settore)
         return None, {"errore": f"strumento sconosciuto: {nome}"}
     except HTTPException as exc:
         motivo = exc.detail if isinstance(exc.detail, str) else "richiesta non valida"
@@ -773,7 +785,7 @@ _PRONTA_SPESA = (
 )
 
 
-def _proponi_spesa(args, sb, rid, sede_nome, oggi):
+def _proponi_spesa(args, sb, rid, sede_nome, oggi, settore=None):
     if isinstance(args.get("importo"), str):
         return None, _IMPORTO_IN_TESTO
     corpo = RegistraRequest(
@@ -782,7 +794,7 @@ def _proponi_spesa(args, sb, rid, sede_nome, oggi):
         descrizione=args.get("descrizione"), importo=_numero(args, "importo"),
         id_proposta=str(uuid.uuid4()),
     )
-    riga = valida_spesa(corpo, oggi)
+    riga = valida_spesa(corpo, oggi, settore)
     simili = (
         sb.table("spese_extra")
         .select("id")
