@@ -66,6 +66,34 @@ def _nuova_sede(sc, chi, *, attivo=True, tecnica=False):
     return sede
 
 
+def _canale(sc, sede, giorno):
+    return _riga(
+        sc,
+        "SELECT source, source_meta->>'source_channel' FROM public.ricavi_giornalieri "
+        "WHERE ristorante_id = %s AND data = %s",
+        sede, giorno,
+    )
+
+
+# ─── Da dove e' arrivata la cifra ─────────────────────────────────────────────
+def test_la_cifra_registrata_dall_assistente_si_riconosce_sul_db(scenario):
+    """`source` resta 'manuale' (vincolo CHECK e badge dei moduli); il canale sta in
+    source_meta, come per l'import email. Prima l'assistente e il modulo erano
+    indistinguibili (11/10/2026). Vale per la riga nuova e per l'aggiornamento."""
+    a = scenario.a
+    assert _registra(scenario, a, **_incasso(a.ids["sede1"])).status_code == 200
+    assert _canale(scenario, a.ids["sede1"], IERI) == ("manuale", "assistente")
+    scenario.conn.execute(
+        "UPDATE public.ricavi_giornalieri SET source_meta = NULL WHERE ristorante_id = %s AND data = %s",
+        (a.ids["sede1"], IERI),
+    )
+    resp = _registra(scenario, a, **_incasso(a.ids["sede1"], fatturato_iva10=2000,
+                                             precedente={"fatturato_iva10": 1800, "altri_ricavi_noiva": 540,
+                                                         "fatturato_iva22": 0}))
+    assert resp.status_code == 200, resp.text
+    assert _canale(scenario, a.ids["sede1"], IERI) == ("manuale", "assistente")
+
+
 # ─── La sede ──────────────────────────────────────────────────────────────────
 def test_sui_propri_id_scrive_davvero(scenario):
     a = scenario.a

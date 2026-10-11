@@ -424,6 +424,13 @@ def _aggiorna(sb, tabella: str, letto: Letto, rid: str, payload: Dict[str, Any],
         _gia_registrato(rileggi, dettato)
 
 
+# `source` resta 'manuale' (vincolo CHECK sulla colonna e badge dei moduli): da
+# dove e' arrivata la cifra lo dice `source_meta`, come per l'import email
+# (`source_channel`). Senza, sul DB non si distingueva cosa aveva registrato
+# l'assistente da cio' che il cliente aveva scritto nel modulo (11/10/2026).
+_META_ASSISTENTE = {"source_channel": "assistente"}
+
+
 def _registra_incasso(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
     giorno = valida_giorno(body.data, _oggi())
     valori = valida_importi_incasso(body, TETTO_INCASSO_GIORNO)
@@ -437,11 +444,12 @@ def _registra_incasso(sb, user, rid: str, body: RegistraRequest) -> Dict[str, An
     rileggi = lambda: leggi_incasso_giorno(sb, rid, giorno)  # noqa: E731
     if letto.id:
         _aggiorna(sb, "ricavi_giornalieri", letto, rid,
-                  {**valori, "source": "manuale", "updated_at": _adesso()}, valori, rileggi)
+                  {**valori, "source": "manuale", "source_meta": _META_ASSISTENTE,
+                   "updated_at": _adesso()}, valori, rileggi)
     else:
         _inserisci(sb, "ricavi_giornalieri",
                    {"user_id": str(user["id"]), "ristorante_id": rid, "data": giorno.isoformat(),
-                    **valori, "source": "manuale"}, valori, rileggi)
+                    **valori, "source": "manuale", "source_meta": _META_ASSISTENTE}, valori, rileggi)
     return {"data": giorno.isoformat(), **valori}
 
 
