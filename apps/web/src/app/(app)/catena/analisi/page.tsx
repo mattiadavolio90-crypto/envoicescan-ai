@@ -10,6 +10,7 @@ import { TabsSwitcher } from "../../analisi-fatture/tabs-switcher";
 import { SchedaSpesaPV } from "./scheda-spesa-pv";
 import { SchedaMarginiCoperti } from "./scheda-margini-coperti";
 import { SchedaTagCatena } from "./scheda-tag-catena";
+import { SchedaPrezziCatena } from "./scheda-prezzi-catena";
 
 // Analisi catena (Mattia, 28/9): le tre analisi che stavano come finestre nella
 // Home di catena, ora schede di pagina. Come /catena non c'e' un interruttore
@@ -48,6 +49,7 @@ async function AnalisiBlock({ richiesta }: { richiesta: string | undefined }) {
       {tab === "spesa" && <SchedaSpesaPV />}
       {tab === "margini" && <SchedaMarginiCoperti coperti={copertiCatenaAccesi(pagine)} />}
       {tab === "tag" && <SchedaTagCatena />}
+      {tab === "prezzi" && <SchedaPrezziCatena />}
     </>
   );
 }
@@ -64,7 +66,7 @@ export default async function AnalisiCatenaPage({
       <PageHeader
         icon="bar-chart"
         title="Analisi catena"
-        hint="I punti vendita a confronto: spesa, margini e coperti, prodotti"
+        hint="I punti vendita a confronto: spesa, margini e coperti, prodotti, prezzi"
       />
       <Suspense fallback={<AnalisiSkeleton />}>
         <AnalisiBlock richiesta={tab} />

@@ -175,7 +175,12 @@ beneficio; lo shim costa zero e non mente.
 Sul live vivono **75 funzioni `public`, 26 trigger, 96 policy** (ri-misurati
 l'08/09/2026). Non è codice accessorio: `gruppo_spesa_pivot` calcola il pivot
 della pagina Catena, `articoli_da_fatture` i prezzi da cui parte il foodcost,
-`chat_crediti_check_and_log` i crediti della chat.
+`chat_crediti_check_and_log` i crediti della chat. La scheda «Prezzi» di
+Analisi catena parte da `gruppo_prezzi_catena`, che riduce le righe del periodo a
+una voce per sede × prodotto × fornitore in un solo valore jsonb; il worker ci
+applica `_deriva_variazione`, la stessa funzione dell'Osservatorio del PV, perché
+la stessa sede non dia numeri diversi nelle due pagine
+(`tests/test_sql_gruppo_prezzi.py` lo prova sulle stesse righe).
 
 **Le migration del repo non ricostruiscono il database** — applicarle su un
 Postgres vuoto dà 18 tabelle su 59. Il DB dei test si monta invece da

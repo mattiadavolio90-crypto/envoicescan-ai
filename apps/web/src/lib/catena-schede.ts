@@ -29,6 +29,7 @@ export const SCHEDE_ANALISI_CATENA: readonly TabDef[] = [
   { key: "spesa", label: "Spesa per PV" },
   { key: "margini", label: "Margini e coperti" },
   { key: "tag", label: "Tag di catena" },
+  { key: "prezzi", label: "Prezzi" },
 ];
 
 // Non e' una scheda: spegne le colonne dei coperti (e lo spreco per coperto)

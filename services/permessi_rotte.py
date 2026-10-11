@@ -215,6 +215,8 @@ PAGINE_PER_ROTTA: Dict[Rotta, FrozenSet[str]] = {
     ("GET", "/api/gruppo/margini-coperti"): _p(C),
     ("GET", "/api/gruppo/spreco-categorie"): _p(C),
     ("GET", "/api/gruppo/spesa-pivot"): _p(C),
+    ("GET", "/api/gruppo/prezzi"): _p(C),
+    ("GET", "/api/gruppo/prezzi/storico"): _p(C),
     ("GET", "/api/gruppo/cestino"): _p(C),
     ("GET", "/api/gruppo/scadenziario"): _p(C),
     ("GET", "/api/gruppo/tag"): _p(C),

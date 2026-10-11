@@ -2146,6 +2146,28 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   test. **Residui:** la decisione su fra.diclemente (unico su «Scadenzario» dopo la
 >   migration della H: scelta sua, ammessa); i briefing della F non ancora generati da
 >   nessuna sede con dati (ultimi snapshot v29/v30 del 5-8/10).
+> - **11/10/2026 — scheda «Prezzi» in Analisi catena (Opus), NON pushata.** Decisione di
+>   Mattia: variazioni di ogni PV con la sede su ogni riga e filtro per PV, «stesso
+>   prodotto, prezzi diversi» fra i PV, etichetta «in N PV su M». La variazione si calcola
+>   DENTRO ogni sede (mescolare le serie dava falsi rincari: 15,80 vs 17,58 = +11%).
+>   **Fatto:** RPC `gruppo_prezzi_catena` (un jsonb: la prima stesura a righe faceva 6
+>   pagine da 1000 e rieseguiva la funzione a ogni pagina, 4,8 s → 1,8 s sulle 5 sedi),
+>   applicata al live via MCP e verificata su `pg_proc`; `_deriva_variazione` estratta da
+>   `_calcola_variazioni_prezzi_sync` e condivisa (vecchia e nuova identiche su 1.214
+>   variazioni casuali); `/api/gruppo/prezzi` + `/storico` (404 su sede fuori gruppo),
+>   permessi `C`, scheda `prezzi` spegnibile dall'admin. **Prove:** equivalenza catena ↔
+>   Osservatorio su un Postgres vero (3 soglie) e sui dati veri delle due catene: 330/333 e
+>   27/27 identiche, le 3 diverse sono acquisti dello STESSO giorno a prezzi diversi, dove
+>   pandas non garantisce l'ordine; mutazione 17/17 (i 2 sopravvissuti del primo giro
+>   stavano nella funzione condivisa, invisibili al confronto: test diretto aggiunto);
+>   suite `python -m pytest tests/ -q -p no:randomly`: **19.937 verdi, 58 skip, 0 rossi**;
+>   `tsc --noEmit` pulito. **Non fatto, dichiarato:** la scheda non e' stata aperta nel
+>   browser (serve il login della catena); `/m` non allineato; niente preferiti in catena.
+>   **Residui:** sul live resta ORFANA `gruppo_prezzi_coppie` (prima stesura, mai chiamata,
+>   EXECUTE solo service_role): il DROP via MCP e' rifiutato, va lanciato dall'SQL Editor
+>   (riga nella migration); nei divari pesano righe classificate male (ADDEBITO CAUZIONI
+>   Partesa in «VARIE BAR» in alcune sedi: 5.607 EUR su OFFSIDE; COMMISSION Deliveroo in
+>   «Da Classificare») — stesse righe che l'Osservatorio gia' mostra.
 
 ---
 

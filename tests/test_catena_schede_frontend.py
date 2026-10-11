@@ -49,7 +49,7 @@ def _etichetta(schede, chiave):
 # ─── Quale scheda si apre ───────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("richiesta", ["spesa", "margini", "tag"])
+@pytest.mark.parametrize("richiesta", ["spesa", "margini", "tag", "prezzi"])
 def test_analisi_una_scheda_valida_si_apre_lei(richiesta):
     assert _risolvi("SCHEDE_ANALISI_CATENA", richiesta) == richiesta
 
@@ -236,10 +236,11 @@ def test_fatture_tutte_spente_e_lista_vuota():
 
 
 @pytest.mark.parametrize("pagine, attese", [
-    (None, ["spesa", "margini", "tag"]),
-    ([], ["spesa", "margini", "tag"]),
-    (["tab_off_catena_tag"], ["spesa", "margini"]),
-    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag"], []),
+    (None, ["spesa", "margini", "tag", "prezzi"]),
+    ([], ["spesa", "margini", "tag", "prezzi"]),
+    (["tab_off_catena_tag"], ["spesa", "margini", "prezzi"]),
+    (["tab_off_catena_prezzi"], ["spesa", "margini", "tag"]),
+    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag", "tab_off_catena_prezzi"], []),
 ])
 def test_schede_di_analisi_accese(pagine, attese):
     assert _chiavi(_ts("emit(m.schedeAnalisiCatena(input))", pagine)) == attese
@@ -247,7 +248,7 @@ def test_schede_di_analisi_accese(pagine, attese):
 
 def test_senza_coperti_la_scheda_si_chiama_margini():
     schede = _ts('emit(m.schedeAnalisiCatena(["tab_off_catena_coperti"]))')
-    assert _chiavi(schede) == ["spesa", "margini", "tag"]
+    assert _chiavi(schede) == ["spesa", "margini", "tag", "prezzi"]
     assert _etichetta(schede, "margini") == "Margini"
     assert _etichetta(_ts("emit(m.schedeAnalisiCatena(null))"), "margini") == "Margini e coperti"
 
@@ -269,7 +270,7 @@ def test_senza_coperti_via_le_tre_colonne_che_li_usano():
     (None, "margini", "/catena/analisi?tab=margini"),
     (["tab_off_catena_margini"], "margini", "/catena/analisi?tab=spesa"),
     (["tab_off_catena_spesa"], "spesa", "/catena/analisi?tab=margini"),
-    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag"], "margini", None),
+    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag", "tab_off_catena_prezzi"], "margini", None),
 ])
 def test_i_link_della_home_ripiegano_o_spariscono(pagine, scheda, atteso):
     """Un clic dalla Home catena verso una scheda spenta porta alla prima
@@ -310,7 +311,7 @@ def test_ogni_interruttore_della_catena_e_riconosciuto_dal_worker():
 
     chiavi = _ts("emit(m.INTERRUTTORI_CATENA.flatMap(g => g.voci.map(v => m.tabOffKeyCatena(v.key))))")
     assert sorted(chiavi) == sorted(
-        f"tab_off_catena_{k}" for k in ("scadenze", "collocare", "costi", "spesa", "margini", "tag", "coperti")
+        f"tab_off_catena_{k}" for k in ("scadenze", "collocare", "costi", "spesa", "margini", "tag", "prezzi", "coperti")
     )
     assert [k for k in chiavi if not fw._is_tab_off_key(k)] == []
     out = fw._normalize_pagine({"margini": True, **{k: True for k in chiavi}})

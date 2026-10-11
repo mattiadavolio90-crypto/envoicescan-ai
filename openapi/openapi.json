@@ -17831,6 +17831,238 @@
         }
       }
     },
+    "/api/gruppo/prezzi": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Scheda Prezzi: variazioni di ogni PV e stesso prodotto pagato diverso fra i PV",
+        "operationId": "gruppo_prezzi_api_gruppo_prezzi_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "soglia",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 5.0,
+              "title": "Soglia"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoPrezziResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/prezzi/storico": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Acquisti di un prodotto in una sede del gruppo (riga aperta della scheda Prezzi)",
+        "operationId": "gruppo_prezzi_storico_api_gruppo_prezzi_storico_get",
+        "parameters": [
+          {
+            "name": "ristorante_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ristorante Id"
+            }
+          },
+          {
+            "name": "prodotto",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Prodotto"
+            }
+          },
+          {
+            "name": "fornitore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Fornitore"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoricoPrezzoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/chat-config": {
       "get": {
         "tags": [
@@ -22638,6 +22870,57 @@
         ],
         "title": "DisiscrizioneBody"
       },
+      "DivarioPrezzo": {
+        "properties": {
+          "prodotto": {
+            "type": "string",
+            "title": "Prodotto"
+          },
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "prezzo_min": {
+            "type": "number",
+            "title": "Prezzo Min"
+          },
+          "prezzo_max": {
+            "type": "number",
+            "title": "Prezzo Max"
+          },
+          "divario_perc": {
+            "type": "number",
+            "title": "Divario Perc"
+          },
+          "extra_stimato": {
+            "type": "number",
+            "title": "Extra Stimato"
+          },
+          "per_pv": {
+            "items": {
+              "$ref": "#/components/schemas/PrezzoPV"
+            },
+            "type": "array",
+            "title": "Per Pv"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prodotto",
+          "categoria",
+          "fornitore",
+          "prezzo_min",
+          "prezzo_max",
+          "divario_perc",
+          "extra_stimato",
+          "per_pv"
+        ],
+        "title": "DivarioPrezzo"
+      },
       "EliminaAccountBody": {
         "properties": {
           "conferma": {
@@ -23475,6 +23758,50 @@
           "ranking"
         ],
         "title": "GruppoOverviewResponse"
+      },
+      "GruppoPrezziResponse": {
+        "properties": {
+          "variazioni": {
+            "items": {
+              "$ref": "#/components/schemas/VariazionePrezzoCatena"
+            },
+            "type": "array",
+            "title": "Variazioni"
+          },
+          "divari": {
+            "items": {
+              "$ref": "#/components/schemas/DivarioPrezzo"
+            },
+            "type": "array",
+            "title": "Divari"
+          },
+          "soglia": {
+            "type": "number",
+            "title": "Soglia"
+          },
+          "periodo_label": {
+            "type": "string",
+            "title": "Periodo Label"
+          },
+          "acquisti_nel_periodo": {
+            "type": "integer",
+            "title": "Acquisti Nel Periodo"
+          },
+          "divario_finestra_giorni": {
+            "type": "integer",
+            "title": "Divario Finestra Giorni",
+            "default": 60
+          }
+        },
+        "type": "object",
+        "required": [
+          "variazioni",
+          "divari",
+          "soglia",
+          "periodo_label",
+          "acquisti_nel_periodo"
+        ],
+        "title": "GruppoPrezziResponse"
       },
       "GruppoScadenziarioResponse": {
         "properties": {
@@ -26153,6 +26480,44 @@
           "prodotto"
         ],
         "title": "PreferitoRequest"
+      },
+      "PrezzoPV": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome_pv": {
+            "type": "string",
+            "title": "Nome Pv"
+          },
+          "ultimo": {
+            "type": "number",
+            "title": "Ultimo"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "scarto_perc": {
+            "type": "number",
+            "title": "Scarto Perc"
+          },
+          "extra_stimato": {
+            "type": "number",
+            "title": "Extra Stimato"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome_pv",
+          "ultimo",
+          "data",
+          "scarto_perc",
+          "extra_stimato"
+        ],
+        "title": "PrezzoPV"
       },
       "PropostaCifra": {
         "properties": {
@@ -29342,6 +29707,97 @@
           "delta_euro"
         ],
         "title": "VariazionePrezzo"
+      },
+      "VariazionePrezzoCatena": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome_pv": {
+            "type": "string",
+            "title": "Nome Pv"
+          },
+          "prodotto": {
+            "type": "string",
+            "title": "Prodotto"
+          },
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "storico_valori": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Storico Valori",
+            "default": []
+          },
+          "media": {
+            "type": "number",
+            "title": "Media"
+          },
+          "penultimo": {
+            "type": "number",
+            "title": "Penultimo"
+          },
+          "ultimo": {
+            "type": "number",
+            "title": "Ultimo"
+          },
+          "aumento_perc": {
+            "type": "number",
+            "title": "Aumento Perc"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "trend": {
+            "type": "string",
+            "title": "Trend"
+          },
+          "impatto_stimato": {
+            "type": "number",
+            "title": "Impatto Stimato"
+          },
+          "delta_euro": {
+            "type": "number",
+            "title": "Delta Euro"
+          },
+          "n_pv_stesso_verso": {
+            "type": "integer",
+            "title": "N Pv Stesso Verso"
+          },
+          "n_pv_confrontabili": {
+            "type": "integer",
+            "title": "N Pv Confrontabili"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome_pv",
+          "prodotto",
+          "categoria",
+          "fornitore",
+          "media",
+          "penultimo",
+          "ultimo",
+          "aumento_perc",
+          "data",
+          "trend",
+          "impatto_stimato",
+          "delta_euro",
+          "n_pv_stesso_verso",
+          "n_pv_confrontabili"
+        ],
+        "title": "VariazionePrezzoCatena"
       },
       "VariazioniResponse": {
         "properties": {

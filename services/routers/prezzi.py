@@ -332,80 +332,127 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
 
         ultimo = acquisti.iloc[-1]
         penultimo = acquisti.iloc[-2]
-        prezzo_ult = float(ultimo['prezzo_unitario'])
-        prezzo_pen = float(penultimo['prezzo_unitario'])
-        delta = prezzo_ult - prezzo_pen
-        var_pct = (delta / prezzo_pen) * 100
-
-        if abs(var_pct) < soglia:
-            continue
-
-        nota = ""
-        try:
-            d_pen = pd.to_datetime(penultimo['data_documento'], utc=True)
-            d_ult = pd.to_datetime(ultimo['data_documento'], utc=True)
-            if (d_ult - d_pen).days > 180:
-                nota = " ⚠️ >6m"
-        except Exception:
-            pass
-
-        storico_valori = [float(p) for p in acquisti.tail(5)['prezzo_unitario']]
-        storico = " → ".join(f"€{p:.2f}" for p in storico_valori)
-        media = float(acquisti['prezzo_unitario'].mean())
-
-        prezzi_rec = pd.to_numeric(acquisti['prezzo_unitario'].tail(4), errors='coerce').dropna().tolist()
-        var_rec = [
-            prezzi_rec[i] - prezzi_rec[i - 1]
-            for i in range(1, len(prezzi_rec))
-            if abs(prezzi_rec[i] - prezzi_rec[i - 1]) > 0.0001
-        ]
-        if len(var_rec) >= 3 and all(v > 0 for v in var_rec[-3:]):
-            trend = "⬆⬆"
-        elif len(var_rec) >= 3 and all(v < 0 for v in var_rec[-3:]):
-            trend = "⬇⬇"
-        elif var_rec and any(v > 0 for v in var_rec) and any(v < 0 for v in var_rec):
-            trend = "↕"
-        elif delta > 0:
-            trend = "⬆"
-        elif delta < 0:
-            trend = "⬇"
-        else:
-            trend = "↕"
-
-        desc_piena = str(group['descrizione'].mode()[0])
-        forn_piena = str(group['fornitore'].mode()[0])
-        pref_key = f"{_pulisci_desc_key(desc_piena)}|{_pulisci_forn_key(forn_piena)}"
-        is_preferito = pref_key in preferiti_keys
-
         qta_all = pd.to_numeric(acquisti['quantita'], errors='coerce').dropna()
-        qta_ref = float(qta_all.mean()) if not qta_all.empty else 1.0
-
         date_all = pd.to_datetime(acquisti['data_documento'], errors='coerce').dropna().sort_values()
-        freq = 1.0
-        if len(date_all) >= 2:
-            n_mesi = max(1.0, (date_all.iloc[-1] - date_all.iloc[0]).days / 30.0)
-            freq = len(date_all) / n_mesi
 
-        alert_list.append({
-            'prodotto': (desc_piena + nota)[:60],
-            'categoria': str(ultimo.get('categoria', ''))[:25],
-            'fornitore': forn_piena[:30],
-            'storico': storico,
-            'storico_valori': storico_valori,
-            'media': round(media, 4),
-            'penultimo': round(prezzo_pen, 4),
-            'ultimo': round(prezzo_ult, 4),
-            'aumento_perc': round(var_pct, 2),
-            'data': str(ultimo.get('data_documento', '')),
-            'n_fattura': str(ultimo.get('file_origine', '')),
-            'trend': trend,
-            'impatto_stimato': round(float(delta * qta_ref * freq), 2),
-            'delta_euro': round(delta, 4),
-            'preferito': is_preferito,
-        })
+        variazione = _deriva_variazione(
+            ultimi_prezzi=[float(p) for p in acquisti.tail(5)['prezzo_unitario']],
+            media=float(acquisti['prezzo_unitario'].mean()),
+            data_penultimo=penultimo['data_documento'],
+            data_ultimo=ultimo['data_documento'],
+            descrizione=str(group['descrizione'].mode()[0]),
+            fornitore=str(group['fornitore'].mode()[0]),
+            categoria=ultimo.get('categoria', ''),
+            n_fattura=ultimo.get('file_origine', ''),
+            qta_ref=float(qta_all.mean()) if not qta_all.empty else 1.0,
+            freq=_frequenza_mensile(
+                len(date_all),
+                date_all.iloc[0] if len(date_all) else None,
+                date_all.iloc[-1] if len(date_all) else None,
+            ),
+            soglia=soglia,
+            preferiti_keys=preferiti_keys,
+        )
+        if variazione is not None:
+            alert_list.append(variazione)
 
     alert_list.sort(key=lambda x: x['aumento_perc'], reverse=True)
     return alert_list
+
+
+def _frequenza_mensile(n_date: int, prima, ultima) -> float:
+    """Acquisti al mese: n date / mesi coperti (minimo 1). 1.0 sotto le due date."""
+    import pandas as pd
+
+    if n_date < 2 or prima is None or ultima is None:
+        return 1.0
+    giorni = (pd.Timestamp(ultima) - pd.Timestamp(prima)).days
+    return n_date / max(1.0, giorni / 30.0)
+
+
+def _deriva_variazione(
+    *,
+    ultimi_prezzi: list,
+    media: float,
+    data_penultimo,
+    data_ultimo,
+    descrizione: str,
+    fornitore: str,
+    categoria,
+    n_fattura,
+    qta_ref: float,
+    freq: float,
+    soglia: float,
+    preferiti_keys: set,
+) -> dict | None:
+    """La variazione di UNA coppia prodotto+fornitore, o None sotto soglia.
+
+    `ultimi_prezzi` sono gli ultimi (almeno 2, fino a 5) prezzi positivi in
+    ordine cronologico. Condivisa fra l'Osservatorio del PV, che aggrega le
+    righe in pandas, e la catena, che le riceve gia' aggregate dalla RPC
+    `gruppo_prezzi_catena`: due calcoli separati darebbero alla stessa sede
+    numeri diversi nelle due pagine.
+    """
+    import pandas as pd
+
+    prezzo_ult = float(ultimi_prezzi[-1])
+    prezzo_pen = float(ultimi_prezzi[-2])
+    delta = prezzo_ult - prezzo_pen
+    var_pct = (delta / prezzo_pen) * 100
+
+    if abs(var_pct) < soglia:
+        return None
+
+    nota = ""
+    try:
+        d_pen = pd.to_datetime(data_penultimo, utc=True)
+        d_ult = pd.to_datetime(data_ultimo, utc=True)
+        if (d_ult - d_pen).days > 180:
+            nota = " ⚠️ >6m"
+    except Exception:
+        pass
+
+    storico_valori = [float(p) for p in ultimi_prezzi[-5:]]
+    storico = " → ".join(f"€{p:.2f}" for p in storico_valori)
+
+    prezzi_rec = [float(p) for p in ultimi_prezzi[-4:]]
+    var_rec = [
+        prezzi_rec[i] - prezzi_rec[i - 1]
+        for i in range(1, len(prezzi_rec))
+        if abs(prezzi_rec[i] - prezzi_rec[i - 1]) > 0.0001
+    ]
+    if len(var_rec) >= 3 and all(v > 0 for v in var_rec[-3:]):
+        trend = "⬆⬆"
+    elif len(var_rec) >= 3 and all(v < 0 for v in var_rec[-3:]):
+        trend = "⬇⬇"
+    elif var_rec and any(v > 0 for v in var_rec) and any(v < 0 for v in var_rec):
+        trend = "↕"
+    elif delta > 0:
+        trend = "⬆"
+    elif delta < 0:
+        trend = "⬇"
+    else:
+        trend = "↕"
+
+    pref_key = f"{_pulisci_desc_key(descrizione)}|{_pulisci_forn_key(fornitore)}"
+
+    return {
+        'prodotto': (descrizione + nota)[:60],
+        'categoria': str(categoria if categoria is not None else '')[:25],
+        'fornitore': fornitore[:30],
+        'storico': storico,
+        'storico_valori': storico_valori,
+        'media': round(media, 4),
+        'penultimo': round(prezzo_pen, 4),
+        'ultimo': round(prezzo_ult, 4),
+        'aumento_perc': round(var_pct, 2),
+        'data': str(data_ultimo if data_ultimo is not None else ''),
+        'n_fattura': str(n_fattura if n_fattura is not None else ''),
+        'trend': trend,
+        'impatto_stimato': round(float(delta * qta_ref * freq), 2),
+        'delta_euro': round(delta, 4),
+        'preferito': pref_key in (preferiti_keys or set()),
+    }
 
 
 # I 5 endpoint di questo router (variazioni, sconti, omaggi, note di credito,
@@ -793,13 +840,26 @@ def get_storico_prodotto(
     data_a: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ) -> StoricoPrezzoResponse:
-    import pandas as pd
-
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    return _storico_prodotto_sede(sb, ristorante_id, prodotto, fornitore, data_da, data_a)
+
+
+def _storico_prodotto_sede(
+    sb,
+    ristorante_id: str,
+    prodotto: str,
+    fornitore: str = "",
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+) -> StoricoPrezzoResponse:
+    """Gli acquisti di un prodotto in UNA sede. `ristorante_id` arriva gia'
+    verificato dal chiamante: la sede di sessione qui, una sede del gruppo dalla
+    catena (`/api/gruppo/prezzi/storico`)."""
+    import pandas as pd
 
     # Pulisce il nome prodotto dai suffissi UI prima di usarlo nei filtri DB
     prod_upper = prodotto.strip().upper()

@@ -26,6 +26,13 @@ from config.logger_setup import get_logger
 from utils.supabase_paging import fetch_all
 from services import sotto_utenti_service as _su
 from services.permessi_rotte import notifica_visibile
+from services.routers.prezzi import (
+    _CATEGORIE_SPESE_PREZZI,
+    StoricoPrezzoResponse,
+    _deriva_variazione,
+    _frequenza_mensile,
+    _storico_prodotto_sede,
+)
 
 logger = get_logger("router_gruppo")
 
@@ -3195,6 +3202,247 @@ def gruppo_tag_analisi(
         fornitori=fornitori,
         trend=trend,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PREZZI DI CATENA — variazioni per PV e stesso prodotto pagato diverso
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# La variazione si calcola DENTRO ogni sede e poi si affianca: una serie che
+# mescolasse i prezzi di due PV leggerebbe come rincaro la sola differenza fra
+# le sedi (15,80 in un PV e 17,58 nell'altro = un falso +11%). Il confronto fra
+# sedi e' una cosa diversa e ha la sua lista: i divari.
+
+# Oltre questa distanza fra gli ultimi acquisti, la differenza di prezzo fra due
+# sedi la fa il tempo, non la sede: il PV che ha comprato 4 mesi fa e' fuori
+# dal confronto.
+_DIVARIO_FINESTRA_GIORNI = 60
+
+
+class VariazionePrezzoCatena(BaseModel):
+    ristorante_id: str
+    nome_pv: str
+    prodotto: str
+    categoria: str
+    fornitore: str
+    storico_valori: List[float] = []
+    media: float
+    penultimo: float
+    ultimo: float
+    aumento_perc: float
+    data: str
+    trend: str
+    impatto_stimato: float
+    delta_euro: float
+    # Quante sedi hanno la stessa variazione nello stesso verso, su quante
+    # hanno comprato la coppia almeno due volte nel periodo: «in 4 PV su 5» e'
+    # il listino del fornitore, «in 1 PV su 5» e' un problema di quella sede.
+    n_pv_stesso_verso: int
+    n_pv_confrontabili: int
+
+
+class PrezzoPV(BaseModel):
+    ristorante_id: str
+    nome_pv: str
+    ultimo: float
+    data: str
+    scarto_perc: float
+    extra_stimato: float
+
+
+class DivarioPrezzo(BaseModel):
+    prodotto: str
+    categoria: str
+    fornitore: str
+    prezzo_min: float
+    prezzo_max: float
+    divario_perc: float
+    extra_stimato: float
+    per_pv: List[PrezzoPV]
+
+
+class GruppoPrezziResponse(BaseModel):
+    variazioni: List[VariazionePrezzoCatena]
+    divari: List[DivarioPrezzo]
+    soglia: float
+    periodo_label: str
+    # Righe d'acquisto nel periodo, tutte le sedi: zero distingue «nessun
+    # acquisto» da «prezzi stabili».
+    acquisti_nel_periodo: int
+    divario_finestra_giorni: int = _DIVARIO_FINESTRA_GIORNI
+
+
+def _variazioni_catena(coppie: List[Dict[str, Any]], rid_to_nome: Dict[str, str], soglia: float) -> List[Dict[str, Any]]:
+    """Le variazioni di ogni sede, dalle coppie gia' aggregate dalla RPC."""
+    variazioni: List[Dict[str, Any]] = []
+    confrontabili: Dict[tuple, int] = {}
+    for c in coppie:
+        rid = str(c.get("ristorante_id"))
+        prezzi = [float(p) for p in (c.get("ultimi_prezzi") or [])]
+        if rid not in rid_to_nome or int(c.get("n_acquisti") or 0) < 2 or len(prezzi) < 2:
+            continue
+        chiave = (c.get("desc_key"), c.get("forn_key"))
+        confrontabili[chiave] = confrontabili.get(chiave, 0) + 1
+        v = _deriva_variazione(
+            ultimi_prezzi=prezzi,
+            media=float(c.get("media") or 0),
+            data_penultimo=c.get("penultima_data"),
+            data_ultimo=c.get("ultima_data"),
+            descrizione=str(c.get("descrizione") or ""),
+            fornitore=str(c.get("fornitore") or ""),
+            categoria=c.get("categoria"),
+            n_fattura=c.get("file_origine"),
+            qta_ref=float(c.get("qta_media") or 1.0),
+            freq=_frequenza_mensile(int(c.get("n_acquisti") or 0), c.get("prima_data"), c.get("ultima_data")),
+            soglia=soglia,
+            preferiti_keys=set(),
+        )
+        if v is None:
+            continue
+        v["ristorante_id"] = rid
+        v["nome_pv"] = rid_to_nome[rid]
+        v["_chiave"] = chiave
+        variazioni.append(v)
+
+    verso: Dict[tuple, int] = {}
+    for v in variazioni:
+        k = (v["_chiave"], v["aumento_perc"] > 0)
+        verso[k] = verso.get(k, 0) + 1
+    for v in variazioni:
+        v["n_pv_stesso_verso"] = verso[(v["_chiave"], v["aumento_perc"] > 0)]
+        v["n_pv_confrontabili"] = confrontabili[v["_chiave"]]
+        del v["_chiave"]
+
+    variazioni.sort(key=lambda x: x["aumento_perc"], reverse=True)
+    return variazioni
+
+
+def _calcola_divari_catena(
+    coppie: List[Dict[str, Any]],
+    rid_to_nome: Dict[str, str],
+    soglia: float,
+    finestra_giorni: int = _DIVARIO_FINESTRA_GIORNI,
+) -> List[Dict[str, Any]]:
+    """Stesso prodotto dallo stesso fornitore, ultimo prezzo diverso fra le sedi.
+
+    Si confronta l'ULTIMO prezzo di ogni sede, e solo fra sedi che hanno
+    comprato a non piu' di `finestra_giorni` dall'acquisto piu' recente. L'extra
+    stimato di una sede e' (suo ultimo prezzo - il piu' basso) x la quantita'
+    che ha comprato nel periodo: quanto le sarebbe costato meno al prezzo
+    dell'altra sede.
+    """
+    from datetime import date as _date
+
+    per_chiave: Dict[tuple, List[Dict[str, Any]]] = {}
+    for c in coppie:
+        rid = str(c.get("ristorante_id"))
+        prezzi = c.get("ultimi_prezzi") or []
+        if rid not in rid_to_nome or not prezzi or not c.get("ultima_data"):
+            continue
+        per_chiave.setdefault((c.get("desc_key"), c.get("forn_key")), []).append(c)
+
+    divari: List[Dict[str, Any]] = []
+    for gruppo_sedi in per_chiave.values():
+        if len(gruppo_sedi) < 2:
+            continue
+        date = {id(c): _date.fromisoformat(str(c["ultima_data"])[:10]) for c in gruppo_sedi}
+        piu_recente = max(date.values())
+        vicine = [c for c in gruppo_sedi if (piu_recente - date[id(c)]).days <= finestra_giorni]
+        if len(vicine) < 2:
+            continue
+        ultimi = {id(c): float(c["ultimi_prezzi"][-1]) for c in vicine}
+        p_min, p_max = min(ultimi.values()), max(ultimi.values())
+        if p_min <= 0:
+            continue
+        divario = (p_max - p_min) / p_min * 100
+        if divario < soglia:
+            continue
+
+        per_pv = []
+        for c in vicine:
+            p = ultimi[id(c)]
+            per_pv.append({
+                "ristorante_id": str(c["ristorante_id"]),
+                "nome_pv": rid_to_nome[str(c["ristorante_id"])],
+                "ultimo": round(p, 4),
+                "data": str(c["ultima_data"])[:10],
+                "scarto_perc": round((p - p_min) / p_min * 100, 2),
+                "extra_stimato": round((p - p_min) * float(c.get("qta_totale") or 0), 2),
+            })
+        per_pv.sort(key=lambda x: (-x["ultimo"], x["nome_pv"]))
+
+        # Nome e categoria dalla sede che lo compra di piu': la descrizione puo'
+        # variare di una maiuscola fra le sedi, e una va scelta.
+        rif = max(vicine, key=lambda c: (int(c.get("n_acquisti") or 0), str(c.get("ultima_data"))))
+        divari.append({
+            "prodotto": str(rif.get("descrizione") or "")[:60],
+            "categoria": str(rif.get("categoria") or "")[:25],
+            "fornitore": str(rif.get("fornitore") or "")[:30],
+            "prezzo_min": round(p_min, 4),
+            "prezzo_max": round(p_max, 4),
+            "divario_perc": round(divario, 2),
+            "extra_stimato": round(sum(x["extra_stimato"] for x in per_pv), 2),
+            "per_pv": per_pv,
+        })
+
+    divari.sort(key=lambda d: (-d["extra_stimato"], -d["divario_perc"], d["prodotto"]))
+    return divari
+
+
+@router.get(
+    "/api/gruppo/prezzi",
+    tags=["Catena"],
+    summary="Scheda Prezzi: variazioni di ogni PV e stesso prodotto pagato diverso fra i PV",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_prezzi(
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    soglia: float = 5.0,
+    authorization: Optional[str] = Header(None),
+) -> GruppoPrezziResponse:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    da, a, periodo_label = _periodo_da_query(data_da, data_a)
+    soglia = max(0.0, min(100.0, float(soglia)))
+
+    # AGGREGAZIONE SQL: una voce per sede x prodotto x fornitore, non le righe,
+    # in UN valore jsonb (niente pagine da 1000: vedi la migration).
+    esito = sb.rpc("gruppo_prezzi_catena", {
+        "p_ristorante_ids": ids,
+        "p_data_da": da,
+        "p_data_a": a,
+        "p_categorie_escluse": _CATEGORIE_SPESE_PREZZI,
+    }).execute().data or {}
+    coppie = esito.get("coppie") or []
+
+    return GruppoPrezziResponse(
+        variazioni=[VariazionePrezzoCatena(**v) for v in _variazioni_catena(coppie, rid_to_nome, soglia)],
+        divari=[DivarioPrezzo(**d) for d in _calcola_divari_catena(coppie, rid_to_nome, soglia)],
+        soglia=soglia,
+        periodo_label=periodo_label,
+        acquisti_nel_periodo=int(esito.get("acquisti") or 0),
+    )
+
+
+@router.get(
+    "/api/gruppo/prezzi/storico",
+    tags=["Catena"],
+    summary="Acquisti di un prodotto in una sede del gruppo (riga aperta della scheda Prezzi)",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_prezzi_storico(
+    ristorante_id: str,
+    prodotto: str,
+    fornitore: str = "",
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+) -> StoricoPrezzoResponse:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    # Solo una sede di QUESTO gruppo: l'id arriva dal client.
+    if ristorante_id not in rid_to_nome:
+        raise HTTPException(status_code=404, detail="Punto vendita non trovato")
+    return _storico_prodotto_sede(sb, ristorante_id, prodotto, fornitore, data_da, data_a)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

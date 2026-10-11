@@ -567,6 +567,8 @@ RICETTE: List[Ricetta] = [
     R("POST", "/api/gruppo/tag/{gtag_id}/prodotti", DESCRIZIONI),
     R("DELETE", "/api/gruppo/tag/prodotti/{gassoc_id}"),
     R("GET", "/api/gruppo/tag/{gtag_id}/analisi", params={"mese": 3}),
+    # prezzi di catena: la riga aperta chiede lo storico di UNA sede per id
+    R("GET", "/api/gruppo/prezzi/storico", params={"ristorante_id": "$altro.sede1", "prodotto": "$altro.prodotto"}),
     # riparto
     R("POST", "/api/riparto/da-fattura", {"file_origine": "$altro.file", "descrizione": "x"}),
     R("POST", "/api/riparto/da-coda", {"queue_id": "$altro.queue_id", "descrizione": "x"}),
@@ -637,7 +639,7 @@ GET_SESSIONE: Dict[str, Dict[str, Any]] = {
     "/api/gruppo/spreco-categorie": {"mese": 3}, "/api/gruppo/scadenziario": {}, "/api/gruppo/cestino": {},
     "/api/gruppo/segnali": {"force": True}, "/api/gruppo/assistant-config": {}, "/api/gruppo/tag": {},
     "/api/gruppo/tag/descrizioni": {"q": "PRODOTTO"}, "/api/gruppo/chat-config": {},
-    "/api/gruppo/notifiche": {},
+    "/api/gruppo/notifiche": {}, "/api/gruppo/prezzi": _PERIODO,
     "/api/riparto/regola-fornitore": {"fornitore": "$mio.fornitore"}, "/api/gruppo/costi-comuni": _MESE,
 }
 
@@ -777,6 +779,7 @@ GET_CHE_MOSTRANO_IL_PROPRIO = {
     "/api/gruppo/assistant-config", "/api/gruppo/costi-comuni",
     "/api/gruppo/margini-coperti", "/api/gruppo/spesa-pivot",
     "/api/gruppo/spreco-categorie", "/api/notifiche", "/api/gruppo/notifiche",
+    "/api/gruppo/prezzi",
 }
 
 
@@ -853,6 +856,7 @@ RPC_GRUPPO = {
     "gruppo_salute_componenti": {"p_inizio": "2026-01-01T00:00:00+00:00", "p_anno": 2026, "p_mese": 3},
     "gruppo_spesa_pivot": {"p_dimensione": "categoria", "p_data_da": "2026-01-01", "p_data_a": "2026-12-31"},
     "gruppo_spreco_fb_categorie": {"p_data_da": "2026-01-01", "p_data_a": "2026-12-31"},
+    "gruppo_prezzi_catena": {"p_data_da": "2026-01-01", "p_data_a": "2026-12-31", "p_categorie_escluse": []},
     "gruppo_tag_analisi": {"p_descrizione_keys": ["PRODOTTO_A_SEGRETO", "PRODOTTO_B_SEGRETO"],
                            "p_data_da": "2026-01-01", "p_data_a": "2026-12-31"},
     "gruppo_tag_descrizioni": {"p_q": None, "p_limit": 500},
@@ -874,6 +878,10 @@ def test_rpc_di_catena_restituisce_solo_le_sedi_passate(scenario, nome):
     righe = scenario.sb.rpc(nome, params).execute().data
     testo = json.dumps(righe, default=str)
     assert righe, f"{nome}: nessuna riga per A — il test non sta misurando niente"
+    # `gruppo_prezzi_catena` restituisce UN jsonb: un dict non vuoto con
+    # `coppie: []` passerebbe il controllo sopra senza misurare niente.
+    if isinstance(righe, dict) and "coppie" in righe:
+        assert righe["coppie"], f"{nome}: nessuna coppia per A — il test non sta misurando niente"
     assert b.marker not in testo and b.ids["sede1"] not in testo and b.ids["sede2"] not in testo, (
         f"{nome} con le sedi di A ha restituito dati di B: {testo[:500]}"
     )

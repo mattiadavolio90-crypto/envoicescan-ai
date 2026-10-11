@@ -90,6 +90,7 @@ def test_service_role_puo_eseguire_le_funzioni_che_il_codice_chiama(sql):
         "costi_automatici_mensili",
         "crea_riparto_con_quote",
         "dashboard_stats_aggregata",
+        "gruppo_prezzi_catena",
         "gruppo_tag_analisi",
         "riparto_quote_mensili",
         "scadenziario_fatture_aggregate",
