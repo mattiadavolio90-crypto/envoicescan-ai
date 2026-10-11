@@ -764,6 +764,23 @@ def test_riparto_una_quota_generale_va_nelle_spese_non_nel_food(db_sql, sql):
     assert margini["quote_riparto_fb"] == Decimal("0.00")
 
 
+def test_riparto_una_quota_da_classificare_resta_fuori_dai_margini(db_sql, sql):
+    """Regola di dominio 1 (11/10/2026): la quota di una riga «Da Classificare»
+    non e' una spesa generale, come non lo e' per le RPC dei costi di sede. Sul
+    live erano 24 EUR su OFFSIDE e OVERTIME contati come spese. Il MOL le ignora
+    finche' qualcuno le classifica; una quota NULL col tipo del riparto resta."""
+    _semina_utente_e_sedi(db_sql)
+    riparto = _riparto(db_sql, tipo="generale")
+    _quota(db_sql, riparto, importo=Decimal("8.19"), categoria="Da Classificare")
+    _quota(db_sql, riparto, importo=Decimal("91.81"), categoria="UTENZE E LOCALI")
+
+    assert sql("SELECT public.riparto_quote_mensili(%s, 2026, 3)", UTENTE)[0][0] == 1
+
+    margini = _margini(sql)
+    assert margini["quote_riparto_spese"] == Decimal("91.81")
+    assert margini["quote_riparto_fb"] == Decimal("0.00")
+
+
 def test_riparto_una_quota_fb_va_nel_food_non_nelle_spese(db_sql, sql):
     _semina_utente_e_sedi(db_sql)
     riparto = _riparto(db_sql, tipo="fb")
