@@ -131,6 +131,16 @@ def test_lo_stipendio_di_uno_non_spegne_i_turni_di_un_altro():
     assert r["oreStd"]["mario"] == 8.0
 
 
+def test_una_riga_mensile_con_le_sole_ore_non_spegne_i_turni_a_tariffa():
+    """Stessa regola del worker (11/10/2026): lordo 0 non e' uno stipendio."""
+    r = _aggrega([_mensile(160, lordo_mensile=0),
+                  _turno(8.0, costo_orario=10),
+                  _turno(6.0, costo_orario=10, data_turno="2026-09-11")])
+    assert r["costoStd"] == {"mario": 140}
+    assert r["costoTot"] == {"mario": 140}
+    assert r["oreStd"] == {"mario": 14}
+
+
 def test_senza_stipendio_tutto_come_prima():
     r = _aggrega([_turno(8.0, ore_extra=2, costo_orario=10, costo_orario_extra=15)])
     assert r["costoStd"]["mario"] == 60.0

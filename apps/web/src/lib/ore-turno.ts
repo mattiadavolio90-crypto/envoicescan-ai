@@ -22,6 +22,9 @@
 //   - le sue assenze a carico non si sommano (sono gia' in busta);
 //   - le ore vengono dai turni lavorati se ce ne sono, altrimenti dalle ore
 //     dichiarate sulla riga mensile — mai le due insieme.
+// Vince solo una riga mensile CON un lordo: una riga con le sole ore (lordo 0)
+// non e' uno stipendio, e i turni a tariffa dello stesso mese si pagano come
+// sempre (11/10/2026; prima valevano 0 EUR).
 // Chi non ha la riga mensile resta com'era. E' la stessa regola del worker
 // (workspace.py / margini.py / export): cambiarla qui da sola fa divergere il
 // tab dai Margini.
@@ -100,9 +103,16 @@ export function componentiStipendio(t: {
   return { ordinario, extra, chiamata, totale: arrot2(ordinario + extra + chiamata) };
 }
 
-/** Chi ha lo stipendio del mese (una riga mensile): per loro il costo e' quello. */
+/** La riga mensile e' uno stipendio solo con un lordo: con le sole ore (lordo 0)
+ *  non vince e non costa, extra e chiamata comprese (sono «di cui» di un lordo
+ *  che non c'e'; l'API non li salva senza lordo, un dato sporco non si somma). */
+export function rigaStipendio(t: { mensile?: boolean | null; lordo_mensile?: number | null }): boolean {
+  return Boolean(t.mensile) && (t.lordo_mensile ?? 0) > 0;
+}
+
+/** Chi ha lo stipendio del mese (una riga mensile con un lordo): per loro il costo e' quello. */
 export function dipendentiConStipendio(turni: TurnoAggregabile[]): Set<string> {
-  return new Set(turni.filter(t => t.mensile && lavorato(t)).map(t => t.dipendente_id));
+  return new Set(turni.filter(t => rigaStipendio(t) && lavorato(t)).map(t => t.dipendente_id));
 }
 
 /** Chi ha almeno un turno giornaliero LAVORATO: per loro le ore vengono da li'. */
@@ -158,11 +168,13 @@ export function aggregaPerPersona(
     }
     if (t.mensile) {
       // Riga mensile: costo dal lordo reale della busta paga, non da tariffa.
-      const c = componentiStipendio(t);
-      somma(costoStd, n, c.ordinario);
-      somma(costoExt, n, c.extra);
-      somma(costoChi, n, c.chiamata);
-      somma(costoTot, n, c.totale);
+      if (rigaStipendio(t)) {
+        const c = componentiStipendio(t);
+        somma(costoStd, n, c.ordinario);
+        somma(costoExt, n, c.extra);
+        somma(costoChi, n, c.chiamata);
+        somma(costoTot, n, c.totale);
+      }
       continue;
     }
     // Lo stipendio del mese vince: il turno di chi ce l'ha non aggiunge costo.
@@ -252,7 +264,7 @@ export function riepilogoPerDipendente<T extends TurnoRiepilogabile>(
     if (t.mensile) {
       if (tipo !== "turno") continue;
       if (!conTurni.has(t.dipendente_id)) r.oreLavorate += oreDi(t);
-      r.costoTot += componentiStipendio(t).totale;
+      if (rigaStipendio(t)) r.costoTot += componentiStipendio(t).totale;
       continue;
     }
     r.turniGiornalieri.push(t);

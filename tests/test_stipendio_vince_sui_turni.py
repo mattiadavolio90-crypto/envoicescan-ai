@@ -265,6 +265,29 @@ def test_funzione_pura_separa_i_mesi():
     assert per[("dip-ada", "2026-07")]["con_stipendio"] is False
 
 
+def test_una_riga_mensile_con_le_sole_ore_non_vince_sui_turni_a_tariffa():
+    """Controllo dell'11/10/2026: una riga mensile con le ore e lordo 0 faceva
+    valere 0 EUR i turni a tariffa dello stesso mese (10 turni a 10 EUR/h: 0 EUR).
+    Non e' uno stipendio: il costo resta quello dei turni, le ore dai turni."""
+    from services.fastapi_worker import _ore_turno
+    turni = [_stipendio("dip-ada", "2026-07", lordo=0, ore_dichiarate=160)]
+    turni += [_turno("dip-ada", f"2026-07-{g:02d}", costo_orario=10.0) for g in range(2, 12)]
+    per = aggrega_per_dipendente_mese(turni, _ore_turno)[("dip-ada", "2026-07")]
+    assert per["con_stipendio"] is False
+    assert per["costo_ordinario"] == 800.0 and per["costo_noto"] is True
+    assert per["ore"] == 80.0 and per["n_senza_costo"] == 0
+
+
+def test_una_riga_mensile_con_le_sole_ore_e_senza_turni_resta_ore_senza_costo():
+    """Senza turni le ore vengono dalla riga, il costo non e' noto: come prima."""
+    from services.fastapi_worker import _ore_turno
+    per = aggrega_per_dipendente_mese(
+        [_stipendio("dip-ada", "2026-07", lordo=0, ore_dichiarate=160)], _ore_turno,
+    )[("dip-ada", "2026-07")]
+    assert per["con_stipendio"] is False and per["costo_noto"] is False
+    assert per["ore"] == 160.0 and per["costo_ordinario"] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Personale — GET /api/workspace/personale
 # ---------------------------------------------------------------------------

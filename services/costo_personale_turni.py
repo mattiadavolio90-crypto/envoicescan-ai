@@ -4,7 +4,10 @@ Turni giornalieri e riga mensile (stipendio da busta paga) dello STESSO
 dipendente nello STESSO mese convivono (fase C2, 04/10/2026). Per ogni coppia
 (dipendente_id, mese YYYY-MM):
 
-- **con riga mensile**: il costo viene SOLO dalla riga mensile. `lordo_mensile`
+- **con riga mensile con un lordo** (> 0): il costo viene SOLO dalla riga
+  mensile. Una riga mensile con le sole ore (lordo 0) non e' uno stipendio: non
+  vince, e i turni a tariffa dello stesso mese si pagano come sempre (11/10/2026:
+  senza questa condizione 10 turni a 10 EUR/h valevano 0 EUR). `lordo_mensile`
   e' il totale della busta, `importo_extra` e `importo_chiamata` sono «di cui»:
   ordinario = max(0, lordo − extra − chiamata). I turni giornalieri del mese
   contano come ORE, non come costo, e non finiscono fra i «senza costo orario».
@@ -70,7 +73,7 @@ def aggrega_per_dipendente_mese(turni: Iterable[dict], ore_turno: Callable[[dict
     for chiave, g in gruppi.items():
         c = _vuoto()
         c["n_giorni_assenza"] = len(g["assenze"])
-        con_stipendio = bool(g["mensili"])
+        con_stipendio = any(_f(m.get("lordo_mensile")) > 0 for m in g["mensili"])
         c["con_stipendio"] = con_stipendio
 
         fonti_ore = g["lavorati"] if g["lavorati"] else g["mensili"]
