@@ -317,3 +317,10 @@ def test_al_ristorante_la_spesa_offre_le_29_di_sempre_e_la_lista_condivisa_non_c
     assert _enum_spesa("ristorazione") == list(A.CATEGORIE_SPESA)
     [orig] = [t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == "proponi_spesa"]
     assert orig["function"]["parameters"]["properties"]["categoria"]["enum"] == list(A.CATEGORIE_SPESA)
+
+
+def test_al_negozio_la_descrizione_dello_strumento_non_parla_di_latticini():
+    [t] = [t for t in fw._chat_tools_sede_offerti({"id": "u", "pagine_abilitate": None}, "retail")
+           if t["function"]["name"] == "proponi_spesa"]
+    d = t["function"]["description"]
+    assert "LATTICINI" not in d and "ARTICOLO DI VENDITA" in d and "Conferma" in d

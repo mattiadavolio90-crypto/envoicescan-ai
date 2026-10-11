@@ -6100,6 +6100,14 @@ def _tool_spesa_per_settore(tool: Dict[str, Any], settore: Optional[str]) -> Dic
     copia["function"]["parameters"]["properties"]["categoria"]["enum"] = list(
         _assistente.categorie_spesa_per_settore(settore)
     )
+    copia["function"]["description"] = (
+        "Prepara la registrazione di una SPESA EXTRA dettata dal cliente: un acquisto "
+        "o un costo fuori dalle fatture (es. 'ho comprato caramelle per 30 euro', "
+        "'idraulico 150'). Va nelle Spese dell'Agenda. NON registra: mostra al cliente "
+        "una card con il pulsante Conferma. La merce comprata per rivenderla e' "
+        "ARTICOLO DI VENDITA; il resto va nella spesa generale giusta. L'importo e' "
+        "quello pagato, IVA compresa: non scorporarla e non chiederla."
+    )
     return copia
 
 
