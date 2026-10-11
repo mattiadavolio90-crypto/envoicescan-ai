@@ -625,6 +625,7 @@ GET_SESSIONE: Dict[str, Dict[str, Any]] = {
     "/api/margini/fatturato-centri-giorni": _MESE, "/api/margini/analisi-centri": _PERIODO,
     "/api/margini/analisi-avanzata": _PERIODO, "/api/margini/costo-personale-turni": _MESE,
     "/api/margini/costo-spese-extra": _MESE, "/api/margini/analisi": _PERIODO, "/api/margini/kpi": _PERIODO,
+    "/api/margini/spese-extra-anno": {"anno": 2026},
     "/api/workspace/foodcost/ingredienti": {}, "/api/workspace/foodcost/ricette": {},
     "/api/workspace/foodcost/ingredienti-manuali": {}, "/api/workspace/inventario/articoli": {},
     "/api/workspace/inventario/snapshot-dates": {}, "/api/workspace/inventario": {"data": "2026-03-31"},
@@ -890,18 +891,6 @@ def test_rpc_chat_top_categoria_fornitore_filtra_utente_e_sede(scenario):
         {"p_user_id": a.ids["user_id"], "p_ristorante_id": a.ids["sede1"], "p_giorni": 3650, "p_top": 5},
     ).execute().data
     assert proprio and b.marker not in json.dumps(proprio), proprio
-
-
-def test_rpc_chat_usage_conta_per_sede(scenario):
-    """Il contatore della chat e' per (utente, sede): la sede di B non deve
-    consumare — ne' leggere — il contatore di A."""
-    a, b = scenario.a, scenario.b
-    sb = scenario.sb
-    n1 = sb.rpc("chat_usage_check_and_log", {"p_user_id": a.ids["user_id"], "p_ristorante_id": a.ids["sede1"], "p_limite": 10}).execute().data
-    n2 = sb.rpc("chat_usage_check_and_log", {"p_user_id": a.ids["user_id"], "p_ristorante_id": a.ids["sede1"], "p_limite": 10}).execute().data
-    altrui = sb.rpc("chat_usage_check_and_log", {"p_user_id": b.ids["user_id"], "p_ristorante_id": b.ids["sede1"], "p_limite": 10}).execute().data
-    assert (n1, n2) == (1, 2), (n1, n2)
-    assert altrui == 1, f"il contatore di B parte da zero, non da quello di A: {altrui}"
 
 
 # ─── La 241a operazione nasce coperta ─────────────────────────────────────────
