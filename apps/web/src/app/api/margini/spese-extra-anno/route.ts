@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(
-      `${WORKER_URL}/api/margini/spese-extra-anno?anno=${anno}`,
+      `${WORKER_URL}/api/margini/spese-extra-anno?anno=${encodeURIComponent(anno)}`,
       { headers: h, cache: "no-store", signal: AbortSignal.timeout(WORKER_TIMEOUT_MS) },
     );
     return NextResponse.json(await res.json(), { status: res.status });

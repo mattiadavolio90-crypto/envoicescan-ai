@@ -148,9 +148,11 @@ solo in SQL. Fino al 10/10/2026 il conteggio aveva una copia Python
 tutto ciò che è stato speso; `mese` solo i crediti del piano (non quelli pagati
 con la ricarica); `ricarica` è dell'account, qualunque sede l'abbia spesa.
 
-> La vecchia `chat_usage_check_and_log` (domande, ritorno `-1`/`-2`) resta sul DB
-> perché il worker vecchio la chiama fra migration e push: si toglie con una
-> migration successiva, a deploy fatto. Le sue righe prendono `crediti = 3`.
+> La vecchia `chat_usage_check_and_log` (domande, ritorno `-1`/`-2`) era rimasta
+> sul DB per il worker vecchio fra migration e push. Dall'11/10/2026 la toglie la
+> migration `20261011120000` (contiene un `DROP`: il connettore MCP la rifiuta, va
+> incollata nell'SQL Editor; i test `-m sql` la applicano come le altre). Le sue
+> righe storiche in `chat_usage_log` valgono `crediti = 3`.
 
 **Fail-closed:** se la RPC fallisce, l'endpoint **rifiuta** la domanda (`503`), non
 la lascia passare. Il log della domanda è già scritto dalla RPC prima della
