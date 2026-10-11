@@ -16,7 +16,8 @@ from services import sotto_utenti_service as _su
 from pydantic import BaseModel
 
 from services.costo_personale_turni import aggrega_per_dipendente_mese
-from config.constants import CATEGORIE_FOOD_BEVERAGE, CATEGORIE_SPESE_GENERALI
+from config.constants import CATEGORIA_NON_CLASSIFICATA, CATEGORIE_FOOD_BEVERAGE, CATEGORIE_SPESE_GENERALI
+from services.settore_service import categorie_ammesse, settore_sede
 from config.logger_setup import get_logger
 
 _briefing_logger = get_logger("router_workspace")
@@ -2367,9 +2368,20 @@ def _tipo_da_categoria(categoria: str) -> str:
     return "generale" if categoria in _CATEGORIE_SPESA_GENERALI else "fb"
 
 
-def _valida_categoria_spesa(categoria: str) -> str:
+# Le categorie che una spesa puo' avere, per settore (regola di dominio 7): per
+# un negozio la merce e' ARTICOLO DI VENDITA e le famiglie dei ristoranti non
+# esistono; senza settore e' la lista dei ristoranti di sempre. Gemella di
+# `categorieSelezionabili`/`gruppiCategorieSpesa` in lib/categorie-spesa.ts.
+_CATEGORIE_SPESA_ESCLUSE = {"📝 NOTE E DICITURE", CATEGORIA_NON_CLASSIFICATA}
+
+
+def _categorie_spesa_valide(settore: Optional[str] = None) -> set:
+    return set(categorie_ammesse(settore)) - _CATEGORIE_SPESA_ESCLUSE
+
+
+def _valida_categoria_spesa(categoria: str, settore: Optional[str] = None) -> str:
     cat = (categoria or "").strip()
-    if cat not in _CATEGORIE_SPESA_VALIDE:
+    if cat not in _categorie_spesa_valide(settore):
         raise HTTPException(status_code=400, detail="Categoria non valida per una spesa extra")
     return cat
 
@@ -2455,7 +2467,7 @@ def ws_spese_crea(body: NuovaSpesaBody, authorization: Optional[str] = Header(No
     # Quando c'e' la categoria e' lei la fonte di verita': il tipo mandato dal
     # client viene ignorato, non c'e' modo di salvare una riga incoerente.
     if body.categoria is not None:
-        categoria = _valida_categoria_spesa(body.categoria)
+        categoria = _valida_categoria_spesa(body.categoria, settore_sede(ristorante_id, sb))
         payload["categoria"] = categoria
         payload["tipo"] = _tipo_da_categoria(categoria)
     if body.note is not None:
@@ -2499,7 +2511,7 @@ def ws_spese_aggiorna(spesa_id: str, body: AggiornaSpesaBody, authorization: Opt
             updates["categoria"] = None
             categoria_effettiva = None
         else:
-            categoria_effettiva = _valida_categoria_spesa(raw["categoria"])
+            categoria_effettiva = _valida_categoria_spesa(raw["categoria"], settore_sede(ristorante_id, sb))
             updates["categoria"] = categoria_effettiva
     elif updates:
         corrente = (

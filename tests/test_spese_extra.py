@@ -415,3 +415,59 @@ class TestInvarianzaTotali:
         assert res["totale_generale"] == 60.0
         # ...e il raggruppamento per categoria non inventa una riga per le NULL.
         assert res["totali_per_categoria"] == {"PESCE": 50.0}
+
+
+# ---------------------------------------------------------------------------
+# Categoria per settore (regola di dominio 7, 11/10/2026)
+# ---------------------------------------------------------------------------
+
+class TestCategoriaSpesaPerSettore:
+    """Un negozio registra la merce come ARTICOLO DI VENDITA e non ha le famiglie
+    dei ristoranti; un ristorante resta esattamente com'era (settore assente o
+    'ristorazione'). Il settore lo decide la SEDE, letto una volta per richiesta."""
+
+    def test_il_negozio_accetta_la_merce_e_rifiuta_le_famiglie_dei_ristoranti(self):
+        assert workspace._valida_categoria_spesa("ARTICOLO DI VENDITA", "retail") == "ARTICOLO DI VENDITA"
+        assert workspace._valida_categoria_spesa("UTENZE E LOCALI", "retail") == "UTENZE E LOCALI"
+        with pytest.raises(worker.HTTPException) as exc:
+            workspace._valida_categoria_spesa("CARNE", "retail")
+        assert exc.value.status_code == 400
+
+    @pytest.mark.parametrize("settore", [None, "ristorazione"])
+    def test_il_ristorante_resta_com_era(self, settore):
+        assert workspace._valida_categoria_spesa("CARNE", settore) == "CARNE"
+        with pytest.raises(worker.HTTPException):
+            workspace._valida_categoria_spesa("ARTICOLO DI VENDITA", settore)
+        assert workspace._categorie_spesa_valide(settore) == workspace._CATEGORIE_SPESA_VALIDE
+
+    def test_la_merce_del_negozio_va_sul_binario_fb(self):
+        assert workspace._tipo_da_categoria("ARTICOLO DI VENDITA") == "fb"
+
+    def test_la_rotta_legge_il_settore_della_sede(self, monkeypatch):
+        """Il settore viene da `settore_sede(ristorante_id)`, non dall'header o dal
+        client: con la sede negozio la merce passa (tipo fb), con la sede
+        ristorante la stessa richiesta e' un 400."""
+        visto = []
+        monkeypatch.setattr(workspace, "settore_sede", lambda rid, sb: visto.append(rid) or "retail")
+        body = workspace.NuovaSpesaBody(data_spesa="2026-10-11", tipo="generale", importo=12.5,
+                                        descrizione="Caramelle", categoria="ARTICOLO DI VENDITA")
+        with _patch_common([{"id": "sp-1"}]):
+            workspace.ws_spese_crea(body=body, authorization="Bearer x")
+            client = workspace._get_supabase_client()
+            payload = client.table.return_value.insert.call_args[0][0]
+        assert visto == ["rist-1"]
+        assert payload["categoria"] == "ARTICOLO DI VENDITA" and payload["tipo"] == "fb"
+
+        monkeypatch.setattr(workspace, "settore_sede", lambda rid, sb: "ristorazione")
+        with _patch_common([{"id": "sp-1"}]), pytest.raises(worker.HTTPException) as exc:
+            workspace.ws_spese_crea(body=body, authorization="Bearer x")
+        assert exc.value.status_code == 400
+
+    def test_anche_la_modifica_legge_il_settore_della_sede(self, monkeypatch):
+        monkeypatch.setattr(workspace, "settore_sede", lambda rid, sb: "retail")
+        body = workspace.AggiornaSpesaBody(categoria="ARTICOLO DI VENDITA")
+        with _patch_common([{"id": "sp-1", "categoria": None}]):
+            workspace.ws_spese_aggiorna(spesa_id="sp-1", body=body, authorization="Bearer x")
+            client = workspace._get_supabase_client()
+            updates = client.table.return_value.update.call_args[0][0]
+        assert updates == {"categoria": "ARTICOLO DI VENDITA", "tipo": "fb"}

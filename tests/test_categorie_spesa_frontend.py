@@ -158,3 +158,46 @@ def test_nessun_file_riderivà_la_divisione_fb_generali():
         f"da {MODULO}.ts: importa SPESE_GENERALI_SET invece di ricopiarla.\n"
         + "\n".join(f"  {k}: {v}" for k, v in colpevoli.items())
     )
+
+
+# ── Il modulo Spese di un negozio (regola di dominio 7, 11/10/2026) ──────────
+# Fino all'11/10 il modulo offriva Carne, Pesce... anche a un negozio e il server
+# rifiutava ARTICOLO DI VENDITA: il negozio non poteva registrare la merce.
+
+def test_i_gruppi_del_negozio_sono_merce_e_spese_generali():
+    from services.settore_service import CATEGORIA_ARTICOLO_DI_VENDITA
+    ts = _client("emit(m.gruppiCategorieSpesa('retail'));", richiede=["gruppiCategorieSpesa"])
+    assert ts["merce"] == [CATEGORIA_ARTICOLO_DI_VENDITA]
+    assert set(ts["generali"]) == set(CATEGORIE_SPESE_GENERALI)
+    assert ts["etichettaMerce"] == "Merce"
+
+
+@pytest.mark.parametrize("settore", [None, "ristorazione"])
+def test_senza_negozio_i_gruppi_sono_il_modulo_di_sempre(settore):
+    ts = _client("emit({g: m.gruppiCategorieSpesa(input), fb: m.CATEGORIE_SPESA_FB});",
+                 argomento=settore, richiede=["gruppiCategorieSpesa"])
+    assert ts["g"]["merce"] == ts["fb"]
+    assert set(ts["g"]["generali"]) == set(CATEGORIE_SPESE_GENERALI)
+    assert ts["g"]["etichettaMerce"] == "Food & Beverage"
+
+
+@pytest.mark.parametrize("settore", ["retail", "ristorazione", None])
+def test_ogni_voce_del_modulo_e_accettata_dal_server_e_viceversa(settore):
+    """Il server valida con `categorie_ammesse(settore)`: le due liste devono
+    coincidere, o il modulo offre una voce che il worker rifiuta con 400."""
+    from services.routers.workspace import _categorie_spesa_valide
+    ts = _client("emit(m.gruppiCategorieSpesa(input));", argomento=settore, richiede=["gruppiCategorieSpesa"])
+    assert set(ts["merce"]) | set(ts["generali"]) == _categorie_spesa_valide(settore)
+
+
+@pytest.mark.parametrize("modulo", [
+    "app/(app)/workspace/spese-view.tsx",
+    "app/(mobile)/m/diario/mobile-spese.tsx",
+])
+def test_i_due_moduli_spese_prendono_le_liste_dal_settore(modulo):
+    """I .tsx non si eseguono qui: si guarda che leggano i gruppi dal settore e
+    non piu' dalle liste fisse dei ristoranti."""
+    sorgente = (WEB_SRC / modulo).read_text(encoding="utf-8")
+    assert "gruppiCategorieSpesa(settore)" in sorgente
+    assert "gruppi.merce.map" in sorgente and "gruppi.generali.map" in sorgente
+    assert "CATEGORIE_SPESA_FB" not in sorgente

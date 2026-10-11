@@ -9,8 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import {
-  CATEGORIE_SPESA_FB,
-  CATEGORIE_SPESA_GENERALI,
+  gruppiCategorieSpesa,
   tipoSpesaLabel,
   type Settore,
   tipoDaCategoria,
@@ -98,6 +97,7 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
   }, [open, spesa, dataDefault]);
 
   const importoNum = parseNumeroIt(importo);
+  const gruppi = gruppiCategorieSpesa(settore);
   // Il tipo non si sceglie piu': lo deriva la categoria (stessa regola del backend).
   // Sulle voci storiche senza categoria si mostra il tipo gia' salvato.
   const tipo: TipoSpesa = categoria ? tipoDaCategoria(categoria) : (spesa?.tipo ?? "generale");
@@ -150,11 +150,11 @@ function SpesaDialog({ open, spesa, dataDefault, onClose, onSaved, settore }: Sp
               className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="">— Scegli una categoria —</option>
-              <optgroup label="Food &amp; Beverage">
-                {CATEGORIE_SPESA_FB.map(c => <option key={c} value={c}>{c}</option>)}
+              <optgroup label={gruppi.etichettaMerce}>
+                {gruppi.merce.map(c => <option key={c} value={c}>{c}</option>)}
               </optgroup>
               <optgroup label="Spese generali">
-                {CATEGORIE_SPESA_GENERALI.map(c => <option key={c} value={c}>{c}</option>)}
+                {gruppi.generali.map(c => <option key={c} value={c}>{c}</option>)}
               </optgroup>
             </select>
             {categoria ? (

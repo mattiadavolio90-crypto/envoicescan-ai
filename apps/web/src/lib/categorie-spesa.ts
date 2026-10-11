@@ -116,6 +116,21 @@ export function attivitaLabel(settore?: Settore | null): string {
 // dentro. E' il vincolo di Mattia, non un dettaglio di implementazione.
 export const CATEGORIA_ARTICOLO_DI_VENDITA = "ARTICOLO DI VENDITA";
 
+// I due gruppi del menu di una spesa extra (modulo Spese desktop e /m), per
+// settore. Per un negozio la merce e' una voce sola, ARTICOLO DI VENDITA, e le
+// famiglie dei ristoranti non compaiono (regola 7): fino all'11/10/2026 il
+// modulo mostrava Carne, Pesce... anche a un negozio, e il server rifiutava
+// l'unica categoria merce che aveva. Senza settore e' il modulo di sempre.
+// Gemella di `_categorie_spesa_valide(settore)` in services/routers/workspace.py.
+export type GruppiCategorieSpesa = { merce: string[]; generali: string[]; etichettaMerce: string };
+
+export function gruppiCategorieSpesa(settore?: Settore | null): GruppiCategorieSpesa {
+  if (settore === "retail") {
+    return { merce: [CATEGORIA_ARTICOLO_DI_VENDITA], generali: CATEGORIE_SPESA_GENERALI, etichettaMerce: "Merce" };
+  }
+  return { merce: CATEGORIE_SPESA_FB, generali: CATEGORIE_SPESA_GENERALI, etichettaMerce: "Food & Beverage" };
+}
+
 // Ri-esportata perche' questo modulo e' il centro delle liste per il cliente:
 // lib/admin.ts importa lib/piani.ts e non gira isolato sotto node.
 export { CATEGORIE_TUTTE };
