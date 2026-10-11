@@ -2035,6 +2035,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Mattia:** scelte a mano fatte prima delle categorie nuove (sake da cucina in SCATOLAME;
 >   OFFSIDE «MENU FISSO»/«PASTI COMPLETI»/«COPERTO» in SERVIZI) cedono alle regole; le 11
 >   righe di pasto corrette a mano restano in SERVIZI (MONOPOLI e LA PESCHERIA divise).
+> - **11/10/2026 ~04:40, K4 PARZIALE — fermo a meta', NON pushato.** Fatto sul live: passo
+>   `giappone` (516 righe, lotto `d3108612`, 0 SUSHI VARIE rimaste; memoria 68+34+4, sake
+>   del cliente saltato), migration `20261010212005` (liste SQL) e `20261010215817`
+>   (comment). La `20261010223829` (dati: SHOP→RIVENDITA, tabella `categorie`) e' stata
+>   RIFIUTATA: contiene un DELETE e chiede una conferma che di notte nessuno poteva dare. Il
+>   ripristino delle liste e' stato bloccato dal classificatore («Production Deploy»). Stato
+>   live: funzioni con RIVENDITA, dati ancora SHOP; impatto misurato 4 quote SHOP di
+>   OFFSIDE agosto (12,77 EUR per sede) che, se agosto si ricalcola prima, passano da food a
+>   spese (MOL invariato). **Per finire:** applicare `20261010223829` con l'OK di Mattia,
+>   push, poi `scripts/fase_k_categorie.py tutto --commit` a deploy vivo (rifa' 12 riparti
+>   OFFSIDE). **Residui del revisore (non bloccanti):** test del rilancio con «MENU FISSO»
+>   senza coperto, test dell'avviso «ricalcolo non riuscito», commento che cita
+>   `documenti_da_rifare` (e' `documenti_pasto_gia_spostati`), rilancio dei residui SHOP
+>   ripartiti. Fuori da K: `riparto_quote_mensili` conta le quote «Da Classificare» come
+>   spese (contro la regola 1), da decidere con Mattia.
 
 ---
 
