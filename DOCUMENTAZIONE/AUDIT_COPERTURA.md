@@ -10,7 +10,7 @@
 > riga 84): un certificato invisibile al versionamento non certifica niente.
 >
 > **Se quello che cerchi e' «quanto lavoro e' stato fatto»**, non e' questo il
-> file: e' `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md`, che misura il
+> file: e' `docs/storico/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md`, che misura il
 > periodo 01/07 → 17/09 in un colpo solo. Questo qui serve a **ripartire**, non a
 > fare il bilancio.
 
@@ -36,7 +36,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 > 61% di copertura, 144 migration. Quella riga e' rimasta ferma mentre il ciclo
 > delle otto lenti (14 → 17/09) andava avanti: **+138 commit, +64 file di test
 > (12.132 righe), 220 file toccati, +30.646 righe**. Il bilancio completo del
-> periodo sta in `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md`.
+> periodo sta in `docs/storico/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md`.
 
 > Il commit precedentemente certificato era `13d188e` (13.237 verdi, 164 SQL,
 > 143 migration, 20 funzioni). La differenza e' l'audit di compliance del

@@ -5,12 +5,12 @@ Documento operativo: cosa è stato fatto, cosa resta, e le decisioni prese su co
 NON fare. È la nostra versione rielaborata del brief iniziale, con priorità ribaltate
 rispetto al prompt originale.
 
-Ultimo aggiornamento: 2026-06-11 (trigger Assistenza = bentornato di rientro)
+Ultimo aggiornamento: 2026-10-11 (catalogo riallineato al codice: 7 servizi con Boost AI, prezzi «+ IVA»)
 
 ---
 
 ## Cos'è
-Pagina servizi nativa di ONEFLUX (non una landing da agenzia): un catalogo di 6
+Pagina servizi nativa di ONEFLUX (non una landing da agenzia): un catalogo di 7
 servizi con CTA `Richiedi info` (lead) + `WhatsApp`. Tono semplice, premium,
 concreto, per ristoratori spesso poco tecnici.
 
@@ -23,18 +23,19 @@ concreto, per ristoratori spesso poco tecnici.
 
 ---
 
-## I 6 servizi
+## I 7 servizi
 
 | # | Servizio | Gruppo visivo | Prezzo mostrato |
 |---|----------|---------------|-----------------|
-| 1 | **Check-up Operativo** | Civetta (giallo, in primo piano) | `49€ una tantum` |
-| 2 | Consulenza Gestionale | OneFlux (azzurro) | `da 199€/mese` |
-| 3 | Assistenza Continuativa | OneFlux (azzurro) | `99€/mese` |
-| 4 | Analisi su Richiesta | OneFlux (azzurro) | `da 49€ una tantum` |
-| 5 | Ottimizzazione Costi | Partner (rosso) | — (su preventivo) |
-| 6 | Sito e Presenza Online | Partner (rosso) | — (su preventivo) |
+| 1 | **Check-up Operativo** | Civetta (giallo, in primo piano) | `49€ + IVA una tantum` |
+| 2 | Consulenza Gestionale | OneFlux (azzurro) | `da 199€ + IVA/mese` |
+| 3 | Assistenza Continuativa | OneFlux (azzurro) | `99€ + IVA/mese` |
+| 4 | Analisi su Richiesta | OneFlux (azzurro) | `da 49€ + IVA una tantum` |
+| 5 | **Boost AI** (fase J, 10/10/2026) — 300 crediti AI, non scadono; solo clienti | OneFlux (azzurro) | `10€ + IVA una tantum` |
+| 6 | Ottimizzazione Costi | Partner (rosso) | — (su preventivo) |
+| 7 | Sito e Presenza Online | Partner (rosso) | — (su preventivo) |
 
-La card 6 cita Recoma System solo come collaborazione (label + link informativo
+La card 7 cita Recoma System solo come collaborazione (label + link informativo
 secondario); il servizio NON si chiama Recoma.
 
 ---

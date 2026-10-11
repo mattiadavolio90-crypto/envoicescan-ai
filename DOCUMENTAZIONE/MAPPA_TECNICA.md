@@ -268,7 +268,7 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 |---|---|
 | `WORKFLOW.md` | Come si pianifica/esegue (plan mode, `docs/piani/PIANO_<feature>.md`, modello per fase) |
 | `scripts/check_documentazione.py` | A fine feature (WORKFLOW.md §7): trova documenti chiusi da archiviare/eliminare, link rotti, indice fuori sync |
-| `IMPLEMENTAZIONI.md` | Roadmap feature future non ancora iniziate (push PWA, data entry via chat AI, benchmark KPI) |
+| `IMPLEMENTAZIONI.md` | Roadmap feature future (push PWA, benchmark KPI); il data entry via chat AI è fatto (ottobre 2026) |
 | `GRUPPO_ACQUISTO.md` | Concept "gruppo d'acquisto" — benchmark prezzi prodotto + bacheca offerte fornitori, componente di `IMPLEMENTAZIONI.md` |
 | `docs/piani/PIANO_<feature>.md` | Solo se esiste — lavoro multi-sessione in corso ora (git-ignorato, effimero) |
 | `LOGICA_BRIEFING.md` | Per cambiare **cosa dice** il briefing Home (soglie, priorità, tono) |
@@ -293,25 +293,28 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | Documento | Quando aprirlo |
 |---|---|
 | `DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md` | Quando arriva un alert — primo posto dove guardare |
-| `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md` | **Quanto lavoro di audit e' stato fatto** dal 01/07 al 17/09/2026, misurato: 803 commit, 245 file di test nuovi, tre cicli piu' otto lenti. E' il punto d'ingresso: da qui si scende negli altri: |
-| `DOCUMENTAZIONE/AUDIT_COPERTURA.md` | **Il certificato dei tre cicli di audit** (dal 17/09/2026, commit `05640af`): cosa e' stato coperto, con quale metro, e la procedura per ripartire **dal diff** invece che da capo. Tracciato da git di proposito. I verbali dei cicli 07/08/09 sono archiviati in `docs/storico/` e `docs/storico/audit-2026-09/` |
-| `docs/storico/audit-2026-09/INDICE_LENTI_L1_L9.md` | Le **nove lenti trasversali** L1→L9 una per una: cosa guarda, cosa ha trovato, dove sta il suo artefatto. 18 difetti corretti |
-| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non aveva test che eseguono codice, cosa e' costato, le opzioni. **Chiuso il 29/8/2026** (opzione A) |
-| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9_PROMPT.md` | Il prompt di quella sessione, archiviato |
-| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08.md` | Indice del ciclo 2026-08, **chiuso il 29/8/2026**: 7 fasi + le 8 decisioni aperte, tutte risolte |
-| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md` | Dettaglio verificato del ciclo 2026-08 e della sessione che ne ha chiuso gli 8 punti (radar, P.IVA, prompt AI, Argon2, riparto), con le query che dimostrano ogni misura |
-| `docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md` | Indice del ciclo 2026-07, **chiuso il 28/8/2026**: tutte le dimensioni verdi, nessuna voce aperta |
-| `docs/storico/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md` | Il dettaglio verificato di ogni passata del ciclo 2026-07 (perimetro, findings, numeri misurati) + le lezioni operative (§1–§33). Si apre quando si riapre una dimensione, non per sapere cosa manca |
-| `docs/storico/audit-2026-09/CLASSI_DI_DIFETTO.md` | Il catalogo delle classi di difetto (14/09/2026): per ogni classe già pagata, quanti candidati nel codice, quanti reali, cosa è stato corretto e cosa resta, con file:riga. Si rieseguono i rilevatori, non si rilegge |
-| `docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md` | La mappa dei silenzi (14/09/2026): per ogni job, coda, monitor e webhook, ultima evidenza, cosa produce quando fallisce e chi se ne accorge. Si ri-esegue, non si rilegge |
 | `docs/DEPLOY_RUNBOOK.md` | Per ricreare/verificare i servizi Railway da zero |
 | `docs/BACKUP_DISASTER_RECOVERY.md` | Perdita/corruzione dati: come funziona il backup notturno, come ripristinarlo passo per passo (procedura testata) |
 | `docs/storico/` | Solo se il problema somiglia a uno già visto (diagnosi Invoicetronic, migration legacy) — indice in `docs/storico/README.md` |
 
+### Audit — cosa è già stato controllato, e come ripartire
+| Documento | Quando aprirlo |
+|---|---|
+| `DOCUMENTAZIONE/AUDIT_COPERTURA.md` | **Il certificato dei tre cicli di audit** (dal 17/09/2026, commit `05640af`): cosa e' stato coperto, con quale metro, e la procedura per ripartire **dal diff** invece che da capo. Tracciato da git di proposito. I verbali dei cicli 07/08/09 sono archiviati in `docs/storico/` e `docs/storico/audit-2026-09/` |
+| `docs/storico/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md` | Fotografia al 17/09/2026 (archiviata l'11/10): **quanto lavoro di audit e' stato fatto** dal 01/07 al 17/09/2026, misurato: 803 commit, 245 file di test nuovi, tre cicli piu' otto lenti. Il documento vivo resta `AUDIT_COPERTURA.md` qui sopra |
+| `docs/storico/audit-2026-09/INDICE_LENTI_L1_L9.md` | Le **nove lenti trasversali** L1→L9 una per una: cosa guarda, cosa ha trovato, dove sta il suo artefatto. 18 difetti corretti |
+| `docs/storico/audit-2026-09/CLASSI_DI_DIFETTO.md` | Il catalogo delle classi di difetto (14/09/2026): per ogni classe già pagata, quanti candidati nel codice, quanti reali, cosa è stato corretto e cosa resta, con file:riga. Si rieseguono i rilevatori, non si rilegge |
+| `docs/storico/audit-2026-09/MAPPA_SILENZI_2026-09-14.md` | La mappa dei silenzi (14/09/2026): per ogni job, coda, monitor e webhook, ultima evidenza, cosa produce quando fallisce e chi se ne accorge. Si ri-esegue, non si rilegge |
+| `docs/storico/AUDIT_ONEFLUX_STATO_2026-07.md` | Indice del ciclo 2026-07, **chiuso il 28/8/2026**: tutte le dimensioni verdi, nessuna voce aperta |
+| `docs/storico/AUDIT_ONEFLUX_STATO_2026-07_STORICO.md` | Il dettaglio verificato di ogni passata del ciclo 2026-07 (perimetro, findings, numeri misurati) + le lezioni operative (§1–§33). Si apre quando si riapre una dimensione, non per sapere cosa manca |
+| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08.md` | Indice del ciclo 2026-08, **chiuso il 29/8/2026**: 7 fasi + le 8 decisioni aperte, tutte risolte |
+| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_STORICO.md` | Dettaglio verificato del ciclo 2026-08 e della sessione che ne ha chiuso gli 8 punti (radar, P.IVA, prompt AI, Argon2, riparto), con le query che dimostrano ogni misura |
+| `docs/storico/AUDIT_ONEFLUX_STATO_2026-08_PUNTO_9.md` | Il dossier del punto 9 (F2-NOTEST): perche' `apps/web/` non aveva test che eseguono codice, cosa e' costato, le opzioni. **Chiuso il 29/8/2026** (opzione A) |
+
 ### Voglio setup locale / comandi
 | Documento | Quando aprirlo |
 |---|---|
-| `DEV_SERVICES_GUIDE.md` | Avviare worker/queue-worker/Next.js in locale |
+| `DEV_SERVICES_GUIDE.md` | Le CLI di GitHub, Railway e Supabase (collegamento, comandi). Per avviare l'app in locale: `DOCUMENTAZIONE/tecnica/TROUBLESHOOTING.md` §2, blocco «Avvio locale» |
 | `README.md` | Descrizione pubblica del progetto (anche per chi non sviluppa) |
 
 ### Legale, GDPR, business
@@ -337,6 +340,8 @@ chiusi). Nella dubbio "dove metto un nuovo file", usa questo criterio.
 | `docs/storico/CHECKLIST_069_072.md` | Migration legacy applicate (cartella `migrations/` congelata) |
 | `docs/storico/WEBHOOK_PARSER_BODY_2026-07-22.md`, `docs/storico/WEBHOOK_SCARTO_SILENZIOSO_2026-07-21.md` | Pattern di debug sui webhook Edge Function |
 | `docs/storico/DEVCONTAINER_PERMESSI_DIAGNOSI_2026-08-26.md` | Volume `.claude/` root-owned, login loop, CLI da rilinkare a cascata |
+| `docs/storico/PIANO_ASSISTENTE_CONSULENTE_2026-09-10.md` | Il piano «assistente come consulente» (fasi 1-8 e A-K, chiuso l'11/10/2026): decisioni di Mattia su MOL, IVA delle spese a mano, personale, categorie, e le anomalie da non ripetere |
+| `docs/storico/PIANO_CATEGORIZZAZIONE_2026-09.md` | Il piano della categorizzazione (chiuso il 4/9/2026): perché un motore unico e un gate di affidabilità |
 
 ### Stato/decisioni tra sessioni (non file — memoria persistente)
 Lavori chiusi, decisioni prese, contesto cliente: **non stanno più in file

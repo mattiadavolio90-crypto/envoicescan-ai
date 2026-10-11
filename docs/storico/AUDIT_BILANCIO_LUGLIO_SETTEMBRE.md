@@ -1,5 +1,8 @@
 # Bilancio del lavoro di audit — 1 luglio → 17 settembre 2026
 
+> **ARCHIVIATO l'11/10/2026** (era in `DOCUMENTAZIONE/`): è una fotografia al 17/09/2026 e
+> non si aggiorna più. Il documento vivo sugli audit è `DOCUMENTAZIONE/AUDIT_COPERTURA.md`.
+
 > **A cosa serve questo file.** Risponde a una sola domanda: **quanto lavoro e'
 > stato fatto in questi due mesi e mezzo, e cosa ha prodotto.** E' il documento
 > da leggere per primo: da qui si scende nel dettaglio, non viceversa.
@@ -13,7 +16,7 @@
 
 | Se vuoi sapere… | Leggi |
 |---|---|
-| **Quanto lavoro e' stato fatto** (questo file) | `DOCUMENTAZIONE/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md` |
+| **Quanto lavoro e' stato fatto** (questo file) | `docs/storico/AUDIT_BILANCIO_LUGLIO_SETTEMBRE.md` |
 | **Cosa e' gia' stato guardato, con quale metro, e quando si riapre** | `DOCUMENTAZIONE/AUDIT_COPERTURA.md` |
 | **Le nove lenti trasversali, una per una** | `docs/storico/audit-2026-09/INDICE_LENTI_L1_L9.md` |
 | **Il racconto di ogni singola sessione** | `docs/storico/*_STORICO.md` (3 file, 8.858 righe) |

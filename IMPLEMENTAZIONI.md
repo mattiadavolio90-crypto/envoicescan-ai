@@ -56,6 +56,11 @@ Vercel/service worker attuale) prima di stimare i tempi.
 
 ## 2. Data Entry via Assistente AI (ricavi, coperti, personale, spese)
 
+> ✅ **Realizzato** con la fase D del piano «assistente consulente» (ottobre 2026): dalla chat
+> si registrano incasso del giorno, personale, fatturato del mese e spese, sempre con una
+> card da confermare. I coperti no. Come funziona oggi: `DOCUMENTAZIONE/tecnica/CHAT_ASSISTENTE.md`.
+> Sotto resta il brief di luglio, come traccia.
+
 ### Il problema che risolve
 La filosofia dell'app è "zero data entry obbligatorio", e resta tale. Ma
 alcuni dati (fatturato del mese, costo personale, coperti, spese extra) non
@@ -165,5 +170,5 @@ Da attivare quando il numero di clienti attivi è adeguato. Fondazione tecnica
 | # | Punto | Priorità | Blocco principale |
 |---|-------|----------|--------------------|
 | 1 | Push proattive PWA | Alta — quick win | Verifica fattibilità tecnica Web Push |
-| 2 | Data entry via assistente | Alta — impatto diretto su Salute | Nessuno, pronta per brief |
+| 2 | Data entry via assistente | ✅ Fatto (ottobre 2026) | — |
 | 3 | Benchmark KPI aggregati | Media | Soglia minima clienti nel pool |
