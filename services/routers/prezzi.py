@@ -360,6 +360,11 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
     return alert_list
 
 
+# La variazione porta il fornitore troncato a questa lunghezza, e il client lo
+# rimanda tale e quale per aprire lo storico: lungo cosi', e' un prefisso.
+_FORNITORE_MAX = 30
+
+
 def _frequenza_mensile(n_date: int, prima, ultima) -> float:
     """Acquisti al mese: n date / mesi coperti (minimo 1). 1.0 sotto le due date."""
     import pandas as pd
@@ -439,7 +444,7 @@ def _deriva_variazione(
     return {
         'prodotto': (descrizione + nota)[:60],
         'categoria': str(categoria if categoria is not None else '')[:25],
-        'fornitore': fornitore[:30],
+        'fornitore': fornitore[:_FORNITORE_MAX],
         'storico': storico,
         'storico_valori': storico_valori,
         'media': round(media, 4),
@@ -868,6 +873,11 @@ def _storico_prodotto_sede(
             prod_upper = prod_upper[:-len(suffix)].strip()
     # Prefisso per ilike (primi 40 chars, sicuro per Supabase)
     prod_prefix = prod_upper[:40]
+    # Un fornitore lungo quanto il troncamento della variazione e' un prefisso:
+    # con il confronto esatto lo storico dei 54 fornitori su 319 con un nome
+    # piu' lungo (misurato l'11/10/2026) usciva vuoto, nell'Osservatorio come
+    # nella catena.
+    troncato = len(fornitore.strip()) >= _FORNITORE_MAX
 
     all_rows: list = []
     page = 0
@@ -888,7 +898,9 @@ def _storico_prodotto_sede(
             q = q.gte("data_documento", data_da)
         if data_a:
             q = q.lte("data_documento", data_a)
-        if fornitore:
+        if fornitore and troncato:
+            q = q.ilike("fornitore", f"{fornitore.strip()}%")
+        elif fornitore:
             q = q.eq("fornitore", fornitore.strip())
         resp = q.execute()
         if not resp.data:
@@ -913,7 +925,9 @@ def _storico_prodotto_sede(
     if mask.sum() == 0:
         mask = df['_desc'].str.startswith(prod_upper[:30], na=False)
 
-    if fornitore:
+    if fornitore and troncato:
+        mask = mask & df['_forn'].str.startswith(fornitore.strip().upper(), na=False)
+    elif fornitore:
         mask = mask & (df['_forn'] == fornitore.strip().upper())
 
     df = df[mask & (df['prezzo_unitario'] > 0)].copy()

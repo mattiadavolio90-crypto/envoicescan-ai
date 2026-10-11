@@ -244,3 +244,25 @@ def test_restano_fuori_solo_le_coppie_che_non_servono_a_nessuna_vista(sql):
 def test_senza_acquisti_il_valore_e_vuoto_non_nullo(sql):
     _semina_sedi(sql)
     assert _esito(sql) == {"acquisti": 0, "coppie": []}
+
+
+def test_lo_storico_si_apre_anche_col_fornitore_troncato(db_sql, sql):
+    """La variazione porta il fornitore troncato a 30 caratteri e il client lo
+    rimanda per aprire lo storico: col confronto esatto la riga si apriva vuota
+    per 54 fornitori su 319 (11/10/2026). Un nome corto resta un confronto
+    esatto: «ADC» non deve tirarsi dietro «ADC ITALIA»."""
+    from services.routers.prezzi import _storico_prodotto_sede
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    lungo = "DINGFENG IMPORTEXPORT S.R.L. UNIPERSONALE"
+    _riga(sql, SEDE1, "2026-03-01", "SNACK", lungo, Decimal("0.90"))
+    _riga(sql, SEDE1, "2026-04-01", "SNACK", lungo, Decimal("1.10"))
+    _riga(sql, SEDE1, "2026-03-02", "SNACK", "ADC", Decimal("2.00"))
+    _riga(sql, SEDE1, "2026-03-03", "SNACK", "ADC ITALIA", Decimal("9.00"))
+    sb = ClientSQL(db_sql)
+
+    troncato = _storico_prodotto_sede(sb, SEDE1, "SNACK", lungo[:30])
+    assert [p.prezzo_unitario for p in troncato.punti] == [0.90, 1.10]
+    corto = _storico_prodotto_sede(sb, SEDE1, "SNACK", "ADC")
+    assert [p.prezzo_unitario for p in corto.punti] == [2.00]

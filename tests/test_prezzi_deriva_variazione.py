@@ -58,3 +58,19 @@ def test_oltre_sei_mesi_fra_gli_ultimi_due_acquisti_lo_dice_il_nome():
 ])
 def test_frequenza_mensile(n, prima, ultima, atteso):
     assert _frequenza_mensile(n, prima, ultima) == pytest.approx(atteso)
+
+
+def test_la_catena_non_trasforma_una_quantita_media_zero_in_uno():
+    """L'Osservatorio usa la media delle quantita' com'e', anche 0: in catena un
+    `or 1.0` la faceva diventare 1 e l'impatto della stessa riga divergeva."""
+    from services.routers.gruppo import _variazioni_catena
+
+    coppia = {
+        "ristorante_id": "s1", "desc_key": "LIMONE", "forn_key": "MEFON", "descrizione": "LIMONE",
+        "fornitore": "MEFON", "n_acquisti": 2, "ultimi_prezzi": [10.0, 12.0], "media": 11.0,
+        "qta_media": 0, "prima_data": "2026-03-01", "ultima_data": "2026-04-01",
+        "penultima_data": "2026-03-01", "categoria": "FRUTTA", "file_origine": "f.xml",
+    }
+    assert _variazioni_catena([coppia], {"s1": "Centro"}, 5.0)[0]["impatto_stimato"] == 0
+    senza = {**coppia, "qta_media": None}
+    assert _variazioni_catena([senza], {"s1": "Centro"}, 5.0)[0]["impatto_stimato"] != 0

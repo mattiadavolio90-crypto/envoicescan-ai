@@ -2168,6 +2168,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   (riga nella migration); nei divari pesano righe classificate male (ADDEBITO CAUZIONI
 >   Partesa in «VARIE BAR» in alcune sedi: 5.607 EUR su OFFSIDE; COMMISSION Deliveroo in
 >   «Da Classificare») — stesse righe che l'Osservatorio gia' mostra.
+>   **Revisore (🟢 a `d88e77cb`), poi corretto:** lo storico di una riga col fornitore oltre
+>   30 caratteri usciva vuoto (troncato dalla variazione, confrontato esatto: 54 fornitori
+>   su 319, difetto gia' dell'Osservatorio, sistemato per entrambe) e `qta_media` 0 diventava
+>   1 in catena; 2 test, mutazione 4/4. Restano non bloccanti: chiave React su nomi troncati,
+>   storico senza contatore di richieste (come l'Osservatorio), date malformate → 500.
 
 ---
 

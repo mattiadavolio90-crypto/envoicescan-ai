@@ -3292,7 +3292,7 @@ def _variazioni_catena(coppie: List[Dict[str, Any]], rid_to_nome: Dict[str, str]
             fornitore=str(c.get("fornitore") or ""),
             categoria=c.get("categoria"),
             n_fattura=c.get("file_origine"),
-            qta_ref=float(c.get("qta_media") or 1.0),
+            qta_ref=float(c["qta_media"]) if c.get("qta_media") is not None else 1.0,
             freq=_frequenza_mensile(int(c.get("n_acquisti") or 0), c.get("prima_data"), c.get("ultima_data")),
             soglia=soglia,
             preferiti_keys=set(),
