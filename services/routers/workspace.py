@@ -2528,7 +2528,11 @@ def ws_spese_aggiorna(spesa_id: str, body: AggiornaSpesaBody, authorization: Opt
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
     resp = sb.table("spese_extra").update(updates).eq("id", spesa_id).eq("ristorante_id", ristorante_id).execute()
-    return resp.data[0] if resp.data else {}
+    # Nessuna riga aggiornata = spesa cancellata nel frattempo o di un'altra sede:
+    # un 200 vuoto faceva dire al modulo «Spesa aggiornata» su niente (11/10/2026).
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Spesa non trovata")
+    return resp.data[0]
 
 
 @router.delete("/api/workspace/spese/{spesa_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])

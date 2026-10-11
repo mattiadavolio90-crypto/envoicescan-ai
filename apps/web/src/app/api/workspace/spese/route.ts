@@ -10,11 +10,15 @@ export async function GET(req: NextRequest) {
   if (da) params.set("da", da);
   if (a) params.set("a", a);
   const qs = params.toString();
-  const res = await fetch(`${WORKER_URL}/api/workspace/spese${qs ? `?${qs}` : ""}`, {
-    headers: workerHeaders(token),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-  });
-  return NextResponse.json(await res.json(), { status: res.status });
+  try {
+    const res = await fetch(`${WORKER_URL}/api/workspace/spese${qs ? `?${qs}` : ""}`, {
+      headers: workerHeaders(token),
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    });
+    return NextResponse.json(await res.json(), { status: res.status });
+  } catch {
+    return workerUnreachable();
+  }
 }
 
 export async function POST(req: NextRequest) {

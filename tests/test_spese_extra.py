@@ -523,3 +523,32 @@ class TestSpeseExtraAnno:
             anno = margini.get_spese_extra_anno(anno=2026, authorization="Bearer x")["mesi"]["1"]
         assert (anno["fb"], anno["generale"]) == (singolo["totale_fb"], singolo["totale_generale"])
         assert (anno["n_fb"], anno["n_generale"]) == (singolo["n_voci_fb"], singolo["n_voci_generale"])
+
+
+# ---------------------------------------------------------------------------
+# Modifica di una spesa che non c'e' piu' (11/10/2026)
+# ---------------------------------------------------------------------------
+
+class TestModificaSpesaAssente:
+    def test_la_modifica_di_una_spesa_assente_e_un_404(self):
+        """Cancellata in un'altra scheda o di un'altra sede: prima rispondeva 200
+        con un corpo vuoto e il modulo diceva «Spesa aggiornata»."""
+        body = workspace.AggiornaSpesaBody(importo=50)
+        with _patch_common([]), pytest.raises(worker.HTTPException) as exc:
+            workspace.ws_spese_aggiorna(spesa_id="id-inesistente", body=body, authorization="Bearer x")
+        assert exc.value.status_code == 404
+
+    def test_la_modifica_di_una_spesa_presente_torna_la_riga(self):
+        body = workspace.AggiornaSpesaBody(importo=50)
+        with _patch_common([{"id": "sp-1", "importo": 50}]):
+            res = workspace.ws_spese_aggiorna(spesa_id="sp-1", body=body, authorization="Bearer x")
+        assert res["id"] == "sp-1"
+
+    def test_la_lettura_delle_spese_dal_client_regge_il_worker_spento(self):
+        """La GET del proxy non aveva la protezione delle altre tre rotte: con il
+        worker fermo il cliente vedeva un errore generico invece di «worker non
+        raggiungibile»."""
+        from tests.helpers_ts import WEB_SRC
+        src = (WEB_SRC / "app/api/workspace/spese/route.ts").read_text(encoding="utf-8")
+        get = src[src.index("export async function GET"):src.index("export async function POST")]
+        assert "try {" in get and "workerUnreachable()" in get
