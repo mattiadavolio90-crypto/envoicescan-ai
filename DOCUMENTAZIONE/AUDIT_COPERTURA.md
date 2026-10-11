@@ -2173,7 +2173,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   su 319, difetto gia' dell'Osservatorio, sistemato per entrambe) e `qta_media` 0 diventava
 >   1 in catena; 2 test, mutazione 4/4. Secondo giro del revisore (🟢 a `a65285e5`): il
 >   taglio a 30 che cade su uno spazio tornava al confronto esatto dopo lo strip (5
->   fornitori), lunghezza ora presa prima dello strip, mutante ucciso. Restano non bloccanti: chiave React su nomi troncati,
+>   fornitori), lunghezza ora presa prima dello strip, mutante ucciso. **Deployato l'11/10/2026
+>   ~21:35 Roma** (push `3a7789cb..ee6f8c84`, 4 commit: 3 miei e 1 dell'altra sessione, OK di
+>   Mattia «fai deploy»; tag locale `pre-deploy-20261011-sera`): CI, OpenAPI, Vercel verdi,
+>   worker su `ee6f8c84`, `app.oneflux.it` 200. Cauzioni: Mattia «lascia così». Restano non bloccanti: chiave React su nomi troncati,
 >   storico senza contatore di richieste (come l'Osservatorio), date malformate → 500.
 
 ---
