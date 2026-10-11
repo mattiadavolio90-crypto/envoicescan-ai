@@ -2137,6 +2137,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   per richiesta), proposta e Conferma validano col settore della sede; 6 test, mutazione
 >   6/6 sui file interi (la lezione del `-k`). Migration del DROP applicata da Mattia
 >   nell'SQL Editor alle 12:30 circa e verificata (la funzione non c'e' piu').
+>   **DEPLOYATO l'11/10/2026 ~16:00 Roma** (push `6d8cfeae..3a7789cb`, 16 commit: 14 miei
+>   e 2 dell'altra sessione, OK esplicito di Mattia «poi fai deploy»; rollback tag locale
+>   `pre-deploy-20261011`): CI Tests, OpenAPI, Requirements e Vercel verdi; worker Railway
+>   su `3a7789cb`; `app.oneflux.it` 200. Nessuna migration al deploy (tutte gia' sul live).
 >   **Non fatto, dichiarato:** `margine_service.build_transposed_df`/`salva_margini_anno`
 >   (pandas, era Streamlit) sommano due voci di personale: zero chiamanti a runtime, solo
 >   test. **Residui:** la decisione su fra.diclemente (unico su «Scadenzario» dopo la
