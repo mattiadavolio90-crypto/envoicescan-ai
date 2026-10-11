@@ -2132,6 +2132,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   sessione: una spesa «CARNE» dettata da un negozio poi non si modifica dal modulo) —
 >   **decisione per Mattia**: togliere lo strumento ai negozi o passargli il settore;
 >   `encodeURIComponent` sul proxy e la riga di `CHAT_ASSISTENTE.md` corretti subito dopo.
+>   **Poi (Mattia: «passargli il settore… poi fai deploy»)**: `proponi_spesa` offre al
+>   negozio merce + spese generali (`categorie_spesa_per_settore`, copia dello strumento
+>   per richiesta), proposta e Conferma validano col settore della sede; 6 test, mutazione
+>   6/6 sui file interi (la lezione del `-k`). Migration del DROP applicata da Mattia
+>   nell'SQL Editor alle 12:30 circa e verificata (la funzione non c'e' piu').
 >   **Non fatto, dichiarato:** `margine_service.build_transposed_df`/`salva_margini_anno`
 >   (pandas, era Streamlit) sommano due voci di personale: zero chiamanti a runtime, solo
 >   test. **Residui:** la decisione su fra.diclemente (unico su «Scadenzario» dopo la
