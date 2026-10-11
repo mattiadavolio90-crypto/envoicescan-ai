@@ -1996,7 +1996,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   MATERIALIZED. Prova: `-m sql` 1.059 verdi due volte col fix, gli stessi 2 rossi
 >   togliendolo. Non sono riuscito a forzare quel piano in un test deterministico:
 >   il presidio restano i due test esistenti, che lo avevano preso.
-> - **10-11/10/2026, `90f3a665`..HEAD — piano consulente, fase K (K1-K3): categorie.**
+> - **10-11/10/2026, `90f3a665`..`d5dd206a` — piano consulente, fase K (K1-K3): categorie.**
 >   Decisioni di Mattia: nasce RAPPRESENTANZA (spesa generale, anche retail), SHOP si
 >   chiama RIVENDITA, SUSHI VARIE e' abolita (ogni prodotto nella sua famiglia), tutto il
 >   sake e' VINI, la fattura col coperto va tutta in RAPPRESENTANZA; totale sempre 29.
@@ -2021,18 +2021,20 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   negoziabile), 8 mutanti vivi nell'I/O dello script (dry-run, default, negozi, riparto).
 >   Terzo giro 🔴: i 31 pasti stanno tutti su documenti di gruppo OFFSIDE ripartiti, e il
 >   MOL delle sedi legge le QUOTE: lo script ora rifa' le quote come l'app (esplosione
->   `forza=True` + `_post_scrittura_riparto`), 12 riparti su 7 mesi nel dry-run.
+>   `forza=True` + `_post_scrittura_riparto`), 12 riparti su 7 mesi nel dry-run. Quarto giro
+>   🔴: ordine righe→quote e filtri dei riparti senza presidio, errore a meta' non
+>   recuperabile col rilancio; corretti. Simulato sul live: il MOL non cambia, il food cost
+>   scende di 123,20 EUR per sede a luglio e 2,00 a febbraio.
 >   **Prove:** anti-collisione su 7.173 descrizioni reali: cambiano 71 descrizioni delle
 >   famiglie decise + 3 di pasto, nient'altro; golden 123/8.378 casi; mutazione K1 28+25
->   (1 ridondante: VINO DI RISO, vince la regola), K2 12, K3 14+18+13, tutti uccisi; dry-run
+>   (1 ridondante: VINO DI RISO, vince la regola), K2 12, K3 14+18+13+7, tutti uccisi; dry-run
 >   live giappone 516 righe (le 426 SUSHI VARIE tutte decise), pasti 31 + 11 saltate perche'
->   decise a mano. Suite dopo il terzo giro, nel repo di lavoro: `-m "not sql"` **18.784 + 58
->   skip, 0 rossi** (conta anche il test non committato di un'altra sessione; il revisore, su
->   un clone pulito, ne misura meno), `-m sql` **1.069**. **K4 non ancora fatto:** script giappone, migration 212005/215817/223829, push, script tutto.
->   **Per Mattia:** due scelte fatte a mano prima che le categorie esistessero
->   («SAKE PER CUCINA» in SCATOLAME, «MENU FISSO»/«PASTI COMPLETI»/«COPERTO» in SERVIZI
->   per OFFSIDE) da ora cedono alle regole nuove; le 11 righe di pasto gia' corrette a mano
->   restano in SERVIZI (le fatture MONOPOLI e LA PESCHERIA restano divise).
+>   decise a mano. Suite (repo di lavoro, col test non committato di un'altra sessione):
+>   `-m "not sql"` **18.789 + 58 skip, 0 rossi**, `-m sql` **1.069**. **K4 non ancora
+>   fatto:** script giappone, migration 212005/215817/223829, push, script tutto. **Per
+>   Mattia:** scelte a mano fatte prima delle categorie nuove (sake da cucina in SCATOLAME;
+>   OFFSIDE «MENU FISSO»/«PASTI COMPLETI»/«COPERTO» in SERVIZI) cedono alle regole; le 11
+>   righe di pasto corrette a mano restano in SERVIZI (MONOPOLI e LA PESCHERIA divise).
 
 ---
 
