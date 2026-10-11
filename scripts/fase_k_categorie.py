@@ -333,7 +333,7 @@ def rifai_riparti(sb, documenti, commit):
         print(f"  ATTENZIONE: non riuscito {rid} {fo} [{mese}]: {errore}")
     if falliti:
         # Il rilancio funziona: i documenti di pasto ripartiti si rifanno anche se le
-        # loro righe sono gia' in RAPPRESENTANZA (vedi documenti_da_rifare).
+        # loro righe sono gia' in RAPPRESENTANZA (vedi documenti_pasto_gia_spostati).
         print("  -> rilanciare lo stesso passo con --commit: rifa' tutti i riparti del passo.")
     return mesi
 

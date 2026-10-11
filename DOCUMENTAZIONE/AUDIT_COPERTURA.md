@@ -2035,7 +2035,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Mattia:** scelte a mano fatte prima delle categorie nuove (sake da cucina in SCATOLAME;
 >   OFFSIDE «MENU FISSO»/«PASTI COMPLETI»/«COPERTO» in SERVIZI) cedono alle regole; le 11
 >   righe di pasto corrette a mano restano in SERVIZI (MONOPOLI e LA PESCHERIA divise).
-> - **11/10/2026 ~04:40, K4 PARZIALE — fermo a meta', NON pushato.** Fatto sul live: passo
+> - **11/10/2026 ~08:55 (Roma; non 04:40: lo dicono il registro e `schema_migrations`), K4 PARZIALE — fermo a meta', NON pushato.** Fatto sul live: passo
 >   `giappone` (516 righe, lotto `d3108612`, 0 SUSHI VARIE rimaste; memoria 68+34+4, sake
 >   del cliente saltato), migration `20261010212005` (liste SQL) e `20261010215817`
 >   (comment). La `20261010223829` (dati: SHOP→RIVENDITA, tabella `categorie`) e' stata
@@ -2050,6 +2050,42 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `documenti_da_rifare` (e' `documenti_pasto_gia_spostati`), rilancio dei residui SHOP
 >   ripartiti. Fuori da K: `riparto_quote_mensili` conta le quote «Da Classificare» come
 >   spese (contro la regola 1), da decidere con Mattia.
+> - **11/10/2026 10:02 (Roma), K4 CHIUSA — la fase K e' in produzione.** **Prima** (sola
+>   lettura): tre verifiche parallele + revisore 🟢 su `6d8cfeae`. Schema live contro la
+>   migration dati: colonne, firma della RPC, trigger, vincoli, nessun altro oggetto con
+>   SHOP/SUSHI VARIE. Finestre di transizione: confermato l'ordine migration → push → script.
+>   HEAD pulito in un worktree col comando della CI: 19.855 passed, 1 falso dovuto al percorso
+>   `scratchpad/`. **Migration `20261010223829`:** il connettore MCP la rifiuta («declined»:
+>   contiene un DELETE) e l'auto mode la blocca («Production Deploy»), quindi l'ha incollata
+>   Mattia nell'SQL Editor alle 09:49. Risultato: fatture SHOP 0 / RIVENDITA 540; memorie
+>   124+170+1; quote 4; `categorie` con RIVENDITA 🛍️ 500 e RAPPRESENTANZA 🤝 940; registro
+>   710 righe del lotto `9404d963`, tutte `migrazione_fase_k`. **Push** `579f07e9..6d8cfeae`
+>   alle 10:02: `/health` del worker su `6d8cfeae`, queue-worker e Vercel SUCCESS; CI Tests,
+>   Requirements, OpenAPI e Vercel tutte verdi. **Script** `tutto --commit` (10:18-10:19):
+>   31 righe di pasto in RAPPRESENTANZA (618,27 EUR, lotto `ffeffa87`), 11 saltate perche'
+>   decise a mano, 12 riparti OFFSIDE rifatti e 7 mesi ricalcolati, 0 residui. **Confronto
+>   col backup:** importo dei riparti e somma delle quote invariati (732,36); in
+>   `margini_mensili` le quote food scendono di 250,40 e le spese salgono di 250,40 (luglio
+>   123,20 per sede, febbraio 2,00), MOL invariato. Il ricalcolo ha anche riallineato i totali
+>   SALVATI di OFFSIDE gennaio (+483) e aprile (+291): non contavano gli «altri costi F&B»
+>   inseriti dal cliente. Le pagine li ricalcolano gia' dai componenti (`margini.py`,
+>   `gruppo.py`), quindi a video non cambia niente. **Verifiche finali:**
+>   - 0 SHOP/SUSHI VARIE in fatture, memorie, conferme, quote, spese extra e tabella
+>     `categorie`;
+>   - RAPPRESENTANZA non imparata in memoria (0/0);
+>   - nessuna fattura arrivata nelle finestre;
+>   - nessuno snapshot di oggi da invalidare;
+>   - log di worker e queue-worker senza errori.
+>
+>   **Dopo:** baseline retail ri-catturata (ferma dal 10/9; 61 righe di costi, 3.775
+>   categorie), check a zero, nessuna scrittura a DB. Residui del revisore: 2 test nuovi
+>   (rilancio col MENU FISSO senza coperto, avviso «ricalcolo non riuscito»), mutazione 2 su
+>   2 uccisi, commento corretto; il rilancio dei residui SHOP ripartiti non serve piu' (SHOP
+>   0). **Non fatto:** `supabase/schema_snapshot.sql` non rigenerato, perche' serve
+>   `SUPABASE_DB_URL` (i test applicano comunque le migration successive allo snapshot).
+>   **Nota:** le 68 scritture del passo `giappone` su `prodotti_utente` risultano
+>   `db_trigger` senza lotto, perche' lo script scrive via PostgREST senza GUC. Fuori da K
+>   resta la decisione su `riparto_quote_mensili` (vedi sopra).
 
 ---
 

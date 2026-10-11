@@ -547,3 +547,27 @@ def test_il_rilancio_rifa_i_riparti_anche_con_le_righe_gia_spostate(fk, registro
     fk._passo_fatture(_SbRipartiVeri(_RIPARTI), "pasti", righe, commit=True, lotto="L")
     assert [e for e in registro_unico if e[0] == "scrivi"] == []
     assert [e for e in registro_unico if e[0] == "esplodi"] == [("esplodi", "giusto", True)]
+
+
+def test_il_rilancio_ritrova_anche_il_menu_fisso_senza_coperto(fk, registro_unico):
+    """«MENU FISSO» e' un pasto per la regola di riga, senza coperto nel documento
+    (10 dei 12 riparti OFFSIDE del live): il rilancio deve ritrovarlo lo stesso."""
+    righe = [_r(1, "MENU FISSO", "RAPPRESENTANZA", 33.0, file="pranzo.xml", ripartita_su_gruppo=True)]
+    fk._passo_fatture(_SbRipartiVeri(_RIPARTI), "pasti", righe, commit=True, lotto="L")
+    assert [e for e in registro_unico if e[0] == "scrivi"] == []
+    assert [e for e in registro_unico if e[0] == "esplodi"] == [("esplodi", "giusto", True)]
+
+
+def test_un_mese_che_non_si_ricalcola_si_segnala(fk, monkeypatch, capsys):
+    """`_post_scrittura_riparto` e' best-effort e risponde False invece di sollevare:
+    senza l'avviso il MOL del mese resterebbe vecchio in silenzio."""
+    import services.riparto_service as rs
+    import services.routers.riparto as router
+
+    _scritture(fk, monkeypatch)
+    monkeypatch.setattr(rs, "esplodi_quote_per_categoria", lambda sb, uid, rid, fo, forza=False: True)
+    monkeypatch.setattr(router, "_post_scrittura_riparto", lambda sb, uid, a, m: False)
+    fk._passo_fatture(_SbRipartiVeri(_RIPARTI), "pasti", _pranzo_ripartito(), commit=True, lotto="L")
+    uscita = capsys.readouterr().out
+    assert "ATTENZIONE: non riuscito - quote mensili [2026-07]: ricalcolo non riuscito" in uscita
+    assert "rilanciare lo stesso passo con --commit" in uscita

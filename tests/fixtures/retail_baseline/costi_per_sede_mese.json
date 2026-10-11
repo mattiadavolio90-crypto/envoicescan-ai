@@ -7,13 +7,21 @@
     "food": "6238.86",
     "spese": "1350.11"
   },
+  "Ambiente Test Admin|2026|03": {
+    "food": "7490.27",
+    "spese": "625.58"
+  },
   "Ambiente Test Admin|2026|05": {
     "food": "7988.13",
     "spese": "0.00"
   },
   "Ambiente Test Admin|2026|06": {
     "food": "6602.45",
-    "spese": "1956.95"
+    "spese": "1643.17"
+  },
+  "Ambiente Test Admin|2026|08": {
+    "food": "234.33",
+    "spese": "460.43"
   },
   "CASATI 14|2026|03": {
     "food": "7812.20",
@@ -36,76 +44,84 @@
     "spese": "1705.28"
   },
   "CASATI 14|2026|08": {
-    "food": "1977.09",
-    "spese": "1827.01"
+    "food": "2914.91",
+    "spese": "1993.51"
   },
   "CASATI 14|2026|09": {
-    "food": "0.00",
-    "spese": "101.26"
+    "food": "2143.53",
+    "spese": "5182.47"
+  },
+  "CASATI 14|2026|10": {
+    "food": "1618.83",
+    "spese": "761.24"
   },
   "LAND DEI SAPORI SRL|2026|01": {
-    "food": "190762.16",
-    "spese": "51048.54"
+    "food": "190591.16",
+    "spese": "51219.54"
   },
   "LAND DEI SAPORI SRL|2026|02": {
-    "food": "170569.76",
-    "spese": "58693.08"
+    "food": "170484.26",
+    "spese": "58778.58"
   },
   "LAND DEI SAPORI SRL|2026|03": {
-    "food": "185850.51",
-    "spese": "50521.42"
+    "food": "185594.01",
+    "spese": "50777.92"
   },
   "LAND DEI SAPORI SRL|2026|04": {
-    "food": "175816.73",
-    "spese": "41369.38"
+    "food": "175645.73",
+    "spese": "41540.38"
   },
   "LAND DEI SAPORI SRL|2026|05": {
-    "food": "194001.26",
-    "spese": "37346.18"
+    "food": "193744.76",
+    "spese": "37602.68"
   },
   "LAND DEI SAPORI SRL|2026|06": {
-    "food": "163591.49",
-    "spese": "56236.17"
+    "food": "163420.49",
+    "spese": "56407.17"
   },
   "LAND DEI SAPORI SRL|2026|07": {
-    "food": "130346.32",
-    "spese": "121139.64"
+    "food": "129003.02",
+    "spese": "122482.94"
   },
   "OFFSIDE SPORTS PUB|2026|01": {
-    "food": "18419.14",
-    "spese": "25357.51"
+    "food": "18744.93",
+    "spese": "25031.72"
   },
   "OFFSIDE SPORTS PUB|2026|02": {
-    "food": "20252.28",
-    "spese": "5548.94"
+    "food": "20503.23",
+    "spese": "5297.99"
   },
   "OFFSIDE SPORTS PUB|2026|03": {
-    "food": "25646.66",
-    "spese": "6601.88"
+    "food": "25847.84",
+    "spese": "6400.70"
   },
   "OFFSIDE SPORTS PUB|2026|04": {
-    "food": "18950.03",
-    "spese": "6404.94"
+    "food": "19150.78",
+    "spese": "6204.19"
   },
   "OFFSIDE SPORTS PUB|2026|05": {
-    "food": "18528.17",
-    "spese": "5025.11"
+    "food": "18804.89",
+    "spese": "4748.39"
   },
   "OFFSIDE SPORTS PUB|2026|06": {
-    "food": "20298.44",
-    "spese": "5641.72"
+    "food": "20399.40",
+    "spese": "5540.76"
   },
   "OFFSIDE SPORTS PUB|2026|07": {
-    "food": "12539.64",
-    "spese": "7742.32"
+    "food": "12540.18",
+    "spese": "7741.78"
   },
   "OFFSIDE SPORTS PUB|2026|08": {
-    "food": "8829.86",
-    "spese": "5062.67"
+    "food": "8830.38",
+    "spese": "4998.06"
   },
   "OFFSIDE SPORTS PUB|2026|09": {
-    "food": "7634.76",
-    "spese": "413.77"
+    "food": "21590.56",
+    "spese": "8126.29"
+  },
+  "OFFSIDE SPORTS PUB|2026|10": {
+    "food": "2394.58",
+    "spese": "242.09"
   },
   "OVERTIME|2026|01": {
     "food": "5825.77",
@@ -136,64 +152,68 @@
     "spese": "10546.59"
   },
   "OVERTIME|2026|08": {
-    "food": "5495.75",
-    "spese": "4647.33"
+    "food": "5540.75",
+    "spese": "4602.33"
   },
   "OVERTIME|2026|09": {
-    "food": "3108.39",
-    "spese": "49.93"
+    "food": "9379.13",
+    "spese": "1363.31"
+  },
+  "OVERTIME|2026|10": {
+    "food": "1785.73",
+    "spese": "-46.50"
   },
   "SUSHILAND MARIANO COMENSE SRL|2026|03": {
-    "food": "29953.00",
-    "spese": "6102.50"
+    "food": "29673.70",
+    "spese": "6381.80"
   },
   "SUSHILAND MARIANO COMENSE SRL|2026|04": {
-    "food": "161957.69",
-    "spese": "33624.08"
+    "food": "161303.90",
+    "spese": "34277.87"
   },
   "SUSHILAND MARIANO COMENSE SRL|2026|05": {
-    "food": "152637.42",
-    "spese": "33739.24"
+    "food": "152093.64",
+    "spese": "34283.02"
   },
   "SUSHILAND MARIANO COMENSE SRL|2026|06": {
-    "food": "105985.54",
-    "spese": "29440.52"
+    "food": "105654.37",
+    "spese": "29771.69"
   },
   "SUSHILAND SAN GIULIANO M. SRL|2026|03": {
-    "food": "37083.44",
-    "spese": "2722.12"
+    "food": "37065.44",
+    "spese": "2740.12"
   },
   "SUSHILAND SAN GIULIANO M. SRL|2026|04": {
-    "food": "153874.27",
-    "spese": "47249.87"
+    "food": "153553.22",
+    "spese": "47570.92"
   },
   "SUSHILAND SAN GIULIANO M. SRL|2026|05": {
-    "food": "162374.93",
-    "spese": "19922.67"
+    "food": "162286.77",
+    "spese": "20010.83"
   },
   "SUSHILAND SAN GIULIANO M. SRL|2026|06": {
     "food": "111579.15",
     "spese": "24293.88"
   },
   "SUSHILAND VILLA GUARDIA SRL|2026|03": {
-    "food": "37776.58",
-    "spese": "1734.10"
+    "food": "37691.08",
+    "spese": "1819.60"
   },
   "SUSHILAND VILLA GUARDIA SRL|2026|04": {
     "food": "133473.14",
     "spese": "41800.36"
   },
   "SUSHILAND VILLA GUARDIA SRL|2026|05": {
-    "food": "153429.11",
-    "spese": "25932.04"
+    "food": "153261.31",
+    "spese": "26099.84"
   },
   "SUSHILAND VILLA GUARDIA SRL|2026|06": {
     "food": "128888.81",
     "spese": "39179.14"
   },
   "SUSHILAND VILLA GUARDIA SRL|2026|07": {
-    "food": "86404.49",
-    "spese": "42451.72"
+    "food": "85514.49",
+    "spese": "43341.72"
   },
   "TIME CAFE|2026|01": {
     "food": "12432.23",
