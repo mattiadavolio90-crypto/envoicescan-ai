@@ -206,14 +206,6 @@ def test_una_riga_scritta_senza_crediti_ne_vale_tre(db_sql, sql):
     assert _stato(sql) == {"oggi": 3, "mese": 3, "ricarica": 0}
 
 
-def test_la_vecchia_rpc_resta_per_il_worker_vecchio(db_sql, sql):
-    """Fra migration e push il worker vecchio chiama ancora la vecchia firma."""
-    _semina(db_sql)
-    assert sql(
-        "SELECT public.chat_usage_check_and_log(%s, %s, %s, %s, %s)", UTENTE, SEDE, 30, False, 300
-    )[0][0] == 1
-
-
 def test_niente_crediti_di_un_altro_cliente(db_sql, sql):
     """L'estraneo ha 900 crediti di ricarica e domande di oggi: niente di suo
     entra nei numeri dell'utente, ne' a sede, ne' a pool, ne' senza sede."""
@@ -367,3 +359,13 @@ def test_pool_nullo_conta_per_sede(db_sql, sql):
     _semina(db_sql)
     _riga(db_sql)
     assert sql("SELECT public.chat_crediti_stato(%s, %s, NULL)", UTENTE, SEDE)[0][0]["oggi"] == 3
+
+
+def test_la_vecchia_rpc_non_esiste_piu(db_sql, sql):
+    """Dall'11/10/2026 (migration 20261011120000): il worker usa solo
+    chat_crediti_check_and_log, e una funzione SECURITY DEFINER che scrive e che
+    nessuno chiama non deve restare sul DB."""
+    assert sql(
+        "SELECT COUNT(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+        "WHERE n.nspname = 'public' AND p.proname = 'chat_usage_check_and_log'"
+    )[0][0] == 0
