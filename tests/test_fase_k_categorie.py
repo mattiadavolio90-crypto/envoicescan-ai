@@ -73,6 +73,8 @@ def test_gli_oggetti_da_sake_non_sono_vino(descrizione):
     ("GRISSINI ALL'OLIO E SESAMO", "OLIO E CONDIMENTI"),
     ("TARALLI SESAMO E OLIO", "OLIO E CONDIMENTI"),
     ("FOCACCIA OLIO E SESAMO", "OLIO E CONDIMENTI"),
+    ("TARALLI OLIO SESAMO", "OLIO E CONDIMENTI"),
+    ("PANE OLIO SESAMO", "OLIO E CONDIMENTI"),
     # l'anguilla venduta con la sua salsa e' pesce
     ("ANGUILLA UNAGI CON SALSA", "SALSE E CREME"),
     # "SHOT" non e' "SHOOTS": un bicchierino non e' una conserva

@@ -43,7 +43,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config.constants import CATEGORIE_ABOLITE  # noqa: E402
 from services.ai_service import (  # noqa: E402
     _MIRIN_RE,
+    _OLIO_SESAMO_ESCLUSI_RE,
     _OLIO_SESAMO_RE,
+    _SAKE_OGGETTO_RE,
     _SAKE_RE,
     _UNAGI_SALSA_RE,
     decisione_deterministica,
@@ -59,14 +61,17 @@ NON_DECISA = "Da Classificare"
 # per ragioni che non c'entrano (una memoria del cliente, l'AI), e riscriverle
 # sarebbe uno script che decide per conto d'altri su categorie che nessuno ha
 # cambiato. Misurato sulle 7.173 descrizioni reali: sono le sole che cambiano.
-# Gli STESSI regex delle regole forti: un filtro piu' largo ("SESAMO ... OLIO")
-# prenderebbe il pane al sesamo e lo farebbe decidere al dizionario.
-_REGOLE_K = (_SAKE_RE, _MIRIN_RE, _OLIO_SESAMO_RE, _UNAGI_SALSA_RE)
-
-
+# Le STESSE condizioni delle regole forti, eccezioni comprese: un filtro piu'
+# largo ("SESAMO ... OLIO", "TARALLI OLIO SESAMO") prenderebbe il pane al sesamo e
+# lo farebbe decidere al dizionario.
 def e_famiglia_k(descrizione):
     testo = str(descrizione or "").upper()
-    return any(regola.search(testo) for regola in _REGOLE_K)
+    return bool(
+        (_SAKE_RE.search(testo) and not _SAKE_OGGETTO_RE.search(testo))
+        or _MIRIN_RE.search(testo)
+        or (_OLIO_SESAMO_RE.search(testo) and not _OLIO_SESAMO_ESCLUSI_RE.search(testo))
+        or _UNAGI_SALSA_RE.search(testo)
+    )
 
 
 def _client():
@@ -158,8 +163,9 @@ def piano_memoria(voci, campo="categoria", rinomina_shop=False):
     categoria esiste ancora: e' la sua decisione. Su una categoria abolita o
     rinominata invece la scelta non puo' restare com'e', e la si traduce.
 
-    `rinomina_shop` solo nel passo `residui`, DOPO migration e deploy: prima, il
-    codice vecchio leggerebbe dalla memoria un RIVENDITA che non conosce.
+    `rinomina_shop` solo nel passo `residui`: la memoria SHOP la rinomina la
+    migration dei dati (passo 2 di K4); qui restano le voci che il worker vecchio
+    scrive ancora col nome vecchio fra la migration e il deploy.
     """
     aggiorna, cancella, saltate = {}, [], []
     for v in voci:
@@ -188,7 +194,7 @@ def piano_memoria(voci, campo="categoria", rinomina_shop=False):
 # ── I/O ──────────────────────────────────────────────────────────────────────
 
 _COLONNE_FATTURE = ("id,user_id,ristorante_id,file_origine,fornitore,descrizione,categoria,"
-                    "totale_riga,categoria_fonte,reviewed_at")
+                    "totale_riga,categoria_fonte,reviewed_at,ripartita_su_gruppo")
 
 _MEMORIE = (
     ("prodotti_utente", "categoria", "id,user_id,descrizione,categoria,classificato_da"),
@@ -274,16 +280,63 @@ def _scrivi_fatture(sb, aggiorna, lotto, salta_manuali=True, rinomina=False):
     return scritte
 
 
+def documenti_ripartiti(righe):
+    """(utente, file) dei documenti di gruppo fra le righe da scrivere."""
+    return sorted({
+        (r.get("user_id"), r.get("file_origine"))
+        for r in righe if r.get("ripartita_su_gruppo") and r.get("file_origine")
+    })
+
+
+def rifai_riparti(sb, documenti, commit):
+    """Dopo una scrittura su righe RIPARTITE sul gruppo: lo stesso percorso dell'app.
+
+    Il MOL delle sedi non legge le righe di un documento di gruppo, legge le QUOTE
+    del riparto, una per categoria (`riparto_quote_mensili` -> margini_mensili).
+    Cambiare la categoria delle righe senza rifare le quote lascia il costo nel
+    secchio vecchio e fa comparire a video righe sintetiche "Quota di gruppo — X"
+    (revisore K, terzo giro: i 31 pasti del live stanno tutti su riparti OFFSIDE).
+    Quando il cliente corregge una riga di gruppo l'app fa: esplosione delle quote
+    con `forza=True`, poi `_post_scrittura_riparto` (quote mensili + briefing).
+    Qui si fa lo stesso, per ogni riparto 'fattura' del documento.
+    """
+    if not documenti:
+        return set()
+    mesi = set()
+    for uid, file_origine in documenti:
+        riparti = (
+            sb.table("riparto_costi_catena").select("id,anno,mese")
+            .eq("user_id", uid).eq("file_origine", file_origine).eq("origine", "fattura")
+            .execute().data or []
+        )
+        for p in riparti:
+            print(f"  riparto da rifare: {file_origine} [{p['anno']}-{int(p['mese']):02d}]")
+            if commit:
+                from services.riparto_service import esplodi_quote_per_categoria
+
+                esplodi_quote_per_categoria(sb, uid, str(p["id"]), file_origine, forza=True)
+            mesi.add((uid, int(p["anno"]), int(p["mese"])))
+    if commit:
+        from services.routers.riparto import _post_scrittura_riparto
+
+        for uid, anno, mese in sorted(mesi):
+            if not _post_scrittura_riparto(sb, uid, anno, mese):
+                print(f"  ATTENZIONE: quote mensili NON ricalcolate per {anno}-{mese:02d}: rilanciare")
+    print(f"  riparti di gruppo {'rifatti' if commit else 'da rifare'}: mesi {sorted(m[1:] for m in mesi)}")
+    return mesi
+
+
 def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset()):
     per_id = {r["id"]: r for r in righe}
     ristoranti = [r for r in righe if r.get("ristorante_id") not in retail_sedi]
+    rinominate = {}
     if nome == "giappone":
         aggiorna, saltate, non_decise = piano_giappone(ristoranti)
     elif nome == "pasti":
         aggiorna, saltate = piano_pasti(righe)
         non_decise = []
     else:  # residui
-        shop = {r["id"]: "RIVENDITA" for r in righe if r.get("categoria") == "SHOP"}
+        shop = rinominate = {r["id"]: "RIVENDITA" for r in righe if r.get("categoria") == "SHOP"}
         # Anche il sake o il mirin scritti dal worker vecchio dopo il passo giappone.
         aggiorna, saltate, non_decise = piano_giappone(ristoranti)
         print(f"  SHOP rimaste da rinominare: {len(shop)}")
@@ -299,6 +352,7 @@ def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset()):
                   [(r, "?") for r in non_decise])
     if commit and aggiorna:
         print(f"  COMMIT: {_scrivi_fatture(sb, aggiorna, lotto)} righe aggiornate (lotto {lotto})")
+    rifai_riparti(sb, documenti_ripartiti([per_id[i] for i in [*aggiorna, *rinominate]]), commit)
 
 
 def _passo_memoria(sb, commit, rinomina_shop, retail_utenti=frozenset()):

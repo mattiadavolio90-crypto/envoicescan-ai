@@ -305,8 +305,9 @@ def test_giappone_guarda_solo_le_famiglie_delle_regole(fk, desc, cat):
 
 @pytest.mark.parametrize("passo,rinomina_attesa", [("giappone", False), ("residui", True)])
 def test_la_memoria_shop_si_rinomina_solo_nel_passo_residui(fk, monkeypatch, passo, rinomina_attesa):
-    """Col codice vecchio ancora in produzione (passo giappone, prima del deploy) la
-    memoria non deve contenere un RIVENDITA che quel codice non conosce."""
+    """La memoria SHOP la rinomina la migration dei dati; lo script lo rifa' solo nei
+    residui, per le voci scritte col nome vecchio dal worker vecchio dopo la
+    migration. Il passo giappone resta sulle sole famiglie della Fase K."""
     sb = _Sb(_MEMORIA_LIVE)
     _scritture(fk, monkeypatch)
     monkeypatch.setattr(fk, "_client", lambda: sb)
@@ -315,3 +316,114 @@ def test_la_memoria_shop_si_rinomina_solo_nel_passo_residui(fk, monkeypatch, pas
     fk.main([passo, "--commit"])
     rinominate = [a for t, nome, a in _scritture_sb(sb) if nome == "update" and "RIVENDITA" in a[0].values()]
     assert bool(rinominate) is rinomina_attesa
+
+
+# ── i documenti ripartiti sul gruppo: si rifanno le quote, come fa l'app ────
+
+class _SbRiparti(_Sb):
+    """Client finto che risponde alla lettura dei riparti di un documento."""
+
+    def __init__(self, riparti, tabelle=None):
+        super().__init__(tabelle)
+        self.riparti = riparti
+
+    def table(self, nome):
+        if nome == "riparto_costi_catena":
+            return _Query(self.registro, nome, list(self.riparti))
+        return super().table(nome)
+
+
+@pytest.fixture
+def percorso_app(monkeypatch):
+    """Intercetta le due funzioni dell'app che rifanno quote e MOL del riparto."""
+    import services.riparto_service as rs
+    import services.routers.riparto as router
+
+    chiamate = {"esplodi": [], "post": []}
+    monkeypatch.setattr(rs, "esplodi_quote_per_categoria",
+                        lambda sb, uid, rid, fo, forza=False: chiamate["esplodi"].append((uid, rid, fo, forza)) or True)
+    monkeypatch.setattr(router, "_post_scrittura_riparto",
+                        lambda sb, uid, anno, mese: chiamate["post"].append((uid, anno, mese)) or True)
+    return chiamate
+
+
+def test_una_riga_ripartita_spostata_rifa_le_quote_e_il_mol(fk, monkeypatch, percorso_app):
+    """Il MOL delle sedi legge le QUOTE del riparto, non le righe: senza rifarle il
+    pasto resterebbe nel food cost delle sedi (i 31 pasti del live sono tutti cosi')."""
+    _scritture(fk, monkeypatch)
+    sb = _SbRiparti([{"id": "rip-1", "anno": 2026, "mese": 7}])
+    righe = [_r(1, "COPERTO", "Da Classificare", 40.91, file="pranzo.xml", ripartita_su_gruppo=True),
+             _r(2, "PIZZA", "PRODOTTI DA FORNO", 9.09, file="pranzo.xml", ripartita_su_gruppo=True)]
+    fk._passo_fatture(sb, "pasti", righe, commit=True, lotto="L")
+    assert percorso_app["esplodi"] == [("u1", "rip-1", "pranzo.xml", True)]
+    assert percorso_app["post"] == [("u1", 2026, 7)]
+
+
+def test_in_dry_run_i_riparti_si_elencano_e_basta(fk, monkeypatch, percorso_app, capsys):
+    _scritture(fk, monkeypatch)
+    sb = _SbRiparti([{"id": "rip-1", "anno": 2026, "mese": 7}])
+    righe = [_r(1, "COPERTO", "Da Classificare", 40.91, file="pranzo.xml", ripartita_su_gruppo=True)]
+    fk._passo_fatture(sb, "pasti", righe, commit=False, lotto="L")
+    assert percorso_app == {"esplodi": [], "post": []}
+    assert "riparto da rifare: pranzo.xml [2026-07]" in capsys.readouterr().out
+
+
+def test_le_righe_non_ripartite_non_toccano_i_riparti(fk, monkeypatch, percorso_app):
+    _scritture(fk, monkeypatch)
+    fk._passo_fatture(_SbRiparti([{"id": "rip-1", "anno": 2026, "mese": 7}]), "pasti",
+                      [_r(1, "COPERTO", "Da Classificare", 40.91)], commit=True, lotto="L")
+    assert percorso_app == {"esplodi": [], "post": []}
+
+
+def test_la_rinomina_dei_residui_ripartiti_rifa_le_quote(fk, monkeypatch, percorso_app):
+    _scritture(fk, monkeypatch)
+    sb = _SbRiparti([{"id": "rip-9", "anno": 2026, "mese": 3}])
+    righe = [_r(1, "CARAMELLE", "SHOP", file="g.xml", ripartita_su_gruppo=True)]
+    fk._passo_fatture(sb, "residui", righe, commit=True, lotto="L")
+    assert percorso_app["esplodi"] == [("u1", "rip-9", "g.xml", True)]
+
+
+# ── i negozi: collegati davvero dentro main ──────────────────────────────────
+
+def test_sedi_e_utenti_retail_legge_il_settore(fk, monkeypatch):
+    import services.settore_service as ss
+
+    monkeypatch.setattr(ss, "settore_sede", lambda rid, sb: "retail" if rid == "negozio" else "ristorazione")
+    monkeypatch.setattr(ss, "settore_utente", lambda uid, sb: "retail" if uid == "u-negozio" else "ristorazione")
+    righe = [_r(1, "X", "PESCE", ristorante_id="negozio", user="u-negozio"),
+             _r(2, "Y", "PESCE", ristorante_id="ristorante", user="u1")]
+    assert fk.sedi_e_utenti_retail(object(), righe) == ({"negozio"}, {"u-negozio"})
+
+
+def test_main_tiene_i_negozi_fuori_da_fatture_e_memoria(fk, monkeypatch):
+    chiamate = _scritture(fk, monkeypatch)
+    memoria = {"prodotti_utente": [
+        {"id": "m1", "user_id": "u-negozio", "descrizione": "SAKE GEKKEIKAN 75CL", "categoria": "ARTICOLO DI VENDITA"},
+    ]}
+    sb = _Sb(memoria)
+    monkeypatch.setattr(fk, "_client", lambda: sb)
+    monkeypatch.setattr(fk, "carica_fatture", lambda _sb: [
+        _r(1, "SAKE GEKKEIKAN 75CL", "ARTICOLO DI VENDITA", ristorante_id="negozio", user="u-negozio"),
+    ])
+    monkeypatch.setattr(fk, "sedi_e_utenti_retail", lambda _sb, _righe: ({"negozio"}, {"u-negozio"}))
+    fk.main(["tutto", "--commit"])
+    assert chiamate == []
+    assert _scritture_sb(sb) == []
+
+
+def test_residui_tiene_fuori_i_negozi(fk, monkeypatch):
+    chiamate = _scritture(fk, monkeypatch)
+    righe = [_r(1, "SAKE GEKKEIKAN 75CL", "ARTICOLO DI VENDITA", ristorante_id="negozio")]
+    fk._passo_fatture(object(), "residui", righe, commit=True, lotto="L", retail_sedi={"negozio"})
+    assert chiamate == []
+
+
+@pytest.mark.parametrize("desc,cat", [
+    ("TARALLI OLIO SESAMO", "PRODOTTI DA FORNO"),
+    ("CRACKER OLIO SESAMO", "PRODOTTI DA FORNO"),
+    ("BICCHIERI SAKE CERAMICA 6PZ", "MATERIALE DI CONSUMO"),
+])
+def test_le_eccezioni_delle_regole_valgono_anche_per_lo_script(fk, desc, cat):
+    """Il filtro delle famiglie ha le eccezioni delle regole: senza, il dizionario
+    riscriverebbe un tarallo o un bicchiere su cui la Fase K non ha deciso niente."""
+    assert fk.piano_giappone([_r(1, desc, cat)]) == ({}, [], [])

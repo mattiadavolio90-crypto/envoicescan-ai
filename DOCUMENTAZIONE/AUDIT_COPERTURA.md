@@ -1996,7 +1996,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   MATERIALIZED. Prova: `-m sql` 1.059 verdi due volte col fix, gli stessi 2 rossi
 >   togliendolo. Non sono riuscito a forzare quel piano in un test deterministico:
 >   il presidio restano i due test esistenti, che lo avevano preso.
-> - **10/10/2026, `90f3a665`..`d9ba2677` — piano consulente, fase K (K1-K3): categorie.**
+> - **10-11/10/2026, `90f3a665`..HEAD — piano consulente, fase K (K1-K3): categorie.**
 >   Decisioni di Mattia: nasce RAPPRESENTANZA (spesa generale, anche retail), SHOP si
 >   chiama RIVENDITA, SUSHI VARIE e' abolita (ogni prodotto nella sua famiglia), tutto il
 >   sake e' VINI, la fattura col coperto va tutta in RAPPRESENTANZA; totale sempre 29.
@@ -2019,13 +2019,17 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   git (la mia suite l'aveva misurato non tracciato), OFFSIDE con «MENU FISSO» messo a mano
 >   in SERVIZI (storico e righe nuove si sarebbero spaccati: la regola del pasto ora e' non
 >   negoziabile), 8 mutanti vivi nell'I/O dello script (dry-run, default, negozi, riparto).
+>   Terzo giro 🔴: i 31 pasti stanno tutti su documenti di gruppo OFFSIDE ripartiti, e il
+>   MOL delle sedi legge le QUOTE: lo script ora rifa' le quote come l'app (esplosione
+>   `forza=True` + `_post_scrittura_riparto`), 12 riparti su 7 mesi nel dry-run.
 >   **Prove:** anti-collisione su 7.173 descrizioni reali: cambiano 71 descrizioni delle
 >   famiglie decise + 3 di pasto, nient'altro; golden 123/8.378 casi; mutazione K1 28+25
->   (1 ridondante: VINO DI RISO, vince la regola), K2 12, K3 14+18, tutti uccisi; dry-run
+>   (1 ridondante: VINO DI RISO, vince la regola), K2 12, K3 14+18+13, tutti uccisi; dry-run
 >   live giappone 516 righe (le 426 SUSHI VARIE tutte decise), pasti 31 + 11 saltate perche'
->   decise a mano. Suite dopo il secondo giro: `-m "not sql"` **18.772 + 58 skip, 0 rossi**
->   (include `test_brevo_mittente_default.py` non committato di un'altra sessione), `-m sql`
->   **1.069**. **Per Mattia:** due scelte fatte a mano prima che le categorie esistessero
+>   decise a mano. Suite dopo il terzo giro, nel repo di lavoro: `-m "not sql"` **18.784 + 58
+>   skip, 0 rossi** (conta anche il test non committato di un'altra sessione; il revisore, su
+>   un clone pulito, ne misura meno), `-m sql` **1.069**. **K4 non ancora fatto:** script giappone, migration 212005/215817/223829, push, script tutto.
+>   **Per Mattia:** due scelte fatte a mano prima che le categorie esistessero
 >   («SAKE PER CUCINA» in SCATOLAME, «MENU FISSO»/«PASTI COMPLETI»/«COPERTO» in SERVIZI
 >   per OFFSIDE) da ora cedono alle regole nuove; le 11 righe di pasto gia' corrette a mano
 >   restano in SERVIZI (le fatture MONOPOLI e LA PESCHERIA restano divise).
