@@ -2014,16 +2014,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `scripts/fase_k_categorie.py` giappone/pasti/residui, dry-run di default). **Trovato**
 >   (revisore, primo giro 🟡): tre regole forti non negoziabili prendevano troppo (olio e
 >   sesamo nei grissini, anguilla «con salsa», «EBI FRY PANKO»), tobiko al wasabi in
->   spezie, 23 mutanti vivi, due cifre del golden sbagliate; corretti in `820cebef`.
+>   spezie, 23 mutanti vivi, due cifre del golden sbagliate; corretti in `820cebef`. Secondo
+>   giro 🔴: la taratura di `audit_ciclo_vita_colonne` rossa appena lo script e' entrato in
+>   git (la mia suite l'aveva misurato non tracciato), OFFSIDE con «MENU FISSO» messo a mano
+>   in SERVIZI (storico e righe nuove si sarebbero spaccati: la regola del pasto ora e' non
+>   negoziabile), 8 mutanti vivi nell'I/O dello script (dry-run, default, negozi, riparto).
 >   **Prove:** anti-collisione su 7.173 descrizioni reali: cambiano 71 descrizioni delle
 >   famiglie decise + 3 di pasto, nient'altro; golden 123/8.378 casi; mutazione K1 28+25
->   (1 ridondante: VINO DI RISO, vince la regola), K2 12, K3 14, tutti uccisi; dry-run live
->   giappone 516 righe (le 426 SUSHI VARIE tutte decise), pasti 31 + 11 saltate perche'
->   decise a mano. Suite a `820cebef`+K3: `-m "not sql"` **18.759 + 58 skip, 0 rossi**
+>   (1 ridondante: VINO DI RISO, vince la regola), K2 12, K3 14+18, tutti uccisi; dry-run
+>   live giappone 516 righe (le 426 SUSHI VARIE tutte decise), pasti 31 + 11 saltate perche'
+>   decise a mano. Suite dopo il secondo giro: `-m "not sql"` **18.772 + 58 skip, 0 rossi**
 >   (include `test_brevo_mittente_default.py` non committato di un'altra sessione), `-m sql`
->   **1.068**. **Da fare in K4:** script giappone, le tre migration, push, script tutto.
->   **Per Mattia:** una voce di memoria di un cliente («SAKE PER CUCINA» → SCATOLAME, scelta a
->   mano) resta com'e', ma la regola nuova manda in VINI le righe nuove e quelle storiche.
+>   **1.069**. **Per Mattia:** due scelte fatte a mano prima che le categorie esistessero
+>   («SAKE PER CUCINA» in SCATOLAME, «MENU FISSO»/«PASTI COMPLETI»/«COPERTO» in SERVIZI
+>   per OFFSIDE) da ora cedono alle regole nuove; le 11 righe di pasto gia' corrette a mano
+>   restano in SERVIZI (le fatture MONOPOLI e LA PESCHERIA restano divise).
 
 ---
 
