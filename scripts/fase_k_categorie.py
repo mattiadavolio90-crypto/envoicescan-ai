@@ -302,7 +302,7 @@ def rifai_riparti(sb, documenti, commit):
     """
     if not documenti:
         return set()
-    mesi = set()
+    mesi, falliti = set(), []
     for uid, file_origine in documenti:
         riparti = (
             sb.table("riparto_costi_catena").select("id,anno,mese")
@@ -311,19 +311,48 @@ def rifai_riparti(sb, documenti, commit):
         )
         for p in riparti:
             print(f"  riparto da rifare: {file_origine} [{p['anno']}-{int(p['mese']):02d}]")
-            if commit:
+            mesi.add((uid, int(p["anno"]), int(p["mese"])))
+            if not commit:
+                continue
+            # Come l'app (routers/riparto.py): un riparto che fallisce non ferma
+            # gli altri, e il ricalcolo dei mesi parte comunque.
+            try:
                 from services.riparto_service import esplodi_quote_per_categoria
 
                 esplodi_quote_per_categoria(sb, uid, str(p["id"]), file_origine, forza=True)
-            mesi.add((uid, int(p["anno"]), int(p["mese"])))
+            except Exception as errore:
+                falliti.append((p["id"], file_origine, f"{p['anno']}-{int(p['mese']):02d}", errore))
     if commit:
         from services.routers.riparto import _post_scrittura_riparto
 
         for uid, anno, mese in sorted(mesi):
             if not _post_scrittura_riparto(sb, uid, anno, mese):
-                print(f"  ATTENZIONE: quote mensili NON ricalcolate per {anno}-{mese:02d}: rilanciare")
+                falliti.append(("-", "quote mensili", f"{anno}-{mese:02d}", "ricalcolo non riuscito"))
     print(f"  riparti di gruppo {'rifatti' if commit else 'da rifare'}: mesi {sorted(m[1:] for m in mesi)}")
+    for rid, fo, mese, errore in falliti:
+        print(f"  ATTENZIONE: non riuscito {rid} {fo} [{mese}]: {errore}")
+    if falliti:
+        # Il rilancio funziona: i documenti di pasto ripartiti si rifanno anche se le
+        # loro righe sono gia' in RAPPRESENTANZA (vedi documenti_da_rifare).
+        print("  -> rilanciare lo stesso passo con --commit: rifa' tutti i riparti del passo.")
     return mesi
+
+
+def documenti_pasto_gia_spostati(righe):
+    """Documenti di gruppo coi pasti GIA' in RAPPRESENTANZA (un passo precedente,
+    magari interrotto prima di rifare le quote): li si rifa' comunque, cosi' il
+    rilancio dopo un errore recupera davvero. Rifare un riparto gia' allineato non
+    cambia niente (esplosione idempotente nell'effetto)."""
+    con_coperto = {
+        (r.get("user_id"), r.get("file_origine"))
+        for r in righe if e_riga_coperto(r.get("descrizione"))
+    }
+    return [
+        r for r in righe
+        if r.get("ripartita_su_gruppo") and str(r.get("categoria") or "") == "RAPPRESENTANZA"
+        and ((r.get("user_id"), r.get("file_origine")) in con_coperto
+             or decisione_deterministica(str(r.get("descrizione") or ""))[0] == "RAPPRESENTANZA")
+    ]
 
 
 def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset()):
@@ -352,7 +381,12 @@ def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset()):
                   [(r, "?") for r in non_decise])
     if commit and aggiorna:
         print(f"  COMMIT: {_scrivi_fatture(sb, aggiorna, lotto)} righe aggiornate (lotto {lotto})")
-    rifai_riparti(sb, documenti_ripartiti([per_id[i] for i in [*aggiorna, *rinominate]]), commit)
+    # SEMPRE dopo la scrittura delle righe: l'esplosione legge le categorie delle
+    # righe, e prima della scrittura rifarebbe le quote vecchie.
+    da_rifare = [per_id[i] for i in [*aggiorna, *rinominate]]
+    if nome == "pasti":
+        da_rifare += documenti_pasto_gia_spostati(righe)
+    rifai_riparti(sb, documenti_ripartiti(da_rifare), commit)
 
 
 def _passo_memoria(sb, commit, rinomina_shop, retail_utenti=frozenset()):

@@ -427,3 +427,123 @@ def test_le_eccezioni_delle_regole_valgono_anche_per_lo_script(fk, desc, cat):
     """Il filtro delle famiglie ha le eccezioni delle regole: senza, il dizionario
     riscriverebbe un tarallo o un bicchiere su cui la Fase K non ha deciso niente."""
     assert fk.piano_giappone([_r(1, desc, cat)]) == ({}, [], [])
+
+
+# ── quarto giro del revisore: ordine, filtri, errori, rilancio ─────────────
+
+class _QueryFiltrata:
+    """Query sul finto `riparto_costi_catena` che APPLICA i filtri `eq`: un finto
+    che li ignorasse resterebbe verde anche togliendo il filtro sul file, e
+    `forza=True` colpirebbe tutti i riparti dell'account."""
+
+    def __init__(self, righe):
+        self.righe = righe
+
+    def select(self, *_a):
+        return self
+
+    def eq(self, campo, valore):
+        self.righe = [r for r in self.righe if r.get(campo) == valore]
+        return self
+
+    def execute(self):
+        return type("R", (), {"data": self.righe})()
+
+
+class _SbRipartiVeri(_Sb):
+    def __init__(self, riparti):
+        super().__init__()
+        self.riparti = riparti
+
+    def table(self, nome):
+        if nome == "riparto_costi_catena":
+            return _QueryFiltrata(list(self.riparti))
+        return super().table(nome)
+
+
+_RIPARTI = [
+    {"id": "giusto", "user_id": "u1", "file_origine": "pranzo.xml", "origine": "fattura", "anno": 2026, "mese": 7},
+    {"id": "altro-file", "user_id": "u1", "file_origine": "fornitore.xml", "origine": "fattura", "anno": 2026, "mese": 7},
+    {"id": "altro-utente", "user_id": "u2", "file_origine": "pranzo.xml", "origine": "fattura", "anno": 2026, "mese": 7},
+    {"id": "manuale", "user_id": "u1", "file_origine": "pranzo.xml", "origine": "manuale", "anno": 2026, "mese": 7},
+]
+
+
+@pytest.fixture
+def registro_unico(fk, monkeypatch):
+    """Scritture delle righe ed esplosioni delle quote nello STESSO registro, per
+    poterne controllare l'ordine."""
+    import services.riparto_service as rs
+    import services.routers.riparto as router
+
+    eventi = []
+    monkeypatch.setattr(fk, "aggiorna_categoria_fatture",
+                        lambda sb, **kw: eventi.append(("scrivi", tuple(kw["ids"]))) or len(kw["ids"]))
+    monkeypatch.setattr(rs, "esplodi_quote_per_categoria",
+                        lambda sb, uid, rid, fo, forza=False: eventi.append(("esplodi", rid, forza)) or True)
+    monkeypatch.setattr(router, "_post_scrittura_riparto",
+                        lambda sb, uid, anno, mese: eventi.append(("mese", uid, anno, mese)) or True)
+    return eventi
+
+
+def _pranzo_ripartito():
+    return [_r(1, "COPERTO", "Da Classificare", 40.91, file="pranzo.xml", ripartita_su_gruppo=True),
+            _r(2, "PIZZA", "PRODOTTI DA FORNO", 9.09, file="pranzo.xml", ripartita_su_gruppo=True)]
+
+
+def test_prima_si_scrivono_le_righe_poi_si_rifanno_le_quote(fk, registro_unico):
+    """L'esplosione legge le categorie delle righe: fatta prima rifarebbe le
+    quote vecchie (il difetto del terzo giro, tornato senza rumore)."""
+    fk._passo_fatture(_SbRipartiVeri(_RIPARTI), "pasti", _pranzo_ripartito(), commit=True, lotto="L")
+    tipi = [e[0] for e in registro_unico]
+    assert tipi.index("scrivi") < tipi.index("esplodi") < tipi.index("mese")
+
+
+def test_si_rifa_solo_il_riparto_del_documento_dell_utente(fk, registro_unico):
+    fk._passo_fatture(_SbRipartiVeri(_RIPARTI), "pasti", _pranzo_ripartito(), commit=True, lotto="L")
+    assert [e for e in registro_unico if e[0] == "esplodi"] == [("esplodi", "giusto", True)]
+
+
+def test_si_rifanno_tutti_i_riparti_di_un_documento(fk, registro_unico):
+    riparti = _RIPARTI + [{"id": "secondo", "user_id": "u1", "file_origine": "pranzo.xml",
+                           "origine": "fattura", "anno": 2026, "mese": 8}]
+    fk._passo_fatture(_SbRipartiVeri(riparti), "pasti", _pranzo_ripartito(), commit=True, lotto="L")
+    assert {e[1] for e in registro_unico if e[0] == "esplodi"} == {"giusto", "secondo"}
+    assert {e[3] for e in registro_unico if e[0] == "mese"} == {7, 8}
+
+
+def test_un_riparto_che_fallisce_non_ferma_gli_altri_ne_il_ricalcolo(fk, monkeypatch, capsys):
+    """Come l'app: l'errore su un riparto si segnala, gli altri si rifanno e i mesi
+    si ricalcolano comunque."""
+    import services.riparto_service as rs
+    import services.routers.riparto as router
+
+    _scritture(fk, monkeypatch)
+    esplosi, mesi = [], []
+
+    def _esplodi(sb, uid, rid, fo, forza=False):
+        if rid == "giusto":
+            raise RuntimeError("timeout")
+        esplosi.append(rid)
+        return True
+
+    monkeypatch.setattr(rs, "esplodi_quote_per_categoria", _esplodi)
+    monkeypatch.setattr(router, "_post_scrittura_riparto", lambda sb, uid, a, m: mesi.append(m) or True)
+    riparti = _RIPARTI + [{"id": "secondo", "user_id": "u1", "file_origine": "pranzo.xml",
+                           "origine": "fattura", "anno": 2026, "mese": 8}]
+    fk._passo_fatture(_SbRipartiVeri(riparti), "pasti", _pranzo_ripartito(), commit=True, lotto="L")
+    assert esplosi == ["secondo"]
+    assert sorted(mesi) == [7, 8]
+    uscita = capsys.readouterr().out
+    assert "ATTENZIONE: non riuscito giusto pranzo.xml [2026-07]" in uscita
+    assert "rilanciare lo stesso passo con --commit" in uscita
+
+
+def test_il_rilancio_rifa_i_riparti_anche_con_le_righe_gia_spostate(fk, registro_unico):
+    """Dopo un errore le righe sono gia' in RAPPRESENTANZA e non c'e' piu' niente da
+    scrivere: il rilancio deve comunque rifare le quote di quei documenti."""
+    righe = [_r(1, "COPERTO", "RAPPRESENTANZA", 40.91, file="pranzo.xml", ripartita_su_gruppo=True),
+             _r(2, "PIZZA", "RAPPRESENTANZA", 9.09, file="pranzo.xml", ripartita_su_gruppo=True)]
+    fk._passo_fatture(_SbRipartiVeri(_RIPARTI), "pasti", righe, commit=True, lotto="L")
+    assert [e for e in registro_unico if e[0] == "scrivi"] == []
+    assert [e for e in registro_unico if e[0] == "esplodi"] == [("esplodi", "giusto", True)]
