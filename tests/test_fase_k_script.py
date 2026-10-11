@@ -571,3 +571,90 @@ def test_un_mese_che_non_si_ricalcola_si_segnala(fk, monkeypatch, capsys):
     uscita = capsys.readouterr().out
     assert "ATTENZIONE: non riuscito - quote mensili [2026-07]: ricalcolo non riuscito" in uscita
     assert "rilanciare lo stesso passo con --commit" in uscita
+
+
+# ── --anche-manuali (Mattia, 11/10/2026): i pasti decisi a mano prima della categoria ──
+
+def test_pasti_con_anche_manuali_porta_anche_le_righe_decise_a_mano(fk):
+    """Le 11 del live: SERVIZI E CONSULENZE scelta dal cliente quando RAPPRESENTANZA
+    non esisteva ancora. Col flag vanno con la fonte giusta, e niente resta saltato."""
+    righe = [_r(1, "COPERTO", "SERVIZI E CONSULENZE", 1.82, categoria_fonte="correzione_cliente"),
+             _r(2, "CATALONA", "SERVIZI E CONSULENZE", 53.64, categoria_fonte="correzione_cliente"),
+             _r(3, "4 PASTI COMPLETI", "SERVIZI E CONSULENZE", 90.91, file="alunno.xml",
+                reviewed_at="2026-09-30")]
+    aggiorna, saltate = fk.piano_pasti(righe, anche_manuali=True)
+    assert aggiorna == {1: ("RAPPRESENTANZA", "L0_documento_pasto"),
+                        2: ("RAPPRESENTANZA", "L0_documento_pasto"),
+                        3: ("RAPPRESENTANZA", "L7_regola_forte")}
+    assert saltate == []
+
+
+def test_senza_il_flag_le_righe_decise_a_mano_restano_saltate(fk):
+    righe = [_r(1, "COPERTO", "SERVIZI E CONSULENZE", 1.82, categoria_fonte="correzione_cliente")]
+    aggiorna, saltate = fk.piano_pasti(righe)
+    assert aggiorna == {} and [r["id"] for r, _ in saltate] == [1]
+
+
+def test_col_flag_la_rpc_non_salta_le_arbitrate_solo_nel_passo_pasti(fk, monkeypatch):
+    chiamate = _scritture(fk, monkeypatch)
+    sb = _Sb()
+    fk._passo_fatture(sb, "pasti", [_r(1, "COPERTO", "SERVIZI E CONSULENZE", 1.82,
+                                      categoria_fonte="correzione_cliente")],
+                      commit=True, lotto="L", anche_manuali=True)
+    assert chiamate and chiamate[0]["salta_correzioni_manuali"] is False
+    assert chiamate[0]["categoria"] == "RAPPRESENTANZA"
+    chiamate.clear()
+    fk._passo_fatture(sb, "giappone", [_r(2, "PANKO DA SACCO 10KG", "SUSHI VARIE")],
+                      commit=True, lotto="L", anche_manuali=True)
+    assert chiamate and chiamate[0]["salta_correzioni_manuali"] is True
+
+
+_MEMORIA_PASTI = {
+    "prodotti_utente": [
+        {"id": "m1", "user_id": "u1", "descrizione": "MENU FISSO", "categoria": "SERVIZI E CONSULENZE",
+         "classificato_da": "Manuale (cliente@x.it)"},
+        {"id": "m2", "user_id": "u1", "descrizione": "CATALONA", "categoria": "SERVIZI E CONSULENZE",
+         "classificato_da": "Manuale (cliente@x.it)"},
+        {"id": "m3", "user_id": "u2", "descrizione": "MENU FISSO", "categoria": "SERVIZI E CONSULENZE",
+         "classificato_da": "Manuale (altro@x.it)"},
+        {"id": "m4", "user_id": "u1", "descrizione": "COPERTO", "categoria": "RAPPRESENTANZA",
+         "classificato_da": "Manuale (cliente@x.it)"},
+    ],
+}
+
+
+def test_memoria_pasti_aggiorna_solo_le_voci_di_pasto_delle_righe_spostate(fk):
+    """CATALONA e' un piatto: fuori dalla fattura col coperto non e' un pasto, la
+    memoria del cliente resta. L'utente u2 non ha righe spostate: non si tocca."""
+    spostate = [_r(1, "MENU FISSO", "SERVIZI E CONSULENZE", 49.0, user="u1"),
+                _r(2, "CATALONA", "SERVIZI E CONSULENZE", 53.64, user="u1"),
+                _r(3, "COPERTO", "SERVIZI E CONSULENZE", 1.82, user="u1")]
+    assert fk.piano_memoria_pasti(_MEMORIA_PASTI["prodotti_utente"], spostate) == {"m1": "RAPPRESENTANZA"}
+
+
+def test_la_memoria_dei_pasti_si_scrive_solo_in_commit_e_solo_col_flag(fk, monkeypatch):
+    _scritture(fk, monkeypatch)
+    righe = [_r(1, "MENU FISSO", "SERVIZI E CONSULENZE", 49.0, categoria_fonte="correzione_cliente")]
+    sb = _Sb(_MEMORIA_PASTI)
+    fk._passo_fatture(sb, "pasti", righe, commit=False, lotto="L", anche_manuali=True)
+    assert _scritture_sb(sb) == []
+    fk._passo_fatture(sb, "pasti", righe, commit=True, lotto="L")
+    assert _scritture_sb(sb) == []
+    fk._passo_fatture(sb, "pasti", righe, commit=True, lotto="L", anche_manuali=True)
+    assert [(t, args[0]) for t, nome, args in _scritture_sb(sb)] == [("prodotti_utente", {"categoria": "RAPPRESENTANZA"})]
+
+
+def test_main_accetta_anche_manuali_solo_col_passo_pasti(fk, monkeypatch):
+    with pytest.raises(SystemExit):
+        fk.main(["giappone", "--anche-manuali"])
+    sb = _Sb(_MEMORIA_PASTI)
+    chiamate = _scritture(fk, monkeypatch)
+    monkeypatch.setattr(fk, "_client", lambda: sb)
+    monkeypatch.setattr(fk, "carica_fatture", lambda _sb: [
+        _r(1, "MENU FISSO", "SERVIZI E CONSULENZE", 49.0, categoria_fonte="correzione_cliente")])
+    monkeypatch.setattr(fk, "sedi_e_utenti_retail", lambda _sb, _righe: (set(), set()))
+    assert fk.main(["pasti", "--anche-manuali", "--commit"]) == 0
+    assert chiamate and chiamate[0]["salta_correzioni_manuali"] is False
+    n = len(chiamate)
+    assert fk.main(["pasti", "--commit"]) == 0
+    assert len(chiamate) == n  # senza il flag la riga arbitrata resta saltata: nessuna scrittura

@@ -29,6 +29,8 @@ com'e' e si elenca: mai "Da Classificare" forzato su un dato che oggi ha un valo
 Uso:
   python scripts/fase_k_categorie.py giappone            # dry-run
   python scripts/fase_k_categorie.py giappone --commit   # scrive
+  python scripts/fase_k_categorie.py pasti --anche-manuali [--commit]
+      # anche le righe di pasto decise a mano prima che RAPPRESENTANZA esistesse
 """
 import argparse
 import re
@@ -118,12 +120,17 @@ def piano_giappone(righe):
     return aggiorna, saltate, non_decise
 
 
-def piano_pasti(righe):
+def piano_pasti(righe, anche_manuali=False):
     """Ritorna (aggiorna {id: (categoria, fonte)}, saltate).
 
     Un documento e' la coppia (utente, file): la fattura col coperto va tutta in
     RAPPRESENTANZA, tranne le righe a importo zero. Fuori da quei documenti, le
     righe che la regola di riga riconosce come pasto ("4 PASTI COMPLETI").
+
+    `anche_manuali` (Mattia, 11/10/2026): le righe di pasto che un cliente aveva
+    messo a mano in SERVIZI E CONSULENZE prima che RAPPRESENTANZA esistesse non
+    sono una scelta contro la regola, sono la scelta migliore che aveva: vanno
+    anche loro. Con il default restano saltate ed elencate, come ogni riga arbitrata.
     """
     con_coperto = {
         (r.get("user_id"), r.get("file_origine"))
@@ -139,11 +146,34 @@ def piano_pasti(righe):
             fonte = "L7_regola_forte"
         else:
             continue
-        if e_arbitrata(r):
+        if e_arbitrata(r) and not anche_manuali:
             saltate.append((r, "RAPPRESENTANZA"))
             continue
         aggiorna[r["id"]] = ("RAPPRESENTANZA", fonte)
     return aggiorna, saltate
+
+
+def e_voce_di_pasto(descrizione):
+    """La descrizione e' un pasto per la regola di riga (coperto, pasti completi,
+    menu fisso...): la stessa che il worker applica prima della memoria."""
+    desc = str(descrizione or "")
+    return e_riga_coperto(desc) or decisione_deterministica(desc)[0] == "RAPPRESENTANZA"
+
+
+def piano_memoria_pasti(voci, righe_spostate):
+    """{id: "RAPPRESENTANZA"} per le voci di `prodotti_utente` che il cliente aveva
+    scritto a mano sulle righe di pasto appena spostate (stesso utente, stessa
+    descrizione) e che la regola di riga riconosce come pasto. Solo quelle: un
+    piatto senza la parola del pasto (es. "CATALONA" sulla fattura col coperto)
+    resta com'e', perche' fuori da quel documento non e' un pasto.
+    """
+    chiavi = {(r.get("user_id"), str(r.get("descrizione") or "").strip()) for r in righe_spostate}
+    return {
+        v["id"]: "RAPPRESENTANZA" for v in voci
+        if (v.get("user_id"), str(v.get("descrizione") or "").strip()) in chiavi
+        and str(v.get("categoria") or "") != "RAPPRESENTANZA"
+        and e_voce_di_pasto(v.get("descrizione"))
+    }
 
 
 # Una voce di memoria scritta da un CLIENTE porta la sua email ("Manuale (x@y)");
@@ -355,14 +385,17 @@ def documenti_pasto_gia_spostati(righe):
     ]
 
 
-def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset()):
+def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset(), anche_manuali=False):
     per_id = {r["id"]: r for r in righe}
     ristoranti = [r for r in righe if r.get("ristorante_id") not in retail_sedi]
     rinominate = {}
+    # Le righe arbitrate si scrivono SOLO nel passo pasti e SOLO col flag: la
+    # seconda cintura (la RPC che salta le arbitrate) resta su per gli altri passi.
+    salta_manuali = not (nome == "pasti" and anche_manuali)
     if nome == "giappone":
         aggiorna, saltate, non_decise = piano_giappone(ristoranti)
     elif nome == "pasti":
-        aggiorna, saltate = piano_pasti(righe)
+        aggiorna, saltate = piano_pasti(righe, anche_manuali=anche_manuali)
         non_decise = []
     else:  # residui
         shop = rinominate = {r["id"]: "RIVENDITA" for r in righe if r.get("categoria") == "SHOP"}
@@ -380,13 +413,40 @@ def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset()):
     _stampa_righe("NON DECISE dal nucleo deterministico (restano come sono)",
                   [(r, "?") for r in non_decise])
     if commit and aggiorna:
-        print(f"  COMMIT: {_scrivi_fatture(sb, aggiorna, lotto)} righe aggiornate (lotto {lotto})")
+        scritte = _scrivi_fatture(sb, aggiorna, lotto, salta_manuali=salta_manuali)
+        print(f"  COMMIT: {scritte} righe aggiornate (lotto {lotto})")
+    if nome == "pasti" and anche_manuali:
+        _memoria_pasti(sb, commit, [per_id[i] for i in aggiorna])
     # SEMPRE dopo la scrittura delle righe: l'esplosione legge le categorie delle
     # righe, e prima della scrittura rifarebbe le quote vecchie.
     da_rifare = [per_id[i] for i in [*aggiorna, *rinominate]]
     if nome == "pasti":
         da_rifare += documenti_pasto_gia_spostati(righe)
     rifai_riparti(sb, documenti_ripartiti(da_rifare), commit)
+
+
+def _memoria_pasti(sb, commit, righe_spostate):
+    """La memoria del cliente sulle righe di pasto spostate col flag: la voce
+    "MENU FISSO -> SERVIZI E CONSULENZE" scritta a mano e' la stessa scelta di
+    prima della categoria nuova, e la regola di riga la precede comunque."""
+    if not righe_spostate:
+        return
+    utenti = sorted({r.get("user_id") for r in righe_spostate if r.get("user_id")})
+    voci = []
+    for uid in utenti:
+        voci += _tutte(lambda u=uid: sb.table("prodotti_utente")
+                       .select("id,user_id,descrizione,categoria,classificato_da").eq("user_id", u))
+    aggiorna = piano_memoria_pasti(voci, righe_spostate)
+    if not aggiorna:
+        return
+    per_id = {v["id"]: v for v in voci}
+    print(f"  memoria prodotti_utente (pasti decisi a mano): {len(aggiorna)} da aggiornare")
+    for vid, nuova in aggiorna.items():
+        print(f"    {str(per_id[vid].get('descrizione'))[:55]:<55} {per_id[vid].get('categoria')} -> {nuova}")
+    if commit:
+        for vid, nuova in aggiorna.items():
+            sb.table("prodotti_utente").update({"categoria": nuova}).eq("id", vid).execute()
+        print(f"    COMMIT prodotti_utente: {len(aggiorna)} aggiornate")
 
 
 def _passo_memoria(sb, commit, rinomina_shop, retail_utenti=frozenset()):
@@ -418,18 +478,25 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Fase K: dati nel nuovo elenco delle categorie.")
     parser.add_argument("passo", choices=["giappone", "pasti", "residui", "tutto"])
     parser.add_argument("--commit", action="store_true", help="scrive davvero (senza, e' un dry-run)")
+    parser.add_argument("--anche-manuali", action="store_true",
+                        help="solo col passo pasti: porta in RAPPRESENTANZA anche le righe di pasto "
+                             "decise a mano prima che la categoria esistesse (Mattia, 11/10/2026)")
     args = parser.parse_args(argv)
+    if args.anche_manuali and args.passo != "pasti":
+        parser.error("--anche-manuali vale solo col passo pasti")
 
     sb = _client()
     lotto = str(uuid.uuid4())
     righe = carica_fatture(sb)
     retail_sedi, retail_utenti = sedi_e_utenti_retail(sb, righe)
     print(f"righe attive lette: {len(righe)} — {'COMMIT' if args.commit else 'DRY-RUN'}"
-          f" — sedi di negozi escluse dal passo giappone: {len(retail_sedi)}")
+          f" — sedi di negozi escluse dal passo giappone: {len(retail_sedi)}"
+          f"{' — ANCHE le righe di pasto decise a mano' if args.anche_manuali else ''}")
     passi = ["giappone", "pasti", "residui"] if args.passo == "tutto" else [args.passo]
     for passo in passi:
         print(f"\n== {passo} ==")
-        _passo_fatture(sb, passo, righe, args.commit, lotto, retail_sedi)
+        _passo_fatture(sb, passo, righe, args.commit, lotto, retail_sedi,
+                       anche_manuali=args.anche_manuali)
         if passo in ("giappone", "residui"):
             _passo_memoria(sb, args.commit, rinomina_shop=(passo == "residui"),
                            retail_utenti=retail_utenti)
