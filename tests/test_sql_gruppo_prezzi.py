@@ -266,3 +266,9 @@ def test_lo_storico_si_apre_anche_col_fornitore_troncato(db_sql, sql):
     assert [p.prezzo_unitario for p in troncato.punti] == [0.90, 1.10]
     corto = _storico_prodotto_sede(sb, SEDE1, "SNACK", "ADC")
     assert [p.prezzo_unitario for p in corto.punti] == [2.00]
+
+    # Il taglio a 30 cade su uno spazio: il nome troncato finisce con " ".
+    spazio = "GRUPPO CIMBALI SERVICE S.R.L. UNIPERSONALE"
+    assert spazio[:30].endswith(" ")
+    _riga(sql, SEDE1, "2026-05-01", "CAFFE", spazio, Decimal("12.00"))
+    assert [p.prezzo_unitario for p in _storico_prodotto_sede(sb, SEDE1, "CAFFE", spazio[:30]).punti] == [12.00]

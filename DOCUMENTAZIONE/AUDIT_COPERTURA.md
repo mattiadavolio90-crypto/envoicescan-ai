@@ -2171,7 +2171,9 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Revisore (🟢 a `d88e77cb`), poi corretto:** lo storico di una riga col fornitore oltre
 >   30 caratteri usciva vuoto (troncato dalla variazione, confrontato esatto: 54 fornitori
 >   su 319, difetto gia' dell'Osservatorio, sistemato per entrambe) e `qta_media` 0 diventava
->   1 in catena; 2 test, mutazione 4/4. Restano non bloccanti: chiave React su nomi troncati,
+>   1 in catena; 2 test, mutazione 4/4. Secondo giro del revisore (🟢 a `a65285e5`): il
+>   taglio a 30 che cade su uno spazio tornava al confronto esatto dopo lo strip (5
+>   fornitori), lunghezza ora presa prima dello strip, mutante ucciso. Restano non bloccanti: chiave React su nomi troncati,
 >   storico senza contatore di richieste (come l'Osservatorio), date malformate → 500.
 
 ---

@@ -877,7 +877,9 @@ def _storico_prodotto_sede(
     # con il confronto esatto lo storico dei 54 fornitori su 319 con un nome
     # piu' lungo (misurato l'11/10/2026) usciva vuoto, nell'Osservatorio come
     # nella catena.
-    troncato = len(fornitore.strip()) >= _FORNITORE_MAX
+    # Sulla lunghezza PRIMA dello strip: un taglio che cade su uno spazio
+    # («GRUPPO CIMBALI SERVICE S.R.L. ») arriva lungo 30 e dopo lo strip 29.
+    troncato = len(fornitore) >= _FORNITORE_MAX
 
     all_rows: list = []
     page = 0
