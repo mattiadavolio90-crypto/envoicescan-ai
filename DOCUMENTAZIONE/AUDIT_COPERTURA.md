@@ -2086,6 +2086,57 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **Nota:** le 68 scritture del passo `giappone` su `prodotti_utente` risultano
 >   `db_trigger` senza lotto, perche' lo script scrive via PostgREST senza GUC. Fuori da K
 >   resta la decisione su `riparto_quote_mensili` (vedi sopra).
+> - **11/10/2026, `31b60f45`..`aac0bf4a` — controllo di debug indipendente delle fasi
+>   A–K del piano consulente (Fable), 9 commit, NON pushati.** Tutte le fasi lette
+>   (piano, verbale, commit, chiamanti) e misurate sul DB vero in sola lettura, nell'ordine
+>   B, C, E, K, A, D, F, G, H, I, J; ogni sospetto provato (query, esecuzione, test).
+>   **Esito per fase:** B nessun bug (7 mesi di spese dell'Agenda mai in Margini, 2 celle
+>   indietro, nessun avviso; il negozio RECOMA vedeva le categorie dei ristoranti e il
+>   worker gli rifiutava la merce); C nessun bug (CASATI 14: 3 stipendi di settembre =
+>   cella 4.471 al centesimo; rischio latente provato: riga mensile con le sole ore
+>   azzerava i turni a tariffa); E regola delle ferie rieseguita sui netti veri, giusta;
+>   confermato il noto `riparto_quote_mensili` con le quote «Da Classificare» fra le spese
+>   (24 EUR); K live pulito (0 SHOP/SUSHI VARIE ovunque, 0 falsi positivi della regola
+>   del coperto su tutte le descrizioni attive), 11 righe di pasto corrette a mano restavano
+>   in SERVIZI; A, D, F, G, H, I, J nessun bug (chat non salvate e briefing nuovi non ancora
+>   generati: verifica sui dati limitata). L'esecuzione delle funzioni del worker sul DB
+>   vero e' stata bloccata dal classificatore: confronti fatti via SQL e funzioni pure.
+>   **Fatto** (decisioni di Mattia: «in Rappresentanza portale… esegui gli altri ritocchi»):
+>   (1) `scripts/fase_k_categorie.py pasti --anche-manuali --commit` sul live: 11 righe
+>   (254 EUR) in RAPPRESENTANZA, lotto `28e7880c`, 2 voci di memoria (COPERTO, MENU FISSO;
+>   CATALONA resta), 8 mesi di riparti rifatti, `margini_mensili` identici al backup;
+>   (2) modulo Spese per settore (`_valida_categoria_spesa(categoria, settore)` da
+>   `settore_sede`, `gruppiCategorieSpesa` in desktop e `/m`; ristoranti invariati);
+>   (3) migration `20261011111500` (riparto senza «Da Classificare») applicata via MCP e
+>   agosto/settembre 2026 di OFFSIDE/OVERTIME ricalcolati (spese −3,83 e −8,19 per sede);
+>   (4) avviso in Margini dove la cella non coincide con l'Agenda (endpoint
+>   `/api/margini/spese-extra-anno`, `scartiSpeseAgenda`, pallino + riga sopra la tabella,
+>   modulo che legge il tab Spese all'apertura); (5) «lo stipendio vince» solo con lordo > 0
+>   nelle tre copie (`rigaStipendio`); (6) PATCH di una spesa assente → 404, GET del proxy
+>   con «worker non raggiungibile»; (7) incassi dell'assistente con
+>   `source_meta.source_channel = 'assistente'`; (8) migration `20261011120000` DROP della
+>   vecchia `chat_usage_check_and_log` (contiene DROP: **da incollare nell'SQL Editor**) e
+>   via i 14 test che la usavano, presidio «non esiste piu'». **Prove:** mutazione 5/5 (K),
+>   5/5 (spese per settore), 1/1 (migration riparto), 7/7 (avviso Margini: il terzo mutante
+>   del primo giro non si era applicato, rifatto a mano e ucciso), 4/4 (lordo > 0: il test
+>   di parita' server/client ha preso la divergenza del client al primo giro), 2/2 + 1/1
+>   (`-m sql`); `tsc --noEmit` pulito; suite `python -m pytest tests/ -m "not sql" -q
+>   -p no:randomly` sul working tree a `c2e764f5`: **18.832 verdi, 58 skip, 0 rossi**.
+>   **Trovato dal revisore (🟢 a `c2e764f5`):** a `b57a9c1c` il nuovo helper `_pivot` di
+>   `test_margini_aggregati_frontend.py` copriva l'omonimo gia' nel file: 16 test rossi che
+>   il mio giro `-k` sui soli test nuovi non vedeva (l'altra sessione l'ha corretto in
+>   `c2e764f5`, `_pivot_spese`); le 2 voci di memoria spostate dallo script restano
+>   `classificato_da = Manuale (cliente)` pur essendo una scelta dello script; il test
+>   d'isolamento della vecchia RPC e' uscito in `d43771d5` invece che in `aac0bf4a`;
+>   `proponi_spesa` e' offerto anche ai negozi con l'enum dei ristoranti (da prima della
+>   sessione: una spesa «CARNE» dettata da un negozio poi non si modifica dal modulo) —
+>   **decisione per Mattia**: togliere lo strumento ai negozi o passargli il settore;
+>   `encodeURIComponent` sul proxy e la riga di `CHAT_ASSISTENTE.md` corretti subito dopo.
+>   **Non fatto, dichiarato:** `margine_service.build_transposed_df`/`salva_margini_anno`
+>   (pandas, era Streamlit) sommano due voci di personale: zero chiamanti a runtime, solo
+>   test. **Residui:** la decisione su fra.diclemente (unico su «Scadenzario» dopo la
+>   migration della H: scelta sua, ammessa); i briefing della F non ancora generati da
+>   nessuna sede con dati (ultimi snapshot v29/v30 del 5-8/10).
 
 ---
 
