@@ -41,8 +41,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.constants import CATEGORIE_ABOLITE  # noqa: E402
-from services.ai_service import decisione_deterministica, e_riga_coperto  # noqa: E402
-from services.db_service import aggiorna_categoria_fatture  # noqa: E402
+from services.ai_service import (  # noqa: E402
+    _MIRIN_RE,
+    _OLIO_SESAMO_RE,
+    _SAKE_RE,
+    _UNAGI_SALSA_RE,
+    decisione_deterministica,
+    e_riga_coperto,
+)
+from services.db_service import aggiorna_categoria_fatture, filter_active  # noqa: E402
 
 SOURCE = "script_fase_k"
 NON_DECISA = "Da Classificare"
@@ -52,7 +59,14 @@ NON_DECISA = "Da Classificare"
 # per ragioni che non c'entrano (una memoria del cliente, l'AI), e riscriverle
 # sarebbe uno script che decide per conto d'altri su categorie che nessuno ha
 # cambiato. Misurato sulle 7.173 descrizioni reali: sono le sole che cambiano.
-_FAMIGLIE_K = re.compile(r"\b(SAKE|MIRIN|UNAGI)\b|\bOLIO\b.*\bSESAM|\bSESAM\w*\b.*\bOLIO\b")
+# Gli STESSI regex delle regole forti: un filtro piu' largo ("SESAMO ... OLIO")
+# prenderebbe il pane al sesamo e lo farebbe decidere al dizionario.
+_REGOLE_K = (_SAKE_RE, _MIRIN_RE, _OLIO_SESAMO_RE, _UNAGI_SALSA_RE)
+
+
+def e_famiglia_k(descrizione):
+    testo = str(descrizione or "").upper()
+    return any(regola.search(testo) for regola in _REGOLE_K)
 
 
 def _client():
@@ -83,7 +97,7 @@ def piano_giappone(righe):
     for r in righe:
         vecchia = str(r.get("categoria") or "")
         desc = str(r.get("descrizione") or "")
-        if vecchia not in CATEGORIE_ABOLITE and not _FAMIGLIE_K.search(desc.upper()):
+        if vecchia not in CATEGORIE_ABOLITE and not e_famiglia_k(desc):
             continue
         nuova = decisione_deterministica(desc)[0]
         if nuova == vecchia:
@@ -155,7 +169,7 @@ def piano_memoria(voci, campo="categoria", rinomina_shop=False):
             if rinomina_shop:
                 aggiorna[v["id"]] = "RIVENDITA"
             continue
-        if vecchia not in CATEGORIE_ABOLITE and not _FAMIGLIE_K.search(desc.upper()):
+        if vecchia not in CATEGORIE_ABOLITE and not e_famiglia_k(desc):
             continue
         nuova = decisione_deterministica(desc)[0]
         if nuova == vecchia:
@@ -198,7 +212,23 @@ def _tutte(query_per_pagina):
 
 
 def carica_fatture(sb):
-    return _tutte(lambda: sb.table("fatture").select(_COLONNE_FATTURE).is_("deleted_at", "null"))
+    return _tutte(lambda: filter_active(sb.table("fatture").select(_COLONNE_FATTURE)))
+
+
+def sedi_e_utenti_retail(sb, righe):
+    """Ristoranti e utenti dei negozi presenti fra le righe (regola di dominio 7).
+
+    Le famiglie della Fase K (VINI, VERDURE...) sono categorie dei ristoranti: su
+    un negozio il passo `giappone` non deve scrivere niente. Il settore si legge da
+    `services/settore_service.py`, come in tutto il resto dell'app.
+    """
+    from services.settore_service import SETTORE_RETAIL, settore_sede, settore_utente
+
+    sedi = {r.get("ristorante_id") for r in righe if r.get("ristorante_id")}
+    utenti = {r.get("user_id") for r in righe if r.get("user_id")}
+    retail_sedi = {s for s in sedi if settore_sede(s, sb) == SETTORE_RETAIL}
+    retail_utenti = {u for u in utenti if settore_utente(u, sb) == SETTORE_RETAIL}
+    return retail_sedi, retail_utenti
 
 
 def _stampa_righe(titolo, coppie, limite=40):
@@ -224,14 +254,16 @@ def _riepilogo(righe_per_id, aggiorna):
         print(f"    {n:4d} righe {euro[(a, b)]:>11.2f} EUR  {a} -> {b}")
 
 
-def _scrivi_fatture(sb, aggiorna, lotto, salta_manuali=True):
+def _scrivi_fatture(sb, aggiorna, lotto, salta_manuali=True, rinomina=False):
+    """`rinomina=True` (SHOP -> RIVENDITA): cambia SOLO il nome, come la migration;
+    coda, fonte e fiducia della riga restano quelle che erano."""
     gruppi = {}
     for rid, valore in aggiorna.items():
         categoria, fonte = valore if isinstance(valore, tuple) else (valore, None)
         gruppi.setdefault((categoria, fonte), []).append(rid)
     scritte = 0
     for (categoria, fonte), ids in gruppi.items():
-        extra = {"needs_review": False}
+        extra = {} if rinomina else {"needs_review": False}
         if fonte:
             extra.update({"categoria_fonte": fonte, "categoria_fiducia": "certa"})
         for i in range(0, len(ids), 500):
@@ -242,20 +274,22 @@ def _scrivi_fatture(sb, aggiorna, lotto, salta_manuali=True):
     return scritte
 
 
-def _passo_fatture(sb, nome, righe, commit, lotto):
+def _passo_fatture(sb, nome, righe, commit, lotto, retail_sedi=frozenset()):
     per_id = {r["id"]: r for r in righe}
+    ristoranti = [r for r in righe if r.get("ristorante_id") not in retail_sedi]
     if nome == "giappone":
-        aggiorna, saltate, non_decise = piano_giappone(righe)
+        aggiorna, saltate, non_decise = piano_giappone(ristoranti)
     elif nome == "pasti":
         aggiorna, saltate = piano_pasti(righe)
         non_decise = []
     else:  # residui
         shop = {r["id"]: "RIVENDITA" for r in righe if r.get("categoria") == "SHOP"}
         # Anche il sake o il mirin scritti dal worker vecchio dopo il passo giappone.
-        aggiorna, saltate, non_decise = piano_giappone(righe)
+        aggiorna, saltate, non_decise = piano_giappone(ristoranti)
         print(f"  SHOP rimaste da rinominare: {len(shop)}")
         if commit and shop:
-            print(f"  COMMIT rinomina: {_scrivi_fatture(sb, shop, lotto, salta_manuali=False)} righe")
+            scritte = _scrivi_fatture(sb, shop, lotto, salta_manuali=False, rinomina=True)
+            print(f"  COMMIT rinomina: {scritte} righe")
     print(f"  righe da spostare: {len(aggiorna)}")
     _riepilogo(per_id, aggiorna)
     _stampa_righe("da spostare (dettaglio)", [(per_id[i], v[0] if isinstance(v, tuple) else v)
@@ -267,9 +301,11 @@ def _passo_fatture(sb, nome, righe, commit, lotto):
         print(f"  COMMIT: {_scrivi_fatture(sb, aggiorna, lotto)} righe aggiornate (lotto {lotto})")
 
 
-def _passo_memoria(sb, commit, rinomina_shop):
+def _passo_memoria(sb, commit, rinomina_shop, retail_utenti=frozenset()):
     for tabella, campo, colonne in _MEMORIE:
         voci = _tutte(lambda t=tabella, c=colonne: sb.table(t).select(c))
+        # La memoria di un negozio non segue le famiglie dei ristoranti (regola 7).
+        voci = [v for v in voci if v.get("user_id") not in retail_utenti]
         aggiorna, cancella, saltate = piano_memoria(voci, campo, rinomina_shop=rinomina_shop)
         for v, nuova in saltate:
             print(f"  memoria {tabella}: SALTATA, decisa a mano dal cliente ({v.get('classificato_da')}): "
@@ -299,13 +335,16 @@ def main(argv=None):
     sb = _client()
     lotto = str(uuid.uuid4())
     righe = carica_fatture(sb)
-    print(f"righe attive lette: {len(righe)} — {'COMMIT' if args.commit else 'DRY-RUN'}")
+    retail_sedi, retail_utenti = sedi_e_utenti_retail(sb, righe)
+    print(f"righe attive lette: {len(righe)} — {'COMMIT' if args.commit else 'DRY-RUN'}"
+          f" — sedi di negozi escluse dal passo giappone: {len(retail_sedi)}")
     passi = ["giappone", "pasti", "residui"] if args.passo == "tutto" else [args.passo]
     for passo in passi:
         print(f"\n== {passo} ==")
-        _passo_fatture(sb, passo, righe, args.commit, lotto)
+        _passo_fatture(sb, passo, righe, args.commit, lotto, retail_sedi)
         if passo in ("giappone", "residui"):
-            _passo_memoria(sb, args.commit, rinomina_shop=(passo == "residui"))
+            _passo_memoria(sb, args.commit, rinomina_shop=(passo == "residui"),
+                           retail_utenti=retail_utenti)
         if args.commit and passo != passi[-1]:
             righe = carica_fatture(sb)
     if not args.commit:

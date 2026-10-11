@@ -131,7 +131,9 @@ def test_ogni_categoria_fb_sta_in_un_solo_centro_di_costo():
     assert "SHOP" not in CENTRI_DI_PRODUZIONE
 
 
-def test_il_worker_usa_gli_stessi_centri_delle_costanti():
+def test_il_worker_usa_gli_stessi_centri_delle_costanti(monkeypatch):
+    # Da solo il file non ha la chiave del worker: senza, l'import solleva.
+    monkeypatch.setenv("WORKER_DEV_MODE", "1")
     import services.fastapi_worker as fw
 
     assert fw._CENTRI_DI_PRODUZIONE == CENTRI_DI_PRODUZIONE

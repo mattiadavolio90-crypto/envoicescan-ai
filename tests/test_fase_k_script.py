@@ -200,6 +200,8 @@ def test_la_rinomina_di_shop_vale_anche_per_le_righe_decise_a_mano(fk, monkeypat
     fk._passo_fatture(object(), "residui", righe, commit=True, lotto="L")
     rinomina = [c for c in chiamate if c["categoria"] == "RIVENDITA"]
     assert rinomina and rinomina[0]["salta_correzioni_manuali"] is False
+    # rinomina pura, come la migration: coda, fonte e fiducia restano com'erano
+    assert rinomina[0]["extra"] == {}
 
 
 def test_senza_commit_non_scrive_niente(fk, monkeypatch):
@@ -208,3 +210,108 @@ def test_senza_commit_non_scrive_niente(fk, monkeypatch):
     for passo in ("giappone", "pasti", "residui"):
         fk._passo_fatture(object(), passo, righe, commit=False, lotto="L")
     assert chiamate == []
+
+
+# ── l'I/O: un dry-run non scrive, i negozi restano fuori ────────────────────
+
+class _Query:
+    def __init__(self, registro, tabella, dati):
+        self.registro, self.tabella, self.dati = registro, tabella, dati
+
+    def __getattr__(self, nome):
+        def _metodo(*args, **kwargs):
+            if nome in ("update", "delete", "upsert", "insert"):
+                self.registro.append((self.tabella, nome, args))
+            if nome == "is_":
+                self.registro.append((self.tabella, "is_", args))
+            return self
+        return _metodo
+
+    def execute(self):
+        return type("R", (), {"data": self.dati})()
+
+
+class _Sb:
+    def __init__(self, tabelle=None):
+        self.registro, self.tabelle = [], tabelle or {}
+
+    def table(self, nome):
+        return _Query(self.registro, nome, list(self.tabelle.get(nome, [])))
+
+
+def _scritture_sb(sb):
+    return [r for r in sb.registro if r[1] in ("update", "delete", "upsert", "insert")]
+
+
+_MEMORIA_LIVE = {
+    "prodotti_utente": [
+        {"id": "a", "user_id": "u1", "descrizione": "YAKI NORI MISURAKI (A) 10X140G ( )", "categoria": "SUSHI VARIE"},
+        {"id": "b", "user_id": "u1", "descrizione": "CARAMELLE GOLIA", "categoria": "SHOP"},
+        {"id": "c", "user_id": "negozio", "descrizione": "SAKE GEKKEIKAN 75CL", "categoria": "ARTICOLO DI VENDITA"},
+    ],
+}
+
+
+def test_la_memoria_in_dry_run_non_scrive_niente(fk):
+    sb = _Sb(_MEMORIA_LIVE)
+    fk._passo_memoria(sb, commit=False, rinomina_shop=True)
+    assert _scritture_sb(sb) == []
+
+
+def test_la_memoria_in_commit_scrive_e_salta_i_negozi(fk):
+    sb = _Sb(_MEMORIA_LIVE)
+    fk._passo_memoria(sb, commit=True, rinomina_shop=True, retail_utenti={"negozio"})
+    scritte = {(t, args[0][next(iter(args[0]))]) for t, nome, args in _scritture_sb(sb)}
+    assert scritte == {("prodotti_utente", "VERDURE"), ("prodotti_utente", "RIVENDITA")}
+
+
+def test_main_senza_commit_e_un_dry_run(fk, monkeypatch):
+    """Il default deve essere NON scrivere: un `--commit` dimenticato non tocca il live."""
+    sb = _Sb(_MEMORIA_LIVE)
+    chiamate = _scritture(fk, monkeypatch)
+    monkeypatch.setattr(fk, "_client", lambda: sb)
+    monkeypatch.setattr(fk, "carica_fatture", lambda _sb: [_r(1, "PANKO DA SACCO 10KG", "SUSHI VARIE"),
+                                                            _r(2, "COPERTO", "Da Classificare", 40.0)])
+    monkeypatch.setattr(fk, "sedi_e_utenti_retail", lambda _sb, _righe: (set(), set()))
+    assert fk.main(["tutto"]) == 0
+    assert chiamate == [] and _scritture_sb(sb) == []
+
+
+def test_le_fatture_lette_sono_solo_quelle_non_cancellate(fk):
+    sb = _Sb({"fatture": []})
+    fk.carica_fatture(sb)
+    assert ("fatture", "is_", ("deleted_at", "null")) in sb.registro
+
+
+def test_giappone_non_scrive_sulle_sedi_dei_negozi(fk, monkeypatch):
+    """Regola 7: VINI, VERDURE... sono categorie dei ristoranti."""
+    chiamate = _scritture(fk, monkeypatch)
+    righe = [_r(1, "SAKE GEKKEIKAN 75CL", "ARTICOLO DI VENDITA", ristorante_id="negozio"),
+             _r(2, "SAKE GEKKEIKAN 75CL", "DISTILLATI", ristorante_id="ristorante")]
+    fk._passo_fatture(object(), "giappone", righe, commit=True, lotto="L", retail_sedi={"negozio"})
+    assert [c["ids"] for c in chiamate] == [[2]]
+
+
+@pytest.mark.parametrize("desc,cat", [
+    ("PANE AL SESAMO E OLIO", "PRODOTTI DA FORNO"),
+    ("VASCHETTA UNAGI DON 50PZ", "MATERIALE DI CONSUMO"),
+    ("TARALLI OLIO SESAMO", "RIVENDITA"),
+])
+def test_giappone_guarda_solo_le_famiglie_delle_regole(fk, desc, cat):
+    """Il filtro e' fatto con gli stessi regex delle regole forti: una parola
+    in comune (sesamo, unagi) non basta a far riscrivere la riga."""
+    assert fk.piano_giappone([_r(1, desc, cat)]) == ({}, [], [])
+
+
+@pytest.mark.parametrize("passo,rinomina_attesa", [("giappone", False), ("residui", True)])
+def test_la_memoria_shop_si_rinomina_solo_nel_passo_residui(fk, monkeypatch, passo, rinomina_attesa):
+    """Col codice vecchio ancora in produzione (passo giappone, prima del deploy) la
+    memoria non deve contenere un RIVENDITA che quel codice non conosce."""
+    sb = _Sb(_MEMORIA_LIVE)
+    _scritture(fk, monkeypatch)
+    monkeypatch.setattr(fk, "_client", lambda: sb)
+    monkeypatch.setattr(fk, "carica_fatture", lambda _sb: [])
+    monkeypatch.setattr(fk, "sedi_e_utenti_retail", lambda _sb, _righe: (set(), set()))
+    fk.main([passo, "--commit"])
+    rinominate = [a for t, nome, a in _scritture_sb(sb) if nome == "update" and "RIVENDITA" in a[0].values()]
+    assert bool(rinominate) is rinomina_attesa

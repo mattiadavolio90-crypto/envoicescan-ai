@@ -52,6 +52,17 @@ def _semina(cur):
                 "VALUES (%s, 'GOLIA', 'SHOP')", (_UTENTE,))
     cur.execute("INSERT INTO public.review_confirmed (descrizione, categoria_finale, confirmed_by) "
                 "VALUES ('GOLIA', 'SHOP', 'admin@oneflux.test')")
+    riparto = cur.execute(
+        "INSERT INTO public.riparto_costi_catena (user_id, origine, file_origine, fornitore, "
+        "descrizione, importo_totale, anno, mese) VALUES (%s, 'fattura', 'r.xml', 'F', 'RIPARTO', "
+        "100, 2026, 3) RETURNING id", (_UTENTE,)).fetchone()[0]
+    cur.execute("INSERT INTO public.riparto_costi_catena_quote (riparto_id, ristorante_id, quota_perc, "
+                "quota_importo, categoria) VALUES (%s, %s, 100, 100, 'SHOP')", (riparto, _SEDE))
+    cur.execute("INSERT INTO public.classificazioni_manuali (descrizione, categoria_corretta, validato_da) "
+                "VALUES ('MARS BAR', 'SHOP', 'admin@oneflux.test')")
+    cur.execute("INSERT INTO public.spese_extra (ristorante_id, user_id, data_spesa, tipo, importo, "
+                "descrizione, categoria) VALUES (%s, %s, '2026-03-05', 'fb', 5, 'CARAMELLE', 'SHOP')",
+                (_SEDE, _UTENTE))
     cur.execute("INSERT INTO public.categorie (nome, icona, ordinamento) VALUES "
                 "('SHOP', '🛍️', 500), ('SUSHI VARIE', '🍣', 140), ('PESCE', '🐟', 20) "
                 "ON CONFLICT (nome) DO NOTHING")
@@ -99,6 +110,15 @@ def test_memoria_e_conferme_seguono_la_rinomina(seminato, scalare):
     assert scalare("SELECT categoria FROM public.prodotti_master WHERE descrizione = 'MARS'") == "CARNE"
     assert scalare("SELECT categoria FROM public.prodotti_utente WHERE descrizione = 'GOLIA'") == "RIVENDITA"
     assert scalare("SELECT categoria_finale FROM public.review_confirmed WHERE descrizione = 'GOLIA'") == "RIVENDITA"
+
+
+def test_quote_di_riparto_admin_e_spese_extra_seguono_la_rinomina(seminato, scalare):
+    """Sul live ci sono 4 quote di riparto SHOP: col nome vecchio il riparto le
+    conterebbe come spesa invece che F&B (`_riparto_categoria_is_fb`)."""
+    assert scalare("SELECT categoria FROM public.riparto_costi_catena_quote") == "RIVENDITA"
+    assert scalare("SELECT categoria_corretta FROM public.classificazioni_manuali "
+                   "WHERE descrizione = 'MARS BAR'") == "RIVENDITA"
+    assert scalare("SELECT categoria FROM public.spese_extra WHERE descrizione = 'CARAMELLE'") == "RIVENDITA"
 
 
 def test_la_tabella_categorie_segue_il_nuovo_elenco(seminato, sql):

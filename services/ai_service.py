@@ -1141,6 +1141,13 @@ _MIRIN_RE = re.compile(r"\bMIRIN\b")
 # Le parole devono stare vicine ("OLIO DI SESAMO", "OLIO SESAMO", "SESAME OIL"):
 # "GRISSINI ALL'OLIO E SESAMO" e' un grissino, non un condimento (revisore K1).
 _OLIO_SESAMO_RE = re.compile(r"\bOLIO\s+(?:DI\s+|AL\s+)?(?:SEMI\s+DI\s+)?SESAM\w*\b|\bSESAME\s+OIL\b")
+# ...ma "TARALLI OLIO SESAMO" e' un tarallo all'olio col sesamo (secondo giro del
+# revisore): se la riga nomina un prodotto da forno o uno snack, l'olio e' un
+# ingrediente e decide il resto della pipeline.
+_OLIO_SESAMO_ESCLUSI_RE = re.compile(
+    r"\b(TARALL\w*|GRISSIN\w*|CRACKER\w*|PANE|PANIN[OI]|FOCACC\w*|BISCOTT\w*|SNACK|CHIPS|"
+    r"SFOGLI\w*|SCHIACCIAT\w*|FRESELL\w*|CROSTIN\w*)\b"
+)
 # La salsa per anguilla e' una salsa: senza questa eccezione "UNAGI SAUCE" finiva
 # in PESCE con la regola dell'anguilla, che batte anche la memoria. La salsa deve
 # essere IL prodotto: "UNAGI KABAYAKI CON SALSA" e' anguilla venduta con la sua
@@ -1639,6 +1646,10 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "giappo_fritto_pasta",
     "giappo_pesce",
     "sake_vini",
+    # Fase K: un pasto consumato fuori e' RAPPRESENTANZA anche se il cliente, prima
+    # che la categoria esistesse, l'aveva messo in SERVIZI (OFFSIDE, "MENU FISSO"):
+    # senza, lo storico andrebbe in RAPPRESENTANZA e le fatture nuove in SERVIZI.
+    "pasto_rappresentanza",
     "pet_food_non_alimento",
     # 26/06 (post-upload San Giuliano): ACQ PANNA/S.PELLEGRINO restavano BEVANDE perché
     # la memoria globale era inquinata e l'override non scattava (acqua non era non-negoziabile).
@@ -2076,7 +2087,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "mirin_condimento"
         return cat, None
 
-    if _OLIO_SESAMO_RE.search(desc_u):
+    if _OLIO_SESAMO_RE.search(desc_u) and not _OLIO_SESAMO_ESCLUSI_RE.search(desc_u):
         mapped = "OLIO E CONDIMENTI"
         if cat != mapped:
             return mapped, "olio_sesamo_condimento"

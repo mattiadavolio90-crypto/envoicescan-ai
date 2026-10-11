@@ -51,6 +51,8 @@ def test_un_pasto_consumato_fuori_e_rappresentanza(descrizione):
     "PARCHEGGIO COPERTO",
     "GAZEBO COPERTO 3X3",
     "TELO COPERTURA PISCINA",
+    # la riga coperto e' la riga INTERA: "COPERTONE" e' un pneumatico
+    "COPERTONE 195/65 R15",
 ])
 def test_non_ogni_coperto_o_menu_e_un_pasto(descrizione):
     categoria, _motivo, _conf = ai_mod.decisione_deterministica(descrizione)
@@ -119,6 +121,14 @@ def test_la_fattura_col_coperto_va_tutta_in_rappresentanza():
     assert per_desc["OMAGGIO CAFFE"]["Categoria"] == "📝 NOTE E DICITURE"
     # il coperto era gia' RAPPRESENTANZA: la sua fonte non si riscrive
     assert per_desc["COPERTO"]["categoria_fonte"] == "L1_5_regola"
+
+
+def test_anche_lo_sconto_della_fattura_col_coperto_va_in_rappresentanza():
+    """Una riga negativa (sconto, abbuono) di quella fattura riduce la spesa del
+    pasto: restando nel food abbasserebbe il food cost di un pasto mai comprato."""
+    righe = _pranzo_monopoli() + [_riga("SCONTO CLIENTE", "PRODOTTI DA FORNO", -5.0)]
+    ai_mod.applica_regola_documento_pasto(righe)
+    assert righe[-1]["Categoria"] == "RAPPRESENTANZA"
 
 
 def test_senza_il_coperto_la_fattura_resta_com_era():
@@ -217,6 +227,34 @@ def test_il_parser_lascia_la_pizza_comprata_dal_fornitore():
         "PIZZA": "PRODOTTI DA FORNO",
         "BIRRA SPINA MEDIA": "BIRRE",
     }
+
+
+def test_il_pasto_batte_la_scelta_fatta_prima_che_la_categoria_esistesse():
+    """OFFSIDE aveva messo a mano "MENU FISSO" in SERVIZI E CONSULENZE, quando
+    RAPPRESENTANZA non c'era: la regola e' non negoziabile, o lo storico (spostato
+    dallo script) e le fatture nuove (decise dalla memoria) si spaccherebbero."""
+    from types import SimpleNamespace
+
+    def _q(dati):
+        q = MagicMock()
+        for m in ["select", "eq", "neq", "gte", "lte", "is_", "order", "range", "or_", "in_", "limit"]:
+            getattr(q, m).return_value = q
+        q.execute.return_value = SimpleNamespace(data=dati)
+        return q
+
+    ai_mod.invalida_cache_memoria()
+    try:
+        sb = MagicMock()
+        voci = [{"descrizione": "MENU FISSO", "categoria": "SERVIZI E CONSULENZE"}]
+        sb.table.side_effect = lambda nome: _q(voci if nome == "prodotti_utente" else [])
+        ai_mod.carica_memoria_completa("user-k", supabase_client=sb)
+        categoria = ai_mod.categorizza_con_memoria(
+            descrizione="MENU FISSO", prezzo=33.0, quantita=1, user_id="user-k",
+            supabase_client=sb, pending_local_saves=[],
+        )
+    finally:
+        ai_mod.invalida_cache_memoria()
+    assert categoria == "RAPPRESENTANZA"
 
 
 def test_la_fonte_della_fattura_col_coperto_e_certa():

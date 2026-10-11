@@ -130,9 +130,11 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # alla conversazione della Home di catena (i negozi hanno domande proposte loro).
 # 18 dal 08/10/2026: `app/(mobile)/m/chat/page.tsx` sceglie le domande proposte
 # dal briefing riempiendo i posti liberi con quelle del settore (fase F).
+# `categoria_fonte` 13 dal 10/10/2026: `scripts/fase_k_categorie.py` (fase K)
+# salta le righe decise a mano (le fatture le filtra con `filter_active`).
 TARATURA_FILE_CODICE = {
     "correzioni_count": 0, "ultimo_correttore": 0,           # morte, confermate da L4
-    "consecutive_correct_classifications": 4, "categoria_fonte": 12,
+    "consecutive_correct_classifications": 4, "categoria_fonte": 13,
     "tipo_attivita": 18, "deleted_at": 34,                   # vive
 }
 
