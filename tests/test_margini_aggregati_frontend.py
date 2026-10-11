@@ -505,3 +505,95 @@ def test_build_mesi_list_e_la_stessa_dei_due_componenti():
         assert "function buildMesiList" not in testo, (
             f"{nome} ha di nuovo una copia locale di buildMesiList"
         )
+
+
+# ───────────── spese dell'Agenda non allineate alla tabella (11/10/2026) ─────────────
+#
+# Sette mesi con spese mai portate e due celle indietro sul live, nessun avviso.
+# La cella non si tocca: qui si calcola solo DOVE non coincide con l'Agenda.
+
+def _pivot(anno=2026, mese=1, fb=0.0, spese=0.0):
+    return {"anno": anno, "mese": mese, "altri_costi_fb": fb, "altri_costi_spese": spese}
+
+
+def _agenda(anno=2026, **mesi):
+    """_agenda(m1=(fb, generale, n_fb, n_generale), ...)."""
+    return {"anno": anno, "mesi": {k[1:]: {"fb": v[0], "generale": v[1], "n_fb": v[2], "n_generale": v[3]}
+                                   for k, v in mesi.items()}}
+
+
+def _scarti(mesi, spese):
+    return esegui_ts(_MODULO, "emit([...m.scartiSpeseAgenda(...input).values()]);",
+                     argomento=[mesi, spese], richiede=["scartiSpeseAgenda"])
+
+
+def test_scarto_dove_la_cella_non_coincide_con_l_agenda():
+    """OFFSIDE giugno sul live: 255 in Agenda, 235 in cella."""
+    out = _scarti([_pivot(mese=6, fb=235.0, spese=300.0)], [_agenda(m6=(255.0, 300.0, 1, 1))])
+    assert out == [{"anno": 2026, "mese": 6, "tipo": "fb", "agenda": 255.0, "cella": 235.0, "nVoci": 1}]
+
+
+def test_nessuno_scarto_se_coincidono_o_se_l_agenda_e_vuota():
+    """Una cella scritta a mano senza spese in Agenda (SKY 300) non e' uno scarto."""
+    out = _scarti([_pivot(mese=1, fb=483.0, spese=300.0)], [_agenda(m1=(483.0, 0.0, 1, 0))])
+    assert out == []
+
+
+def test_mese_senza_voce_in_agenda_non_e_uno_scarto():
+    assert _scarti([_pivot(mese=3, fb=10.0)], [_agenda(m1=(5.0, 0.0, 1, 0))]) == []
+
+
+def test_l_anno_conta_quanto_il_mese():
+    out = _scarti([_pivot(anno=2026, mese=1, fb=0.0)], [_agenda(anno=2025, m1=(107.0, 0.0, 1, 0))])
+    assert out == []
+
+
+def test_le_due_voci_di_un_mese_sono_scarti_separati():
+    out = _scarti([_pivot(mese=1, fb=0.0, spese=0.0)], [_agenda(m1=(107.0, 157.0, 1, 1))])
+    assert [(s["tipo"], s["agenda"]) for s in out] == [("fb", 107.0), ("generale", 157.0)]
+
+
+@pytest.mark.parametrize("agenda,cella,n,atteso", [
+    (255.0, 235.0, 1, True),
+    (255.0, 255.0, 1, False),
+    (255.0, 254.996, 1, False),   # sotto il centesimo: e' arrotondamento, non uno scarto
+    (255.0, 254.99, 1, True),
+    (0.0, 300.0, 0, False),       # nessuna voce in Agenda: la cella e' solo a mano
+])
+def test_scarto_spese_al_centesimo(agenda, cella, n, atteso):
+    assert _chiama("scartoSpese", [agenda, cella, n]) is atteso
+
+
+def test_il_testo_dello_scarto_dice_le_due_cifre_e_cosa_fare():
+    testo = esegui_ts(_MODULO, "emit(m.testoScartoSpese(input, (v) => v.toFixed(2) + ' €'));",
+                      argomento={"anno": 2026, "mese": 6, "tipo": "fb", "agenda": 255.0, "cella": 235.0, "nVoci": 1},
+                      richiede=["testoScartoSpese"])
+    assert "255.00 €" in testo and "235.00 €" in testo and "1 voce" in testo
+    assert "Recupera dal tab Spese" in testo
+
+
+def test_l_avviso_sopra_la_tabella_conta_i_mesi_non_le_voci():
+    espr = ("const s = m.scartiSpeseAgenda(...input); "
+            "emit([m.testoAvvisoSpeseAgenda(new Map()), m.testoAvvisoSpeseAgenda(s)]);")
+    vuoto, due_mesi = esegui_ts(
+        _MODULO, espr,
+        argomento=[[_pivot(mese=1), _pivot(mese=2)], [_agenda(m1=(107.0, 157.0, 1, 1), m2=(119.0, 0.0, 1, 0))]],
+        richiede=["testoAvvisoSpeseAgenda"],
+    )
+    assert vuoto is None
+    assert due_mesi.startswith("In 2 mesi ") and "Recupera dal tab Spese" in due_mesi
+
+
+def test_la_tabella_e_il_modulo_usano_l_avviso():
+    """I .tsx non si eseguono qui: si guarda che la tabella legga le spese
+    dell'anno, passi lo scarto alle celle (desktop e mobile) e che il modulo
+    legga l'Agenda all'apertura, non solo con «Recupera»."""
+    from tests.helpers_ts import WEB_SRC
+    tab = (WEB_SRC / "app/(app)/margini/calcolo-tab.tsx").read_text(encoding="utf-8")
+    assert "/api/margini/spese-extra-anno?anno=" in tab
+    assert "scartiSpeseAgenda(" in tab and "testoAvvisoSpeseAgenda(" in tab
+    assert tab.count("testoScartoSpese(") == 2, "desktop e mobile devono spiegare lo scarto"
+    assert 'scartoDi(m, "fb")' in tab and 'scartoDi(current, tipoSpesa)' in tab
+    dialog = (WEB_SRC / "app/(app)/margini/costo-spese-dialog.tsx").read_text(encoding="utf-8")
+    assert "leggiSintesi().then" in dialog and "[open, anno, mese]" in dialog
+    assert "scartoSpese(totaleAgenda, valore, nVoci)" in dialog

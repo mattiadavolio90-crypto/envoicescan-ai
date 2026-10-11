@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil, Sigma, Divide, ChevronRight } from "lucide-react";
+import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil, Sigma, Divide, ChevronRight, AlertTriangle } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
@@ -18,6 +18,10 @@ import {
   type MesePivot, type RigaMargini, type ChiaveRigaMargini, type GruppoMargini,
 } from "@/lib/margini-aggregati";
 import { InfoPopover } from "@/components/ui/info-popover";
+import {
+  scartiSpeseAgenda, chiaveScarto, testoScartoSpese, testoAvvisoSpeseAgenda,
+  type ScartoSpese, type SpeseAgendaAnno,
+} from "@/lib/margini-aggregati";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -150,6 +154,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
   const [dettaglioMeseSel, setDettaglioMeseSel] = useState<{ anno: number; mese: number; label: string } | null>(null);
   const [costoPersMese, setCostoPersMese] = useState<MesePivot | null>(null);
   const [speseCella, setSpeseCella] = useState<{ mese: MesePivot; tipo: TipoSpesaCella } | null>(null);
+  const [speseAgenda, setSpeseAgenda] = useState<SpeseAgendaAnno[]>([]);
   const [vista, setVista] = useState<"totale" | "media">("totale");
   // Gruppi aperti: stato React e basta, niente localStorage — a ogni apertura
   // della pagina la tabella torna corta (decisione 6 del 04/10/2026).
@@ -182,6 +187,32 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Le spese dell'Agenda per mese: servono solo a dire DOVE la cella non
+  // coincide (nel MOL entrano con «Recupera», decisione 2 rivista del 3/10).
+  // Una lettura per anno del periodo; se fallisce la tabella non avvisa, e basta.
+  const anniPeriodo = useMemo(
+    () => (data ? [...new Set(data.mesi.map((m) => m.anno))] : []),
+    [data],
+  );
+  useEffect(() => {
+    let vivo = true;
+    if (anniPeriodo.length === 0) { setSpeseAgenda([]); return; }
+    Promise.all(anniPeriodo.map(async (anno) => {
+      const res = await fetch(`/api/margini/spese-extra-anno?anno=${anno}`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      return (await res.json()) as SpeseAgendaAnno;
+    }))
+      .then((r) => { if (vivo) setSpeseAgenda(r); })
+      .catch(() => { if (vivo) setSpeseAgenda([]); });
+    return () => { vivo = false; };
+  }, [anniPeriodo]);
+  const scarti = useMemo(() => scartiSpeseAgenda(data?.mesi ?? [], speseAgenda), [data, speseAgenda]);
+  const scartoDi = useCallback(
+    (m: MesePivot, tipo: TipoSpesaCella) => scarti.get(chiaveScarto(m.anno, m.mese, tipo)),
+    [scarti],
+  );
+  const avvisoSpese = testoAvvisoSpeseAgenda(scarti);
 
   // Mostra solo mesi con almeno un valore (ricavi o costi)
   const mesiVisibili = useMemo(() => {
@@ -297,6 +328,12 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
 
   return (
     <div className="space-y-4">
+      {avvisoSpese && (
+        <p className="flex items-start gap-2 rounded-md border border-incerto/40 bg-incerto/10 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="size-4 shrink-0 text-incerto" aria-hidden="true" />
+          <span>{avvisoSpese}</span>
+        </p>
+      )}
       {/* Toolbar */}
       <div className="flex items-center gap-2">
         <InfoPopover title="Come compilare la tabella margini">
@@ -466,6 +503,11 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
                           onSave={saveCell}
                           onOpenCosto={setCostoPersMese}
                           onOpenSpese={(mese, tipo) => setSpeseCella({ mese, tipo })}
+                          scarto={
+                            row.field === "altri_costi_fb" ? scartoDi(m, "fb")
+                              : row.field === "altri_costi_spese" ? scartoDi(m, "generale")
+                                : undefined
+                          }
                         />
                       );
                     })}
@@ -491,6 +533,7 @@ export function CalcoloTab({ dataDa, dataA, settore }: Props) {
           onSave={saveCell}
           onOpenCosto={setCostoPersMese}
           onOpenSpese={(mese, tipo) => setSpeseCella({ mese, tipo })}
+          scartoDi={scartoDi}
         />
       </div>
 
@@ -573,6 +616,7 @@ function Cell({
   onSave,
   onOpenCosto,
   onOpenSpese,
+  scarto,
 }: {
   row: RowDef;
   mese: MesePivot;
@@ -582,6 +626,8 @@ function Cell({
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
   onOpenCosto: (m: MesePivot) => void;
   onOpenSpese: (m: MesePivot, tipo: TipoSpesaCella) => void;
+  /** Spese dell'Agenda del mese diverse dalla cella: pallino e spiegazione. */
+  scarto?: ScartoSpese;
 }) {
   const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
@@ -632,10 +678,11 @@ function Cell({
         <button
           type="button"
           onClick={() => onOpenSpese(mese, tipo)}
-          title="Imposta importo (recupera dal tab Spese o inserisci a mano)"
+          title={scarto ? testoScartoSpese(scarto, formatEuro) : "Imposta importo (recupera dal tab Spese o inserisci a mano)"}
           className={`w-full px-3 ${padY} text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella`}
         >
           <span className="inline-flex items-center justify-end gap-1">
+            {scarto && <span className="size-1.5 rounded-full bg-incerto" aria-label="Spese dell'Agenda non allineate" />}
             {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
             <Pencil className="size-3 opacity-0 group-hover/cella:opacity-40 transition-opacity" />
           </span>
@@ -791,6 +838,7 @@ function MobileMeseView({
   onSave,
   onOpenCosto,
   onOpenSpese,
+  scartoDi,
 }: {
   mesi: MesePivot[];
   totali: MesePivot;
@@ -801,6 +849,7 @@ function MobileMeseView({
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
   onOpenCosto: (m: MesePivot) => void;
   onOpenSpese: (m: MesePivot, tipo: TipoSpesaCella) => void;
+  scartoDi: (m: MesePivot, tipo: TipoSpesaCella) => ScartoSpese | undefined;
 }) {
   const [selIdx, setSelIdx] = useState(mesi.length - 1);
   const isTotal = selIdx >= mesi.length;
@@ -862,8 +911,10 @@ function MobileMeseView({
                 <button
                   type="button"
                   onClick={() => onOpenSpese(current, tipoSpesa)}
+                  title={scartoDi(current, tipoSpesa) ? testoScartoSpese(scartoDi(current, tipoSpesa)!, formatEuro) : undefined}
                   className="inline-flex items-center gap-1.5 text-sm tabular-nums px-2 py-1 rounded-md border border-input hover:bg-muted transition-colors"
                 >
+                  {scartoDi(current, tipoSpesa) && <span className="size-1.5 rounded-full bg-incerto" aria-label="Spese dell'Agenda non allineate" />}
                   {raw === 0 ? "Imposta" : formatEuro(raw)}
                   <Pencil className="size-3 opacity-40" />
                 </button>

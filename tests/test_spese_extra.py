@@ -471,3 +471,55 @@ class TestCategoriaSpesaPerSettore:
             client = workspace._get_supabase_client()
             updates = client.table.return_value.update.call_args[0][0]
         assert updates == {"categoria": "ARTICOLO DI VENDITA", "tipo": "fb"}
+
+
+# ---------------------------------------------------------------------------
+# get_spese_extra_anno — i totali del tab Spese per mese (avviso in Margini)
+# ---------------------------------------------------------------------------
+
+class TestSpeseExtraAnno:
+    """La tabella Margini dice dove la cella non coincide con l'Agenda
+    (11/10/2026). I totali per mese e tipo devono essere gli stessi di
+    get_costo_spese_da_voci, mese per mese, in una lettura sola."""
+
+    VOCI = [
+        {"data_spesa": "2026-01-15", "tipo": "fb", "importo": 100.0},
+        {"data_spesa": "2026-01-20", "tipo": "fb", "importo": 7.0},
+        {"data_spesa": "2026-01-31", "tipo": "generale", "importo": 300.0},
+        {"data_spesa": "2026-06-10", "tipo": "generale", "importo": 20.5},
+        {"data_spesa": "2026-06-11", "tipo": "sconosciuto", "importo": 999.0},
+        {"data_spesa": "2026-06-12", "tipo": "fb", "importo": None},
+    ]
+
+    def test_totali_per_mese_e_tipo(self):
+        with _patch_margini(self.VOCI):
+            res = margini.get_spese_extra_anno(anno=2026, authorization="Bearer x")
+        assert res["anno"] == 2026
+        assert res["mesi"] == {
+            "1": {"fb": 107.0, "generale": 300.0, "n_fb": 2, "n_generale": 1},
+            "6": {"fb": 0.0, "generale": 20.5, "n_fb": 1, "n_generale": 1},
+        }
+
+    def test_i_mesi_senza_voci_non_compaiono(self):
+        with _patch_margini([]):
+            res = margini.get_spese_extra_anno(anno=2026, authorization="Bearer x")
+        assert res["mesi"] == {}
+
+    def test_legge_solo_l_anno_chiesto(self):
+        """Senza i due estremi sulla data una spesa del 2025 finirebbe nel mese
+        sbagliato dell'anno chiesto (si guarda solo il mese della data)."""
+        with _patch_margini([]):
+            margini.get_spese_extra_anno(anno=2025, authorization="Bearer x")
+            q = margini._get_supabase_client().table.return_value
+        assert q.gte.call_args[0] == ("data_spesa", "2025-01-01")
+        assert q.lte.call_args[0] == ("data_spesa", "2025-12-31")
+
+    def test_stessi_totali_del_recupero_mese_per_mese(self):
+        """Il confronto in tabella e il «Recupera» devono dire la stessa cifra."""
+        gennaio = [v for v in self.VOCI if v["data_spesa"].startswith("2026-01")]
+        with _patch_margini(gennaio):
+            singolo = margini.get_costo_spese_da_voci(anno=2026, mese=1, authorization="Bearer x")
+        with _patch_margini(self.VOCI):
+            anno = margini.get_spese_extra_anno(anno=2026, authorization="Bearer x")["mesi"]["1"]
+        assert (anno["fb"], anno["generale"]) == (singolo["totale_fb"], singolo["totale_generale"])
+        assert (anno["n_fb"], anno["n_generale"]) == (singolo["n_voci_fb"], singolo["n_voci_generale"])

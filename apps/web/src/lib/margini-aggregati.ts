@@ -334,3 +334,74 @@ export function coloreBarraRisultato(
   if (incompleto) return "var(--muted-foreground)";
   return valore >= 0 ? "var(--positivo)" : "var(--negativo)";
 }
+
+// ─── Spese dell'Agenda non allineate alla tabella (11/10/2026) ──────────────
+//
+// Le spese del tab Agenda → Spese entrano nel MOL SOLO con «Recupera dal tab
+// Spese» (decisione 2 rivista del 3/10/2026): la cella sostituisce, non somma.
+// Misurato l'11/10: sette mesi con spese mai portate (OVERTIME gen-giu, TIME
+// CAFE giu) e due celle rimaste indietro, e nessuna pagina lo diceva. Qui si
+// calcola DOVE la cella non coincide con l'Agenda; il numero in cella non si
+// tocca, e' il cliente a decidere con «Recupera». Vive in lib/ perche' il .tsx
+// non si esegue nei test.
+
+export type SpeseAgendaMese = { fb: number; generale: number; n_fb: number; n_generale: number };
+export type SpeseAgendaAnno = { anno: number; mesi: Record<string, SpeseAgendaMese> };
+export type ScartoSpese = {
+  anno: number;
+  mese: number;
+  tipo: "fb" | "generale";
+  agenda: number;
+  cella: number;
+  nVoci: number;
+};
+
+/** Al centesimo, come il server (`round(…, 2)`). */
+export const TOLLERANZA_SPESE = 0.005;
+
+/** Cella e Agenda dicono due cifre diverse (con almeno una voce in Agenda). */
+export function scartoSpese(agenda: number, cella: number, nVoci: number): boolean {
+  return nVoci > 0 && Math.abs(agenda - cella) >= TOLLERANZA_SPESE;
+}
+
+export function chiaveScarto(anno: number, mese: number, tipo: "fb" | "generale"): string {
+  return `${anno}-${mese}-${tipo}`;
+}
+
+/** Gli scarti per (anno, mese, tipo) sui mesi della tabella. */
+export function scartiSpeseAgenda(
+  mesi: readonly MesePivot[],
+  spese: readonly SpeseAgendaAnno[],
+): Map<string, ScartoSpese> {
+  const out = new Map<string, ScartoSpese>();
+  const perAnno = new Map(spese.map((s) => [s.anno, s.mesi]));
+  for (const m of mesi) {
+    const agenda = perAnno.get(m.anno)?.[String(m.mese)];
+    if (!agenda) continue;
+    const coppie: [ScartoSpese["tipo"], number, number, number][] = [
+      ["fb", agenda.fb, m.altri_costi_fb, agenda.n_fb],
+      ["generale", agenda.generale, m.altri_costi_spese, agenda.n_generale],
+    ];
+    for (const [tipo, totAgenda, cella, nVoci] of coppie) {
+      if (scartoSpese(totAgenda, cella, nVoci)) {
+        out.set(chiaveScarto(m.anno, m.mese, tipo), { anno: m.anno, mese: m.mese, tipo, agenda: totAgenda, cella, nVoci });
+      }
+    }
+  }
+  return out;
+}
+
+/** Il testo dell'avviso sulla cella: le due cifre e cosa fare. */
+export function testoScartoSpese(s: ScartoSpese, euro: (v: number) => string): string {
+  const voci = `${s.nVoci} ${s.nVoci === 1 ? "voce" : "voci"}`;
+  return `Nel tab Spese dell'Agenda: ${euro(s.agenda)} (${voci}); in tabella ${euro(s.cella)}. ` +
+    "Per portarle nel MOL apri la cella e premi «Recupera dal tab Spese».";
+}
+
+/** La riga sopra la tabella: quanti mesi hanno spese non allineate. */
+export function testoAvvisoSpeseAgenda(scarti: ReadonlyMap<string, ScartoSpese>): string | null {
+  if (scarti.size === 0) return null;
+  const mesi = new Set([...scarti.values()].map((s) => `${s.anno}-${s.mese}`)).size;
+  return `In ${mesi} ${mesi === 1 ? "mese" : "mesi"} le spese dell'Agenda non coincidono con la tabella: ` +
+    "apri la cella segnata e premi «Recupera dal tab Spese» per portarle nel MOL.";
+}

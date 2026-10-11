@@ -1208,6 +1208,48 @@ def get_costo_spese_da_voci(
     }
 
 
+@router.get("/api/margini/spese-extra-anno", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+def get_spese_extra_anno(
+    anno: int = Query(..., ge=2000, le=2100),
+    authorization: Optional[str] = Header(None),
+):
+    """Totali del tab Spese per mese dell'anno, separati per tipo, come
+    `get_costo_spese_da_voci` ma in una lettura sola. Serve alla tabella Margini
+    per dire dove la cella non coincide con le spese dell'Agenda (11/10/2026:
+    OVERTIME aveva sei mesi di spese mai portate e nessun avviso). Non cambia
+    niente nel MOL: le spese ci entrano solo con «Recupera dal tab Spese»
+    (decisione 2 rivista del 3/10/2026). Solo i mesi con almeno una voce."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    voci = (
+        sb.table("spese_extra").select("data_spesa,tipo,importo")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_spesa", f"{anno}-01-01").lte("data_spesa", f"{anno}-12-31")
+        .execute()
+    ).data or []
+    mesi: dict = {}
+    for v in voci:
+        try:
+            mese = int(str(v.get("data_spesa") or "")[5:7])
+        except ValueError:
+            continue
+        tipo = v.get("tipo")
+        if mese < 1 or mese > 12 or tipo not in ("fb", "generale"):
+            continue
+        m = mesi.setdefault(mese, {"fb": 0.0, "generale": 0.0, "n_fb": 0, "n_generale": 0})
+        m[tipo] += float(v.get("importo") or 0)
+        m[f"n_{tipo}"] += 1
+    return {
+        "anno": anno,
+        "mesi": {str(k): {"fb": round(m["fb"], 2), "generale": round(m["generale"], 2),
+                          "n_fb": m["n_fb"], "n_generale": m["n_generale"]}
+                 for k, m in sorted(mesi.items())},
+    }
+
+
 @router.get("/api/margini/analisi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
 def get_margini_analisi(
     data_da: str,

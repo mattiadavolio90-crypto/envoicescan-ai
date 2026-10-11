@@ -83,6 +83,7 @@ PAGINE_PER_ROTTA: Dict[Rotta, FrozenSet[str]] = {
     ("POST", "/api/margini/cella"): _p(M),
     ("GET", "/api/margini/costo-personale-turni"): _p(M),
     ("GET", "/api/margini/costo-spese-extra"): _p(M),
+    ("GET", "/api/margini/spese-extra-anno"): _p(M),
     ("GET", "/api/margini/fatturato-centri"): _p(M),
     ("POST", "/api/margini/fatturato-centri"): _p(M),
     ("GET", "/api/margini/fatturato-centri-giorni"): _p(M),

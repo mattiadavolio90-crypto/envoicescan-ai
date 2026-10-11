@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, Wallet } from "lucide-react";
+import { AlertTriangle, RefreshCw, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatEuro } from "./periodi";
 import { parseNumeroItOZero } from "@/lib/format";
+import { scartoSpese } from "@/lib/margini-aggregati";
 
 export type TipoSpesaCella = "fb" | "generale";
 
@@ -56,12 +57,28 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
     }
   }, [open, valore]);
 
+  async function leggiSintesi(): Promise<CalcoloSpese> {
+    const res = await fetch(`/api/margini/costo-spese-extra?anno=${anno}&mese=${mese}`, { cache: "no-store" });
+    if (!res.ok) throw new Error();
+    return (await res.json()) as CalcoloSpese;
+  }
+
+  // All'apertura si legge subito cosa c'e' nel tab Spese: il cliente vede se la
+  // cella coincide con l'Agenda PRIMA di decidere, non dopo aver premuto
+  // «Recupera» (11/10/2026: sette mesi di spese mai portate senza che nessuno
+  // lo dicesse). Non compila il campo: quello resta a «Recupera».
+  useEffect(() => {
+    if (!open) return;
+    let vivo = true;
+    leggiSintesi().then((d) => { if (vivo) setSintesi(d); }).catch(() => {});
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, anno, mese]);
+
   async function recuperaDaSpese() {
     setRecuperando(true);
     try {
-      const res = await fetch(`/api/margini/costo-spese-extra?anno=${anno}&mese=${mese}`, { cache: "no-store" });
-      if (!res.ok) throw new Error();
-      const d: CalcoloSpese = await res.json();
+      const d = await leggiSintesi();
       setSintesi(d);
       const totale = tipo === "fb" ? d.totale_fb : d.totale_generale;
       const nVoci = tipo === "fb" ? d.n_voci_fb : d.n_voci_generale;
@@ -100,6 +117,8 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
   }
 
   const nVoci = sintesi ? (tipo === "fb" ? sintesi.n_voci_fb : sintesi.n_voci_generale) : 0;
+  const totaleAgenda = sintesi ? (tipo === "fb" ? sintesi.totale_fb : sintesi.totale_generale) : 0;
+  const disallineata = scartoSpese(totaleAgenda, valore, nVoci);
   const val = parseNumeroItOZero(importo);
   // Scomposizione del totale recuperato: spiega di cosa e' fatto il numero prima
   // che finisca in cella. Non cambia l'importo, solo lo racconta.
@@ -130,8 +149,10 @@ export function CostoSpeseDialog({ open, tipo, anno, mese, label, valore, onClos
 
           {sintesi && nVoci > 0 && (
             <div className="-mt-1 space-y-2">
-              <p className="text-xs text-muted-foreground text-center">
-                {nVoci} {nVoci === 1 ? "voce" : "voci"} di spesa nel mese
+              <p className={`text-xs text-center ${disallineata ? "text-incerto font-medium" : "text-muted-foreground"}`}>
+                {disallineata && <AlertTriangle className="inline size-3.5 mr-1 align-[-2px]" aria-hidden="true" />}
+                Nel tab Spese: {formatEuro(totaleAgenda)} ({nVoci} {nVoci === 1 ? "voce" : "voci"})
+                {disallineata && ` · in tabella ${formatEuro(valore)}`}
               </p>
               {dettaglio.length > 0 && (
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1">

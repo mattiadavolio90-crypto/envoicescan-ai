@@ -8152,6 +8152,81 @@
         }
       }
     },
+    "/api/margini/spese-extra-anno": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Spese Extra Anno",
+        "description": "Totali del tab Spese per mese dell'anno, separati per tipo, come\n`get_costo_spese_da_voci` ma in una lettura sola. Serve alla tabella Margini\nper dire dove la cella non coincide con le spese dell'Agenda (11/10/2026:\nOVERTIME aveva sei mesi di spese mai portate e nessun avviso). Non cambia\nniente nel MOL: le spese ci entrano solo con «Recupera dal tab Spese»\n(decisione 2 rivista del 3/10/2026). Solo i mesi con almeno una voce.",
+        "operationId": "get_spese_extra_anno_api_margini_spese_extra_anno_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2100,
+              "minimum": 2000,
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/margini/analisi": {
       "get": {
         "tags": [
