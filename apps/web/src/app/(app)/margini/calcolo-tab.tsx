@@ -12,7 +12,7 @@ import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
 import {
-  meseSenzaCosti, pctIncidenza, pivotMedia, rowVal, scrollDaNodi,
+  meseSenzaCosti, pctIncidenza, pctIncidenzaRiga, pivotMedia, rowVal, scrollDaNodi,
   coloreBarraRisultato, RIGHE_MARGINI, righeVisibili, separatoreSopra, rigaPiede,
   gruppiEspansiIniziali, alternaGruppo, apreCostoPersonale,
   type MesePivot, type RigaMargini, type ChiaveRigaMargini, type GruppoMargini,
@@ -632,7 +632,7 @@ function Cell({
   const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
   const colorCls = valueColorCls(row.valueColor, raw, meseSenzaCosti(mese));
-  const pct = pctIncidenza(raw, mese.fatturato_netto);
+  const pct = pctIncidenzaRiga(row.key, raw, mese.fatturato_netto);
   const display = raw === 0 ? "—" : formatEuro(raw);
 
   // Il mese corrente ha una corsia propria per tutta l'altezza della tabella.
@@ -815,7 +815,7 @@ function TotalCell({
   const display = raw === 0 ? "—" : formatEuro(raw);
   const isMetric = row.isMetric;
   const colorCls = valueColorCls(row.valueColor, raw, incompleto);
-  const pct = pctIncidenza(raw, totali.fatturato_netto);
+  const pct = pctIncidenzaRiga(row.key, raw, totali.fatturato_netto);
 
   return (
     <td className={`sticky right-0 z-10 bg-[color-mix(in_oklab,var(--primary)8%,var(--color-card))] text-right px-3 ${padY} tabular-nums border-l-2 border-r border-primary align-middle`}>
@@ -883,7 +883,7 @@ function MobileMeseView({
           const isSpesa = row.type === "input-editable" && (row.field === "altri_costi_fb" || row.field === "altri_costi_spese");
           const tipoSpesa: TipoSpesaCella | null = row.field === "altri_costi_fb" ? "fb" : row.field === "altri_costi_spese" ? "generale" : null;
           const colorCls = valueColorCls(row.valueColor, raw, incompleto);
-          const pct = pctIncidenza(raw, current.fatturato_netto);
+          const pct = pctIncidenzaRiga(row.key, raw, current.fatturato_netto);
 
           return (
             <div

@@ -219,6 +219,19 @@ export function pctIncidenza(raw: number, netto: number): string | null {
   return `${((raw / netto) * 100).toFixed(0)}%`;
 }
 
+// Le righe dei ricavi sono IVA compresa, l'Incasso no: rapportate all'Incasso
+// davano «110%» sotto i ricavi IVA 10% (CASATI 14, 11/10/2026), una cifra che
+// sembra un errore e non dice niente. Fuori anche «Altri ricavi», che non ha
+// IVA: le tre righe compongono l'Incasso e si leggono insieme.
+const RIGHE_RICAVI: ReadonlySet<ChiaveRigaMargini> = new Set([
+  "fatturato_iva10", "fatturato_iva22", "altri_ricavi_noiva",
+]);
+
+export function pctIncidenzaRiga(key: ChiaveRigaMargini, raw: number, netto: number): string | null {
+  if (RIGHE_RICAVI.has(key)) return null;
+  return pctIncidenza(raw, netto);
+}
+
 // Un mese con ricavi e NESSUNA FATTURA DELLA MERCE: il suo margine non e' un
 // risultato, e' un buco nei dati. Stessa definizione di `_mesi_senza_costi`
 // (services/routers/margini.py): le due devono restare uguali, divergendo la

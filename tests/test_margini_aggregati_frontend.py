@@ -296,6 +296,23 @@ def test_pct_incidenza_netto_negativo_non_e_degenere():
     assert _chiama("pctIncidenza", [50.0, -100.0], richiede=["pctIncidenza"]) == "-50%"
 
 
+@pytest.mark.parametrize("key", ["fatturato_iva10", "fatturato_iva22", "altri_ricavi_noiva"])
+def test_pct_incidenza_riga_tace_sulle_righe_dei_ricavi(key):
+    """CASATI 14, 11/10/2026: 7.500 EUR IVA compresa su 6.818 EUR di Incasso
+    netto stampava «110%» sotto i ricavi IVA 10%."""
+    assert _chiama("pctIncidenzaRiga", [key, 7500.0, 6818.18]) is None
+
+
+@pytest.mark.parametrize("key,atteso", [
+    ("fatturato_netto", "100%"),
+    ("costi_fb_totali", "50%"),
+    ("mol", "50%"),
+])
+def test_pct_incidenza_riga_resta_su_incasso_e_costi(key, atteso):
+    raw = 6818.18 if key == "fatturato_netto" else 3409.09
+    assert _chiama("pctIncidenzaRiga", [key, raw, 6818.18]) == atteso
+
+
 # ──────────────────────── rowVal + DERIVE (fase D) ─────────────────────────
 
 def test_row_val_legge_il_campo_semplice():
@@ -512,7 +529,7 @@ def test_build_mesi_list_e_la_stessa_dei_due_componenti():
 # Sette mesi con spese mai portate e due celle indietro sul live, nessun avviso.
 # La cella non si tocca: qui si calcola solo DOVE non coincide con l'Agenda.
 
-def _pivot(anno=2026, mese=1, fb=0.0, spese=0.0):
+def _pivot_spese(anno=2026, mese=1, fb=0.0, spese=0.0):
     return {"anno": anno, "mese": mese, "altri_costi_fb": fb, "altri_costi_spese": spese}
 
 
@@ -529,27 +546,27 @@ def _scarti(mesi, spese):
 
 def test_scarto_dove_la_cella_non_coincide_con_l_agenda():
     """OFFSIDE giugno sul live: 255 in Agenda, 235 in cella."""
-    out = _scarti([_pivot(mese=6, fb=235.0, spese=300.0)], [_agenda(m6=(255.0, 300.0, 1, 1))])
+    out = _scarti([_pivot_spese(mese=6, fb=235.0, spese=300.0)], [_agenda(m6=(255.0, 300.0, 1, 1))])
     assert out == [{"anno": 2026, "mese": 6, "tipo": "fb", "agenda": 255.0, "cella": 235.0, "nVoci": 1}]
 
 
 def test_nessuno_scarto_se_coincidono_o_se_l_agenda_e_vuota():
     """Una cella scritta a mano senza spese in Agenda (SKY 300) non e' uno scarto."""
-    out = _scarti([_pivot(mese=1, fb=483.0, spese=300.0)], [_agenda(m1=(483.0, 0.0, 1, 0))])
+    out = _scarti([_pivot_spese(mese=1, fb=483.0, spese=300.0)], [_agenda(m1=(483.0, 0.0, 1, 0))])
     assert out == []
 
 
 def test_mese_senza_voce_in_agenda_non_e_uno_scarto():
-    assert _scarti([_pivot(mese=3, fb=10.0)], [_agenda(m1=(5.0, 0.0, 1, 0))]) == []
+    assert _scarti([_pivot_spese(mese=3, fb=10.0)], [_agenda(m1=(5.0, 0.0, 1, 0))]) == []
 
 
 def test_l_anno_conta_quanto_il_mese():
-    out = _scarti([_pivot(anno=2026, mese=1, fb=0.0)], [_agenda(anno=2025, m1=(107.0, 0.0, 1, 0))])
+    out = _scarti([_pivot_spese(anno=2026, mese=1, fb=0.0)], [_agenda(anno=2025, m1=(107.0, 0.0, 1, 0))])
     assert out == []
 
 
 def test_le_due_voci_di_un_mese_sono_scarti_separati():
-    out = _scarti([_pivot(mese=1, fb=0.0, spese=0.0)], [_agenda(m1=(107.0, 157.0, 1, 1))])
+    out = _scarti([_pivot_spese(mese=1, fb=0.0, spese=0.0)], [_agenda(m1=(107.0, 157.0, 1, 1))])
     assert [(s["tipo"], s["agenda"]) for s in out] == [("fb", 107.0), ("generale", 157.0)]
 
 
@@ -577,7 +594,7 @@ def test_l_avviso_sopra_la_tabella_conta_i_mesi_non_le_voci():
             "emit([m.testoAvvisoSpeseAgenda(new Map()), m.testoAvvisoSpeseAgenda(s)]);")
     vuoto, due_mesi = esegui_ts(
         _MODULO, espr,
-        argomento=[[_pivot(mese=1), _pivot(mese=2)], [_agenda(m1=(107.0, 157.0, 1, 1), m2=(119.0, 0.0, 1, 0))]],
+        argomento=[[_pivot_spese(mese=1), _pivot_spese(mese=2)], [_agenda(m1=(107.0, 157.0, 1, 1), m2=(119.0, 0.0, 1, 0))]],
         richiede=["testoAvvisoSpeseAgenda"],
     )
     assert vuoto is None
