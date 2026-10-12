@@ -55,3 +55,41 @@ def test_la_stella_su_un_fornitore_dal_nome_lungo_arriva_agli_avvisi():
     stelle = {_pref_match_key("SALMONE NORVEGIA", forn)}
     tenute = _filtra_rilevanti(df_alert, pd.Series(True, index=df_alert.index), set(), stelle)
     assert list(tenute["Prodotto"]) == ["SALMONE NORVEGIA"]
+
+
+# ─── Avvisi sui TAG (prezzo medio ponderato del tag, due meta' di 90 giorni) ──
+
+def _avvisi_tag(monkeypatch, righe, descrizioni):
+    """`_alert_tag` col vero `analizza_tag`: finte solo le due letture dal DB
+    (tag e associazioni), il prezzo medio lo calcola il codice di produzione."""
+    from datetime import date, timedelta
+    from services import db_service, price_impact_service as pis
+
+    monkeypatch.setattr(pis, "get_custom_tags", lambda u, r: [{"id": 1, "nome": "BIRRA"}])
+    assoc = [{"descrizione_key": db_service._normalize_custom_tag_key(d), "descrizione": d, "fattore_kg": None}
+             for d in descrizioni]
+    monkeypatch.setattr(db_service, "get_custom_tag_prodotti_bulk", lambda ids, u: {1: assoc})
+    oggi = date.today()
+    df = pd.DataFrame([
+        {"Descrizione": d, "Fornitore": "PARTESA", "DataDocumento": (oggi - timedelta(days=giorni)).isoformat(),
+         "PrezzoUnitario": p, "Quantita": 1.0, "TotaleRiga": p, "UnitaMisura": "PZ",
+         "Categoria": "BIRRE", "FileOrigine": f"{d}-{giorni}.xml"}
+        for d, giorni, p in righe
+    ])
+    return pis._alert_tag("u", "r", df, 5.0)
+
+
+def test_un_rincaro_vero_del_tag_e_un_avviso(monkeypatch):
+    """Controllo positivo: senza questo i due test sotto sarebbero verdi a vuoto."""
+    righe = [("FUSTO BIRRA", 70, 100.0), ("FUSTO BIRRA", 10, 120.0)]
+    assert [a["nome"] for a in _avvisi_tag(monkeypatch, righe, ["FUSTO BIRRA"])] == ["BIRRA"]
+
+
+def test_una_cauzione_nel_tag_non_fa_un_rincaro(monkeypatch):
+    righe = [("FUSTO BIRRA", 70, 100.0), ("FUSTO BIRRA", 10, 100.0), ("ADDEBITO CAUZIONI", 10, 900.0)]
+    assert _avvisi_tag(monkeypatch, righe, ["FUSTO BIRRA", "ADDEBITO CAUZIONI"]) == []
+
+
+def test_un_cambio_di_confezione_nel_tag_non_e_un_avviso(monkeypatch):
+    righe = [("FUSTO BIRRA", 70, 10.0), ("FUSTO BIRRA", 10, 100.0)]
+    assert _avvisi_tag(monkeypatch, righe, ["FUSTO BIRRA"]) == []

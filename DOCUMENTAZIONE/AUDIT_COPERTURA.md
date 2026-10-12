@@ -2213,8 +2213,12 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Misurato sul live, sola lettura: stelle che si agganciano a un acquisto della loro sede
 >   19/19 in Osservatorio e 19/19 in Home (prima 15 e 9). Mutazione 5/5 + 4/4; suite: 20.027
 >   verdi + 6 rossi in salute/auth, verdi rilanciati (lavoro in corso di un'altra sessione su
->   `fastapi_worker.py`). **Non fatto:** gli avvisi sui TAG (`_alert_tag`, prezzo medio del
->   tag) non applicano le due regole; `/m` non ha pagine prezzi.
+>   `fastapi_worker.py`). **Poi gli avvisi sui TAG** (Mattia: «devi sistemarlo»):
+>   `_alert_tag` toglie le cauzioni dal prezzo medio del tag e scarta un salto >= 10x fra le
+>   due meta' del periodo; test col vero `analizza_tag` (finte solo le letture dal DB) e
+>   controllo positivo, mutazione 2/2, 1.038 test di tag/briefing/home verdi. Restano come
+>   sono le pagine di ANALISI dei tag (spesa e prezzo medio a video): li' la cauzione e'
+>   spesa vera del tag. **Non fatto:** `/m` non ha pagine prezzi.
 
 > - **12/10/2026 — Analisi catena: scheda «Spreco» e «Voci di costo» (Opus), NON pushato.** Da
 >   screenshot di Mattia: OFFSIDE (pub, coperti spenti) vedeva due colonne, SUSHILAND una pagina

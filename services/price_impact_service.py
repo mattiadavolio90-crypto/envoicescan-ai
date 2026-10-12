@@ -24,6 +24,7 @@ import pandas as pd
 from config.logger_setup import get_logger
 from config.constants import CATEGORIE_SPESE_GENERALI
 from services.db_service import FORNITORE_ALERT_MAX, carica_e_prepara_dataframe, calcola_alert, get_custom_tags
+from utils.voci_prezzo import maschera_voce_non_prezzo, salto_da_controllare
 
 logger = get_logger("price_impact")
 
@@ -285,6 +286,12 @@ def _alert_tag(
     tag_ids = [int(t["id"]) for t in tags if t.get("id") is not None]
     assoc_per_tag = get_custom_tag_prodotti_bulk(tag_ids, user_id)
 
+    # Le stesse regole dei prodotti (utils/voci_prezzo.py): una cauzione messa in
+    # un tag non entra nel suo prezzo medio — un deposito da 0,03 o 960 EUR
+    # sposterebbe la media del tag senza che nessun prezzo sia cambiato.
+    if df_completo is not None and "Descrizione" in df_completo.columns:
+        df_completo = df_completo[~maschera_voce_non_prezzo(df_completo["Descrizione"])]
+
     out: List[Dict[str, Any]] = []
     for tag in tags:
         tag_id = tag.get("id")
@@ -306,6 +313,11 @@ def _alert_tag(
         p_new = (recente.get("trend") or {}).get("prezzo_medio_periodo") or 0.0
         p_old = (precedente.get("trend") or {}).get("prezzo_medio_periodo") or 0.0
         if p_old <= 0 or p_new <= p_old:
+            continue
+        # Un prezzo medio che salta di 10 volte o piu' fra le due meta' e' un
+        # cambio di confezione nel tag (bottiglia/cassa, kg/cartone), non un
+        # rincaro: l'Osservatorio lo mette in «Da controllare», un avviso no.
+        if salto_da_controllare(p_old, p_new):
             continue
 
         aumento_pct = (p_new - p_old) / p_old * 100.0
