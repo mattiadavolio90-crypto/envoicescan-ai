@@ -2186,7 +2186,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   saltato di 10x o piu' (bottiglia/cassa, kg/cartone) spostavano il totale da -1.406 a -22.
 >   Filtri per parola scartati sui dati: «VUOTO» prende 9 croissant, «TRASPORTO» il mango.
 >   **Fatto** (decisioni di Mattia: a) si', b) «troppo lavoro manuale», toggle):
->   cauzioni fuori dai prezzi in PV e catena (`_VOCE_NON_PREZZO_REGEX`, migration
+>   cauzioni fuori dai prezzi in PV e catena (`utils/voci_prezzo.py`, migration
 >   `20261012130000` a firma invariata, applicata via MCP e verificata su `pg_proc`); salto
 >   >= 10x marcato `da_controllare`, vista «Da controllare (N)» accanto a Tutti/Preferiti in
 >   Osservatorio e catena, fuori da KPI, da «in N PV» e dallo score fornitori; preferiti in
@@ -2199,8 +2199,16 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   al test d'isolamento perche' la seed non ha stelle dell'altro cliente: test dedicato);
 >   suite `python -m pytest tests/ -q -p no:randomly`: 19.989 verdi + 1 rosso
 >   (`<button>` a mano, corretto con `<Button>` e presidi rilanciati: verdi); tsc pulito.
->   **Non fatto:** gli avvisi prezzi in Home (`price_impact_service`) hanno un calcolo loro
->   (`calcola_alert`): la regola non c'e', e non e' misurato se il rumore ci arrivi; `/m`.
+>   **Poi (Mattia: «rendi coerente tutte le parti dell'app»):** le due regole stanno in
+>   `utils/voci_prezzo.py`, unica fonte, e valgono anche in `calcola_alert` (avvisi in Home,
+>   chat, notifiche dopo il caricamento, briefing: tutti passano da li'); briefing v37 perche'
+>   lo snapshot di oggi non citi piu' la cauzione fra i ribassi. Il segnale di catena «categorie
+>   fuori media» resta com'e': misura la spesa, e le cauzioni sono spesa vera. Le 10 stelle
+>   troncate riscritte sul live (UPDATE per id, dopo prova a secco): 6 col nome intero, 4 col
+>   solo fornitore intero perche' il prodotto porta il numero d'ordine nella descrizione (una
+>   famiglia di consegne, non un nome); ora 19/19 col fornitore giusto. Mutazione 5/5 sugli
+>   avvisi; suite: 20.027 verdi + 6 rossi in salute/auth, verdi rilanciati (lavoro in corso
+>   di un'altra sessione su `fastapi_worker.py`). **Non fatto:** `/m` non ha pagine prezzi.
 
 > - **12/10/2026 — Analisi catena: scheda «Spreco» e «Voci di costo» (Opus), NON pushato.** Da
 >   screenshot di Mattia: OFFSIDE (pub, coperti spenti) vedeva due colonne, SUSHILAND una pagina

@@ -86,9 +86,9 @@ def test_la_catena_non_trasforma_una_quantita_media_zero_in_uno():
     (0.0, 5.0, True),      # da zero a qualcosa non e' un prezzo confrontabile
 ])
 def test_salto_da_controllare(a, b, atteso):
-    from services.routers.prezzi import _salto_da_controllare
+    from utils.voci_prezzo import salto_da_controllare
 
-    assert _salto_da_controllare(a, b) is atteso
+    assert salto_da_controllare(a, b) is atteso
 
 
 def test_la_variazione_da_dieci_volte_e_marcata_non_tolta():

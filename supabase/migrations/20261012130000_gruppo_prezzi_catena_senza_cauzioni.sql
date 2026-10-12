@@ -1,5 +1,5 @@
 -- Le cauzioni (depositi sui vuoti) escono dai prezzi di catena, come
--- dall'Osservatorio del PV (`_VOCE_NON_PREZZO_REGEX` in routers/prezzi.py): un
+-- dall'Osservatorio del PV (`VOCE_NON_PREZZO_REGEX` in utils/voci_prezzo.py): un
 -- deposito vale 0,03 o 960 EUR a seconda dei fusti consegnati, e su OFFSIDE
 -- «ADDEBITO CAUZIONI» (in VARIE BAR per scelta del cliente) ribaltava
 -- l'impatto/mese da +55 a -599 EUR e faceva da solo 5.607 EUR di «pagato in

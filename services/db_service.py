@@ -23,6 +23,7 @@ except ImportError:
 from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
 from utils.validation import SPECIAL_ROW_SCONTO_OMAGGIO, classify_special_row, classify_special_row_vectorized
 from utils.streamlit_compat import make_cache as _make_cache
+from utils.voci_prezzo import maschera_voce_non_prezzo, salto_da_controllare
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -667,6 +668,9 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     # FILTRO: ESCLUDI SOLO LE CATEGORIE SPESE GENERALI
     # ============================================================
     df_fb = df[~df['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
+    # Le cauzioni non hanno un prezzo unitario: fuori dagli avvisi come
+    # dall'Osservatorio (definizione unica in utils/voci_prezzo.py).
+    df_fb = df_fb[~maschera_voce_non_prezzo(df_fb['Descrizione'])]
 
     if df_fb.empty:
         return pd.DataFrame(columns=_ALERT_COLUMNS)
@@ -717,6 +721,11 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
                 nota_stagionale = " ⚠️ >6m"
         except (ValueError, TypeError):
             pass
+
+        # Un salto di 10 volte o piu' e' un cambio di confezione, non un
+        # rincaro: l'Osservatorio lo mette in «Da controllare», un avviso no.
+        if salto_da_controllare(prezzo_penultimo, prezzo_ultimo):
+            continue
 
         variazione_perc = ((prezzo_ultimo - prezzo_penultimo) / prezzo_penultimo) * 100
 

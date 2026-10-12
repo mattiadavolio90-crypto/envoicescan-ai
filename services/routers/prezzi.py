@@ -13,6 +13,7 @@ from config.constants import CATEGORIE_SPESE_GENERALI
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
 from utils.ttl_cache import TTLCache
+from utils.voci_prezzo import maschera_voce_non_prezzo, salto_da_controllare
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -67,38 +68,13 @@ _PRICE_ALERT_DEFAULT = 5.0
 _NC_TIPO_REGEX = r"TD04|NOTA DI CREDITO|NOTA CREDITO|\bNC\b|CREDIT"
 
 
-# Voci che non hanno un prezzo unitario: un deposito sui vuoti vale 0,03 o 960
-# EUR a seconda di quanti fusti consegna il fornitore. Escluse da ogni analisi
-# prezzi qualunque sia la categoria — su OFFSIDE «ADDEBITO CAUZIONI» sta in VARIE
-# BAR per scelta del cliente, e da sola ribaltava l'impatto/mese da +55 a -599
-# EUR. La lista e' stretta di proposito, misurata l'11/10/2026 su tutto il DB:
-# «CAUZION» colpisce solo depositi, mentre «VUOTO» prende i croissant vuoti e
-# «TRASPORTO» il mango «trasporto aereo». Gemella in `gruppo_prezzi_catena`.
-_VOCE_NON_PREZZO_REGEX = r"CAUZION"
-
-# Un prezzo che salta di 10 volte o piu' fra due acquisti non e' un rincaro: e'
-# un cambio di confezione (bottiglia/cassa) o di unita' (kg/cartone). Misurato
-# l'11/10/2026 sulle due catene: 7 variazioni su 333 e 1 su 27, tutte di questo
-# tipo, che spostavano l'impatto/mese di 1.400 EUR.
-_SALTO_DA_CONTROLLARE = 10.0
-
-
 def _mask_voce_non_prezzo(df):
-    """Serie booleana: True sulle righe che non hanno un prezzo unitario."""
+    """Serie booleana: True sulle righe che non hanno un prezzo unitario
+    (definizione unica in utils/voci_prezzo.py)."""
     import pandas as pd
     if 'descrizione' not in df.columns:
         return pd.Series(False, index=df.index)
-    return df['descrizione'].astype(str).str.upper().str.contains(
-        _VOCE_NON_PREZZO_REGEX, na=False, regex=True
-    )
-
-
-def _salto_da_controllare(a: float, b: float) -> bool:
-    """True se fra i due prezzi c'e' un fattore `_SALTO_DA_CONTROLLARE` o piu'."""
-    a, b = abs(float(a)), abs(float(b))
-    if min(a, b) <= 0:
-        return max(a, b) > 0
-    return max(a, b) / min(a, b) >= _SALTO_DA_CONTROLLARE
+    return maschera_voce_non_prezzo(df['descrizione'])
 
 
 def _mask_nota_credito(df):
@@ -161,7 +137,7 @@ class VariazionePrezzo(BaseModel):
     # col nome troncato a video.
     desc_key: str = ""
     forn_key: str = ""
-    # Prezzo saltato di `_SALTO_DA_CONTROLLARE` volte o piu': cambio di
+    # Prezzo saltato di `SALTO_DA_CONTROLLARE` volte o piu' (utils/voci_prezzo): cambio di
     # confezione o di unita' di misura, non un rincaro. Fuori dai totali.
     da_controllare: bool = False
 
@@ -511,7 +487,7 @@ def _deriva_variazione(
         'preferito': f"{desc_key}|{forn_key}" in keys or chiave_vecchia in keys,
         'desc_key': desc_key,
         'forn_key': forn_key,
-        'da_controllare': _salto_da_controllare(prezzo_pen, prezzo_ult),
+        'da_controllare': salto_da_controllare(prezzo_pen, prezzo_ult),
     }
 
 

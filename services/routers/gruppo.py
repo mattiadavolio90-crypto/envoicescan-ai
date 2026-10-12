@@ -26,13 +26,13 @@ from config.logger_setup import get_logger
 from utils.supabase_paging import fetch_all
 from services import sotto_utenti_service as _su
 from services.permessi_rotte import notifica_visibile
+from utils.voci_prezzo import salto_da_controllare
 from services.routers.prezzi import (
     _CATEGORIE_SPESE_PREZZI,
     _PRICE_ALERT_DEFAULT,
     StoricoPrezzoResponse,
     _deriva_variazione,
     _frequenza_mensile,
-    _salto_da_controllare,
     _salva_preferito,
     _storico_prodotto_sede,
     _togli_preferito,
@@ -3426,7 +3426,7 @@ def _calcola_divari_catena(
             "divario_perc": round(divario, 2),
             "extra_stimato": round(sum(x["extra_stimato"] for x in per_pv), 2),
             "per_pv": per_pv,
-            "da_controllare": _salto_da_controllare(p_min, p_max),
+            "da_controllare": salto_da_controllare(p_min, p_max),
         })
 
     divari.sort(key=lambda d: (-d["extra_stimato"], -d["divario_perc"], d["prodotto"]))
