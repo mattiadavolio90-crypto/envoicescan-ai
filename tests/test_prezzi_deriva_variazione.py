@@ -144,3 +144,16 @@ def test_lo_score_non_penalizza_il_fornitore_per_un_cambio_di_confezione():
     vera = _calcola_score_fornitori(rows, [{**salto, "da_controllare": False}], {}, oggi=OGGI)
     assert [f.score for f in con] == [f.score for f in senza]
     assert [f.score for f in vera] != [f.score for f in senza], "il caso non separa: lo score ignora le variazioni"
+
+
+def test_la_stella_di_una_famiglia_di_consegne_si_accende():
+    """Il fornitore scrive il numero d'ordine nella descrizione («... NORVEGIA
+    ORDER 2025916»): ogni consegna e' un nome diverso. Il 12/10/2026 quelle 4
+    stelle sono state riscritte col fornitore intero e la descrizione corta (60):
+    valgono per la famiglia, e nessuna delle altre due forme le riconosceva."""
+    forn = "LA GE' GE' PESCA DI GAVAZZI SANTO & C. S.R.L"
+    desc = "SALMONI 5/6 FRESCHI SALMAR ACQUACULTUA SALMO SALAR ALLEVATO NORVEGIA ORDER 2025916 (1014546)"
+    famiglia = f"{desc[:60].strip()}|{forn}"
+    assert _v([10.0, 12.0], descrizione=desc, fornitore=forn, preferiti_keys={famiglia})["preferito"] is True
+    altro = "SALMONI 5/6 FRESCHI NORVEGIAN ACQUACUL SALMO SALAR ALLEVATO NORVEGIA ORDER 1 (1)"
+    assert _v([10.0, 12.0], descrizione=altro, fornitore=forn, preferiti_keys={famiglia})["preferito"] is False

@@ -23,7 +23,7 @@ import pandas as pd
 
 from config.logger_setup import get_logger
 from config.constants import CATEGORIE_SPESE_GENERALI
-from services.db_service import carica_e_prepara_dataframe, calcola_alert, get_custom_tags
+from services.db_service import FORNITORE_ALERT_MAX, carica_e_prepara_dataframe, calcola_alert, get_custom_tags
 
 logger = get_logger("price_impact")
 
@@ -124,9 +124,14 @@ def _pref_match_key(descrizione: str, fornitore: str) -> str:
     troncato/normalizzato come _pareto_key (upper, suffisso rimosso, [:50]):
     applico lo stesso [:50] sul lato preferito cosi' i due lati combaciano anche
     su nomi lunghi. Include il fornitore: la stella e' per coppia (prodotto, forn).
+
+    Il fornitore si tronca come lo tronca `calcola_alert` (FORNITORE_ALERT_MAX):
+    fino al 12/10/2026 il lato preferito restava intero, e le stelle sui 10
+    fornitori su 19 con un nome oltre i 20 caratteri non arrivavano mai agli
+    avvisi in Home, in chat e nel briefing.
     """
     d = _pareto_key(descrizione)  # upper+strip, suffisso rimosso, [:50]
-    f = str(fornitore).strip().upper()
+    f = str(fornitore).strip().upper()[:FORNITORE_ALERT_MAX].strip()
     return f"{d}|{f}"
 
 
@@ -396,9 +401,7 @@ def _carica_preferiti_keys(ristorante_id: str, supabase_client=None) -> set:
         return set()
     out: set = set()
     for r in (resp.data or []):
-        d = str(r.get("descrizione_key", "")).strip().upper()[:50]
-        f = str(r.get("fornitore_key", "")).strip().upper()
-        out.add(f"{d}|{f}")
+        out.add(_pref_match_key(str(r.get("descrizione_key", "")), str(r.get("fornitore_key", ""))))
     return out
 
 

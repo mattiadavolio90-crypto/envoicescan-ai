@@ -629,6 +629,12 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     return df_result
 
 
+# `calcola_alert` restituisce il fornitore troncato a questa lunghezza: chi lo
+# confronta con un nome intero (le stelle in price_impact_service) tronca anche
+# l'altro lato, o i fornitori lunghi non combaciano mai.
+FORNITORE_ALERT_MAX = 20
+
+
 def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str = "") -> pd.DataFrame:
     """
     Calcola alert aumenti prezzi confrontando il PREZZO UNITARIO EFFETTIVO
@@ -783,7 +789,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
             alert_list.append({
                 'Prodotto': (prodotto + nota_stagionale)[:50],
                 'Categoria': str(ultimo['Categoria'])[:15],
-                'Fornitore': str(fornitore)[:20],
+                'Fornitore': str(fornitore)[:FORNITORE_ALERT_MAX],
                 'Storico': storico_str,
                 'Media': media_storico,
                 'Ultimo': prezzo_ultimo,

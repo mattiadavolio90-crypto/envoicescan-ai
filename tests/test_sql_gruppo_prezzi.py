@@ -346,3 +346,24 @@ def test_la_stella_di_un_altro_cliente_non_si_tocca_dalla_catena(db_sql, sql, mo
             G.PreferitoCatenaRequest(ristorante_id=SEDE2, prodotto="LIMONE"), authorization="x",
         )
     assert sql("SELECT descrizione_key FROM public.prezzi_preferiti WHERE ristorante_id = %s", SEDE2) == [("SALMONE",)]
+
+
+def test_le_stelle_lette_per_la_home_combaciano_con_gli_avvisi(db_sql, sql):
+    """La Home legge le stelle con `_carica_preferiti_keys` e le confronta col
+    fornitore che `calcola_alert` tronca a 20: le due chiavi devono uscire uguali
+    per un fornitore dal nome lungo (10 stelle su 19 sul live)."""
+    import pandas as pd
+    from services.db_service import calcola_alert
+    from services.price_impact_service import _carica_preferiti_keys, _pref_match_key
+    from services.routers.prezzi import _salva_preferito
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    forn = "LA GE' GE' PESCA DI GAVAZZI SANTO & C. S.R.L"
+    _salva_preferito(ClientSQL(db_sql), SEDE1, UTENTE, "SALMONE NORVEGIA", forn)
+    stelle = _carica_preferiti_keys(SEDE1, ClientSQL(db_sql))
+    righe = [{"Descrizione": "SALMONE NORVEGIA", "Fornitore": forn, "DataDocumento": d, "PrezzoUnitario": p,
+              "Categoria": "PESCE", "FileOrigine": f"{d}.xml", "Quantita": 2.0}
+             for d, p in (("2026-03-01", 10.0), ("2026-04-01", 12.0))]
+    r = calcola_alert(pd.DataFrame(righe), 5.0).iloc[0]
+    assert stelle == {_pref_match_key(r["Prodotto"], r["Fornitore"])}

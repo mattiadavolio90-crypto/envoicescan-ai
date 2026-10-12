@@ -2206,9 +2206,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   fuori media» resta com'e': misura la spesa, e le cauzioni sono spesa vera. Le 10 stelle
 >   troncate riscritte sul live (UPDATE per id, dopo prova a secco): 6 col nome intero, 4 col
 >   solo fornitore intero perche' il prodotto porta il numero d'ordine nella descrizione (una
->   famiglia di consegne, non un nome); ora 19/19 col fornitore giusto. Mutazione 5/5 sugli
->   avvisi; suite: 20.027 verdi + 6 rossi in salute/auth, verdi rilanciati (lavoro in corso
->   di un'altra sessione su `fastapi_worker.py`). **Non fatto:** `/m` non ha pagine prezzi.
+>   famiglia di consegne, non un nome). **Il revisore (🔴 a `bbce7527`)** ha visto che quelle 4
+>   non si accendevano piu' in Osservatorio (terza forma di chiave aggiunta) e che in Home le
+>   stelle sui fornitori oltre i 20 caratteri non combaciavano MAI (`calcola_alert` tronca a 20,
+>   la stella no: difetto da prima, ora troncati entrambi i lati, `FORNITORE_ALERT_MAX`).
+>   Misurato sul live, sola lettura: stelle che si agganciano a un acquisto della loro sede
+>   19/19 in Osservatorio e 19/19 in Home (prima 15 e 9). Mutazione 5/5 + 4/4; suite: 20.027
+>   verdi + 6 rossi in salute/auth, verdi rilanciati (lavoro in corso di un'altra sessione su
+>   `fastapi_worker.py`). **Non fatto:** gli avvisi sui TAG (`_alert_tag`, prezzo medio del
+>   tag) non applicano le due regole; `/m` non ha pagine prezzi.
 
 > - **12/10/2026 — Analisi catena: scheda «Spreco» e «Voci di costo» (Opus), NON pushato.** Da
 >   screenshot di Mattia: OFFSIDE (pub, coperti spenti) vedeva due colonne, SUSHILAND una pagina
