@@ -2201,6 +2201,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   (`<button>` a mano, corretto con `<Button>` e presidi rilanciati: verdi); tsc pulito.
 >   **Non fatto:** gli avvisi prezzi in Home (`price_impact_service`) hanno un calcolo loro
 >   (`calcola_alert`): la regola non c'e', e non e' misurato se il rumore ci arrivi; `/m`.
+
+> - **12/10/2026 — Analisi catena: scheda «Spreco» e «Voci di costo» (Opus), NON pushato.** Da
+>   screenshot di Mattia: OFFSIDE (pub, coperti spenti) vedeva due colonne, SUSHILAND una pagina
+>   piena con lo spreco sotto, e a nessuno dei due la scheda diceva *perche'* un PV guadagna meno.
+>   **Decisioni di Mattia:** spreco come scheda propria spegnibile; un solo calcolo (stesso
+>   periodo e formula del Margine %, niente «mesi comuni»), con la riserva «parziale» che c'e'
+>   gia'. **Fatto:** scheda `spreco` (`scheda-spreco.tsx`, selettore periodo proprio), sparisce da
+>   sola coi coperti spenti; tabella «Voci di costo» sotto i margini (F&B, spese generali,
+>   personale, margine in % sul netto; verde/rosso con la direzione della voce, sedi incomplete
+>   visibili ma fuori dal confronto, gruppo «parziale»), secondo foglio nell'export; worker:
+>   `spese_generali_perc`/`personale_perc` in `MarginiCopertiPV`, `spese`/`pers` nel `tot`
+>   (OpenAPI rigenerato). **Revisore (rilievo A):** alla chat arrivava il personale del gruppo
+>   SUSHILAND (9,6%, mezzo anno senza personale) senza riserva: `nota` nel dato su gruppo e sedi
+>   incomplete. **Dati veri dopo (sola lettura):** OFFSIDE margini 18,1/11,0 invariati, voci che
+>   sommano 100; SUSHILAND 5 sedi incomplete (personale a 0 da lug/ago), si vedono F&B e spese.
+>   **Prove:** 13 mutanti su 13 uccisi; `python -m pytest tests/ -m "not sql" -q`: 18.945 verdi,
+>   58 skip, 7 rossi, tutti test che leggono il sorgente su file modificati DURANTE il giro (miei
+>   e di un'altra sessione): rilanciati a file fermi, 48/48 verdi; `tsc --noEmit` pulito.
+>   **Non fatto:** pagina non aperta nel browser; criterio «incompleto» della vista anno guarda
+>   l'ultimo mese chiuso (limite gia' esistente); etichette per catene retail (nessuna sul live).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

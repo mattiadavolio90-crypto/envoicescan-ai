@@ -1510,6 +1510,14 @@ class MarginiCopertiPV(BaseModel):
     # pagina Margini del PV). None senza incasso o senza merce: uno 0% non e' un
     # valore.
     food_cost_perc: Optional[float] = None
+    # «Voci di costo» (12/10/2026): stesso periodo e stessa formula del margine,
+    # cosi' con i dati completi F&B + spese + personale + margine fanno 100.
+    # Le spese vengono dalle fatture come il F&B: ci sono anche nella sede
+    # incompleta. Il personale e' proprio cio' che manca a una sede incompleta:
+    # None con la stessa guardia di `margine_perc`. Zero = None, come il F&B: un
+    # «0%» verrebbe colorato «migliore della catena» su un dato che manca.
+    spese_generali_perc: Optional[float] = None
+    personale_perc: Optional[float] = None
 
 
 class MarginiCopertiResponse(BaseModel):
@@ -1615,6 +1623,11 @@ def gruppo_margini_coperti(
             mp_per_coperto=round(a["fb"] / cop_fb, 2) if (cop_fb > 0 and a["fb"] > 0) else None,
             dati_incompleti=incompleti,
             food_cost_perc=round(a["fb"] / netto * 100, 1) if (netto > 0 and a["fb"] > 0) else None,
+            spese_generali_perc=round(a["spese"] / netto * 100, 1) if (netto > 0 and a["spese"] > 0) else None,
+            personale_perc=(
+                round(a["pers"] / netto * 100, 1)
+                if (not incompleti and netto > 0 and a["pers"] > 0) else None
+            ),
         )
 
     righe = [
@@ -1635,6 +1648,8 @@ def gruppo_margini_coperti(
         "lordo": sum(a["lordo"] for a in agg.values()),
         "mol": sum(a["mol"] for a in agg.values()),
         "fb": sum(a["fb"] for a in agg.values()),
+        "spese": sum(a["spese"] for a in agg.values()),
+        "pers": sum(a["pers"] for a in agg.values()),
         "cop": sum(a["cop"] for a in agg.values()),
         "cop_fb": sum(a["cop_fb"] for a in agg.values()),
     }

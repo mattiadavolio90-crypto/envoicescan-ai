@@ -25,24 +25,27 @@ export const SCHEDE_FATTURE_CATENA: readonly TabDef[] = [
 // scheda non c'e', e risolviScheda ricade sulla prima disponibile.
 export const SCHEDA_FATTURE_PREDEFINITA = "scadenze";
 
+// «Spreco» (Mattia, 12/10/2026): stava in fondo a «Margini e coperti», sotto la
+// tabella; ora e' una scheda, spegnibile come le altre.
 export const SCHEDE_ANALISI_CATENA: readonly TabDef[] = [
   { key: "spesa", label: "Spesa per PV" },
   { key: "margini", label: "Margini e coperti" },
+  { key: "spreco", label: "Spreco" },
   { key: "tag", label: "Tag di catena" },
   { key: "prezzi", label: "Prezzi" },
 ];
 
-// Non e' una scheda: spegne le colonne dei coperti (e lo spreco per coperto)
-// nella scheda dei margini, che senza coperti si chiama «Margini». Per chi non
-// registra i coperti (OFFSIDE): spegnere la scheda intera toglierebbe anche i
-// margini del gruppo (Mattia, 09/10/2026).
+// Non e' una scheda: spegne le colonne dei coperti nella scheda dei margini, che
+// senza coperti si chiama «Margini», e la scheda «Spreco», che e' materia prima
+// per coperto. Per chi non registra i coperti (OFFSIDE): spegnere la scheda
+// intera toglierebbe anche i margini del gruppo (Mattia, 09/10/2026).
 export const COPERTI_CATENA = "coperti";
 
 /** Gli interruttori della catena nel pannello admin, nell'ordine delle pagine. */
 export const INTERRUTTORI_CATENA: readonly { pagina: string; voci: readonly TabDef[] }[] = [
   { pagina: "Gestione Fatture", voci: SCHEDE_FATTURE_CATENA },
   { pagina: "Analisi catena", voci: SCHEDE_ANALISI_CATENA },
-  { pagina: "Margini", voci: [{ key: COPERTI_CATENA, label: "Colonne dei coperti" }] },
+  { pagina: "Margini", voci: [{ key: COPERTI_CATENA, label: "Colonne dei coperti e scheda Spreco" }] },
 ];
 
 export function tabOffKeyCatena(scheda: string): string {
@@ -67,10 +70,13 @@ export function colonneMarginiCatena<T extends { key: string }>(colonne: readonl
 }
 
 /** Le schede di Analisi catena accese per questo account. Senza coperti la
- *  scheda dei margini si chiama «Margini». Vuota = pagina senza schede (404). */
+ *  scheda dei margini si chiama «Margini» e lo spreco non c'e', anche col suo
+ *  interruttore acceso: sarebbe una scheda sempre vuota. Vuota = 404. */
 export function schedeAnalisiCatena(pagine: string[] | null | undefined): TabDef[] {
   const coperti = copertiCatenaAccesi(pagine);
-  return SCHEDE_ANALISI_CATENA.filter((s) => schedaCatenaAccesa(pagine, s.key)).map((s) =>
+  return SCHEDE_ANALISI_CATENA.filter(
+    (s) => schedaCatenaAccesa(pagine, s.key) && (s.key !== "spreco" || coperti),
+  ).map((s) =>
     s.key === "margini" && !coperti ? { ...s, label: "Margini" } : { ...s },
   );
 }

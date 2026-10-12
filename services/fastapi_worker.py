@@ -4768,6 +4768,35 @@ def _gruppo_router_mod():
     return g
 
 
+# «Voci di costo» (12/10/2026): con le sedi incomplete la riga del gruppo somma
+# anche chi non ha incasso o personale, e la pagina la marca «parziale». Alla
+# chat la stessa parola arriva nel dato, accanto al numero: col solo prompt la
+# catena sbagliava 2 volte su 3 (fase E). Sulla sede incompleta restano F&B e
+# spese: si dice che sono a meta' anche quelli.
+_NOTA_GRUPPO_PARZIALE = (
+    "Totale parziale: alcuni punti vendita non hanno ancora tutti i dati del periodo "
+    "(incasso, fatture o personale). Margine, food cost, personale e spese del gruppo non "
+    "sono affidabili e non vanno giudicati con le soglie: dillo al cliente."
+)
+_NOTA_SEDE_INCOMPLETA = (
+    "Dati del periodo incompleti: margine e personale non ci sono, food cost e spese "
+    "possono essere spostati. Non giudicarli con le soglie: dillo al cliente."
+)
+
+
+def _nota_dati_incompleti_gruppo(out: Any) -> None:
+    if not isinstance(out, dict):
+        return
+    n = out.get("n_incompleti")
+    if not (isinstance(n, int) and n > 0):
+        return
+    if isinstance(out.get("gruppo"), dict):
+        out["gruppo"]["nota"] = _NOTA_GRUPPO_PARZIALE
+    for r in out.get("righe") or []:
+        if isinstance(r, dict) and r.get("dati_incompleti") and "nota" not in r:
+            r["nota"] = _NOTA_SEDE_INCOMPLETA
+
+
 def _chat_esegui_tool_gruppo(nome: str, args: Dict[str, Any], authorization: Optional[str]) -> Dict[str, Any]:
     """Dispatcher dei tool di gruppo: chiama gli endpoint /api/gruppo/* (sola
     lettura) e ritorna dict serializzabili. Stesso scope/auth della chat."""
@@ -4796,6 +4825,7 @@ def _chat_esegui_tool_gruppo(nome: str, args: Dict[str, Any], authorization: Opt
                     r["incasso_fuori_norma"] = v
                     if v is True:
                         r["nota"] = _NOTA_INCASSO_FUORI_NORMA
+            _nota_dati_incompleti_gruppo(out)
             return out
         if nome == "gruppo_spesa":
             dim = args.get("dimensione") if args.get("dimensione") in ("categoria", "fornitore") else "categoria"

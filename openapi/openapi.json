@@ -24736,6 +24736,28 @@
               }
             ],
             "title": "Food Cost Perc"
+          },
+          "spese_generali_perc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spese Generali Perc"
+          },
+          "personale_perc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personale Perc"
           }
         },
         "type": "object",

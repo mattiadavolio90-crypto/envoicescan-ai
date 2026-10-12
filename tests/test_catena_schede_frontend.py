@@ -10,6 +10,8 @@ parte che decide COSA si vede, eseguita davvero con node:
   costi di gruppo che prima stavano in una Home senza interruttore;
 - il conteggio della coda sull'etichetta, e niente numero quando non e' letto.
 """
+from pathlib import Path
+
 import pytest
 
 from tests.helpers_ts import esegui_ts
@@ -146,52 +148,63 @@ def test_le_etichette_non_si_accumulano_fra_chiamate():
     assert out == "Da collocare (3)"
 
 
-# ─── Spreco per categoria: in pagina, non in una finestra ─────────────────
+# ─── Spreco per categoria: una scheda, non una finestra ───────────────────
 # Mattia, 29/9: come finestra aperta dal bottone «Categorie» nella scheda
-# «Margini e coperti» non la trovava nessuno. Ora e' una sezione della stessa
-# scheda, sotto la tabella dei margini. Non c'e' un runner per il rendering:
-# si controlla che la sezione sia montata senza condizioni e che la finestra
-# non sia tornata.
+# «Margini e coperti» non la trovava nessuno, e divento' una sezione sotto la
+# tabella dei margini. Mattia, 12/10/2026: e' una scheda di Analisi catena,
+# «Spreco», spegnibile dall'admin. Non c'e' un runner per il rendering: si
+# controlla che la scheda monti la sezione senza condizioni, che la finestra non
+# sia tornata e che la scheda dei margini non la porti piu' con se'.
+
+_ANALISI = Path(__file__).resolve().parents[1] / "apps/web/src/app/(app)/catena/analisi"
+
 
 def _scheda_margini():
-    from pathlib import Path
-    return (
-        Path(__file__).resolve().parents[1]
-        / "apps/web/src/app/(app)/catena/analisi/scheda-margini-coperti.tsx"
-    ).read_text(encoding="utf-8")
+    return (_ANALISI / "scheda-margini-coperti.tsx").read_text(encoding="utf-8")
 
 
-def test_lo_spreco_per_categoria_e_una_sezione_sempre_montata():
+def _scheda_spreco():
+    return (_ANALISI / "scheda-spreco.tsx").read_text(encoding="utf-8")
+
+
+def test_la_scheda_spreco_monta_la_sezione_senza_condizioni():
     import re
-    testo = _scheda_margini()
+    testo = _scheda_spreco()
     montaggi = re.findall(r"^(.*)<SezioneSprecoCategorie\b", testo, re.M)
     assert len(montaggi) == 1, f"attesa una sola <SezioneSprecoCategorie>, trovate {len(montaggi)}"
     prima = testo.split("<SezioneSprecoCategorie", 1)[0].rstrip()
-    # L'unica condizione ammessa e' l'interruttore admin dei coperti (fase H3,
-    # 09/10/2026): senza coperti lo spreco per coperto non esiste. Non e' un
-    # clic del cliente.
-    if prima.endswith("{coperti &&"):
-        prima = prima[: -len("{coperti &&")].rstrip()
+    # Chi la nasconde (coperti spenti, interruttore admin) e' la pagina, con
+    # `schedeAnalisiCatena`: dentro la scheda una condizione la renderebbe vuota.
     assert not prima.endswith(("&& (", "&&", "? (", "?", ": (", ":")), (
-        "lo spreco per categoria e' tornato dietro una condizione: si vede solo "
-        "dopo un clic, come la finestra che nessuno trovava"
+        "lo spreco per categoria e' tornato dietro una condizione dentro la sua scheda"
     )
 
 
-def test_lo_spreco_per_categoria_non_e_piu_una_finestra():
-    testo = _scheda_margini()
-    assert "@/components/ui/dialog" not in testo, (
-        "la scheda Margini e coperti importa di nuovo una finestra: lo spreco "
-        "per categoria sta in pagina (Mattia, 29/9)"
-    )
-
-
-def test_lo_spreco_segue_il_periodo_della_scheda():
-    """«Stesso periodo» dei margini: con `mese={null}` mostrerebbe sempre l'anno
-    mentre la tabella sopra e' su un mese."""
+def test_la_pagina_monta_la_scheda_spreco_sulla_sua_chiave():
     import re
-    testo = re.sub(r"\s+", "", _scheda_margini())
-    assert '<SezioneSprecoCategoriemese={periodo!=="anno"?Number(periodo):null}/>' in testo
+    testo = re.sub(r"\s+", "", (_ANALISI / "page.tsx").read_text(encoding="utf-8"))
+    assert '{tab==="spreco"&&<SchedaSpreco/>}' in testo
+
+
+def test_la_scheda_dei_margini_non_porta_piu_lo_spreco():
+    """Due copie della stessa sezione: SUSHILAND la vedrebbe due volte."""
+    assert "SezioneSprecoCategorie" not in _scheda_margini()
+    assert "/api/gruppo/spreco-categorie" not in _scheda_margini()
+
+
+@pytest.mark.parametrize("leggi", [_scheda_margini, _scheda_spreco])
+def test_lo_spreco_per_categoria_non_e_piu_una_finestra(leggi):
+    assert "@/components/ui/dialog" not in leggi(), (
+        "lo spreco per categoria e' di nuovo in una finestra (Mattia, 29/9)"
+    )
+
+
+def test_il_periodo_della_scheda_spreco_arriva_alla_sezione():
+    """Con `mese={null}` mostrerebbe sempre l'anno mentre il selettore dice un mese."""
+    import re
+    testo = re.sub(r"\s+", "", _scheda_spreco())
+    assert 'mese={periodo!=="anno"?Number(periodo):null}' in testo
+    assert "<NativeSelectvalue={periodo}onValueChange={setPeriodo}" in testo
 
 
 def test_un_ricaricamento_fallito_dice_che_i_dati_sono_vecchi():
@@ -199,7 +212,7 @@ def test_un_ricaricamento_fallito_dice_che_i_dati_sono_vecchi():
     dati del mese prima senza nessun segnale. Il riquadro con la tabella deve
     avvisare quando `loadError` e' acceso ma `data` c'e' ancora."""
     import re
-    testo = re.sub(r"\s+", " ", _scheda_margini())
+    testo = re.sub(r"\s+", " ", _scheda_spreco())
     i = testo.index("function SezioneSprecoCategorie")
     sezione = testo[i:]
     j = sezione.index("<div className={AREA_TABELLA}>")
@@ -236,17 +249,21 @@ def test_fatture_tutte_spente_e_lista_vuota():
 
 
 @pytest.mark.parametrize("pagine, attese", [
-    (None, ["spesa", "margini", "tag", "prezzi"]),
-    ([], ["spesa", "margini", "tag", "prezzi"]),
-    (["tab_off_catena_tag"], ["spesa", "margini", "prezzi"]),
-    (["tab_off_catena_prezzi"], ["spesa", "margini", "tag"]),
-    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag", "tab_off_catena_prezzi"], []),
+    (None, ["spesa", "margini", "spreco", "tag", "prezzi"]),
+    ([], ["spesa", "margini", "spreco", "tag", "prezzi"]),
+    (["tab_off_catena_tag"], ["spesa", "margini", "spreco", "prezzi"]),
+    (["tab_off_catena_prezzi"], ["spesa", "margini", "spreco", "tag"]),
+    (["tab_off_catena_spreco"], ["spesa", "margini", "tag", "prezzi"]),
+    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_spreco",
+      "tab_off_catena_tag", "tab_off_catena_prezzi"], []),
 ])
 def test_schede_di_analisi_accese(pagine, attese):
     assert _chiavi(_ts("emit(m.schedeAnalisiCatena(input))", pagine)) == attese
 
 
-def test_senza_coperti_la_scheda_si_chiama_margini():
+def test_senza_coperti_la_scheda_si_chiama_margini_e_lo_spreco_sparisce():
+    """Lo spreco e' materia prima per coperto: senza coperti sarebbe una scheda
+    sempre vuota, anche col suo interruttore acceso."""
     schede = _ts('emit(m.schedeAnalisiCatena(["tab_off_catena_coperti"]))')
     assert _chiavi(schede) == ["spesa", "margini", "tag", "prezzi"]
     assert _etichetta(schede, "margini") == "Margini"
@@ -270,7 +287,10 @@ def test_senza_coperti_via_le_tre_colonne_che_li_usano():
     (None, "margini", "/catena/analisi?tab=margini"),
     (["tab_off_catena_margini"], "margini", "/catena/analisi?tab=spesa"),
     (["tab_off_catena_spesa"], "spesa", "/catena/analisi?tab=margini"),
-    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag", "tab_off_catena_prezzi"], "margini", None),
+    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_spreco",
+      "tab_off_catena_tag", "tab_off_catena_prezzi"], "margini", None),
+    (["tab_off_catena_spesa", "tab_off_catena_margini", "tab_off_catena_tag",
+      "tab_off_catena_prezzi", "tab_off_catena_coperti"], "margini", None),
 ])
 def test_i_link_della_home_ripiegano_o_spariscono(pagine, scheda, atteso):
     """Un clic dalla Home catena verso una scheda spenta porta alla prima
@@ -311,7 +331,8 @@ def test_ogni_interruttore_della_catena_e_riconosciuto_dal_worker():
 
     chiavi = _ts("emit(m.INTERRUTTORI_CATENA.flatMap(g => g.voci.map(v => m.tabOffKeyCatena(v.key))))")
     assert sorted(chiavi) == sorted(
-        f"tab_off_catena_{k}" for k in ("scadenze", "collocare", "costi", "spesa", "margini", "tag", "prezzi", "coperti")
+        f"tab_off_catena_{k}"
+        for k in ("scadenze", "collocare", "costi", "spesa", "margini", "spreco", "tag", "prezzi", "coperti")
     )
     assert [k for k in chiavi if not fw._is_tab_off_key(k)] == []
     out = fw._normalize_pagine({"margini": True, **{k: True for k in chiavi}})

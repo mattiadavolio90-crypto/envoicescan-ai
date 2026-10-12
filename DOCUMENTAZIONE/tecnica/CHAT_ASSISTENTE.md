@@ -516,6 +516,13 @@ confronta catena, pagina e chat del PV sugli stessi dati. Il prompt di catena
 chiede di dire sempre il periodo (la sintesi e lo strumento senza `mese` vanno da
 gennaio a oggi).
 
+Dal 12/10/2026 lo strumento porta anche `spese_generali_perc` e `personale_perc`
+(tabella «Voci di costo» della scheda Margini). Con sedi incomplete
+(`n_incompleti > 0`) il dispatcher mette una `nota` sulla riga del gruppo («Totale
+parziale») e sulle sedi incomplete (`_nota_dati_incompleti_gruppo`): a schermo il
+gruppo è «parziale», e il personale di un gruppo con mezzo anno senza personale si
+leggerebbe «contenuto» contro la soglia del prompt.
+
 ---
 
 ## 8. "Dove metto le mani per…" (mappa rapida)

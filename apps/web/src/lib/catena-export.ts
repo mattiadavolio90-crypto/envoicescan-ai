@@ -12,6 +12,7 @@
 // un file scaricato), file diverso solo perche' i tipi di partenza divergono.
 
 import type { MarginiCopertiPV, SpesaPivot } from "@/lib/gruppo";
+import type { RigaVoceCosto } from "@/lib/catena-confronti";
 // `slugPeriodo` vive in `catena-tag` per ragioni storiche (e' nato li' con
 // l'export dei tag) ma e' una utility di slug generica, oggi usata da tre
 // chiamanti in tre file diversi. Si importa invece di ri-dichiararla: una
@@ -107,6 +108,42 @@ export function nomeFileMargini(periodoLabel: string | null | undefined, oggiIso
 /** L'intestazione dell'export margini: la colonna fissa piu' quelle configurate. */
 export function headerMargini(cols: readonly ColonnaExport[]): string[] {
   return ["Punto vendita", ...cols.map((c) => c.label)];
+}
+
+// ─── Voci di costo (12/10/2026): secondo foglio dell'export margini ────────
+
+export const NOME_FOGLIO_VOCI = "Voci di costo";
+
+/** La colonna di un PV: col segno «incompleto» che a schermo sta sotto il nome. */
+export function colonnaVociPv(r: Pick<MarginiCopertiPV, "nome" | "dati_incompleti">): string {
+  return r.dati_incompleti ? `${r.nome} (${CELLA_DATI_INCOMPLETI.toLowerCase()})` : r.nome;
+}
+
+export function headerVoci(righe: readonly MarginiCopertiPV[], gruppo: MarginiCopertiPV): string[] {
+  return ["Voce (% sul fatturato netto)", ...righe.map(colonnaVociPv), gruppo.nome];
+}
+
+/**
+ * Le righe del foglio: una per voce, i numeri come a schermo. Diversamente dal
+ * foglio dei margini la sede incompleta esce coi suoi F&B e spese, perche' a
+ * schermo li mostra; personale e margine le arrivano gia' null dal worker. Il
+ * gruppo esce «(parziale)» su ogni voce con un numero, come a schermo.
+ */
+export function righeExportVoci(
+  voci: readonly RigaVoceCosto[],
+  righe: readonly MarginiCopertiPV[],
+  gruppo: MarginiCopertiPV,
+): Record<string, string | number>[] {
+  return voci.map((v) => {
+    const row: Record<string, string | number> = { "Voce (% sul fatturato netto)": v.label };
+    righe.forEach((r) => {
+      const c = v.per_pv.find((x) => x.ristorante_id === r.ristorante_id);
+      row[colonnaVociPv(r)] = c?.valore == null ? CELLA_VUOTA : c.valore;
+    });
+    row[gruppo.nome] =
+      v.gruppo == null ? CELLA_VUOTA : v.gruppoParziale ? `${v.gruppo} (parziale)` : v.gruppo;
+    return row;
+  });
 }
 
 // ─── Spesa per punto vendita (pivot) ───────────────────────────────────────

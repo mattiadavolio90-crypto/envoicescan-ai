@@ -126,6 +126,11 @@ export type MarginiCopertiPV = {
   scontrino_medio: number | null;
   mp_per_coperto: number | null; // BASSO = meglio
   dati_incompleti: boolean;
+  // % sul fatturato netto, stesso periodo del margine (tabella «Voci di
+  // costo»). Opzionali: un worker non ancora aggiornato non li manda.
+  food_cost_perc?: number | null;
+  spese_generali_perc?: number | null;
+  personale_perc?: number | null; // null anche sulla sede incompleta
 };
 
 export type MarginiCoperti = {

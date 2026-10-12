@@ -273,7 +273,7 @@ def test_i_file_migrati_non_ridefiniscono_euro(nome):
     )
 
 
-@pytest.mark.parametrize("nome", _MIGRATI + ["analisi/scheda-margini-coperti.tsx"])
+@pytest.mark.parametrize("nome", _MIGRATI + ["analisi/scheda-margini-coperti.tsx", "analisi/scheda-spreco.tsx"])
 def test_i_file_migrati_non_ridefiniscono_mesi(nome):
     testo = (_CATENA / nome).read_text(encoding="utf-8")
     assert not re.search(r"^const MESI(_LABEL)? = \[", testo, re.M), (
@@ -282,7 +282,7 @@ def test_i_file_migrati_non_ridefiniscono_mesi(nome):
     )
 
 
-@pytest.mark.parametrize("nome", ["analisi/scheda-tag-catena.tsx", "analisi/scheda-margini-coperti.tsx"])
+@pytest.mark.parametrize("nome", ["analisi/scheda-tag-catena.tsx", "analisi/scheda-spreco.tsx"])
 def test_le_due_euro2_chiamano_la_fonte_unica(nome):
     """Che la decisione del 3/9 non venga disfatta in silenzio.
 

@@ -9,6 +9,7 @@ import { BlockRetry } from "../../dashboard/block-retry";
 import { TabsSwitcher } from "../../analisi-fatture/tabs-switcher";
 import { SchedaSpesaPV } from "./scheda-spesa-pv";
 import { SchedaMarginiCoperti } from "./scheda-margini-coperti";
+import { SchedaSpreco } from "./scheda-spreco";
 import { SchedaTagCatena } from "./scheda-tag-catena";
 import { SchedaPrezziCatena } from "./scheda-prezzi-catena";
 
@@ -48,6 +49,7 @@ async function AnalisiBlock({ richiesta }: { richiesta: string | undefined }) {
       <TabsSwitcher active={tab} disponibili={schede} />
       {tab === "spesa" && <SchedaSpesaPV />}
       {tab === "margini" && <SchedaMarginiCoperti coperti={copertiCatenaAccesi(pagine)} />}
+      {tab === "spreco" && <SchedaSpreco />}
       {tab === "tag" && <SchedaTagCatena />}
       {tab === "prezzi" && <SchedaPrezziCatena />}
     </>
@@ -66,7 +68,7 @@ export default async function AnalisiCatenaPage({
       <PageHeader
         icon="bar-chart"
         title="Analisi catena"
-        hint="I punti vendita a confronto: spesa, margini e coperti, prodotti, prezzi"
+        hint="I punti vendita a confronto: spesa, margini e coperti, spreco, prodotti, prezzi"
       />
       <Suspense fallback={<AnalisiSkeleton />}>
         <AnalisiBlock richiesta={tab} />

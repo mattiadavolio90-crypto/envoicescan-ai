@@ -79,7 +79,8 @@ BASE_BUTTON: dict[str, int] = {
     "components/home/pannello-conversazione.tsx": 2,
 }
 BASE_TAGLIA: dict[str, int] = {
-    "app/(app)/catena/analisi/scheda-margini-coperti.tsx": 1,
+    # Il «Riprova» dello spreco, traslocato con la sua sezione il 12/10/2026.
+    "app/(app)/catena/analisi/scheda-spreco.tsx": 1,
     "app/(app)/dashboard/notifiche-widget.tsx": 1,
     "app/(app)/notifiche/notifiche-list.tsx": 1,
     "app/(app)/scadenziario/scadenziario-client.tsx": 19,

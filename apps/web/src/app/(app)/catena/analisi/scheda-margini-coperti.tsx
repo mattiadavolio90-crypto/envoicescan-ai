@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
@@ -10,13 +10,16 @@ import { formatEuro, formatPct } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { colonneMarginiCatena } from "@/lib/catena-schede";
-import { type MarginiCoperti, type MarginiCopertiPV, type SprecoCategorie } from "@/lib/gruppo";
+import { type MarginiCoperti, type MarginiCopertiPV } from "@/lib/gruppo";
 import {
+  NOME_FOGLIO_VOCI,
   headerMargini,
+  headerVoci,
   nomeFileMargini,
   notaIncompleti,
   rigaExportGruppo,
   rigaExportMargini,
+  righeExportVoci,
 } from "@/lib/catena-export";
 import {
   type Col as ColConfronto,
@@ -27,7 +30,8 @@ import {
   heatStyle,
   margineDot,
   ordinaRighe,
-  rigaExtremes,
+  toneVoce,
+  vociCostoCatena,
 } from "@/lib/catena-confronti";
 import { AREA_TABELLA, PannelloScheda } from "@/components/ui/pannello-scheda";
 
@@ -70,8 +74,8 @@ const COLS_TUTTE: Col[] = [
 ];
 
 // `coperti` false (interruttore admin `tab_off_catena_coperti`, fase H3): via le
-// colonne che dividono per i coperti e lo spreco per coperto. Per chi non li
-// registra (OFFSIDE) erano colonne a zero e un «Nessun dato» fisso.
+// colonne che dividono per i coperti. Per chi non li registra (OFFSIDE) erano
+// colonne a zero. Lo spreco per coperto e' la scheda «Spreco» (scheda-spreco).
 export function SchedaMarginiCoperti({ coperti = true }: { coperti?: boolean } = {}) {
   const COLS = colonneMarginiCatena(COLS_TUTTE, coperti);
   const [data, setData] = useState<MarginiCoperti | null>(null);
@@ -138,6 +142,14 @@ export function SchedaMarginiCoperti({ coperti = true }: { coperti?: boolean } =
     }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, coperti ? "Margini e coperti" : "Margini");
+    const voci = vociCostoCatena(righeSorted, data.gruppo, data.n_incompleti);
+    const wsVoci = XLSX.utils.json_to_sheet(righeExportVoci(voci, righeSorted, data.gruppo), {
+      header: headerVoci(righeSorted, data.gruppo),
+    });
+    if (nota) {
+      XLSX.utils.sheet_add_aoa(wsVoci, [[nota]], { origin: -1 });
+    }
+    XLSX.utils.book_append_sheet(wb, wsVoci, NOME_FOGLIO_VOCI);
     XLSX.writeFile(wb, nomeFileMargini(data.periodo_label, new Date().toISOString().slice(0, 10)));
   }
 
@@ -290,8 +302,8 @@ export function SchedaMarginiCoperti({ coperti = true }: { coperti?: boolean } =
             )}
             <p className="mt-3 text-xs text-muted-foreground">
               <span className="text-positivo">verde</span> = migliore della
-              catena, <span className="text-negativo">rosso</span> = peggiore. Per «€
-              materia prima / coperto» il valore basso è il migliore. «{ETICHETTA_INCOMPLETO}» = al punto
+              catena, <span className="text-negativo">rosso</span> = peggiore.{coperti && <> Per «€
+              materia prima / coperto» il valore basso è il migliore.</>} «{ETICHETTA_INCOMPLETO}» = al punto
               vendita mancano fatturato, fatture costo o costo personale del periodo. Importi al
               <span className="font-medium"> netto IVA</span> (i «conti del gruppo» mostrano il lordo, IVA inclusa).
             </p>
@@ -299,155 +311,80 @@ export function SchedaMarginiCoperti({ coperti = true }: { coperti?: boolean } =
         )}
       </PannelloScheda>
 
-      {/* La materia prima per coperto, categoria per categoria, sta dentro
-          «Margini e coperti» (Mattia, 28/9) e in pagina, sotto la tabella dei
-          margini, con lo stesso periodo: come finestra aperta da un bottone
-          «Categorie» non la trovava nessuno (Mattia, 29/9). */}
-      {coperti && <SezioneSprecoCategorie mese={periodo !== "anno" ? Number(periodo) : null} />}
+      {data && data.righe.length > 0 && <SezioneVociCosto data={data} righe={righeSorted} />}
     </div>
   );
 }
 
-// ─── Spreco (€MP/coperto) per categoria, confronto fra PV ───────────────────
+// ─── Voci di costo: quanto pesa ogni voce sul fatturato, PV per PV ──────────
+// (Mattia, 12/10/2026). Stessi dati e stesso periodo della tabella sopra, girati:
+// nessuna lettura in piu', e il margine e' lo stesso numero.
 
-// `formatEuro(v, 2)` con la guardia sul null: "—" e non "0,00 €" quando il dato
-// non c'e'. Le due copie di questa funzione divergevano (una con il separatore
-// delle migliaia, l'altra senza): unificate il 3/9 su decisione dell'owner.
-function euro2(n: number | null): string {
-  return n == null ? "—" : formatEuro(n, 2);
-}
-
-function SezioneSprecoCategorie({ mese }: { mese: number | null }) {
-  const [data, setData] = useState<SprecoCategorie | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const reqRef = useRef(0);
-
-  // Su errore NON si azzera `data`: un refetch fallito (cambio mese) deve lasciare
-  // a schermo i dati precedenti, non sostituirli con "nessun dato".
-  const carica = useCallback(() => {
-    const my = ++reqRef.current;
-    setLoading(true);
-    setLoadError(false);
-    const qs = mese ? `?mese=${mese}` : "";
-    fetch(`/api/gruppo/spreco-categorie${qs}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => { if (my === reqRef.current) setData(j); })
-      // Niente toast: la sezione si carica da sola con la scheda, e l'errore
-      // lo dice gia' il riquadro «Non è stato possibile caricare i dati».
-      .catch(() => { if (my === reqRef.current) setLoadError(true); })
-      .finally(() => { if (my === reqRef.current) setLoading(false); });
-  }, [mese]);
-
-  useEffect(() => {
-    carica();
-  }, [carica]);
-
+function SezioneVociCosto({ data, righe }: { data: MarginiCoperti; righe: MarginiCopertiPV[] }) {
+  const voci = vociCostoCatena(righe, data.gruppo, data.n_incompleti);
   return (
     <PannelloScheda
       titolo={
         <>
-          <Sprout className="size-4 text-positivo" />
-          Spreco per categoria · confronto punti vendita
-          {data?.periodo_label && (
-            <span className="text-xs font-normal text-muted-foreground">— {data.periodo_label}</span>
-          )}
+          Voci di costo · confronto punti vendita
+          <span className="text-xs font-normal text-muted-foreground">— % sul fatturato netto, {data.periodo_label}</span>
         </>
       }
     >
-      {loading && !data ? (
-        <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
-      ) : loadError && !data ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <AlertTriangle className="size-7 text-negativo" />
-          <p className="text-sm text-muted-foreground">
-            Non è stato possibile caricare i dati.
-          </p>
-          <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
-            Riprova
-          </Button>
-        </div>
-      ) : !data || data.righe.length === 0 ? (
-        <div className="py-16 text-center text-sm text-muted-foreground">
-          Nessun dato: servono coperti e fatture F&amp;B classificate nel periodo.
-        </div>
-      ) : (
-        <>
-          {/* Un ricaricamento fallito (cambio mese) lascia i dati di prima: si
-              dice quali sono, o sembrerebbero quelli del periodo scelto. */}
-          {loadError && (
-            <p className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-negativo/30 px-3 py-2 text-xs text-negativo">
-              <AlertTriangle className="size-3.5 shrink-0" />
-              Aggiornamento non riuscito: restano i dati di {data.periodo_label}.
-              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={carica} disabled={loading}>
-                Riprova
-              </Button>
-            </p>
-          )}
-          <div className={AREA_TABELLA}>
-            <table className="w-full border-separate border-spacing-0 text-sm">
-              <thead className="sticky top-0 z-30 bg-card shadow-[0_1px_0_0_var(--color-border)]">
-                <tr>
-                  <th className="sticky left-0 z-40 bg-card px-3 py-2 text-left font-semibold">
-                    Categoria
-                  </th>
-                  {data.pv.map((p) => (
-                    <th
-                      key={p.ristorante_id}
-                      className="max-w-[10rem] px-3 py-2 text-right font-semibold"
-                      title={p.nome}
-                    >
-                      <span className="block truncate" title={p.nome}>{p.nome}</span>
-                    </th>
-                  ))}
-                  <th className="px-3 py-2 text-right font-bold text-positivo">
-                    Media gruppo
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.righe.map((r) => {
-                  const ex = rigaExtremes(r);
-                  return (
-                    <tr key={r.categoria} className="border-t transition-colors hover:bg-muted/30">
-                      <td className="sticky left-0 z-10 max-w-[16rem] bg-card px-3 py-2 font-medium">
-                        <span className="block truncate" title={r.categoria}>{r.categoria}</span>
-                      </td>
-                      {r.per_pv.map((c) => {
-                        const v = c.valore;
-                        const tone =
-                          v == null || ex.best == null
-                            ? ""
-                            : v === ex.best && v !== ex.worst
-                              ? "text-positivo font-semibold"
-                              : v === ex.worst && v !== ex.best
-                                ? "text-negativo font-semibold"
-                                : "";
-                        return (
-                          <td key={c.ristorante_id} className={cn("px-3 py-2 text-right tabular-nums", tone)}>
-                            {euro2(v)}
-                          </td>
-                        );
-                      })}
-                      <td className="px-3 py-2 text-right font-bold tabular-nums text-positivo">
-                        {euro2(r.media_gruppo)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Quanto costa in <span className="font-medium">materie prime per coperto</span> ogni
-            categoria, a confronto tra i punti vendita. Per categoria:{" "}
-            <span className="font-medium">spesa F&amp;B ÷ coperti</span> dei soli mesi con fatture
-            caricate. <span className="text-positivo">verde</span> = il PV
-            più efficiente sulla categoria, <span className="text-negativo">rosso</span>{" "}
-            = il più caro. Rivendita esclusa (merce comprata per rivenderla). «—» = nessun dato per quel PV.
-          </p>
-        </>
-      )}
+      <div className={AREA_TABELLA}>
+        <table className="w-full border-separate border-spacing-0 text-sm">
+          <thead className="sticky top-0 z-30 bg-card shadow-[0_1px_0_0_var(--color-border)]">
+            <tr>
+              <th className="sticky left-0 z-40 bg-card px-3 py-2 text-left font-semibold">Voce</th>
+              {righe.map((r) => (
+                <th key={r.ristorante_id} className="max-w-[10rem] px-3 py-2 text-right font-semibold">
+                  <span className="block truncate" title={r.nome}>{r.nome}</span>
+                  {r.dati_incompleti && (
+                    <span className="block text-[10px] font-normal text-muted-foreground">
+                      {ETICHETTA_INCOMPLETO.toLowerCase()}
+                    </span>
+                  )}
+                </th>
+              ))}
+              <th className="max-w-[10rem] px-3 py-2 text-right font-bold">
+                <span className="block truncate" title={data.gruppo.nome}>{data.gruppo.nome}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {voci.map((v) => (
+              <tr key={v.key} className="border-t transition-colors hover:bg-muted/30">
+                <td className="sticky left-0 z-10 bg-card px-3 py-2 font-medium">{v.label}</td>
+                {v.per_pv.map((c, i) => (
+                  <td
+                    key={c.ristorante_id}
+                    className={cn(
+                      "px-3 py-2 text-right tabular-nums",
+                      righe[i]?.dati_incompleti ? "text-muted-foreground" : toneVoce(c.valore, v),
+                    )}
+                  >
+                    {pct(c.valore)}
+                  </td>
+                ))}
+                <td className="bg-primary/5 px-3 py-2 text-right font-semibold tabular-nums">
+                  {pct(v.gruppo)}
+                  {v.gruppo != null && v.gruppoParziale && (
+                    <span className="ml-1 align-middle text-[10px] font-normal text-incerto">parziale</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Quanto pesa ogni voce sul fatturato netto, nello stesso periodo della tabella sopra: con i dati
+        completi le quattro voci fanno 100% (a meno degli arrotondamenti). <span className="text-positivo">verde</span> = migliore
+        della catena, <span className="text-negativo">rosso</span> = peggiore (per spese e personale
+        vince il valore basso, per il margine quello alto). Ai punti vendita «{ETICHETTA_INCOMPLETO.toLowerCase()}»
+        mancano dati del periodo: si vedono le spese, che vengono dalle fatture, ma non entrano nel
+        confronto. «—» = dato non disponibile.
+      </p>
     </PannelloScheda>
   );
 }

@@ -149,12 +149,80 @@ export function cellTone(
   return "";
 }
 
-// Best/worst per RIGA (categoria) tra i PV con dato: la cella più bassa è la
-// migliore (meno materia prima per coperto = meno spreco), la più alta peggiore.
-export function rigaExtremes(r: SprecoCategoriaRiga): { best: number | null; worst: number | null } {
+// Best/worst per RIGA tra i PV con dato. Per lo spreco (il default) la cella più
+// bassa è la migliore (meno materia prima per coperto = meno spreco); le «Voci di
+// costo» passano `altoMeglio` per il margine, dove vince la più alta.
+export function rigaExtremes(
+  r: { per_pv: readonly Pick<SprecoCategoriaRiga["per_pv"][number], "valore">[] },
+  altoMeglio = false,
+): { best: number | null; worst: number | null } {
   const vals = r.per_pv.map((c) => c.valore).filter((v): v is number => v != null);
   if (vals.length < MIN_VALORI_CONFRONTO) return { best: null, worst: null };
-  return { best: Math.min(...vals), worst: Math.max(...vals) };
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  return altoMeglio ? { best: hi, worst: lo } : { best: lo, worst: hi };
+}
+
+/* ─── «Voci di costo» (12/10/2026): righe = voci, colonne = PV ──────────────
+ *
+ * Stessi dati della tabella dei margini, girati: quanto pesa ogni voce sul
+ * fatturato netto di ogni punto vendita. Con i dati completi le quattro voci di
+ * una sede fanno 100. La sede incompleta ha F&B e spese (dalle fatture) ma non
+ * personale e margine: arrivano null dal worker, e qui restano null. I suoi F&B
+ * e spese si leggono ma non entrano nel migliore/peggiore, come in
+ * `calcolaExtremes`: con l'incasso o le fatture dell'ultimo mese mancanti sono
+ * spostati, e un verde o un rosso darebbe un giudizio su un dato a meta'.
+ */
+export const VOCI_COSTO_CATENA: readonly { key: keyof MarginiCopertiPV; label: string; altoMeglio: boolean }[] = [
+  { key: "food_cost_perc", label: "Spese F&B", altoMeglio: false },
+  { key: "spese_generali_perc", label: "Spese generali", altoMeglio: false },
+  { key: "personale_perc", label: "Personale", altoMeglio: false },
+  { key: "margine_perc", label: "Margine", altoMeglio: true },
+];
+
+export type RigaVoceCosto = {
+  key: keyof MarginiCopertiPV;
+  label: string;
+  per_pv: { ristorante_id: string; valore: number | null }[];
+  gruppo: number | null;
+  // Con una sede incompleta ogni voce del gruppo e' parziale, non solo il
+  // margine: una sede con i costi e senza l'incasso gonfia anche il F&B.
+  gruppoParziale: boolean;
+  best: number | null;
+  worst: number | null;
+};
+
+function valoreVoce(r: MarginiCopertiPV, key: keyof MarginiCopertiPV): number | null {
+  const v = r[key];
+  return typeof v === "number" ? v : null;
+}
+
+export function vociCostoCatena(
+  righe: readonly MarginiCopertiPV[],
+  gruppo: MarginiCopertiPV,
+  nIncompleti: number,
+): RigaVoceCosto[] {
+  const completi = righe.filter((r) => !r.dati_incompleti);
+  return VOCI_COSTO_CATENA.map((voce) => {
+    const per_pv = righe.map((r) => ({ ristorante_id: r.ristorante_id, valore: valoreVoce(r, voce.key) }));
+    const confrontabili = completi.map((r) => ({ valore: valoreVoce(r, voce.key) }));
+    return {
+      key: voce.key,
+      label: voce.label,
+      per_pv,
+      gruppo: valoreVoce(gruppo, voce.key),
+      gruppoParziale: nIncompleti > 0,
+      ...rigaExtremes({ per_pv: confrontabili }, voce.altoMeglio),
+    };
+  });
+}
+
+// Verde al migliore, rosso al peggiore; niente se tutti uguali (best === worst).
+export function toneVoce(v: number | null, riga: Pick<RigaVoceCosto, "best" | "worst">): string {
+  if (v == null || riga.best == null) return "";
+  if (v === riga.best && v !== riga.worst) return "text-positivo font-semibold";
+  if (v === riga.worst && v !== riga.best) return "text-negativo font-semibold";
+  return "";
 }
 
 /* ─── catena/analisi/scheda-spesa-pv.tsx: heatmap pivot, PV piu' caro, mese ─ */
