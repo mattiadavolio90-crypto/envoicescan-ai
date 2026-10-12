@@ -569,6 +569,9 @@ RICETTE: List[Ricetta] = [
     R("GET", "/api/gruppo/tag/{gtag_id}/analisi", params={"mese": 3}),
     # prezzi di catena: la riga aperta chiede lo storico di UNA sede per id
     R("GET", "/api/gruppo/prezzi/storico", params={"ristorante_id": "$altro.sede1", "prodotto": "$altro.prodotto"}),
+    # la stella di catena e' il preferito di UNA sede, indicata per id
+    R("POST", "/api/gruppo/prezzi/preferiti", {"ristorante_id": "$altro.sede1", "prodotto": "$altro.prodotto"}),
+    R("DELETE", "/api/gruppo/prezzi/preferiti", params={"ristorante_id": "$altro.sede1", "prodotto": "$altro.prodotto"}),
     # riparto
     R("POST", "/api/riparto/da-fattura", {"file_origine": "$altro.file", "descrizione": "x"}),
     R("POST", "/api/riparto/da-coda", {"queue_id": "$altro.queue_id", "descrizione": "x"}),

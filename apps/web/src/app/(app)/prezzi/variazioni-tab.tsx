@@ -21,6 +21,14 @@ import { AnteprimaFatturaDialog } from "./anteprima-fattura-dialog";
 import { parseDecimaleIt, formatEuro } from "@/lib/format";
 import { puntiSparkline } from "@/lib/sparkline-punti";
 import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
+import {
+  SPIEGAZIONE_DA_CONTROLLARE,
+  chiavePreferito,
+  contaDaControllare,
+  coppiaPreferito,
+  inVista,
+  type VistaPrezzi,
+} from "@/lib/prezzi-viste";
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const PAGE_SIZE = 100;
@@ -55,22 +63,6 @@ function fmtData(s: string): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
-// Chiave preferito: gemella di _pulisci_desc_key/_pulisci_forn_key del worker.
-// Rimuove i suffissi UI (" ⚠️ >6m"), UPPER+TRIM. Serve per aggiornare in modo
-// ottimistico il Set locale dei preferiti coerentemente col campo `preferito`
-// che arriva dal server.
-const SUFFISSI_UI = [" ⚠️ >6M", " ⚠ >6M"];
-function prefKey(prodotto: string, fornitore: string): string {
-  let d = prodotto.trim().toUpperCase();
-  for (const s of SUFFISSI_UI) {
-    if (d.endsWith(s)) {
-      d = d.slice(0, -s.length).trim();
-      break;
-    }
-  }
-  return `${d}|${fornitore.trim().toUpperCase()}`;
 }
 
 type Gravita = "critico" | "alto" | "medio";
@@ -468,7 +460,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroFornitore, setFiltroFornitore] = useState("");
   const [preferiti, setPreferiti] = useState<Set<string>>(new Set());
-  const [soloPreferiti, setSoloPreferiti] = useState(false);
+  const [vista, setVista] = useState<VistaPrezzi>("tutti");
   const [currentRange, setCurrentRange] = useState<{ data_da: string; data_a: string }>(
     isoDateRange(ANNO_CORRENTE, null),
   );
@@ -502,7 +494,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         new Set(
           (json.variazioni ?? [])
             .filter((v) => v.preferito)
-            .map((v) => prefKey(v.prodotto, v.fornitore)),
+            .map((v) => chiavePreferito(v)),
         ),
       );
     } catch {
@@ -520,7 +512,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   // non esiste più mostrerebbe una lista vuota anche con risultati disponibili.
   useEffect(() => {
     setPage(1);
-  }, [search, filtroCategoria, filtroFornitore, soloPreferiti, data]);
+  }, [search, filtroCategoria, filtroFornitore, vista, data]);
 
   // Applica un preset di periodo aggiornando stato + ricaricando.
   function applyAnno(y: number) {
@@ -585,7 +577,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   // Stella ottimistica: aggiorna subito il Set locale, poi persiste. Su errore
   // fa rollback e mostra un toast — la stella non resta in uno stato falso.
   const toggleStar = useCallback(async (r: VariazionePrezzo) => {
-    const key = prefKey(r.prodotto, r.fornitore);
+    const key = chiavePreferito(r);
+    const coppia = coppiaPreferito(r);
     const eraPreferito = preferiti.has(key);
     setPreferiti((prev) => {
       const next = new Set(prev);
@@ -596,13 +589,13 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     try {
       let res: Response;
       if (eraPreferito) {
-        const qs = new URLSearchParams({ prodotto: r.prodotto, fornitore: r.fornitore });
+        const qs = new URLSearchParams(coppia);
         res = await fetch(`/api/prezzi/preferiti?${qs}`, { method: "DELETE" });
       } else {
         res = await fetch("/api/prezzi/preferiti", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prodotto: r.prodotto, fornitore: r.fornitore }),
+          body: JSON.stringify(coppia),
         });
       }
       if (!res.ok) throw new Error();
@@ -641,9 +634,19 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       r.fornitore.toLowerCase().includes(search.toLowerCase());
     const matchCat = !filtroCategoria || r.categoria === filtroCategoria;
     const matchForn = !filtroFornitore || r.fornitore === filtroFornitore;
-    const matchPref = !soloPreferiti || preferiti.has(prefKey(r.prodotto, r.fornitore));
-    return matchSearch && matchCat && matchForn && matchPref;
-  }), [sorted, search, filtroCategoria, filtroFornitore, soloPreferiti, preferiti]);
+    const matchVista = inVista(r, vista, preferiti.has(chiavePreferito(r)));
+    return matchSearch && matchCat && matchForn && matchVista;
+  }), [sorted, search, filtroCategoria, filtroFornitore, vista, preferiti]);
+
+  const nDaControllare = useMemo(() => contaDaControllare(variazioni), [variazioni]);
+  // Il «filtrate da N» si misura sulla vista, non sul totale: le righe da
+  // controllare non sono «filtrate via» da Tutti, stanno in un'altra lista.
+  const baseVista = vista === "da_controllare" ? nDaControllare : variazioni.length - nDaControllare;
+  // Un nuovo periodo senza righe da controllare toglie la voce dal selettore:
+  // restarci sopra mostrerebbe una lista vuota senza modo di capire perche'.
+  useEffect(() => {
+    if (vista === "da_controllare" && nDaControllare === 0) setVista("tutti");
+  }, [vista, nDaControllare]);
 
   const nPreferiti = preferiti.size;
 
@@ -789,7 +792,14 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           orienta nessuna decisione e puo' mentire e' rumore, non sintesi.
           Il conteggio di quanti prodotti salgono e quanti scendono resta, ma
           sotto «Scostamento medio»: quello e' un dato onesto. */}
-      {data && variazioni.length > 0 && (
+      {/* Nella vista «Da controllare» i totali non hanno senso (sono proprio le
+          righe tenute fuori dai totali): al loro posto, il perche'. */}
+      {data && variazioni.length > 0 && vista === "da_controllare" && (
+        <p className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+          {SPIEGAZIONE_DA_CONTROLLARE}
+        </p>
+      )}
+      {data && variazioni.length > 0 && vista !== "da_controllare" && (
         <div className="grid grid-cols-2 gap-3">
           <KpiCard
             label="Scostamento medio"
@@ -804,8 +814,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                un impatto ristretto a un fornitore si leggeva come totale. Stessa
                convenzione di sconti-tab/nc-tab ("filtrati da N"). */
             sub={
-              filtered.length !== variazioni.length
-                ? `su ${filtered.length} di ${variazioni.length} variazioni`
+              filtered.length !== baseVista
+                ? `su ${filtered.length} di ${baseVista} variazioni`
                 : "effetto sui costi mensili"
             }
             tone={impattoFiltrato < 0 ? "positivo" : "negativo"}
@@ -843,19 +853,22 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           <>
           <SegmentedControl
             aria-label="Mostra"
-            value={soloPreferiti ? "preferiti" : "tutti"}
-            onChange={(v) => setSoloPreferiti(v === "preferiti")}
+            value={vista}
+            onChange={setVista}
             options={[
               { value: "tutti", label: "Tutti" },
               {
                 value: "preferiti",
                 label: (
                   <>
-                    <Star className={`size-3 ${soloPreferiti ? "fill-current" : "fill-incerto text-incerto"}`} />
+                    <Star className={`size-3 ${vista === "preferiti" ? "fill-current" : "fill-incerto text-incerto"}`} />
                     Preferiti{nPreferiti > 0 ? ` (${nPreferiti})` : ""}
                   </>
                 ),
               },
+              ...(nDaControllare > 0
+                ? [{ value: "da_controllare" as const, label: `Da controllare (${nDaControllare})`, title: SPIEGAZIONE_DA_CONTROLLARE }]
+                : []),
             ]}
           />
           <div className="relative">
@@ -903,8 +916,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           <TriangleAlert className="size-4 text-negativo shrink-0" />
           <p className="text-sm font-semibold">
             {filtered.length} variazioni
-            {filtered.length !== variazioni.length && (
-              <span className="text-muted-foreground font-normal"> (filtrate da {variazioni.length})</span>
+            {filtered.length !== baseVista && (
+              <span className="text-muted-foreground font-normal"> (filtrate da {baseVista})</span>
             )}
             {nCritici > 0 && <span className="font-medium text-foreground"> · {nCritici} critiche</span>}
           </p>
@@ -988,7 +1001,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                   key={key}
                   r={r}
                   expanded={expandedKey === key}
-                  preferito={preferiti.has(prefKey(r.prodotto, r.fornitore))}
+                  preferito={preferiti.has(chiavePreferito(r))}
                   storico={expandedKey === key ? storico : null}
                   storicoLoading={expandedKey === key && storicoLoading}
                   onToggle={toggleCard}
@@ -1023,14 +1036,14 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
               </div>
             </div>
           )}
-          {filtered.length === 0 && soloPreferiti && nPreferiti === 0 && (
+          {filtered.length === 0 && vista === "preferiti" && nPreferiti === 0 && (
             <div className="rounded-lg border border-dashed border-border py-10 text-center">
               <Star className="size-7 text-incerto mx-auto mb-2" />
               <p className="text-sm font-medium">Non hai ancora prodotti preferiti</p>
               <p className="text-xs text-muted-foreground mt-1">Tocca la ⭐ accanto a un prodotto per seguirne i prezzi qui.</p>
             </div>
           )}
-          {filtered.length === 0 && !(soloPreferiti && nPreferiti === 0) && (
+          {filtered.length === 0 && !(vista === "preferiti" && nPreferiti === 0) && (
             <p className="text-sm text-muted-foreground py-6 text-center">Nessun risultato per i filtri selezionati</p>
           )}
         </>

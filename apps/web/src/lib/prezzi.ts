@@ -15,6 +15,11 @@ export type VariazionePrezzo = {
   impatto_stimato: number;
   delta_euro: number;
   preferito: boolean;
+  /** Chiavi intere della coppia: la stella si salva con queste, non col nome troncato. */
+  desc_key?: string;
+  forn_key?: string;
+  /** Prezzo saltato di 10 volte o piu': confezione o unita' cambiata, fuori dai totali. */
+  da_controllare?: boolean;
 };
 
 export type VariazioniResponse = {

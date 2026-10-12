@@ -2,31 +2,31 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, ChevronDown, Search } from "lucide-react";
+import { AlertTriangle, ChevronDown, Search, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { AREA_TABELLA, PannelloScheda } from "@/components/ui/pannello-scheda";
 import { cn } from "@/lib/utils";
-import { formatEuro } from "@/lib/format";
+import { formatEuro, parseDecimaleIt } from "@/lib/format";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { intervalloMese } from "@/lib/periodo";
 import type { StoricoPrezzoResponse } from "@/lib/prezzi";
 import {
-  chiaveVariazione,
+  chiaveStellaCatena,
   etichettaDiffusione,
   filtraDivari,
   filtraVariazioni,
   pvDeiPrezzi,
+  stelleIniziali,
   totaliPrezzi,
   type GruppoPrezzi,
   type VariazionePrezzoCatena,
 } from "@/lib/catena-prezzi";
+import { SPIEGAZIONE_DA_CONTROLLARE, coppiaPreferito, type VistaPrezzi } from "@/lib/prezzi-viste";
 
-type Vista = "variazioni" | "divari";
-
-const SOGLIE = [5, 10, 20];
+type Lista = "variazioni" | "divari";
 
 function euro2(v: number): string {
   return formatEuro(v, 2);
@@ -100,8 +100,13 @@ function StoricoPv({ storico, loading }: { storico: StoricoPrezzoResponse | null
 // diverso fra le sedi. Le regole stanno in lib/catena-prezzi.ts.
 export function SchedaPrezziCatena() {
   const [periodo, setPeriodo] = useState<string>("anno");
-  const [soglia, setSoglia] = useState<number>(SOGLIE[0]);
-  const [vista, setVista] = useState<Vista>("variazioni");
+  // null = la soglia degli avvisi dell'account, che il worker usa e rimanda:
+  // la casella parte da li', come nell'Osservatorio del PV.
+  const [soglia, setSoglia] = useState<number | null>(null);
+  const [sogliaInput, setSogliaInput] = useState("");
+  const [lista, setLista] = useState<Lista>("variazioni");
+  const [mostra, setMostra] = useState<VistaPrezzi>("tutti");
+  const [stelle, setStelle] = useState<Set<string>>(new Set());
   const [pv, setPv] = useState("");
   const [ricerca, setRicerca] = useState("");
   const [data, setData] = useState<GruppoPrezzi | null>(null);
@@ -128,11 +133,15 @@ export function SchedaPrezziCatena() {
     setLoading(true);
     setLoadError(false);
     setAperta(null);
-    const qs = new URLSearchParams({ ...range, soglia: String(soglia) });
+    const qs = new URLSearchParams(range);
+    if (soglia != null) qs.set("soglia", String(soglia));
     fetch(`/api/gruppo/prezzi?${qs}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j: GruppoPrezzi) => {
-        if (my === reqRef.current) setData(j);
+        if (my !== reqRef.current) return;
+        setData(j);
+        setStelle(stelleIniziali(j.variazioni));
+        if (soglia == null) setSogliaInput(String(j.soglia).replace(".", ","));
       })
       .catch(() => {
         if (my === reqRef.current) {
@@ -149,15 +158,75 @@ export function SchedaPrezziCatena() {
     carica();
   }, [carica]);
 
+  function applicaSoglia() {
+    const val = parseDecimaleIt(sogliaInput);
+    if (!isNaN(val) && val >= 0 && val !== soglia) setSoglia(val);
+  }
+
   const elencoPv = useMemo(() => pvDeiPrezzi(data), [data]);
-  const variazioni = useMemo(() => filtraVariazioni(data?.variazioni ?? [], { pv, ricerca }), [data, pv, ricerca]);
-  const divari = useMemo(() => filtraDivari(data?.divari ?? [], { pv, ricerca }), [data, pv, ricerca]);
+  const variazioni = useMemo(
+    () => filtraVariazioni(data?.variazioni ?? [], { pv, ricerca, vista: mostra }, stelle),
+    [data, pv, ricerca, mostra, stelle],
+  );
+  const divari = useMemo(() => filtraDivari(data?.divari ?? [], { pv, ricerca, vista: mostra }), [data, pv, ricerca, mostra]);
+  const nDaControllare = useMemo(
+    () =>
+      lista === "variazioni"
+        ? filtraVariazioni(data?.variazioni ?? [], { pv, ricerca, vista: "da_controllare" }).length
+        : filtraDivari(data?.divari ?? [], { pv, ricerca, vista: "da_controllare" }).length,
+    [data, pv, ricerca, lista],
+  );
+  const nStelle = useMemo(
+    () => filtraVariazioni(data?.variazioni ?? [], { pv, ricerca, vista: "preferiti" }, stelle).length,
+    [data, pv, ricerca, stelle],
+  );
   const totali = totaliPrezzi(variazioni, divari, pv);
   const nomePv = elencoPv.find((p) => p.id === pv)?.nome;
 
+  // Una voce che sparisce dal selettore (nessuna riga da controllare in questo
+  // periodo, «Preferiti» nella lista dei divari) riporta su «Tutti»: restarci
+  // mostrerebbe una lista vuota senza un perche'.
+  useEffect(() => {
+    if ((mostra === "da_controllare" && nDaControllare === 0) || (mostra === "preferiti" && lista === "divari")) {
+      setMostra("tutti");
+    }
+  }, [mostra, nDaControllare, lista]);
+
+  // Stella ottimistica, come nell'Osservatorio: subito a video, rollback se il
+  // salvataggio non riesce. E' la stella del PV della riga.
+  const toggleStella = useCallback(
+    async (v: VariazionePrezzoCatena) => {
+      const chiave = chiaveStellaCatena(v);
+      const era = stelle.has(chiave);
+      const cambia = (accesa: boolean) =>
+        setStelle((prev) => {
+          const next = new Set(prev);
+          if (accesa) next.add(chiave);
+          else next.delete(chiave);
+          return next;
+        });
+      cambia(!era);
+      const corpo = { ristorante_id: v.ristorante_id, ...coppiaPreferito(v) };
+      try {
+        const res = era
+          ? await fetch(`/api/gruppo/prezzi/preferiti?${new URLSearchParams(corpo)}`, { method: "DELETE" })
+          : await fetch("/api/gruppo/prezzi/preferiti", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(corpo),
+            });
+        if (!res.ok) throw new Error();
+      } catch {
+        cambia(era);
+        toast.error("Non sono riuscito ad aggiornare i preferiti");
+      }
+    },
+    [stelle],
+  );
+
   const apriVariazione = useCallback(
     async (v: VariazionePrezzoCatena) => {
-      const chiave = chiaveVariazione(v);
+      const chiave = chiaveStellaCatena(v);
       if (aperta === chiave) {
         setAperta(null);
         return;
@@ -202,29 +271,62 @@ export function SchedaPrezziCatena() {
               </option>
             ))}
           </NativeSelect>
-          <NativeSelect
-            value={String(soglia)}
-            onValueChange={(v) => setSoglia(Number(v))}
-            className="h-8 w-40 text-xs"
-            aria-label="Soglia"
-          >
-            {SOGLIE.map((s) => (
-              <option key={s} value={String(s)}>
-                Differenze da {s}% in su
-              </option>
-            ))}
-          </NativeSelect>
+          {/* Casella libera come nell'Osservatorio del PV (non una tendina): parte
+              dalla soglia degli avvisi e filtra solo questa scheda. */}
+          <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2">
+            <label htmlFor="soglia-prezzi-catena" className="whitespace-nowrap text-xs text-muted-foreground">
+              Mostra da
+            </label>
+            <input
+              id="soglia-prezzi-catena"
+              type="text"
+              inputMode="decimal"
+              value={sogliaInput}
+              onChange={(e) => setSogliaInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applicaSoglia();
+              }}
+              onBlur={applicaSoglia}
+              disabled={loading}
+              className="w-10 bg-transparent text-right text-xs text-foreground outline-none disabled:opacity-50"
+            />
+            <span className="whitespace-nowrap text-xs text-muted-foreground">% in su</span>
+          </div>
         </>
       }
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SegmentedControl
-          aria-label="Vista"
-          value={vista}
-          onChange={setVista}
+          aria-label="Lista"
+          value={lista}
+          onChange={setLista}
           options={[
             { value: "variazioni", label: "Variazioni nei PV" },
             { value: "divari", label: "Stesso prodotto, prezzi diversi" },
+          ]}
+        />
+        <SegmentedControl
+          aria-label="Mostra"
+          value={mostra}
+          onChange={setMostra}
+          options={[
+            { value: "tutti" as const, label: "Tutti" },
+            ...(lista === "variazioni"
+              ? [
+                  {
+                    value: "preferiti" as const,
+                    label: (
+                      <>
+                        <Star className={cn("size-3", mostra === "preferiti" ? "fill-current" : "fill-incerto text-incerto")} />
+                        Preferiti{nStelle > 0 ? ` (${nStelle})` : ""}
+                      </>
+                    ),
+                  },
+                ]
+              : []),
+            ...(nDaControllare > 0
+              ? [{ value: "da_controllare" as const, label: `Da controllare (${nDaControllare})`, title: SPIEGAZIONE_DA_CONTROLLARE }]
+              : []),
           ]}
         />
         <div className="relative">
@@ -238,9 +340,14 @@ export function SchedaPrezziCatena() {
         </div>
       </div>
 
-      {data && !vuoto && (
+      {data && !vuoto && mostra === "da_controllare" && (
+        <p className="mb-4 rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+          {SPIEGAZIONE_DA_CONTROLLARE}
+        </p>
+      )}
+      {data && !vuoto && mostra !== "da_controllare" && (
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {vista === "variazioni" ? (
+          {lista === "variazioni" ? (
             <>
               <Kpi label="Prezzi aumentati" valore={String(totali.aumenti)} sotto={nomePv ?? "Tutti i punti vendita"} />
               <Kpi label="Prezzi calati" valore={String(totali.cali)} />
@@ -280,15 +387,18 @@ export function SchedaPrezziCatena() {
           <div className="py-16 text-center text-sm text-muted-foreground">
             Nessun acquisto nel periodo ({data.periodo_label}).
           </div>
-        ) : vista === "variazioni" ? (
+        ) : lista === "variazioni" ? (
           variazioni.length === 0 ? (
             <div className="py-16 text-center text-sm text-muted-foreground">
-              Nessun prezzo cambiato di almeno il {data.soglia}% nel periodo.
+              {mostra === "preferiti"
+                ? "Nessun preferito fra le variazioni del periodo. Tocca la stella accanto a un prodotto per seguirlo."
+                : `Nessun prezzo cambiato di almeno il ${data.soglia}% nel periodo.`}
             </div>
           ) : (
             <table className="w-full border-separate border-spacing-0 text-sm">
               <thead className="sticky top-0 z-30 bg-card shadow-[0_1px_0_0_var(--color-border)]">
                 <tr>
+                  <th className="w-8" aria-label="Preferito" />
                   <th className="px-3 py-2 text-left font-semibold">Prodotto</th>
                   <th className="px-3 py-2 text-left font-semibold">Punto vendita</th>
                   <th className="px-3 py-2 text-right font-semibold">Prima</th>
@@ -300,7 +410,7 @@ export function SchedaPrezziCatena() {
               </thead>
               <tbody>
                 {variazioni.map((v) => {
-                  const chiave = chiaveVariazione(v);
+                  const chiave = chiaveStellaCatena(v);
                   const diffusione = etichettaDiffusione(v);
                   const isAperta = aperta === chiave;
                   return (
@@ -310,6 +420,26 @@ export function SchedaPrezziCatena() {
                         onClick={() => apriVariazione(v)}
                         aria-expanded={isAperta}
                       >
+                        <td className="pl-3">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleStella(v);
+                            }}
+                            aria-label={stelle.has(chiave) ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
+                            aria-pressed={stelle.has(chiave)}
+                            title={`Preferito di ${v.nome_pv}`}
+                          >
+                            <Star
+                              className={cn(
+                                "size-4 transition-colors",
+                                stelle.has(chiave) ? "fill-incerto text-incerto" : "text-muted-foreground/50 hover:text-incerto",
+                              )}
+                            />
+                          </Button>
+                        </td>
                         <td className="max-w-[18rem] px-3 py-2">
                           <span className="block truncate font-medium" title={v.prodotto}>{v.prodotto}</span>
                           <span className="block truncate text-xs text-muted-foreground" title={`${v.fornitore} · ${v.categoria}`}>
@@ -346,7 +476,7 @@ export function SchedaPrezziCatena() {
                       </tr>
                       {isAperta && (
                         <tr>
-                          <td colSpan={7} className="bg-muted/10 px-6 pb-3">
+                          <td colSpan={8} className="bg-muted/10 px-6 pb-3">
                             <p className="pt-2 text-xs text-muted-foreground">Acquisti di {v.nome_pv} nel periodo</p>
                             <StoricoPv storico={storico} loading={storicoLoading} />
                           </td>

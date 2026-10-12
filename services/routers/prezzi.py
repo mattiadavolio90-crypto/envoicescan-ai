@@ -67,6 +67,40 @@ _PRICE_ALERT_DEFAULT = 5.0
 _NC_TIPO_REGEX = r"TD04|NOTA DI CREDITO|NOTA CREDITO|\bNC\b|CREDIT"
 
 
+# Voci che non hanno un prezzo unitario: un deposito sui vuoti vale 0,03 o 960
+# EUR a seconda di quanti fusti consegna il fornitore. Escluse da ogni analisi
+# prezzi qualunque sia la categoria — su OFFSIDE «ADDEBITO CAUZIONI» sta in VARIE
+# BAR per scelta del cliente, e da sola ribaltava l'impatto/mese da +55 a -599
+# EUR. La lista e' stretta di proposito, misurata l'11/10/2026 su tutto il DB:
+# «CAUZION» colpisce solo depositi, mentre «VUOTO» prende i croissant vuoti e
+# «TRASPORTO» il mango «trasporto aereo». Gemella in `gruppo_prezzi_catena`.
+_VOCE_NON_PREZZO_REGEX = r"CAUZION"
+
+# Un prezzo che salta di 10 volte o piu' fra due acquisti non e' un rincaro: e'
+# un cambio di confezione (bottiglia/cassa) o di unita' (kg/cartone). Misurato
+# l'11/10/2026 sulle due catene: 7 variazioni su 333 e 1 su 27, tutte di questo
+# tipo, che spostavano l'impatto/mese di 1.400 EUR.
+_SALTO_DA_CONTROLLARE = 10.0
+
+
+def _mask_voce_non_prezzo(df):
+    """Serie booleana: True sulle righe che non hanno un prezzo unitario."""
+    import pandas as pd
+    if 'descrizione' not in df.columns:
+        return pd.Series(False, index=df.index)
+    return df['descrizione'].astype(str).str.upper().str.contains(
+        _VOCE_NON_PREZZO_REGEX, na=False, regex=True
+    )
+
+
+def _salto_da_controllare(a: float, b: float) -> bool:
+    """True se fra i due prezzi c'e' un fattore `_SALTO_DA_CONTROLLARE` o piu'."""
+    a, b = abs(float(a)), abs(float(b))
+    if min(a, b) <= 0:
+        return max(a, b) > 0
+    return max(a, b) / min(a, b) >= _SALTO_DA_CONTROLLARE
+
+
 def _mask_nota_credito(df):
     """Serie booleana: True dove la riga appartiene a una nota di credito.
     Basato su tipo_documento (TD04 incluso). Robusto a colonna assente."""
@@ -123,6 +157,13 @@ class VariazionePrezzo(BaseModel):
     impatto_stimato: float
     delta_euro: float
     preferito: bool = False
+    # Chiavi INTERE della coppia (UPPER+TRIM): la stella si salva con queste, non
+    # col nome troncato a video.
+    desc_key: str = ""
+    forn_key: str = ""
+    # Prezzo saltato di `_SALTO_DA_CONTROLLARE` volte o piu': cambio di
+    # confezione o di unita' di misura, non un rincaro. Fuori dai totali.
+    da_controllare: bool = False
 
 
 class VariazioniResponse(BaseModel):
@@ -313,6 +354,7 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
     # vero acquisto e comparirebbero nel confronto prezzi come "aumento/calo"
     # fasullo. Escludiamo esplicitamente per tipo_documento, non per segno.
     df = df[~_mask_nota_credito(df)].copy()
+    df = df[~_mask_voce_non_prezzo(df)].copy()
     df = df[df['prezzo_unitario'] > 0].copy()
 
     if df.empty:
@@ -439,7 +481,17 @@ def _deriva_variazione(
     else:
         trend = "↕"
 
-    pref_key = f"{_pulisci_desc_key(descrizione)}|{_pulisci_forn_key(fornitore)}"
+    desc_key = _pulisci_desc_key(descrizione)
+    forn_key = _pulisci_forn_key(fornitore)
+    # Fino all'11/10/2026 la stella salvava il nome TRONCATO della riga (prodotto
+    # a 60, fornitore a 30): 10 preferiti su 19 non si riaccendevano piu' al
+    # ricaricamento. Ora la riga porta le chiavi intere, e quelle vecchie si
+    # riconoscono ancora, senza migrare i dati.
+    chiave_vecchia = (
+        f"{_pulisci_desc_key((descrizione + nota)[:60])}|"
+        f"{_pulisci_forn_key(fornitore[:_FORNITORE_MAX])}"
+    )
+    keys = preferiti_keys or set()
 
     return {
         'prodotto': (descrizione + nota)[:60],
@@ -456,7 +508,10 @@ def _deriva_variazione(
         'trend': trend,
         'impatto_stimato': round(float(delta * qta_ref * freq), 2),
         'delta_euro': round(delta, 4),
-        'preferito': pref_key in (preferiti_keys or set()),
+        'preferito': f"{desc_key}|{forn_key}" in keys or chiave_vecchia in keys,
+        'desc_key': desc_key,
+        'forn_key': forn_key,
+        'da_controllare': _salto_da_controllare(prezzo_pen, prezzo_ult),
     }
 
 
@@ -575,6 +630,21 @@ def set_soglia_alert(
     return SogliaAlertResponse(soglia=val)
 
 
+def _kpi_variazioni(variazioni: list) -> tuple:
+    """(scostamento medio %, impatto netto, fornitori coinvolti) delle sole
+    variazioni vere: un salto da cambio di confezione resta nella lista (vista
+    «Da controllare») ma non nei totali."""
+    vere = [v for v in variazioni if not v.get('da_controllare')]
+    if not vere:
+        return 0.0, 0.0, set()
+    pct_vals = [v['aumento_perc'] for v in vere]
+    return (
+        round(sum(pct_vals) / len(pct_vals), 2),
+        round(sum(v['impatto_stimato'] for v in vere), 2),
+        {v['fornitore'] for v in vere},
+    )
+
+
 @router.get("/api/prezzi/variazioni", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
 def get_variazioni_prezzi(
     data_da: str,
@@ -592,14 +662,7 @@ def get_variazioni_prezzi(
     preferiti_keys = _carica_preferiti_keys(sb, ristorante_id)
     variazioni = _calcola_variazioni_prezzi_sync(all_rows, soglia, preferiti_keys)
 
-    scostamento_medio = 0.0
-    impatto_netto = 0.0
-    fornitori: set = set()
-    if variazioni:
-        pct_vals = [v['aumento_perc'] for v in variazioni]
-        scostamento_medio = round(sum(pct_vals) / len(pct_vals), 2)
-        impatto_netto = round(sum(v['impatto_stimato'] for v in variazioni), 2)
-        fornitori = {v['fornitore'] for v in variazioni}
+    scostamento_medio, impatto_netto, fornitori = _kpi_variazioni(variazioni)
 
     fatture_nel_periodo = _conta_fatture_distinte(all_rows)
 
@@ -650,21 +713,41 @@ def add_preferito(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    desc_key = _pulisci_desc_key(body.prodotto)
-    forn_key = _pulisci_forn_key(body.fornitore)
+    _salva_preferito(sb, ristorante_id, str(user["id"]), body.prodotto, body.fornitore)
+    return get_preferiti(authorization)
+
+
+def _salva_preferito(sb, ristorante_id: str, user_id: str, prodotto: str, fornitore: str) -> None:
+    """Stella su una coppia di UNA sede (idempotente). `ristorante_id` arriva gia'
+    verificato: la sede di sessione, o una sede del gruppo dalla catena."""
+    desc_key = _pulisci_desc_key(prodotto)
+    forn_key = _pulisci_forn_key(fornitore)
     if not desc_key:
         raise HTTPException(status_code=400, detail="Prodotto mancante")
-
     sb.table("prezzi_preferiti").upsert(
         {
             "ristorante_id": ristorante_id,
-            "user_id": str(user["id"]),
+            "user_id": user_id,
             "descrizione_key": desc_key,
             "fornitore_key": forn_key,
         },
         on_conflict="ristorante_id,descrizione_key,fornitore_key",
     ).execute()
-    return get_preferiti(authorization)
+
+
+def _togli_preferito(sb, ristorante_id: str, prodotto: str, fornitore: str) -> None:
+    """Toglie la stella, anche nella forma troncata salvata fino all'11/10/2026:
+    senza, una stella vecchia restava accesa dopo il clic."""
+    desc_key = _pulisci_desc_key(prodotto)
+    forn_key = _pulisci_forn_key(fornitore)
+    (
+        sb.table("prezzi_preferiti")
+        .delete()
+        .eq("ristorante_id", ristorante_id)
+        .in_("descrizione_key", sorted({desc_key, _pulisci_desc_key(desc_key[:60])}))
+        .in_("fornitore_key", sorted({forn_key, _pulisci_forn_key(forn_key[:_FORNITORE_MAX])}))
+        .execute()
+    )
 
 
 @router.delete("/api/prezzi/preferiti", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
@@ -679,16 +762,7 @@ def remove_preferito(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    desc_key = _pulisci_desc_key(prodotto)
-    forn_key = _pulisci_forn_key(fornitore)
-    (
-        sb.table("prezzi_preferiti")
-        .delete()
-        .eq("ristorante_id", ristorante_id)
-        .eq("descrizione_key", desc_key)
-        .eq("fornitore_key", forn_key)
-        .execute()
-    )
+    _togli_preferito(sb, ristorante_id, prodotto, fornitore)
     return get_preferiti(authorization)
 
 
@@ -1104,6 +1178,9 @@ def _calcola_score_fornitori(
 
     if not rows:
         return []
+
+    # Un salto da cambio di confezione non e' instabilita' del fornitore.
+    variazioni = [v for v in variazioni if not v.get('da_controllare')]
 
     oggi = oggi or pd.Timestamp.now(tz="UTC")
 

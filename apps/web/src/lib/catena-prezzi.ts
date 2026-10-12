@@ -8,6 +8,8 @@
 // Mescolare le due cose e' l'errore che la scheda esiste per evitare: il PV
 // che paga 15,80 e quello che paga 17,58 non sono un rincaro dell'11%.
 
+import { chiavePreferito, inVista, type VistaPrezzi } from "@/lib/prezzi-viste";
+
 export type VariazionePrezzoCatena = {
   ristorante_id: string;
   nome_pv: string;
@@ -25,6 +27,11 @@ export type VariazionePrezzoCatena = {
   delta_euro: number;
   n_pv_stesso_verso: number;
   n_pv_confrontabili: number;
+  /** La stella e' quella del PV della riga (la stessa del suo Osservatorio). */
+  preferito?: boolean;
+  desc_key?: string;
+  forn_key?: string;
+  da_controllare?: boolean;
 };
 
 export type PrezzoPV = {
@@ -45,6 +52,8 @@ export type DivarioPrezzo = {
   divario_perc: number;
   extra_stimato: number;
   per_pv: PrezzoPV[];
+  /** Prezzi a 10 volte o piu' l'uno dall'altro: confezioni diverse, non un divario. */
+  da_controllare?: boolean;
 };
 
 export type GruppoPrezzi = {
@@ -60,7 +69,20 @@ export type FiltriPrezzi = {
   /** id del punto vendita, "" = tutti */
   pv: string;
   ricerca: string;
+  /** Assente = «Tutti». Sui divari «Preferiti» vale «Tutti»: un divario e' di piu' PV. */
+  vista?: VistaPrezzi;
 };
+
+/** La stella di una riga: PV + coppia intera. Due PV con lo stesso prodotto
+ *  hanno due stelle distinte, come nei loro Osservatori. */
+export function chiaveStellaCatena(v: Pick<VariazionePrezzoCatena, "ristorante_id" | "prodotto" | "fornitore" | "desc_key" | "forn_key">): string {
+  return `${v.ristorante_id}|${chiavePreferito(v)}`;
+}
+
+/** Le stelle accese nei dati del worker, per lo stato ottimistico della scheda. */
+export function stelleIniziali(variazioni: readonly VariazionePrezzoCatena[]): Set<string> {
+  return new Set(variazioni.filter((v) => v.preferito).map(chiaveStellaCatena));
+}
 
 export type PvPrezzi = { id: string; nome: string };
 
@@ -82,9 +104,19 @@ function corrisponde(ricerca: string, ...campi: string[]): boolean {
 
 /** Filtrate e ordinate come l'Osservatorio del PV: dall'impatto in euro piu' alto,
  *  aumenti e cali insieme (un calo grosso e' una notizia quanto un rincaro). */
-export function filtraVariazioni(variazioni: VariazionePrezzoCatena[], f: FiltriPrezzi): VariazionePrezzoCatena[] {
+export function filtraVariazioni(
+  variazioni: VariazionePrezzoCatena[],
+  f: FiltriPrezzi,
+  stelle?: ReadonlySet<string>,
+): VariazionePrezzoCatena[] {
+  const vista = f.vista ?? "tutti";
   return variazioni
-    .filter((v) => (!f.pv || v.ristorante_id === f.pv) && corrisponde(f.ricerca, v.prodotto, v.fornitore))
+    .filter(
+      (v) =>
+        (!f.pv || v.ristorante_id === f.pv) &&
+        corrisponde(f.ricerca, v.prodotto, v.fornitore) &&
+        inVista(v, vista, stelle ? stelle.has(chiaveStellaCatena(v)) : v.preferito === true),
+    )
     .sort((a, b) => Math.abs(b.impatto_stimato) - Math.abs(a.impatto_stimato));
 }
 
@@ -93,7 +125,8 @@ export function filtraDivari(divari: DivarioPrezzo[], f: FiltriPrezzi): DivarioP
   return divari.filter(
     (d) =>
       (!f.pv || d.per_pv.some((p) => p.ristorante_id === f.pv)) &&
-      corrisponde(f.ricerca, d.prodotto, d.fornitore),
+      corrisponde(f.ricerca, d.prodotto, d.fornitore) &&
+      inVista(d, f.vista === "da_controllare" ? "da_controllare" : "tutti", false),
   );
 }
 
@@ -133,9 +166,4 @@ export function totaliPrezzi(variazioni: VariazionePrezzoCatena[], divari: Divar
     divari: divari.length,
     extraDivari: Math.round(extra * 100) / 100,
   };
-}
-
-/** Chiave stabile di una riga di variazione (stesso prodotto in piu' PV). */
-export function chiaveVariazione(v: Pick<VariazionePrezzoCatena, "ristorante_id" | "prodotto" | "fornitore">): string {
-  return `${v.ristorante_id}|${v.prodotto}|${v.fornitore}`;
 }

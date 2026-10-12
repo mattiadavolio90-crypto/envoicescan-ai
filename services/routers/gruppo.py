@@ -28,10 +28,14 @@ from services import sotto_utenti_service as _su
 from services.permessi_rotte import notifica_visibile
 from services.routers.prezzi import (
     _CATEGORIE_SPESE_PREZZI,
+    _PRICE_ALERT_DEFAULT,
     StoricoPrezzoResponse,
     _deriva_variazione,
     _frequenza_mensile,
+    _salto_da_controllare,
+    _salva_preferito,
     _storico_prodotto_sede,
+    _togli_preferito,
 )
 
 logger = get_logger("router_gruppo")
@@ -3239,6 +3243,18 @@ class VariazionePrezzoCatena(BaseModel):
     # il listino del fornitore, «in 1 PV su 5» e' un problema di quella sede.
     n_pv_stesso_verso: int
     n_pv_confrontabili: int
+    # La stella e' quella del PV della riga: accenderla qui la accende anche
+    # nel suo Osservatorio.
+    preferito: bool = False
+    desc_key: str = ""
+    forn_key: str = ""
+    da_controllare: bool = False
+
+
+class PreferitoCatenaRequest(BaseModel):
+    ristorante_id: str
+    prodotto: str
+    fornitore: str = ""
 
 
 class PrezzoPV(BaseModel):
@@ -3259,6 +3275,9 @@ class DivarioPrezzo(BaseModel):
     divario_perc: float
     extra_stimato: float
     per_pv: List[PrezzoPV]
+    # Prezzi a 10 volte o piu' l'uno dall'altro: confezioni o unita' diverse,
+    # non un divario. Fuori dai totali, nella vista «Da controllare».
+    da_controllare: bool = False
 
 
 class GruppoPrezziResponse(BaseModel):
@@ -3272,8 +3291,14 @@ class GruppoPrezziResponse(BaseModel):
     divario_finestra_giorni: int = _DIVARIO_FINESTRA_GIORNI
 
 
-def _variazioni_catena(coppie: List[Dict[str, Any]], rid_to_nome: Dict[str, str], soglia: float) -> List[Dict[str, Any]]:
+def _variazioni_catena(
+    coppie: List[Dict[str, Any]],
+    rid_to_nome: Dict[str, str],
+    soglia: float,
+    preferiti_per_sede: Optional[Dict[str, set]] = None,
+) -> List[Dict[str, Any]]:
     """Le variazioni di ogni sede, dalle coppie gia' aggregate dalla RPC."""
+    preferiti_per_sede = preferiti_per_sede or {}
     variazioni: List[Dict[str, Any]] = []
     confrontabili: Dict[tuple, int] = {}
     for c in coppie:
@@ -3295,7 +3320,7 @@ def _variazioni_catena(coppie: List[Dict[str, Any]], rid_to_nome: Dict[str, str]
             qta_ref=float(c["qta_media"]) if c.get("qta_media") is not None else 1.0,
             freq=_frequenza_mensile(int(c.get("n_acquisti") or 0), c.get("prima_data"), c.get("ultima_data")),
             soglia=soglia,
-            preferiti_keys=set(),
+            preferiti_keys=preferiti_per_sede.get(rid, set()),
         )
         if v is None:
             continue
@@ -3304,12 +3329,15 @@ def _variazioni_catena(coppie: List[Dict[str, Any]], rid_to_nome: Dict[str, str]
         v["_chiave"] = chiave
         variazioni.append(v)
 
+    # Un salto da cambio di confezione non e' «lo stesso rincaro» di un'altra sede.
     verso: Dict[tuple, int] = {}
     for v in variazioni:
+        if v["da_controllare"]:
+            continue
         k = (v["_chiave"], v["aumento_perc"] > 0)
         verso[k] = verso.get(k, 0) + 1
     for v in variazioni:
-        v["n_pv_stesso_verso"] = verso[(v["_chiave"], v["aumento_perc"] > 0)]
+        v["n_pv_stesso_verso"] = verso.get((v["_chiave"], v["aumento_perc"] > 0), 1)
         v["n_pv_confrontabili"] = confrontabili[v["_chiave"]]
         del v["_chiave"]
 
@@ -3383,6 +3411,7 @@ def _calcola_divari_catena(
             "divario_perc": round(divario, 2),
             "extra_stimato": round(sum(x["extra_stimato"] for x in per_pv), 2),
             "per_pv": per_pv,
+            "da_controllare": _salto_da_controllare(p_min, p_max),
         })
 
     divari.sort(key=lambda d: (-d["extra_stimato"], -d["divario_perc"], d["prodotto"]))
@@ -3398,11 +3427,15 @@ def _calcola_divari_catena(
 def gruppo_prezzi(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
-    soglia: float = 5.0,
+    soglia: Optional[float] = None,
     authorization: Optional[str] = Header(None),
 ) -> GruppoPrezziResponse:
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     da, a, periodo_label = _periodo_da_query(data_da, data_a)
+    # Senza soglia si parte da quella degli avvisi (assistente in Home), come
+    # l'Osservatorio del PV: la scheda la rimanda indietro e la casella parte da li'.
+    if soglia is None:
+        soglia = _soglia_avvisi_account(sb, user_id)
     soglia = max(0.0, min(100.0, float(soglia)))
 
     # AGGREGAZIONE SQL: una voce per sede x prodotto x fornitore, non le righe,
@@ -3416,12 +3449,78 @@ def gruppo_prezzi(
     coppie = esito.get("coppie") or []
 
     return GruppoPrezziResponse(
-        variazioni=[VariazionePrezzoCatena(**v) for v in _variazioni_catena(coppie, rid_to_nome, soglia)],
+        variazioni=[
+            VariazionePrezzoCatena(**v)
+            for v in _variazioni_catena(coppie, rid_to_nome, soglia, _preferiti_per_sede(sb, ids))
+        ],
         divari=[DivarioPrezzo(**d) for d in _calcola_divari_catena(coppie, rid_to_nome, soglia)],
         soglia=soglia,
         periodo_label=periodo_label,
         acquisti_nel_periodo=int(esito.get("acquisti") or 0),
     )
+
+
+def _soglia_avvisi_account(sb, user_id: str) -> float:
+    try:
+        r = sb.table("users").select("price_alert_threshold").eq("id", user_id).limit(1).execute()
+        raw = (r.data or [{}])[0].get("price_alert_threshold")
+        return max(0.0, min(50.0, float(raw))) if raw is not None else _PRICE_ALERT_DEFAULT
+    except Exception:
+        return _PRICE_ALERT_DEFAULT
+
+
+def _preferiti_per_sede(sb, ids: List[str]) -> Dict[str, set]:
+    """{ristorante_id: {'DESC|FORN', ...}} dei preferiti di tutte le sedi."""
+    out: Dict[str, set] = {}
+    try:
+        righe = fetch_all(
+            sb.table("prezzi_preferiti")
+            .select("ristorante_id,descrizione_key,fornitore_key")
+            .in_("ristorante_id", ids)
+        )
+    except Exception:
+        return out
+    for r in righe:
+        out.setdefault(str(r.get("ristorante_id")), set()).add(
+            f"{r.get('descrizione_key', '')}|{r.get('fornitore_key', '')}"
+        )
+    return out
+
+
+@router.post(
+    "/api/gruppo/prezzi/preferiti",
+    tags=["Catena"],
+    summary="Stella su un prodotto di una sede del gruppo (la stessa dell'Osservatorio del PV)",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_prezzi_preferito_aggiungi(
+    body: PreferitoCatenaRequest,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, bool]:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    if body.ristorante_id not in rid_to_nome:
+        raise HTTPException(status_code=404, detail="Punto vendita non trovato")
+    _salva_preferito(sb, body.ristorante_id, user_id, body.prodotto, body.fornitore)
+    return {"preferito": True}
+
+
+@router.delete(
+    "/api/gruppo/prezzi/preferiti",
+    tags=["Catena"],
+    summary="Toglie la stella su un prodotto di una sede del gruppo",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_prezzi_preferito_togli(
+    ristorante_id: str,
+    prodotto: str,
+    fornitore: str = "",
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, bool]:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    if ristorante_id not in rid_to_nome:
+        raise HTTPException(status_code=404, detail="Punto vendita non trovato")
+    _togli_preferito(sb, ristorante_id, prodotto, fornitore)
+    return {"preferito": False}
 
 
 @router.get(

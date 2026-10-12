@@ -221,6 +221,9 @@ def test_categoria_esclusa_e_nota_di_credito_restano_fuori(sql):
     _riga(sql, SEDE1, "2026-03-03", "STORNO", "PARTESA", Decimal("10.00"), tipo="nc")
     _riga(sql, SEDE1, "2026-03-04", "PANE", "FORNO", Decimal("2.00"))
     _riga(sql, SEDE1, "2026-03-05", "PANE", "FORNO", Decimal("2.10"))
+    # Le cauzioni escono qualunque sia la categoria: su OFFSIDE stanno in VARIE BAR.
+    _riga(sql, SEDE1, "2026-03-06", "ADDEBITO CAUZIONI", "PARTESA", Decimal("150.54"), categoria="VARIE BAR")
+    _riga(sql, SEDE1, "2026-03-07", "ADDEBITO CAUZIONI", "PARTESA", Decimal("0.10"), categoria="VARIE BAR")
     assert [c["desc_key"] for c in _coppie(sql, escluse=["UTENZE E LOCALI"])] == ["PANE"]
 
 
@@ -272,3 +275,74 @@ def test_lo_storico_si_apre_anche_col_fornitore_troncato(db_sql, sql):
     assert spazio[:30].endswith(" ")
     _riga(sql, SEDE1, "2026-05-01", "CAFFE", spazio, Decimal("12.00"))
     assert [p.prezzo_unitario for p in _storico_prodotto_sede(sb, SEDE1, "CAFFE", spazio[:30]).punti] == [12.00]
+
+
+def test_la_stella_di_catena_e_quella_del_pv_della_riga(sql):
+    from services.routers.gruppo import _variazioni_catena
+
+    _semina_sedi(sql)
+    for sede in (SEDE1, SEDE2):
+        _riga(sql, sede, "2026-03-01", "SALMONE", "ADC", Decimal("6.00"))
+        _riga(sql, sede, "2026-04-01", "SALMONE", "ADC", Decimal("7.00"))
+    per = {v["nome_pv"]: v for v in _variazioni_catena(_coppie(sql), NOMI, 5.0, {SEDE1: {"SALMONE|ADC"}})}
+    assert (per["Centro"]["preferito"], per["Mare"]["preferito"]) == (True, False)
+
+
+def test_un_cambio_di_confezione_non_e_lo_stesso_rincaro_di_un_altra_sede(sql):
+    from services.routers.gruppo import _calcola_divari_catena, _variazioni_catena
+
+    _semina_sedi(sql)
+    _riga(sql, SEDE1, "2026-03-01", "BEVANDA", "PARTESA", Decimal("1.00"))
+    _riga(sql, SEDE1, "2026-04-01", "BEVANDA", "PARTESA", Decimal("14.00"))
+    _riga(sql, SEDE2, "2026-03-02", "BEVANDA", "PARTESA", Decimal("1.00"))
+    _riga(sql, SEDE2, "2026-04-02", "BEVANDA", "PARTESA", Decimal("1.20"))
+    per = {v["nome_pv"]: v for v in _variazioni_catena(_coppie(sql), NOMI, 5.0)}
+    assert per["Centro"]["da_controllare"] is True and per["Mare"]["da_controllare"] is False
+    # Senza l'esclusione il +1300% del Centro farebbe dire «in 2 PV su 2».
+    assert per["Mare"]["n_pv_stesso_verso"] == 1
+    divari = _calcola_divari_catena(_coppie(sql), NOMI, 5.0)
+    assert [d["da_controllare"] for d in divari] == [True]
+
+
+def test_togliere_la_stella_toglie_anche_quella_salvata_troncata(db_sql, sql):
+    from services.routers.prezzi import _salva_preferito, _togli_preferito
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    sb = ClientSQL(db_sql)
+    desc = "PRODOTTO CON UNA DESCRIZIONE MOLTO LUNGA CHE SUPERA I SESSANTA CARATTERI DI SICURO"
+    forn = "DINGFENG IMPORTEXPORT S.R.L. UNIPERSONALE"
+    # La forma salvata fino all'11/10/2026, dal nome a video.
+    _salva_preferito(sb, SEDE1, UTENTE, desc[:60], forn[:30])
+    _salva_preferito(sb, SEDE1, UTENTE, desc, forn)
+    _salva_preferito(sb, SEDE2, UTENTE, desc, forn)
+    conta = "SELECT ristorante_id::text, count(*) FROM public.prezzi_preferiti GROUP BY 1 ORDER BY 1"
+    assert sql(conta) == [(SEDE1, 2), (SEDE2, 1)]
+    _togli_preferito(sb, SEDE1, desc, forn)
+    assert sql(conta) == [(SEDE2, 1)], "la stella dell'altra sede non si tocca"
+
+
+def test_la_stella_di_un_altro_cliente_non_si_tocca_dalla_catena(db_sql, sql, monkeypatch):
+    """La rotta riceve `ristorante_id` dal client. Il test d'isolamento generale
+    non vedeva il DELETE senza controllo: nella sua seed l'altro cliente non ha
+    stelle, quindi cancellare «niente» non lascia tracce (mutazione del
+    12/10/2026). Qui l'altra sede ha una stella, e deve restare."""
+    from fastapi import HTTPException
+    from services.routers import gruppo as G
+    from services.routers.prezzi import _salva_preferito
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    sb = ClientSQL(db_sql)
+    _salva_preferito(sb, SEDE2, UTENTE, "SALMONE", "ADC")
+    # Il gruppo di chi chiama ha la sola SEDE1: SEDE2 e' di un altro.
+    monkeypatch.setattr(G, "_resolve_gruppo", lambda auth: (sb, UTENTE, [], "G", {SEDE1: "Centro"}, [SEDE1]))
+
+    with pytest.raises(HTTPException) as e:
+        G.gruppo_prezzi_preferito_togli(SEDE2, "SALMONE", "ADC", authorization="x")
+    assert e.value.status_code == 404
+    with pytest.raises(HTTPException):
+        G.gruppo_prezzi_preferito_aggiungi(
+            G.PreferitoCatenaRequest(ristorante_id=SEDE2, prodotto="LIMONE"), authorization="x",
+        )
+    assert sql("SELECT descrizione_key FROM public.prezzi_preferiti WHERE ristorante_id = %s", SEDE2) == [("SALMONE",)]

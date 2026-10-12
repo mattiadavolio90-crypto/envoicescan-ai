@@ -17876,8 +17876,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "number",
-              "default": 5.0,
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Soglia"
             }
           },
@@ -17921,6 +17927,180 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GruppoPrezziResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/prezzi/preferiti": {
+      "post": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Stella su un prodotto di una sede del gruppo (la stessa dell'Osservatorio del PV)",
+        "operationId": "gruppo_prezzi_preferito_aggiungi_api_gruppo_prezzi_preferiti_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferitoCatenaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Gruppo Prezzi Preferito Aggiungi Api Gruppo Prezzi Preferiti Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Toglie la stella su un prodotto di una sede del gruppo",
+        "operationId": "gruppo_prezzi_preferito_togli_api_gruppo_prezzi_preferiti_delete",
+        "parameters": [
+          {
+            "name": "ristorante_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ristorante Id"
+            }
+          },
+          {
+            "name": "prodotto",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Prodotto"
+            }
+          },
+          {
+            "name": "fornitore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Fornitore"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Gruppo Prezzi Preferito Togli Api Gruppo Prezzi Preferiti Delete"
                 }
               }
             }
@@ -22906,6 +23086,11 @@
             },
             "type": "array",
             "title": "Per Pv"
+          },
+          "da_controllare": {
+            "type": "boolean",
+            "title": "Da Controllare",
+            "default": false
           }
         },
         "type": "object",
@@ -26445,6 +26630,29 @@
         ],
         "title": "PreferitiResponse"
       },
+      "PreferitoCatenaRequest": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "prodotto": {
+            "type": "string",
+            "title": "Prodotto"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "prodotto"
+        ],
+        "title": "PreferitoCatenaRequest"
+      },
       "PreferitoItem": {
         "properties": {
           "descrizione_key": {
@@ -29688,6 +29896,21 @@
             "type": "boolean",
             "title": "Preferito",
             "default": false
+          },
+          "desc_key": {
+            "type": "string",
+            "title": "Desc Key",
+            "default": ""
+          },
+          "forn_key": {
+            "type": "string",
+            "title": "Forn Key",
+            "default": ""
+          },
+          "da_controllare": {
+            "type": "boolean",
+            "title": "Da Controllare",
+            "default": false
           }
         },
         "type": "object",
@@ -29777,6 +30000,26 @@
           "n_pv_confrontabili": {
             "type": "integer",
             "title": "N Pv Confrontabili"
+          },
+          "preferito": {
+            "type": "boolean",
+            "title": "Preferito",
+            "default": false
+          },
+          "desc_key": {
+            "type": "string",
+            "title": "Desc Key",
+            "default": ""
+          },
+          "forn_key": {
+            "type": "string",
+            "title": "Forn Key",
+            "default": ""
+          },
+          "da_controllare": {
+            "type": "boolean",
+            "title": "Da Controllare",
+            "default": false
           }
         },
         "type": "object",

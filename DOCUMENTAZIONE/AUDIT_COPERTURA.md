@@ -2179,6 +2179,28 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   worker su `ee6f8c84`, `app.oneflux.it` 200. Cauzioni: Mattia «lascia così». Restano non bloccanti: chiave React su nomi troncati,
 >   storico senza contatore di richieste (come l'Osservatorio), date malformate → 500.
 
+> - **12/10/2026 — Prezzi: rumore fuori dai totali, preferiti e soglia in catena (Opus), NON
+>   pushato.** Da screenshot di Mattia sulla scheda di catena. **Misurato prima:** su
+>   OFFSIDE l'impatto/mese era -599 EUR, di cui -654 della sola «ADDEBITO CAUZIONI» (VARIE BAR
+>   per scelta MANUALE del cliente: non si tocca); su Sushiland 7 righe su 333 con prezzo
+>   saltato di 10x o piu' (bottiglia/cassa, kg/cartone) spostavano il totale da -1.406 a -22.
+>   Filtri per parola scartati sui dati: «VUOTO» prende 9 croissant, «TRASPORTO» il mango.
+>   **Fatto** (decisioni di Mattia: a) si', b) «troppo lavoro manuale», toggle):
+>   cauzioni fuori dai prezzi in PV e catena (`_VOCE_NON_PREZZO_REGEX`, migration
+>   `20261012130000` a firma invariata, applicata via MCP e verificata su `pg_proc`); salto
+>   >= 10x marcato `da_controllare`, vista «Da controllare (N)» accanto a Tutti/Preferiti in
+>   Osservatorio e catena, fuori da KPI, da «in N PV» e dallo score fornitori; preferiti in
+>   catena (stella del PV della riga, `POST/DELETE /api/gruppo/prezzi/preferiti`, 404 fuori
+>   gruppo); soglia libera che parte da quella dell'assistente. **Trovato e corretto:** la
+>   stella salvava il nome TRONCATO (10 preferiti su 19 non si riaccendevano): la riga porta
+>   le chiavi intere, le vecchie si riconoscono e si cancellano. **Dati veri dopo:** OFFSIDE
+>   +55,09 EUR, nessuna cauzione; Sushiland 7+4 righe da controllare; 12 stelle accese in
+>   catena = 3+8+1 dei PV. **Prove:** mutazione 20/20 (N19, DELETE su sede altrui, sopravviveva
+>   al test d'isolamento perche' la seed non ha stelle dell'altro cliente: test dedicato);
+>   suite `python -m pytest tests/ -q -p no:randomly`: 19.989 verdi + 1 rosso
+>   (`<button>` a mano, corretto con `<Button>` e presidi rilanciati: verdi); tsc pulito.
+>   **Non fatto:** gli avvisi prezzi in Home (`price_impact_service`) hanno un calcolo loro
+>   (`calcola_alert`): la regola non c'e', e non e' misurato se il rumore ci arrivi; `/m`.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
