@@ -339,7 +339,7 @@ function VariazioneCardBase<R extends RigaVariazione>({
   const { nome, oltreSeiMesi } = nomeProdotto(r.prodotto);
 
   return (
-    <div className={`rounded-lg border border-l-4 ${style.ring} border-border bg-card overflow-hidden`}>
+    <div className={`rounded-lg border border-l-4 ${style.ring} border-border bg-card shadow-sm overflow-hidden`}>
       <button onClick={() => onToggle(r)} className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors">
         <div className="flex items-center gap-3 flex-wrap">
           <span

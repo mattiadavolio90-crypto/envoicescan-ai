@@ -631,7 +631,7 @@ function DivarioCard({ d, pv }: { d: DivarioPrezzo; pv: string }) {
   const style = GRAVITA_STYLE[gravita({ impatto_stimato: d.extra_stimato })];
   const { nome } = nomeProdotto(d.prodotto);
   return (
-    <div className={`overflow-hidden rounded-lg border border-l-4 ${style.ring} border-border bg-card`}>
+    <div className={`overflow-hidden rounded-lg border border-l-4 ${style.ring} border-border bg-card shadow-sm`}>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         {d.preferito ? (
           <Star className="size-4 shrink-0 fill-incerto text-incerto" aria-label="Preferito in un punto vendita del confronto" />
