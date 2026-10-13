@@ -29,8 +29,14 @@ import {
   confermaSvuotamentoValida,
   confermaEliminazioneValida,
   mostraEmailSettimanale,
+  mostraRicaviNoIva,
+  sedeEliminabile,
+  idsDaEliminare,
+  euroNoIvaDaEliminare,
   type LivelloUso,
+  type SedeRicaviNoIva,
 } from "@/lib/impostazioni-account";
+import { formatEuro } from "@/lib/format";
 
 type AccountData = {
   email: string;
@@ -301,6 +307,194 @@ function ZonaPericolosa() {
                 disabled={loading || !confermaSvuotamentoValida(conferma)}
               >
                 {loading ? "Svuotamento..." : "Svuota definitivamente"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RicaviNoIvaCard() {
+  const router = useRouter();
+  const [sedi, setSedi] = useState<SedeRicaviNoIva[] | null>(null);
+  const [scelte, setScelte] = useState<Set<string>>(new Set());
+  const [tutte, setTutte] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [conferma, setConferma] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function carica() {
+    try {
+      const res = await fetch("/api/account/ricavi-noiva", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setSedi(Array.isArray(data?.sedi) ? data.sedi : []);
+    } catch {
+      // Riquadro accessorio: se non si carica non compare.
+    }
+  }
+
+  useEffect(() => {
+    carica();
+  }, []);
+
+  if (!sedi || !mostraRicaviNoIva(sedi)) return null;
+
+  const eliminabili = sedi.filter(sedeEliminabile);
+  const ids = idsDaEliminare(sedi, scelte, tutte);
+  const euro = euroNoIvaDaEliminare(sedi, ids);
+  const nomiScelti = sedi.filter((s) => ids.includes(s.id)).map((s) => s.nome);
+  const conScelta = eliminabili.length > 1;
+
+  function spunta(id: string, on: boolean) {
+    setScelte((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function handleElimina() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/account/ricavi-noiva/elimina", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ristorante_ids: ids, conferma }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success("Ricavi senza IVA eliminati. I margini sono già ricalcolati.");
+        setOpen(false);
+        setConferma("");
+        setScelte(new Set());
+        await carica();
+        router.refresh();
+        return;
+      }
+      toast.error(data?.detail || "Errore durante l'eliminazione.");
+    } catch {
+      toast.error("Errore di connessione. Riprova.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRiattiva(id: string) {
+    try {
+      const res = await fetch("/api/account/ricavi-noiva/riattiva", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ristorante_ids: [id] }),
+      });
+      if (res.ok) {
+        toast.success("Ricavi senza IVA riattivati per i prossimi caricamenti.");
+        await carica();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      toast.error(data?.detail || "Errore durante la riattivazione.");
+    } catch {
+      toast.error("Errore di connessione. Riprova.");
+    }
+  }
+
+  return (
+    <Card className="border-destructive/40">
+      <CardHeader>
+        <CardTitle className="text-base">Ricavi senza IVA</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground max-w-prose">
+          <span className="font-medium text-destructive">Elimina i ricavi senza IVA</span> e
+          lascia solo quelli al 10% e al 22%. Fatturato e margini si ricalcolano subito. Da quel
+          momento la sede non li riceve più, né da Passbi né da inserimento a mano.{" "}
+          <span className="font-medium text-foreground">I dati eliminati non si recuperano.</span>
+        </p>
+
+        <ul className="space-y-2">
+          {sedi.map((s) => (
+            <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <label className="flex items-center gap-2">
+                {conScelta && sedeEliminabile(s) && !tutte && (
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={scelte.has(s.id)}
+                    onChange={(e) => spunta(s.id, e.target.checked)}
+                  />
+                )}
+                <span className="font-medium">{s.nome}</span>
+              </label>
+              <span className="flex items-center gap-2 text-muted-foreground">
+                {s.euro_noiva !== 0 && <span>{formatEuro(s.euro_noiva)} senza IVA</span>}
+                {s.escluso && (
+                  <>
+                    <span>Esclusi</span>
+                    <Button variant="outline" size="sm" onClick={() => handleRiattiva(s.id)}>
+                      Riattiva
+                    </Button>
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {eliminabili.length > 0 && (
+          <div className="space-y-3 border-t pt-4">
+            {conScelta && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={tutte}
+                  onChange={(e) => setTutte(e.target.checked)}
+                />
+                Tutte le sedi
+              </label>
+            )}
+            <Button variant="destructive" disabled={ids.length === 0} onClick={() => setOpen(true)}>
+              Elimina i ricavi senza IVA
+            </Button>
+          </div>
+        )}
+
+        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setConferma(""); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Eliminare i ricavi senza IVA?</DialogTitle>
+              <DialogDescription>
+                Verranno eliminati {formatEuro(euro)} di ricavi senza IVA
+                {nomiScelti.length > 0 && <> da {nomiScelti.join(", ")}</>}, in modo permanente.
+                Da quel momento queste sedi non li riceveranno più. Per procedere, scrivi{" "}
+                <span className="font-semibold">ELIMINA</span> qui sotto.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor="conferma-noiva">Conferma</Label>
+              <Input
+                id="conferma-noiva"
+                value={conferma}
+                onChange={(e) => setConferma(e.target.value)}
+                placeholder="ELIMINA"
+                autoComplete="off"
+                disabled={loading}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" disabled={loading} onClick={() => setOpen(false)}>
+                Annulla
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleElimina}
+                disabled={loading || ids.length === 0 || !confermaEliminazioneValida(conferma)}
+              >
+                {loading ? "Eliminazione…" : "Elimina definitivamente"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -697,6 +891,7 @@ export function AccountClient({
           <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />
         )}
         <CambioPasswordForm />
+        {!data.sotto_utente && <RicaviNoIvaCard />}
       </div>
     );
   }
@@ -809,6 +1004,9 @@ export function AccountClient({
 
       {/* Cambio password */}
       <CambioPasswordForm />
+
+      {/* Ricavi senza IVA — elimina e blocca per sede, accanto alla zona pericolosa */}
+      {!data.sotto_utente && <RicaviNoIvaCard />}
 
       {/* Privacy e dati (GDPR) — solo clienti: export Art.20 + elimina account Art.17 */}
       {!data.is_admin && !data.sotto_utente && <PrivacyGdprCard />}

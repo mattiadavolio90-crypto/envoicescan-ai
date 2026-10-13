@@ -83,6 +83,9 @@ class RicaviGiornalieriResponse(BaseModel):
     totale_altri: float
     totale_netto: float
     giorni_con_dati: int
+    # La sede ha escluso i ricavi senza IVA (Impostazioni): il DB li scrive a 0,
+    # quindi i moduli non devono offrire il campo.
+    noiva_escluso: bool = False
 
 
 class RicavoUpsertRequest(BaseModel):
@@ -174,7 +177,25 @@ def get_ricavi_giornalieri(
         totale_altri=round(tot_altri, 2),
         totale_netto=_calc_netto(tot10, tot22, tot_altri),
         giorni_con_dati=len(items),
+        noiva_escluso=_noiva_escluso(sb, ristorante_id),
     )
+
+
+def _noiva_escluso(sb, ristorante_id) -> bool:
+    try:
+        resp = (
+            sb.table("ristoranti")
+            .select("escludi_ricavi_noiva")
+            .eq("id", str(ristorante_id))
+            .limit(1)
+            .execute()
+        )
+        righe = resp.data or []
+        return bool(righe and righe[0].get("escludi_ricavi_noiva"))
+    except Exception as exc:
+        # Il campo resta visibile: se la sede e' esclusa il DB scrive 0 comunque.
+        logger.warning("ricavi giornalieri: flag no IVA non letto: %s", exc)
+        return False
 
 
 @router.post("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
@@ -205,6 +226,13 @@ def upsert_ricavo_giornaliero(
         .execute()
     )
     if not resp.data:
+        # Il trigger non fa nascere un giorno di solo no IVA su una sede che l'ha
+        # escluso: e' una scelta del cliente, non un guasto.
+        if payload["altri_ricavi_noiva"] > 0 and _noiva_escluso(sb, ristorante_id):
+            raise HTTPException(
+                status_code=400,
+                detail="I ricavi senza IVA sono esclusi per questa sede: si riattivano da Impostazioni.",
+            )
         raise HTTPException(status_code=500, detail="Salvataggio fallito")
 
     # Inserire un giorno su un mese in modalita' 'mensile' non avrebbe effetto sui

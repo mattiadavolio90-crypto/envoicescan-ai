@@ -97,3 +97,45 @@ export function mostraEmailSettimanale(data: {
 }): boolean {
   return data.is_admin !== true && data.email_settimanale_abilitata === true;
 }
+
+// ── Ricavi senza IVA: elimina e blocca, sede per sede ───────────────────────
+// Il worker (GET /api/account/ricavi-noiva) da' per ogni sede se e' esclusa e
+// quanto no IVA ha oggi nei margini. La conferma e' la stessa di «Elimina il mio
+// account»: ELIMINA, maiuscole indifferenti (confermaEliminazioneValida).
+
+export type SedeRicaviNoIva = {
+  id: string;
+  nome: string;
+  escluso: boolean;
+  euro_noiva: number;
+};
+
+// Il riquadro compare solo a chi ha qualcosa da eliminare o da riattivare: a un
+// ristorante senza no IVA non cambia niente nelle Impostazioni.
+export function mostraRicaviNoIva(sedi: SedeRicaviNoIva[] | null | undefined): boolean {
+  return (sedi ?? []).some((s) => s.escluso || (s.euro_noiva ?? 0) !== 0);
+}
+
+// Si puo' eliminare su una sede che non e' ancora esclusa, o che lo e' ma ha
+// ancora no IVA (per esempio arrivato prima dell'esclusione da un altro canale).
+export function sedeEliminabile(s: SedeRicaviNoIva): boolean {
+  return !s.escluso || (s.euro_noiva ?? 0) !== 0;
+}
+
+// Gli id da mandare al worker. Con una sola sede eliminabile non c'e' scelta da
+// fare; con «Tutte le sedi» valgono tutte le eliminabili, non quelle spuntate.
+export function idsDaEliminare(
+  sedi: SedeRicaviNoIva[],
+  scelte: ReadonlySet<string>,
+  tutte: boolean,
+): string[] {
+  const eliminabili = sedi.filter(sedeEliminabile);
+  if (eliminabili.length === 1) return [eliminabili[0].id];
+  if (tutte) return eliminabili.map((s) => s.id);
+  return eliminabili.filter((s) => scelte.has(s.id)).map((s) => s.id);
+}
+
+export function euroNoIvaDaEliminare(sedi: SedeRicaviNoIva[], ids: readonly string[]): number {
+  const scelte = new Set(ids);
+  return sedi.filter((s) => scelte.has(s.id)).reduce((tot, s) => tot + (s.euro_noiva ?? 0), 0);
+}

@@ -55,6 +55,7 @@ Soft-delete: query su `fatture` e `prodotti` filtrare sempre `deleted_at IS NULL
 | partita_iva | TEXT | P.IVA per validazione fatture SDI |
 | ragione_sociale | TEXT | Ragione sociale |
 | attivo | BOOLEAN | Ristorante attivo/disattivato |
+| escludi_ricavi_noiva | BOOLEAN | Default false. Il titolare ha eliminato i ricavi senza IVA dalle Impostazioni: un trigger li scrive a 0 da ogni canale (vedi sotto, «Ricavi senza IVA esclusi») |
 | created_at | TIMESTAMPTZ | Data creazione |
 
 ### `fatture` — Righe di fattura (core data)
@@ -229,15 +230,49 @@ Mattia il 3/10/2026.
 | user_id | UUID | |
 | ristorante_id | UUID (FK) | |
 | data | DATE | |
-| iva10 | NUMERIC(10,2) | |
-| iva22 | NUMERIC(10,2) | |
-| altri_ricavi | NUMERIC(10,2) | |
+| fatturato_iva10 | NUMERIC(12,2) | Lordo |
+| fatturato_iva22 | NUMERIC(12,2) | Lordo |
+| altri_ricavi_noiva | NUMERIC(12,2) | Senza IVA, entra pieno nel netto |
+| coperti | INTEGER | NULL = dato non pervenuto |
+| source | TEXT | `manuale` / `xls` / `email` |
 | created_at | TIMESTAMPTZ | |
 | — | UNIQUE(ristorante_id, data) | |
+
+Il trigger `trg_ricavi_giornalieri_sync_margini` ricostruisce il mese in
+`margini_mensili` a ogni scrittura.
 
 ### `ricavi_modalita_mensile` — Override modalità mensile
 
 Indica per quali mesi/ristorante usare la somma dei giornalieri o il valore mensile totale.
+
+### Ricavi senza IVA esclusi (12/10/2026)
+
+Dalle Impostazioni il titolare elimina i ricavi senza IVA di una o più sedi
+(`POST /api/account/ricavi-noiva/elimina`, conferma `ELIMINA`) con la RPC
+`elimina_ricavi_noiva(p_user_id, p_ristorante_ids)`. La RPC fa tutto o niente: se
+anche una sola sede non è dell'utente si ferma. Poi:
+- mette `ristoranti.escludi_ricavi_noiva = true`;
+- cancella i giorni fatti solo di no IVA e azzera il no IVA negli altri;
+- azzera il no IVA in `ricavi_modalita_mensile`;
+- ricalcola netto, primo margine e MOL salvati in `margini_mensili`, con la
+  stessa formula di `riparto_quote_mensili`.
+
+Il blocco è il trigger `ricavi_noiva_esclusi_guardia`, BEFORE INSERT/UPDATE
+sulle tre tabelle. Non sta nei canali di scrittura perché Passbi riscrive tutte
+le colonne a ogni import. Su una sede esclusa il trigger:
+- scrive 0 nel no IVA;
+- su `margini_mensili` ricalcola netto, primo margine e MOL;
+- su `ricavi_giornalieri` non crea un giorno che sarebbe solo no IVA.
+
+Sopra il trigger, i canali che parlano col cliente dicono perché: l'assistente
+non chiede il senza IVA e rifiuta una card che lo contiene, e
+`POST /api/ricavi/giornalieri` risponde 400 invece di 500 su un giorno di solo
+no IVA. I moduli di caricamento, web e `/m`, nascondono il campo: la GET dei
+giornalieri restituisce `noiva_escluso`.
+
+`POST /api/account/ricavi-noiva/riattiva` rimette il flag a false: i caricamenti
+futuri tornano a portare il no IVA, quello eliminato non torna. Le tre rotte sono
+vietate ai sotto-utenti. Test: `tests/test_sql_ricavi_noiva.py`.
 
 ### `ricavi_ragione_sociale_map` — Mapping ragione sociale per catene
 

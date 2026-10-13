@@ -614,6 +614,162 @@ def account_elimina(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RICAVI SENZA IVA — il titolare li elimina per sede e la sede non li accetta piu'
+# ─────────────────────────────────────────────────────────────────────────────
+# Il blocco e' nel DB (trigger su `ristoranti.escludi_ricavi_noiva`, migration
+# 20261012194928): vale per Passbi via email, import xls, inserimento a mano,
+# modalita' mensile e assistente, senza toccare quei percorsi.
+
+
+class RicaviNoIvaEliminaBody(BaseModel):
+    ristorante_ids: list[str] = []
+    conferma: Optional[str] = None
+
+
+class RicaviNoIvaRiattivaBody(BaseModel):
+    ristorante_ids: list[str] = []
+
+
+def _sedi_proprie(sb, user_id: str) -> Dict[str, Dict[str, Any]]:
+    resp = (
+        sb.table("ristoranti")
+        .select("id,nome_ristorante,escludi_ricavi_noiva")
+        .eq("user_id", user_id)
+        .eq("attivo", True)
+        .eq("sede_tecnica", False)
+        .order("nome_ristorante")
+        .execute()
+    )
+    return {str(r["id"]): r for r in (resp.data or [])}
+
+
+def _ids_richiesti(ids: list[str], proprie: Dict[str, Dict[str, Any]]) -> list[str]:
+    richiesti = sorted({str(i).strip() for i in ids if str(i).strip()})
+    if not richiesti:
+        raise HTTPException(status_code=400, detail="Scegli almeno una sede")
+    if any(i not in proprie for i in richiesti):
+        raise HTTPException(status_code=404, detail="Sede non trovata")
+    return richiesti
+
+
+def _invalida_dopo_ricavi(sb, user_id: str, ristorante_ids: list[str]) -> None:
+    """Le stesse invalidazioni dei form dei ricavi, piu' campanella e segnali di catena.
+
+    Best-effort: i dati sono gia' scritti, una cache che non si svuota resta
+    indietro al massimo fino al suo TTL.
+    """
+    fw = _fw()
+    from services.daily_briefing_service import invalidate_today_briefing
+
+    for rid in ristorante_ids:
+        try:
+            fw._invalidate_home_kpi_cache(rid)
+            fw._LIVE_SEGNALI_CACHE.pop(rid, None)
+            invalidate_today_briefing(user_id, rid, sb)
+        except Exception as exc:
+            logger.warning("ricavi-noiva: invalidazione sede %s: %s", rid, exc)
+    try:
+        sb.table("gruppo_segnali_state").delete().eq("user_id", user_id).execute()
+    except Exception as exc:
+        logger.warning("ricavi-noiva: invalidazione segnali catena: %s", exc)
+
+
+@router.get("/api/account/ricavi-noiva", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_ricavi_noiva(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Per ogni sede del titolare: se e' esclusa e quanto no IVA ha oggi nei margini."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    proprie = _sedi_proprie(sb, user_id)
+    euro: Dict[str, float] = {rid: 0.0 for rid in proprie}
+    if proprie:
+        # Per mese, come lo vedono i Margini: nei mesi in modalita' 'mensile' vale
+        # il totale di ricavi_modalita_mensile, non l'aggregato dei giornalieri.
+        per_mese: Dict[tuple, float] = {}
+        for r in fetch_all(
+            sb.table("margini_mensili")
+            .select("id,ristorante_id,anno,mese,altri_ricavi_noiva")
+            .in_("ristorante_id", list(proprie))
+            .neq("altri_ricavi_noiva", 0)
+            .order("id")
+        ):
+            per_mese[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = float(r.get("altri_ricavi_noiva") or 0)
+        for r in fetch_all(
+            sb.table("ricavi_modalita_mensile")
+            .select("id,ristorante_id,anno,mese,altri_ricavi_noiva")
+            .in_("ristorante_id", list(proprie))
+            .eq("modalita", "mensile")
+            .order("id")
+        ):
+            per_mese[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = float(r.get("altri_ricavi_noiva") or 0)
+        for (rid, _anno, _mese), valore in per_mese.items():
+            euro[rid] = euro.get(rid, 0.0) + valore
+    return {
+        "sedi": [
+            {
+                "id": rid,
+                "nome": s.get("nome_ristorante") or "",
+                "escluso": bool(s.get("escludi_ricavi_noiva")),
+                "euro_noiva": round(euro.get(rid, 0.0), 2),
+            }
+            for rid, s in proprie.items()
+        ]
+    }
+
+
+@router.post("/api/account/ricavi-noiva/elimina", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_ricavi_noiva_elimina(
+    body: RicaviNoIvaEliminaBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Elimina in modo permanente i ricavi senza IVA delle sedi scelte e le esclude:
+    da qui nessun canale (Passbi compreso) li rimette, finche' non si riattiva."""
+    user = _resolve_user_from_token(authorization)
+    if (body.conferma or "").strip().upper() != "ELIMINA":
+        raise HTTPException(status_code=400, detail="Scrivi ELIMINA per confermare")
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ids = _ids_richiesti(body.ristorante_ids, _sedi_proprie(sb, user_id))
+
+    resp = sb.rpc("elimina_ricavi_noiva", {"p_user_id": user_id, "p_ristorante_ids": ids}).execute()
+    _invalida_dopo_ricavi(sb, user_id, ids)
+
+    sedi = [
+        {
+            "id": str(r["ristorante_id"]),
+            "giorni": int(r.get("giorni") or 0),
+            "mesi": int(r.get("mesi") or 0),
+            "euro": round(float(r.get("euro") or 0), 2),
+        }
+        for r in (resp.data or [])
+    ]
+    logger.warning("ELIMINA_RICAVI_NOIVA: user=%s | sedi=%s", user_id, sedi)
+    return {"ok": True, "sedi": sedi}
+
+
+@router.post("/api/account/ricavi-noiva/riattiva", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_ricavi_noiva_riattiva(
+    body: RicaviNoIvaRiattivaBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Le sedi scelte tornano ad accettare il no IVA dai caricamenti futuri.
+    Quello gia' eliminato non torna."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ids = _ids_richiesti(body.ristorante_ids, _sedi_proprie(sb, user_id))
+    (
+        sb.table("ristoranti")
+        .update({"escludi_ricavi_noiva": False})
+        .in_("id", ids)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    logger.warning("RIATTIVA_RICAVI_NOIVA: user=%s | sedi=%s", user_id, ids)
+    return {"ok": True, "sedi": ids}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SEDI — switch fra ristoranti dello stesso account (clienti multi-sede)
 # ─────────────────────────────────────────────────────────────────────────────
 # Un cliente con una sola P.IVA può avere più ristoranti (sedi). La sede attiva è

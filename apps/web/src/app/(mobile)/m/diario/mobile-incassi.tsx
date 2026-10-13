@@ -33,6 +33,7 @@ interface IncassiResponse {
   totale_altri: number;
   totale_netto: number;
   giorni_con_dati: number;
+  noiva_escluso?: boolean;
 }
 
 
@@ -71,11 +72,12 @@ interface DialogProps {
   open: boolean;
   incasso: Incasso | null;
   dataDefault: string;
+  noivaEscluso: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function IncassoDialog({ open, incasso, dataDefault, onClose, onSaved }: DialogProps) {
+function IncassoDialog({ open, incasso, dataDefault, noivaEscluso, onClose, onSaved }: DialogProps) {
   const [data, setData] = useState(dataDefault);
   const [iva10, setIva10] = useState("");
   const [iva22, setIva22] = useState("");
@@ -132,7 +134,8 @@ function IncassoDialog({ open, incasso, dataDefault, onClose, onSaved }: DialogP
   const campi: { label: string; val: string; set: (v: string) => void }[] = [
     { label: "Corrispettivi IVA 10% (€)", val: iva10, set: setIva10 },
     { label: "Corrispettivi IVA 22% (€)", val: iva22, set: setIva22 },
-    { label: "Altri ricavi senza IVA (€)", val: altri, set: setAltri },
+    // Sede che ha escluso il no IVA dalle Impostazioni: il DB lo scrive a 0.
+    ...(noivaEscluso ? [] : [{ label: "Altri ricavi senza IVA (€)", val: altri, set: setAltri }]),
   ];
 
   return (
@@ -371,6 +374,7 @@ export function MobileIncassi() {
         open={dialogOpen}
         incasso={editIncasso}
         dataDefault={dataDefault}
+        noivaEscluso={!!risposta?.noiva_escluso}
         onClose={() => { setDialogOpen(false); setEditIncasso(null); }}
         onSaved={() => load(anno, mese)}
       />

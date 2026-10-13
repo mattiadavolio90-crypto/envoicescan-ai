@@ -116,6 +116,7 @@ function GrigliaView({
   const [mensiIva22, setMensiIva22] = useState("");
   const [mensiAltri, setMensiAltri] = useState("");
   const [mensiCoperti, setMensiCoperti] = useState("");
+  const [noivaEscluso, setNoivaEscluso] = useState(false);
 
   const meseKey = meseSel ? `${meseSel.anno}-${String(meseSel.mese).padStart(2, "0")}` : "";
 
@@ -133,6 +134,7 @@ function GrigliaView({
         .then((r) => r.ok ? r.json() : null).catch(() => null),
     ]).then(([ricaviData, modalitaData]) => {
       const days = daysInMonth(meseSel.anno, meseSel.mese);
+      setNoivaEscluso(!!ricaviData?.noiva_escluso);
       const byDate = new Map<string, RicavoGiornaliero>();
       for (const item of ricaviData?.items ?? []) byDate.set(item.data, item);
       setRighe(days.map((d) => {
@@ -386,11 +388,12 @@ function GrigliaView({
               di confermare.
             </div>
           )}
+          {noivaEscluso && <NotaNoIvaEsclusi />}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { label: "IVA 10% (lordo)", val: mensiIva10, set: setMensiIva10 },
               { label: "IVA 22% (lordo)", val: mensiIva22, set: setMensiIva22 },
-              { label: "Altri (no IVA)", val: mensiAltri, set: setMensiAltri },
+              ...(noivaEscluso ? [] : [{ label: "Altri (no IVA)", val: mensiAltri, set: setMensiAltri }]),
             ].map(({ label, val, set }) => (
               <div key={label} className="space-y-1.5">
                 <Label className="text-xs">{label} €</Label>
@@ -423,6 +426,7 @@ function GrigliaView({
               modalità giornaliera i ricavi torneranno a essere calcolati dai singoli giorni.
             </div>
           )}
+          {noivaEscluso && <NotaNoIvaEsclusi />}
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-muted-foreground">
               Clicca un giorno per inserire i ricavi (lordi). Lo scorporo IVA è automatico.
@@ -467,6 +471,7 @@ function GrigliaView({
                   iva22={r.iva22}
                   altri={r.altri}
                   coperti={r.coperti}
+                  noivaEscluso={noivaEscluso}
                   onSave={(vals) => setRigaValues(idx, vals)}
                 />
               );
@@ -477,7 +482,9 @@ function GrigliaView({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             <TotaleBox label="IVA 10% (netto)" value={righe.reduce((s, r) => s + (parseDecimaleItOZero(r.iva10)) / 1.10, 0)} />
             <TotaleBox label="IVA 22% (netto)" value={righe.reduce((s, r) => s + (parseDecimaleItOZero(r.iva22)) / 1.22, 0)} />
-            <TotaleBox label="Altri (no IVA)" value={righe.reduce((s, r) => s + (parseDecimaleItOZero(r.altri)), 0)} />
+            {!noivaEscluso && (
+              <TotaleBox label="Altri (no IVA)" value={righe.reduce((s, r) => s + (parseDecimaleItOZero(r.altri)), 0)} />
+            )}
             <TotaleBox label="Netto totale" value={nettoGriglia} primary />
           </div>
         </div>
@@ -530,10 +537,18 @@ function TotaleBox({ label, value, primary = false }: { label: string; value: nu
   );
 }
 
+function NotaNoIvaEsclusi() {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+      I ricavi senza IVA sono esclusi per questa sede: si riattivano da Impostazioni.
+    </div>
+  );
+}
+
 /* ─── Cella giorno del calendario con popover di inserimento ──────────────── */
 function GiornoCell({
   giorno, netto, hasData, dirty, isWeekend, source,
-  iva10, iva22, altri, coperti, onSave,
+  iva10, iva22, altri, coperti, noivaEscluso, onSave,
 }: {
   giorno: number;
   netto: number;
@@ -545,6 +560,7 @@ function GiornoCell({
   iva22: string;
   altri: string;
   coperti: string;
+  noivaEscluso: boolean;
   onSave: (vals: { iva10: string; iva22: string; altri: string; coperti: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -609,7 +625,7 @@ function GiornoCell({
           {[
             { label: "IVA 10% (lordo €)", val: d10, set: setD10 },
             { label: "IVA 22% (lordo €)", val: d22, set: setD22 },
-            { label: "Altri ricavi no IVA (€)", val: dAltri, set: setDAltri },
+            ...(noivaEscluso ? [] : [{ label: "Altri ricavi no IVA (€)", val: dAltri, set: setDAltri }]),
           ].map(({ label, val, set }) => (
             <div key={label} className="space-y-1">
               <Label className="text-xs">{label}</Label>

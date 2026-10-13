@@ -191,3 +191,66 @@ def test_la_scheda_email_settimanale_compare_solo_se_abilitata(data, atteso):
     """Mattia (25/09): la abilita l'admin, cliente per cliente. Mostrarla a chi
     non e' abilitato prometterebbe un'email che non parte."""
     assert _mostra_email(data) is atteso
+
+
+# ─── Ricavi senza IVA: chi vede il riquadro e quali sedi si mandano ─────────
+
+_NOIVA = ["mostraRicaviNoIva", "sedeEliminabile", "idsDaEliminare", "euroNoIvaDaEliminare"]
+
+
+def _sede(id_, euro=0, escluso=False):
+    return {"id": id_, "nome": f"Sede {id_}", "escluso": escluso, "euro_noiva": euro}
+
+
+def _mostra_noiva(sedi):
+    return esegui_ts(MODULO, "emit(m.mostraRicaviNoIva(input));", argomento=sedi, richiede=_NOIVA)
+
+
+def _ids(sedi, scelte, tutte):
+    return esegui_ts(
+        MODULO, "emit(m.idsDaEliminare(input.sedi, new Set(input.scelte), input.tutte));",
+        argomento={"sedi": sedi, "scelte": scelte, "tutte": tutte}, richiede=_NOIVA,
+    )
+
+
+def _euro(sedi, ids):
+    return esegui_ts(MODULO, "emit(m.euroNoIvaDaEliminare(input.sedi, input.ids));",
+                     argomento={"sedi": sedi, "ids": ids}, richiede=_NOIVA)
+
+
+@pytest.mark.parametrize("sedi, atteso", [
+    ([_sede("a"), _sede("b")], False),                 # nessun no IVA: il ristorante non vede niente
+    ([], False),
+    (None, False),
+    ([_sede("a"), _sede("b", euro=120)], True),
+    ([_sede("a", escluso=True)], True),                # da riattivare
+    ([_sede("a", euro=-30)], True),                    # una nota di credito negativa e' comunque no IVA
+])
+def test_il_riquadro_compare_solo_a_chi_ha_qualcosa_da_fare(sedi, atteso):
+    assert _mostra_noiva(sedi) is atteso
+
+
+def test_con_una_sola_sede_eliminabile_non_serve_spuntare():
+    sedi = [_sede("a", euro=100), _sede("b", escluso=True)]
+    assert _ids(sedi, [], False) == ["a"]
+
+
+def test_tutte_le_sedi_vale_sulle_eliminabili_e_ignora_le_spunte():
+    sedi = [_sede("a", euro=100), _sede("b", euro=50), _sede("c", escluso=True)]
+    assert _ids(sedi, ["a"], True) == ["a", "b"]
+
+
+def test_senza_tutte_valgono_solo_le_spuntate_eliminabili():
+    sedi = [_sede("a", euro=100), _sede("b", euro=50), _sede("c", escluso=True)]
+    assert _ids(sedi, ["b", "c"], False) == ["b"]
+    assert _ids(sedi, [], False) == []
+
+
+def test_sede_esclusa_con_no_iva_rimasto_resta_eliminabile():
+    sedi = [_sede("a", euro=100), _sede("b", euro=40, escluso=True)]
+    assert _ids(sedi, [], True) == ["a", "b"]
+
+
+def test_l_importo_del_dialog_somma_solo_le_sedi_scelte():
+    sedi = [_sede("a", euro=100.5), _sede("b", euro=50), _sede("c", euro=7)]
+    assert _euro(sedi, ["a", "c"]) == 107.5

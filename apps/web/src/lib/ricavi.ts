@@ -80,6 +80,9 @@ export type RicaviGiornalieriResponse = {
   totale_altri: number;
   totale_netto: number;
   giorni_con_dati: number;
+  // Sede che ha escluso i ricavi senza IVA dalle Impostazioni: il DB li scrive a
+  // 0, quindi i moduli non offrono il campo.
+  noiva_escluso?: boolean;
 };
 
 export type RicaviBatchUpsertResponse = {

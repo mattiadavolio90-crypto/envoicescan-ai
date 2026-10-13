@@ -510,6 +510,8 @@ RICETTE: List[Ricetta] = [
     R("POST", "/api/fatture/oscura", {"file_origine": "$altro.file", "oscurata": True, "ristorante_id": "$altro.sede1"}),
     R("POST", "/api/fatture/oscura", {"file_origine": "$altro.file", "oscurata": True}, nota="senza sede"),
     R("POST", "/api/account/cambia-sede", {"ristorante_id": "$altro.sede1"}),
+    R("POST", "/api/account/ricavi-noiva/elimina", {"ristorante_ids": ["$altro.sede1"], "conferma": "ELIMINA"}),
+    R("POST", "/api/account/ricavi-noiva/riattiva", {"ristorante_ids": ["$altro.sede1"]}),
     R("POST", "/api/fatture/categoria-batch",
       {"descrizione": "$altro.prodotto", "nuova_categoria": "PESCE", "riga_ids": ["$altro.riga_id"]}),
     R("PATCH", "/api/fatture/{riga_id}/categoria", {"categoria": "PESCE"}),
@@ -616,7 +618,8 @@ GET_SESSIONE: Dict[str, Dict[str, Any]] = {
     "/api/home/config": {}, "/api/tag": {}, "/api/tag/descrizioni": {}, "/api/tag/suggestions": {},
     "/api/scadenziario": {}, "/api/scadenziario/calendario": _MESE, "/api/scadenziario/fornitori": {},
     "/api/scadenziario/regole": {}, "/api/cestino": {}, "/api/account/me": {},
-    "/api/account/esporta-dati": {}, "/api/account/sedi": {}, "/api/prezzi/soglia-alert": {},
+    "/api/account/esporta-dati": {}, "/api/account/sedi": {}, "/api/account/ricavi-noiva": {},
+    "/api/prezzi/soglia-alert": {},
     "/api/prezzi/variazioni": _PERIODO, "/api/prezzi/preferiti": {}, "/api/prezzi/sconti-omaggi": _PERIODO,
     "/api/prezzi/note-credito": _PERIODO, "/api/prezzi/storico-prodotto": {"prodotto": "PRODOTTO"},
     "/api/prezzi/score-fornitori": _PERIODO, "/api/ricavi/giornalieri": _PERIODO,
@@ -765,6 +768,7 @@ def test_controllo_la_stessa_ricetta_sui_propri_id_trova_la_risorsa(scenario, ri
 # le 13 voci aggiunte il 14/09 nominavano gia' il chiamante e non erano in lista.
 GET_CHE_MOSTRANO_IL_PROPRIO = {
     "/api/auth/me", "/api/account/me", "/api/account/sedi", "/api/account/esporta-dati",
+    "/api/account/ricavi-noiva",
     "/api/tag", "/api/tag/descrizioni", "/api/tag/suggestions",
     "/api/fatture", "/api/fatture/fornitori",
     "/api/fatture/articoli-aggregati", "/api/fatture/righe-articolo",

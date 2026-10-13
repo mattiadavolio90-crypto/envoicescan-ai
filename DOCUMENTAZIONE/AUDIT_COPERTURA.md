@@ -2239,6 +2239,39 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   e di un'altra sessione): rilanciati a file fermi, 48/48 verdi; `tsc --noEmit` pulito.
 >   **Non fatto:** pagina non aperta nel browser; criterio «incompleto» della vista anno guarda
 >   l'ultimo mese chiuso (limite gia' esistente); etichette per catene retail (nessuna sul live).
+
+> - **12/10/2026 — Ricavi senza IVA: il cliente li elimina e la sede non li accetta piu' (Opus),
+>   NON pushato, migration NON applicata.** Richiesta di Mattia: tasto nella zona pericolosa
+>   delle Impostazioni, accanto a «Elimina il mio account», stessa conferma ELIMINA, margini
+>   ricalcolati subito. **Decisioni di Mattia:** cancella E blocca (l'upsert Passbi riscrive le
+>   tre colonne: senza blocco l'email del giorno dopo rimette tutto); la sede la sceglie il
+>   cliente, con «Tutte le sedi». **Fatto:** migration `20261012194928`:
+>   - flag `ristoranti.escludi_ricavi_noiva`;
+>   - trigger BEFORE `ricavi_noiva_esclusi_guardia` su giornalieri, modalita' mensile e
+>     margini_mensili: il blocco vale per ogni canale senza toccarli;
+>   - RPC `elimina_ricavi_noiva`, tutto o niente sulle sedi dell'utente, che ricalcola netto,
+>     primo margine e MOL salvati con la formula del riparto.
+>   Rotte `GET /api/account/ricavi-noiva`, `.../elimina`, `.../riattiva`, in `ROTTE_VIETATE`.
+>   Riquadro in Impostazioni in vista singola E catena (in catena non c'era nessun riquadro
+>   rosso: il cliente Passbi a 4 sedi non l'avrebbe visto). Campo «senza IVA» nascosto nel
+>   caricamento ricavi web e `/m`. **Misura sul live, e la mia era incompleta:** avevo contato
+>   solo i giornalieri (4 sedi di un account catena, circa il 25% del netto); il revisore ha
+>   trovato un secondo account con circa 67.000 EUR nei totali mensili. Il riepilogo ora
+>   applica l'override mensile come Margini (lo pretendeva anche `test_regole_dominio_guardia`).
+>   **Revisore (🔴):** l'assistente chiedeva ancora il senza IVA e rispondeva «registrato» su
+>   cifre che il trigger scarta: ora non lo chiede, non lo propone e `registra` risponde 400;
+>   un giorno di solo no IVA a mano risponde 400, non piu' 500. **Prove:** 24 test `-m sql` in
+>   `tests/test_sql_ricavi_noiva.py` (altro cliente e altra sede intatti, id altrui ferma tutto,
+>   Passbi non rimette il no IVA, riattiva); mutazione: migration 13/14, Python 13/14,
+>   assistente 6/6, frontend lib 7/7. Sopravvivono il REVOKE (il DB di test non ha i grant di
+>   default di Supabase: si verifica sul live dopo l'applicazione) e `.eq("user_id")` in
+>   riattiva (ridondante dietro il controllo delle sedi). Corretto un test ordine-dipendente
+>   (`test_due_sotto_utenti_cambiano_sede...`, sede di default a pari `created_at`, come il suo
+>   gemello). Suite `python -m pytest tests/ -q -p no:randomly`: 20.088 verdi + 58 skip, 0 rossi;
+>   `tsc --noEmit` pulito; OpenAPI senza drift. **Non fatto:** migration da applicare sul live
+>   PRIMA del push (poi `has_function_privilege` per anon/authenticated); riquadro non aperto nel
+>   browser (Next locale scrive sul DB vero); un'email Passbi di soli giorni senza IVA su sede
+>   esclusa spegnerebbe l'override del mese senza scrivere niente (0 casi oggi).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

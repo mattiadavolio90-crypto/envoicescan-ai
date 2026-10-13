@@ -235,7 +235,11 @@ def test_due_sotto_utenti_cambiano_sede_senza_spostare_gli_altri(scenario):
     sc = scenario
     sedi = [sc.a.ids["sede1"], sc.a.ids["sede2"]]
     _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "uno@isolamento.test", sedi, {"analisi_fatture": True})
-    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "due@isolamento.test", sedi, {"analisi_fatture": True})
+    su2 = _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "due@isolamento.test", sedi, {"analisi_fatture": True})
+    # Come nel test sotto: a pari created_at la sede di default dipende da cosa e'
+    # girato prima sullo stesso DB (misurato il 12/10: rosso dopo test_sql_ricavi_noiva).
+    sc.conn.execute("UPDATE public.sotto_utenti SET ultimo_ristorante_id = %s WHERE id = %s",
+                    (sc.a.ids["sede1"], su2))
     t1 = _login(sc, "uno@isolamento.test").json()["token"]
     t2 = _login(sc, "due@isolamento.test").json()["token"]
 

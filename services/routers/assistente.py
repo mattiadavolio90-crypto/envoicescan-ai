@@ -443,9 +443,33 @@ def _aggiorna(sb, tabella: str, letto: Letto, rid: str, payload: Dict[str, Any],
 _META_ASSISTENTE = {"source_channel": "assistente"}
 
 
+# Sede che ha escluso i ricavi senza IVA (Impostazioni): il trigger del DB li
+# scrive a 0. Una card con no IVA > 0 confermerebbe «registrato» una cifra che non
+# c'e' — e un giorno di solo no IVA non nascerebbe proprio.
+_NOIVA_ESCLUSI = ("I ricavi senza IVA sono esclusi per questa sede: si registrano solo "
+                  "10% e 22%. Si riattivano da Impostazioni.")
+
+
+def noiva_escluso(sb, rid: str) -> bool:
+    resp = (
+        sb.table("ristoranti")
+        .select("escludi_ricavi_noiva")
+        .eq("id", rid)
+        .limit(1)
+        .execute()
+    )
+    return bool(resp.data and resp.data[0].get("escludi_ricavi_noiva"))
+
+
+def _rifiuta_noiva_se_escluso(sb, rid: str, valori: Dict[str, float]) -> None:
+    if valori.get("altri_ricavi_noiva", 0) > 0 and noiva_escluso(sb, rid):
+        raise HTTPException(status_code=400, detail=_NOIVA_ESCLUSI)
+
+
 def _registra_incasso(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
     giorno = valida_giorno(body.data, _oggi())
     valori = valida_importi_incasso(body, TETTO_INCASSO_GIORNO)
+    _rifiuta_noiva_se_escluso(sb, rid, valori)
     # Un giorno su un mese tenuto a totale (override, o fatturato scritto a mano
     # senza giorni) spegnerebbe il totale: il trigger rifa' il mese coi soli giorni.
     if leggi_fatturato_mese(sb, rid, giorno.year, giorno.month).fonte in ("mensile", "margini"):
@@ -468,6 +492,7 @@ def _registra_incasso(sb, user, rid: str, body: RegistraRequest) -> Dict[str, An
 def _registra_fatturato_mese(sb, user, rid: str, body: RegistraRequest) -> Dict[str, Any]:
     anno, mese = valida_mese(body.anno, body.mese, _oggi())
     valori = valida_importi_incasso(body, TETTO_FATTURATO_MESE)
+    _rifiuta_noiva_se_escluso(sb, rid, valori)
     letto = leggi_fatturato_mese(sb, rid, anno, mese)
     if letto.fonte == "giorni":
         raise _conflitto("mese_con_giorni")
@@ -674,15 +699,22 @@ def proponi(nome: str, args: Dict[str, Any], *, user: Dict[str, Any], sb,
                                 "di' al cliente di riprovare fra poco"}
 
 
-def _importi_dettati(args: Dict[str, Any], settore: Optional[str]) -> Tuple[Optional[Dict[str, float]], Dict[str, Any]]:
+def _importi_dettati(args: Dict[str, Any], settore: Optional[str],
+                     senza_iva_escluso: bool = False) -> Tuple[Optional[Dict[str, float]], Dict[str, Any]]:
     """(importi, None) oppure (None, cio' che legge il modello). Gli incassi hanno
-    solo 10%, 22% e senza IVA (Mattia, 5/10/2026)."""
+    solo 10%, 22% e senza IVA (Mattia, 5/10/2026). Su una sede che ha escluso il
+    senza IVA non lo si chiede, e dettato non si propone."""
     # «2.340» come stringa diventerebbe 2,34: il punto delle migliaia non si indovina.
     if any(isinstance(args.get(k), str) for k in ("iva10", "senza_iva", "iva22")):
         return None, _IMPORTO_IN_TESTO
     iva10, senza_iva = _numero(args, "iva10"), _numero(args, "senza_iva")
+    if senza_iva_escluso:
+        if senza_iva:
+            return None, {"errore": "ricavi senza IVA esclusi",
+                          "cosa_fare": f"Di' al cliente: {_NOIVA_ESCLUSI} Poi chiedigli solo 10% e 22%."}
+        senza_iva = 0.0
     if iva10 is None or senza_iva is None:
-        return None, _chiedi_divisione(settore)
+        return None, _chiedi_divisione(settore, senza_iva_escluso)
     return {"fatturato_iva10": iva10, "altri_ricavi_noiva": senza_iva,
             "fatturato_iva22": _numero(args, "iva22") or 0.0}, {}
 
@@ -693,8 +725,10 @@ _IMPORTO_IN_TESTO = {
 }
 
 
-def _chiedi_divisione(settore: Optional[str]) -> Dict[str, str]:
-    if settore == SETTORE_RETAIL:
+def _chiedi_divisione(settore: Optional[str], senza_iva_escluso: bool = False) -> Dict[str, str]:
+    if senza_iva_escluso:
+        come = "quanto e' al 10% e quanto al 22% (i ricavi senza IVA sono esclusi per questa sede)"
+    elif settore == SETTORE_RETAIL:
         come = "quanto e' al 22%, quanto al 10% e quanto senza IVA"
     else:
         come = "quanto e' al 10% e quanto senza IVA (il 22% solo se lo dice lui)"
@@ -707,7 +741,7 @@ def _gia_cosi(attuale: Optional[Dict[str, float]], dettato: Dict[str, float]) ->
 
 
 def _proponi_incasso(args, sb, rid, sede_nome, oggi, settore):
-    importi, errore = _importi_dettati(args, settore)
+    importi, errore = _importi_dettati(args, settore, noiva_escluso(sb, rid))
     if importi is None:
         return None, errore
     giorno = valida_giorno(args.get("data"), oggi)
@@ -727,7 +761,7 @@ def _proponi_incasso(args, sb, rid, sede_nome, oggi, settore):
 
 
 def _proponi_fatturato_mese(args, sb, rid, sede_nome, oggi, settore):
-    importi, errore = _importi_dettati(args, settore)
+    importi, errore = _importi_dettati(args, settore, noiva_escluso(sb, rid))
     if importi is None:
         return None, errore
     anno, mese = valida_mese(_intero(args, "anno"), _intero(args, "mese"), oggi)

@@ -3998,6 +3998,230 @@
         }
       }
     },
+    "/api/account/ricavi-noiva": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Ricavi Noiva",
+        "description": "Per ogni sede del titolare: se e' esclusa e quanto no IVA ha oggi nei margini.",
+        "operationId": "account_ricavi_noiva_api_account_ricavi_noiva_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Ricavi Noiva Api Account Ricavi Noiva Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/ricavi-noiva/elimina": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Ricavi Noiva Elimina",
+        "description": "Elimina in modo permanente i ricavi senza IVA delle sedi scelte e le esclude:\nda qui nessun canale (Passbi compreso) li rimette, finche' non si riattiva.",
+        "operationId": "account_ricavi_noiva_elimina_api_account_ricavi_noiva_elimina_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RicaviNoIvaEliminaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Ricavi Noiva Elimina Api Account Ricavi Noiva Elimina Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/ricavi-noiva/riattiva": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Ricavi Noiva Riattiva",
+        "description": "Le sedi scelte tornano ad accettare il no IVA dai caricamenti futuri.\nQuello gia' eliminato non torna.",
+        "operationId": "account_ricavi_noiva_riattiva_api_account_ricavi_noiva_riattiva_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RicaviNoIvaRiattivaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Ricavi Noiva Riattiva Api Account Ricavi Noiva Riattiva Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/account/sedi": {
       "get": {
         "tags": [
@@ -27327,6 +27551,11 @@
           "giorni_con_dati": {
             "type": "integer",
             "title": "Giorni Con Dati"
+          },
+          "noiva_escluso": {
+            "type": "boolean",
+            "title": "Noiva Escluso",
+            "default": false
           }
         },
         "type": "object",
@@ -27554,6 +27783,45 @@
           "mese"
         ],
         "title": "RicaviModalitaUpsertRequest"
+      },
+      "RicaviNoIvaEliminaBody": {
+        "properties": {
+          "ristorante_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ristorante Ids",
+            "default": []
+          },
+          "conferma": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conferma"
+          }
+        },
+        "type": "object",
+        "title": "RicaviNoIvaEliminaBody"
+      },
+      "RicaviNoIvaRiattivaBody": {
+        "properties": {
+          "ristorante_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ristorante Ids",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "RicaviNoIvaRiattivaBody"
       },
       "RicavoGiornalieroItem": {
         "properties": {
