@@ -2964,12 +2964,6 @@ class GruppoModificaProdottiRequest(BaseModel):
     togli: List[str] = []
 
 
-def _norm_key(*args, **kwargs):
-    """Normalizzazione descrizione → chiave, IDENTICA ai tag di sede."""
-    from services.db_service import _normalize_custom_tag_key
-    return _normalize_custom_tag_key(*args, **kwargs)
-
-
 def _assert_gruppo_tag(sb, tag_id: int, user_id: str) -> None:
     r = (
         sb.table("gruppo_tags").select("id")
