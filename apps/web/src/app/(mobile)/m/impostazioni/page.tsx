@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentSession } from "@/lib/auth";
 import { ImpostazioniClient } from "./impostazioni-client";
 
 // Pagina client-driven: i dati account si caricano dopo il mount (vedi
@@ -7,13 +7,15 @@ import { ImpostazioniClient } from "./impostazioni-client";
 export const dynamic = "force-dynamic";
 
 export default async function MobileImpostazioniPage() {
-  // /m non ha la vista catena: con piu' sedi il riquadro dei ricavi senza IVA
-  // resta sul desktop, nella catena.
-  const user = await getCurrentUser();
+  // Con piu' sedi i ricavi senza IVA si eliminano solo dalla catena sul desktop,
+  // dove si scelgono le sedi: su /m il riquadro non compare.
+  // getCurrentSession e' la stessa cache() del layout: nessuna /api/auth/me in piu'.
+  const session = await getCurrentSession();
+  const numSedi = session.status === "ok" ? (session.user.num_sedi ?? null) : null;
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-bold tracking-tight">Account</h1>
-      <ImpostazioniClient numSedi={user?.num_sedi ?? null} />
+      <ImpostazioniClient numSedi={numSedi} />
     </div>
   );
 }
