@@ -348,7 +348,7 @@ export function ModificaTagDialog({
                 onChange={setFiltro}
                 options={[
                   { value: "nel_tag", label: `Nel tag (${iniziali.size})` },
-                  { value: "tutti", label: "Tutti" },
+                  { value: "tutti", label: "Tutti i prodotti" },
                 ]}
               />
             )}

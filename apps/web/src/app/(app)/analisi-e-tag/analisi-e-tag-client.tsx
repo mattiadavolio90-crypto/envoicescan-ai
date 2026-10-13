@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus, X, RefreshCw, Download, ChevronDown, ChevronUp,
-  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2, Pencil, Star, MoreHorizontal,
+  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2, Pencil, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -12,9 +12,6 @@ import {
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { NativeSelect } from "@/components/ui/select";
@@ -922,21 +919,16 @@ export function AnalisiETagClient({
                   <Pencil />
                   Modifica tag
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="outline" size="icon" aria-label="Altre azioni sul tag" title="Altre azioni sul tag">
-                        <MoreHorizontal />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem variant="destructive" onClick={() => setConfermaElimina(true)}>
-                      <Trash2 />
-                      Elimina tag
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label="Elimina tag"
+                  title="Elimina tag"
+                  onClick={() => setConfermaElimina(true)}
+                >
+                  <Trash2 />
+                </Button>
               </div>
             </div>
 
