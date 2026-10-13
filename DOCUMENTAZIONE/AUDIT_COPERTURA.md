@@ -2389,6 +2389,40 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   nel browser (nessuna sede di prova; il Next locale scrive sul DB vero): trascinamento e
 >   dialoghi vanno provati da Mattia dopo il deploy. Al deploy: migration sul live PRIMA del
 >   push, altrimenti `GET /api/tag` risponde 502 e la pagina resta senza tag.
+> - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
+>   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
+>   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e
+>   «cambio» incomprensibili. **Misurato prima:** nel tema chiaro sfondo 0,985 e schede 1,0: la
+>   scheda di catena teneva filtri, totali e tabella bianchi dentro un riquadro bianco. Sul
+>   limone il divario +88% era il tempo (tutte le sedi a 17 € a giugno, 24-32 € a luglio),
+>   non la sede: con la finestra a 14 giorni i divari Sushiland passano da 177 a 54
+>   (33.489 → 7.497 €); Mattia ha scelto invece il filtro del periodo come nel PV. **Difetto
+>   trovato:** due divari con gli stessi primi 60 caratteri (dentici di provenienze diverse,
+>   18 casi) avevano la stessa chiave a video, e cambiando filtro restavano schede vecchie
+>   (il dentice +8% sotto «Da controllare» nello screenshot). **Fatto:** la scheda e' uscita dal
+>   riquadro e ha la struttura dell'Osservatorio, con gli STESSI pezzi estratti in
+>   `apps/web/src/components/prezzi/` (scheda della variazione, grafico, lista acquisti, KPI,
+>   filtro del periodo con `FilterChip`), usati da entrambe; divari come schede con la striscia
+>   del peso e la tabella dei PV con intestazione tinta; filtri categoria/fornitore; vista
+>   Preferiti sui divari (stella di un PV DEL CONFRONTO, worker); badge «Aumentato in 3 PV su
+>   4» / «Solo qui: gli altri 3 PV no» con frase al passaggio. **Parole** (anche nel PV):
+>   «Confezione diversa?» e nuova spiegazione, nota dei sei mesi per esteso al posto di
+>   « ⚠️ >6m» (che oltre i 53 caratteri veniva tagliata: ora la nota sta dopo il taglio),
+>   «Variazione media», «Prima/Ora», «Quantita'/Prezzo unitario»; la spiegazione (i) del PV
+>   diceva «primo e ultimo prezzo» (sono gli ultimi due acquisti) e citava icone ⚠/✓ non piu'
+>   presenti: ora la legenda e' scritta dalle soglie del calcolo (`lib/prezzi-viste.ts`).
+>   **Revisore (🟡 sul codice):** stella delle variazioni che non arrivava ai divari (si
+>   ricarica al passaggio), «prodotti (filtrate da)», chiave doppia anche nel PV (ora la chiave
+>   intera), contatori delle viste che seguivano la ricerca, stella dei divari sul nome con
+>   ORDER, test sulla sede fuori finestra: tutti chiusi. **Prove:** mutazione 15/15 (worker 6,
+>   lib catena 5, lib viste 4); 111 test prezzi; suite completa `python -m pytest tests/ -q -p
+>   no:randomly` **20.390 verdi + 59 skip, 0 rossi** (16'43", prima delle correzioni del
+>   revisore, i cui file sono stati rilanciati); presidi frontend rilanciati dopo; `tsc` ed
+>   eslint puliti; OpenAPI senza drift (lo schema coi campi nuovi e' entrato in HEAD col commit
+>   dei tag `bf73460a`, rigenerato mentre questo codice era su disco). **Non fatto:** pagina
+>   non aperta nel browser (nessuna sessione cliente; il Next locale punta al DB vero): va
+>   guardata da Mattia in locale, tema chiaro e scuro. «Score fornitori» resta in inglese: e'
+>   il nome di una scheda, decisione di Mattia.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

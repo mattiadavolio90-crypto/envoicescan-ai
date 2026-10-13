@@ -31,6 +31,7 @@ from services.routers.prezzi import (
     _CATEGORIE_SPESE_PREZZI,
     _PRICE_ALERT_DEFAULT,
     StoricoPrezzoResponse,
+    _chiavi_stella,
     _deriva_variazione,
     _frequenza_mensile,
     _salva_preferito,
@@ -3285,6 +3286,13 @@ class DivarioPrezzo(BaseModel):
     prodotto: str
     categoria: str
     fornitore: str
+    # Chiave del prodotto: due divari possono avere lo stesso nome a video
+    # (DENTICE GIBBOSO ... di provenienze diverse, 18 casi su Sushiland il
+    # 13/10/2026) e la scheda li confondeva fra loro.
+    desc_key: str = ""
+    forn_key: str = ""
+    # Stellato in almeno uno dei PV del confronto: la vista «Preferiti».
+    preferito: bool = False
     prezzo_min: float
     prezzo_max: float
     divario_perc: float
@@ -3365,6 +3373,7 @@ def _calcola_divari_catena(
     rid_to_nome: Dict[str, str],
     soglia: float,
     finestra_giorni: int = _DIVARIO_FINESTRA_GIORNI,
+    preferiti_per_sede: Optional[Dict[str, set]] = None,
 ) -> List[Dict[str, Any]]:
     """Stesso prodotto dallo stesso fornitore, ultimo prezzo diverso fra le sedi.
 
@@ -3384,8 +3393,9 @@ def _calcola_divari_catena(
             continue
         per_chiave.setdefault((c.get("desc_key"), c.get("forn_key")), []).append(c)
 
+    preferiti_per_sede = preferiti_per_sede or {}
     divari: List[Dict[str, Any]] = []
-    for gruppo_sedi in per_chiave.values():
+    for (desc_key, forn_key), gruppo_sedi in per_chiave.items():
         if len(gruppo_sedi) < 2:
             continue
         date = {id(c): _date.fromisoformat(str(c["ultima_data"])[:10]) for c in gruppo_sedi}
@@ -3417,10 +3427,21 @@ def _calcola_divari_catena(
         # Nome e categoria dalla sede che lo compra di piu': la descrizione puo'
         # variare di una maiuscola fra le sedi, e una va scelta.
         rif = max(vicine, key=lambda c: (int(c.get("n_acquisti") or 0), str(c.get("ultima_data"))))
+        preferito = any(
+            not _chiavi_stella(togli_numero_ordine(c.get("descrizione") or ""), str(c.get("fornitore") or "")).isdisjoint(
+                preferiti_per_sede.get(str(c["ristorante_id"]), set())
+            )
+            for c in vicine
+        )
         divari.append({
-            "prodotto": togli_numero_ordine(rif.get("descrizione") or "")[:60],
+            # Il nome intero: la scheda lo taglia a video e lo mostra al passaggio.
+            # Tagliato a 60 qui, i dentici di provenienze diverse erano identici.
+            "prodotto": togli_numero_ordine(rif.get("descrizione") or ""),
             "categoria": str(rif.get("categoria") or "")[:25],
             "fornitore": str(rif.get("fornitore") or "")[:30],
+            "desc_key": str(desc_key or ""),
+            "forn_key": str(forn_key or ""),
+            "preferito": preferito,
             "prezzo_min": round(p_min, 4),
             "prezzo_max": round(p_max, 4),
             "divario_perc": round(divario, 2),
@@ -3462,13 +3483,14 @@ def gruppo_prezzi(
         "p_categorie_escluse": _CATEGORIE_SPESE_PREZZI,
     }).execute().data or {}
     coppie = esito.get("coppie") or []
+    preferiti = _preferiti_per_sede(sb, ids)
 
     return GruppoPrezziResponse(
         variazioni=[
             VariazionePrezzoCatena(**v)
-            for v in _variazioni_catena(coppie, rid_to_nome, soglia, _preferiti_per_sede(sb, ids))
+            for v in _variazioni_catena(coppie, rid_to_nome, soglia, preferiti)
         ],
-        divari=[DivarioPrezzo(**d) for d in _calcola_divari_catena(coppie, rid_to_nome, soglia)],
+        divari=[DivarioPrezzo(**d) for d in _calcola_divari_catena(coppie, rid_to_nome, soglia, preferiti_per_sede=preferiti)],
         soglia=soglia,
         periodo_label=periodo_label,
         acquisti_nel_periodo=int(esito.get("acquisti") or 0),

@@ -188,6 +188,12 @@ fornitori. Il numero d'ordine che un fornitore scrive nel nome («… ORDER 2025
 toglie (`chiave_prodotto`, e la gemella SQL nella RPC), il nome a video pure. La
 definizione è una sola, `utils/voci_prezzo.py`, e vale anche per gli avvisi
 prezzi (`calcola_alert`: Home, chat, notifiche, briefing).
+A video le due pagine sono la stessa (13/10/2026): la scheda di una variazione,
+il grafico dello storico, la lista acquisti, i riquadri dei totali e il filtro del
+periodo stanno in `apps/web/src/components/prezzi/` e li usano sia l'Osservatorio
+(`prezzi/variazioni-tab.tsx`) sia la catena (`catena/analisi/scheda-prezzi-catena.tsx`);
+parole e soglie della striscia in `lib/prezzi-viste.ts`. Una modifica grafica a una
+delle due si fa lì, non in copia.
 
 **Le migration del repo non ricostruiscono il database** — applicarle su un
 Postgres vuoto dà 18 tabelle su 59. Il DB dei test si monta invece da

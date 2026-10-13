@@ -9,8 +9,27 @@
 
 export type VistaPrezzi = "tutti" | "preferiti" | "da_controllare";
 
+// Suffissi che il worker aggiunge al nome a video (« ⚠️ >6m»).
+const SUFFISSI_UI = [" ⚠️ >6M", " ⚠ >6M"];
+
+// Le parole a video (Mattia, 13/10/2026: «saltati» e «cambio» non si capivano).
+export const ETICHETTA_DA_CONTROLLARE = "Confezione diversa?";
+
 export const SPIEGAZIONE_DA_CONTROLLARE =
-  "Prezzi saltati di 10 volte o più fra due acquisti: di solito è cambiata la confezione o l'unità di misura (bottiglia o cassa, kg o cartone). Non sono rincari veri e non entrano nei totali.";
+  "Il prezzo è diventato 10 volte più alto o più basso da un acquisto all'altro, per esempio da 0,40 € a 14 €. Quasi sempre il fornitore ha fatturato una volta il pezzo e una volta la cassa, o una volta il kg e una volta il cartone. Non è un aumento vero, quindi resta fuori dai totali.";
+
+// Il worker aggiunge « ⚠️ >6m» al nome quando fra gli ultimi due acquisti sono
+// passati piu' di sei mesi. A video «>6m» non si capiva: il nome resta pulito e
+// la nota si scrive per esteso.
+export const NOTA_OLTRE_SEI_MESI = "Fra gli ultimi due acquisti sono passati più di 6 mesi";
+
+export function nomeProdotto(prodotto: string): { nome: string; oltreSeiMesi: boolean } {
+  const testo = prodotto.trimEnd();
+  for (const s of SUFFISSI_UI) {
+    if (testo.toUpperCase().endsWith(s)) return { nome: testo.slice(0, -s.length).trimEnd(), oltreSeiMesi: true };
+  }
+  return { nome: prodotto, oltreSeiMesi: false };
+}
 
 export function inVista(
   r: { da_controllare?: boolean },
@@ -26,8 +45,6 @@ export function contaDaControllare(righe: readonly { da_controllare?: boolean }[
   return righe.filter((r) => r.da_controllare === true).length;
 }
 
-// Suffissi che il worker aggiunge al nome a video (« ⚠️ >6m»).
-const SUFFISSI_UI = [" ⚠️ >6M", " ⚠ >6M"];
 
 /**
  * La coppia con cui si salva e si riconosce la stella. Usa le chiavi intere
@@ -56,3 +73,22 @@ export function chiavePreferito(r: Parameters<typeof coppiaPreferito>[0]): strin
   const c = coppiaPreferito(r);
   return `${c.prodotto}|${c.fornitore}`;
 }
+
+// Quanto pesa una variazione in euro al mese (o il «pagato in più» di un prodotto
+// fra i PV): decide la striscia e il pallino a sinistra della riga. Misura
+// l'ENTITA', non il segno: un calo da 200 € e' critico quanto un aumento.
+export const SOGLIA_CRITICO_EURO = 100;
+export const SOGLIA_ALTO_EURO = 30;
+
+export type Gravita = "critico" | "alto" | "medio";
+
+export function gravita(r: { impatto_stimato: number }): Gravita {
+  const imp = Math.abs(r.impatto_stimato);
+  if (imp >= SOGLIA_CRITICO_EURO) return "critico";
+  if (imp >= SOGLIA_ALTO_EURO) return "alto";
+  return "medio";
+}
+
+// La legenda a parole nelle spiegazioni (i), costruita dalle stesse soglie: la
+// vecchia citava icone ⚠/✓ che nelle righe non c'erano piu'.
+export const LEGENDA_GRAVITA = `La striscia e il pallino a sinistra dicono quanto pesa il cambiamento in euro, in aumento o in calo: scuro = critico (${SOGLIA_CRITICO_EURO} € o più), grigio = alto (da ${SOGLIA_ALTO_EURO} €), chiaro = medio.`;

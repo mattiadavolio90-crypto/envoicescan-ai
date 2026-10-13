@@ -1,107 +1,75 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, ChevronDown, Search, Star } from "lucide-react";
+import { AlertTriangle, Calendar, CheckCircle2, RefreshCw, Search, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/select";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { AREA_TABELLA, PannelloScheda } from "@/components/ui/pannello-scheda";
 import { cn } from "@/lib/utils";
-import { formatEuro } from "@/lib/format";
-import { MESI_LUNGHI as MESI } from "@/lib/mesi";
-import { intervalloMese } from "@/lib/periodo";
+import { intervalloPeriodo } from "@/lib/periodo";
 import type { StoricoPrezzoResponse } from "@/lib/prezzi";
 import {
+  chiaveDivario,
   chiaveStellaCatena,
   etichettaDiffusione,
   filtraDivari,
   filtraVariazioni,
   pvDeiPrezzi,
   sogliaDaApplicare,
+  spiegazioneDiffusione,
   stelleIniziali,
   testoSoglia,
   totaliPrezzi,
+  valoriFiltro,
+  type DivarioPrezzo,
   type GruppoPrezzi,
   type VariazionePrezzoCatena,
 } from "@/lib/catena-prezzi";
-import { SPIEGAZIONE_DA_CONTROLLARE, coppiaPreferito, type VistaPrezzi } from "@/lib/prezzi-viste";
+import {
+  ETICHETTA_DA_CONTROLLARE,
+  SPIEGAZIONE_DA_CONTROLLARE,
+  coppiaPreferito,
+  nomeProdotto,
+  type VistaPrezzi,
+} from "@/lib/prezzi-viste";
+import {
+  ContaVariazioni,
+  GRAVITA_STYLE,
+  IntestazioneVariazioni,
+  KpiCard,
+  LEGENDA_GRAVITA,
+  SpiegazioneDaControllare,
+  VariazioneCard,
+  fmtData,
+  fmtEuro,
+  fmtPct,
+  gravita,
+} from "@/components/prezzi/variazione-card";
+import { ANNO_CORRENTE, FiltroPeriodoPrezzi, type ModoPeriodo } from "@/components/prezzi/filtro-periodo-prezzi";
 
 type Lista = "variazioni" | "divari";
 
-function euro2(v: number): string {
-  return formatEuro(v, 2);
-}
+const PAGE_SIZE = 100;
 
-function euroSegno(v: number): string {
-  return `${v > 0 ? "+" : ""}${formatEuro(v, 2)}`;
-}
+// Stessi controlli dell'Osservatorio del PV (variazioni-tab.tsx): stesse classi,
+// perche' le due pagine si leggano allo stesso modo.
+const CAMPO = "rounded-md border border-border bg-background px-2 py-1.5 text-sm";
 
-function pct(v: number): string {
-  const segno = v > 0 ? "+" : "";
-  return `${segno}${v.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
-}
-
-function dataBreve(s: string): string {
-  const d = new Date(s);
-  if (!s || isNaN(d.getTime())) return s || "—";
-  return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
-// Come nell'Osservatorio: il colore sta sull'euro e segue il SEGNO (rosso = costa
-// di piu'), la percentuale resta neutra.
-function classeImpatto(v: number): string {
-  return v > 0 ? "text-negativo" : v < 0 ? "text-positivo" : "text-muted-foreground";
-}
-
-function Kpi({ label, valore, sotto, classe }: { label: string; valore: string; sotto?: string; classe?: string }) {
-  return (
-    <div className="rounded-xl border bg-card px-4 py-3">
-      <span className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-      <span className={cn("block text-xl font-bold tracking-tight", classe)}>{valore}</span>
-      {sotto && <span className="block text-[11px] text-muted-foreground">{sotto}</span>}
-    </div>
-  );
-}
-
-function StoricoPv({ storico, loading }: { storico: StoricoPrezzoResponse | null; loading: boolean }) {
-  if (loading) return <p className="py-3 text-sm text-muted-foreground">Caricamento acquisti…</p>;
-  if (!storico || storico.punti.length === 0) {
-    return <p className="py-3 text-sm text-muted-foreground">Nessun acquisto da mostrare nel periodo.</p>;
-  }
-  const punti = [...storico.punti].reverse();
-  return (
-    <table className="w-full text-xs">
-      <thead>
-        <tr className="text-muted-foreground">
-          <th className="py-1 pr-3 text-left font-medium">Data</th>
-          <th className="py-1 pr-3 text-left font-medium">Documento</th>
-          <th className="py-1 pr-3 text-right font-medium">Quantità</th>
-          <th className="py-1 text-right font-medium">Prezzo</th>
-        </tr>
-      </thead>
-      <tbody>
-        {punti.map((p, i) => (
-          <tr key={i} className="border-t border-border/60">
-            <td className="py-1 pr-3 tabular-nums">{dataBreve(p.data)}</td>
-            <td className="py-1 pr-3">{p.numero_documento || "—"}</td>
-            <td className="py-1 pr-3 text-right tabular-nums">
-              {p.quantita != null ? p.quantita.toLocaleString("it-IT", { maximumFractionDigits: 3 }) : "—"}
-            </td>
-            <td className="py-1 text-right font-medium tabular-nums">{euro2(p.prezzo_unitario)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// Scheda «Prezzi» di Analisi catena (Mattia, 11/10/2026). Due viste: i rincari di
-// ogni punto vendita, con la sede su ogni riga, e lo stesso prodotto pagato
-// diverso fra le sedi. Le regole stanno in lib/catena-prezzi.ts.
+// Scheda «Prezzi» di Analisi catena. Dal 13/10/2026 ha la struttura
+// dell'Osservatorio del PV (Mattia: «voglio coerenza con prezzi dei punti
+// vendita singoli»): filtro del periodo, totali, filtri, e le stesse schede per
+// riga. Prima stava in un riquadro bianco con una tabella, e nel tema chiaro
+// filtri, totali e righe erano bianco su bianco. Due liste: i rincari di ogni
+// punto vendita, con la sede su ogni riga, e lo stesso prodotto pagato diverso
+// fra le sedi. Le regole stanno in lib/catena-prezzi.ts.
 export function SchedaPrezziCatena() {
-  const [periodo, setPeriodo] = useState<string>("anno");
+  const [anno, setAnno] = useState(ANNO_CORRENTE);
+  const [modo, setModo] = useState<ModoPeriodo>("anno");
+  const [mese, setMese] = useState<number | null>(null);
+  const [customDa, setCustomDa] = useState("");
+  const [customA, setCustomA] = useState("");
+  const [range, setRange] = useState(() => intervalloPeriodo(ANNO_CORRENTE, null));
   // null = la soglia degli avvisi dell'account, che il worker usa e rimanda:
   // la casella parte da li', come nell'Osservatorio del PV.
   const [soglia, setSoglia] = useState<number | null>(null);
@@ -111,6 +79,9 @@ export function SchedaPrezziCatena() {
   const [stelle, setStelle] = useState<Set<string>>(new Set());
   const [pv, setPv] = useState("");
   const [ricerca, setRicerca] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [fornitore, setFornitore] = useState("");
+  const [page, setPage] = useState(1);
   const [data, setData] = useState<GruppoPrezzi | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -118,19 +89,12 @@ export function SchedaPrezziCatena() {
   const [storico, setStorico] = useState<StoricoPrezzoResponse | null>(null);
   const [storicoLoading, setStoricoLoading] = useState(false);
   const reqRef = useRef(0);
-
-  const annoCorrente = new Date().getFullYear();
-  const meseCorrente = new Date().getMonth() + 1;
-
-  const range = useMemo(
-    () =>
-      periodo === "anno"
-        ? { data_da: `${annoCorrente}-01-01`, data_a: `${annoCorrente}-12-31` }
-        : intervalloMese(annoCorrente, Number(periodo)),
-    [periodo, annoCorrente],
-  );
+  // Una stella cambiata nelle variazioni sposta anche i «Preferiti» dei divari,
+  // che il worker calcola: passando a quella lista si ricarica.
+  const stelleCambiate = useRef(false);
 
   const carica = useCallback(() => {
+    if (!range.data_da || !range.data_a) return;
     const my = ++reqRef.current;
     setLoading(true);
     setLoadError(false);
@@ -160,6 +124,23 @@ export function SchedaPrezziCatena() {
     carica();
   }, [carica]);
 
+  function applyAnno(y: number) {
+    setAnno(y);
+    setModo("anno");
+    setMese(null);
+    setRange(intervalloPeriodo(y, null));
+  }
+  function applyMese(m: number) {
+    setMese(m);
+    setModo("mese");
+    setRange(intervalloPeriodo(anno, m));
+  }
+  function applyCustom(da: string, a: string) {
+    setCustomDa(da);
+    setCustomA(a);
+    if (da && a) setRange({ data_da: da, data_a: a });
+  }
+
   function applicaSoglia() {
     const esito = sogliaDaApplicare(sogliaInput, soglia ?? data?.soglia ?? null);
     setSogliaInput(esito.testo);
@@ -167,33 +148,72 @@ export function SchedaPrezziCatena() {
   }
 
   const elencoPv = useMemo(() => pvDeiPrezzi(data), [data]);
-  const variazioni = useMemo(
-    () => filtraVariazioni(data?.variazioni ?? [], { pv, ricerca, vista: mostra }, stelle),
-    [data, pv, ricerca, mostra, stelle],
+  const opzioni = useMemo(
+    () => valoriFiltro(lista === "variazioni" ? data?.variazioni ?? [] : data?.divari ?? []),
+    [data, lista],
   );
-  const divari = useMemo(() => filtraDivari(data?.divari ?? [], { pv, ricerca, vista: mostra }), [data, pv, ricerca, mostra]);
+  const variazioni = useMemo(
+    () => filtraVariazioni(data?.variazioni ?? [], { pv, ricerca, categoria, fornitore, vista: mostra }, stelle),
+    [data, pv, ricerca, categoria, fornitore, mostra, stelle],
+  );
+  const divari = useMemo(
+    () => filtraDivari(data?.divari ?? [], { pv, ricerca, categoria, fornitore, vista: mostra }),
+    [data, pv, ricerca, categoria, fornitore, mostra],
+  );
+  // Il «filtrate da N» si misura sulla vista senza i filtri, come nel PV. Anche i
+  // contatori delle viste (Preferiti, Confezione diversa?) non seguono la ricerca:
+  // seguendola, una ricerca vuota faceva sparire la voce e tornare a «Tutti».
+  const base = useMemo(
+    () =>
+      lista === "variazioni"
+        ? filtraVariazioni(data?.variazioni ?? [], { pv: "", ricerca: "", vista: mostra }, stelle).length
+        : filtraDivari(data?.divari ?? [], { pv: "", ricerca: "", vista: mostra }).length,
+    [data, lista, mostra, stelle],
+  );
   const nDaControllare = useMemo(
     () =>
       lista === "variazioni"
-        ? filtraVariazioni(data?.variazioni ?? [], { pv, ricerca, vista: "da_controllare" }).length
-        : filtraDivari(data?.divari ?? [], { pv, ricerca, vista: "da_controllare" }).length,
-    [data, pv, ricerca, lista],
+        ? filtraVariazioni(data?.variazioni ?? [], { pv, ricerca: "", vista: "da_controllare" }).length
+        : filtraDivari(data?.divari ?? [], { pv, ricerca: "", vista: "da_controllare" }).length,
+    [data, pv, lista],
   );
   const nStelle = useMemo(
-    () => filtraVariazioni(data?.variazioni ?? [], { pv, ricerca, vista: "preferiti" }, stelle).length,
-    [data, pv, ricerca, stelle],
+    () =>
+      lista === "variazioni"
+        ? filtraVariazioni(data?.variazioni ?? [], { pv, ricerca: "", vista: "preferiti" }, stelle).length
+        : filtraDivari(data?.divari ?? [], { pv, ricerca: "", vista: "preferiti" }).length,
+    [data, pv, lista, stelle],
   );
   const totali = totaliPrezzi(variazioni, divari, pv);
   const nomePv = elencoPv.find((p) => p.id === pv)?.nome;
+  const righe = lista === "variazioni" ? variazioni.length : divari.length;
+  const pagine = Math.max(1, Math.ceil(righe / PAGE_SIZE));
+  const pagina = Math.min(page, pagine);
+  const filtriAttivi = Boolean(ricerca || categoria || fornitore);
 
-  // Una voce che sparisce dal selettore (nessuna riga da controllare in questo
-  // periodo, «Preferiti» nella lista dei divari) riporta su «Tutti»: restarci
-  // mostrerebbe una lista vuota senza un perche'.
+  // Una voce che sparisce dal selettore (nessuna riga «Confezione diversa?» in
+  // questo periodo) riporta su «Tutti»: restarci mostrerebbe una lista vuota
+  // senza un perche'.
   useEffect(() => {
-    if ((mostra === "da_controllare" && nDaControllare === 0) || (mostra === "preferiti" && lista === "divari")) {
-      setMostra("tutti");
+    if (mostra === "da_controllare" && nDaControllare === 0) setMostra("tutti");
+  }, [mostra, nDaControllare]);
+
+  // Categoria e fornitore valgono per la lista in cui sono stati scelti.
+  useEffect(() => {
+    setCategoria("");
+    setFornitore("");
+  }, [lista, data]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [lista, mostra, pv, ricerca, categoria, fornitore, data]);
+
+  useEffect(() => {
+    if (lista === "divari" && stelleCambiate.current) {
+      stelleCambiate.current = false;
+      carica();
     }
-  }, [mostra, nDaControllare, lista]);
+  }, [lista, carica]);
 
   // Stella ottimistica, come nell'Osservatorio: subito a video, rollback se il
   // salvataggio non riesce. E' la stella del PV della riga.
@@ -219,6 +239,7 @@ export function SchedaPrezziCatena() {
               body: JSON.stringify(corpo),
             });
         if (!res.ok) throw new Error();
+        stelleCambiate.current = true;
       } catch {
         cambia(era);
         toast.error("Non sono riuscito ad aggiornare i preferiti");
@@ -252,32 +273,138 @@ export function SchedaPrezziCatena() {
   );
 
   const vuoto = data != null && data.acquisti_nel_periodo === 0;
+  const finestra = data?.divario_finestra_giorni ?? 60;
 
   return (
-    <PannelloScheda
-      titolo="Prezzi dei fornitori nei punti vendita"
-      azioni={
-        <>
-          <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-48 text-xs" aria-label="Periodo">
-            <option value="anno">Anno in corso ({annoCorrente})</option>
-            {MESI.slice(0, meseCorrente).map((m, i) => (
-              <option key={i + 1} value={String(i + 1)}>
-                {m} {annoCorrente}
-              </option>
-            ))}
-          </NativeSelect>
-          <NativeSelect value={pv} onValueChange={setPv} className="h-8 w-48 text-xs" aria-label="Punto vendita">
-            <option value="">Tutti i punti vendita</option>
-            {elencoPv.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nome}
-              </option>
-            ))}
-          </NativeSelect>
-          {/* Casella libera come nell'Osservatorio del PV (non una tendina): parte
-              dalla soglia degli avvisi e filtra solo questa scheda. */}
-          <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2">
-            <label htmlFor="soglia-prezzi-catena" className="whitespace-nowrap text-xs text-muted-foreground">
+    <div className="space-y-4">
+      <FiltroPeriodoPrezzi
+        anno={anno}
+        modo={modo}
+        mese={mese}
+        customDa={customDa}
+        customA={customA}
+        range={range}
+        loading={loading}
+        onAnno={applyAnno}
+        onModoMese={() => {
+          setModo("mese");
+          if (mese !== null) setRange(intervalloPeriodo(anno, mese));
+        }}
+        onMese={applyMese}
+        onModoCustom={() => setModo("custom")}
+        onCustom={applyCustom}
+        destra={
+          <>
+            <InfoPopover title="Come leggere i prezzi della catena" ariaLabel="Come leggere i prezzi della catena" align="end">
+              <p className="text-muted-foreground">
+                <strong className="text-foreground">Variazioni di prezzo</strong>: come è cambiato il prezzo di ogni
+                prodotto in ogni punto vendita, confrontando gli ultimi due acquisti dallo stesso fornitore. È lo
+                stesso calcolo dell&apos;Osservatorio di ogni punto vendita.
+              </p>
+              <div className="space-y-1.5 text-muted-foreground">
+                <p>
+                  <strong className="text-foreground">«Aumentato in 3 PV su 4»</strong>: lo stesso cambiamento c&apos;è
+                  in più punti vendita, quindi probabilmente l&apos;ha deciso il fornitore.{" "}
+                  <strong className="text-foreground">«Solo qui»</strong>: gli altri punti vendita che comprano il
+                  prodotto non l&apos;hanno avuto.
+                </p>
+                <p>
+                  <strong className="text-foreground">Impatto/mese</strong> = aumento di prezzo × quantità abituale ×
+                  acquisti al mese.
+                </p>
+                <p>{LEGENDA_GRAVITA}</p>
+              </div>
+              <div className="space-y-1.5 border-t border-border pt-2 text-muted-foreground">
+                <p>
+                  <strong className="text-foreground">Stesso prodotto, prezzi diversi</strong>: l&apos;ultimo prezzo
+                  pagato da ogni punto vendita per lo stesso prodotto dallo stesso fornitore. Si confrontano solo i
+                  punti vendita che l&apos;hanno comprato a meno di {finestra} giorni l&apos;uno dall&apos;altro: per
+                  un confronto più stretto scegli un mese o un periodo personalizzato.
+                </p>
+                <p>
+                  <strong className="text-foreground">Pagato in più</strong> = (prezzo del punto vendita − prezzo più
+                  basso) × quantità comprata nel periodo.
+                </p>
+              </div>
+              <div className="space-y-1.5 border-t border-border pt-2 text-muted-foreground">
+                <p>
+                  <strong className="text-foreground">Mostra da … % in su</strong> filtra solo questa pagina. La
+                  soglia degli avvisi si imposta nell&apos;assistente, in Home.
+                </p>
+                <p>
+                  <strong className="text-foreground">{ETICHETTA_DA_CONTROLLARE}</strong> {SPIEGAZIONE_DA_CONTROLLARE}
+                </p>
+              </div>
+            </InfoPopover>
+            <Button variant="outline" size="sm" onClick={carica} disabled={loading}>
+              <RefreshCw className={loading ? "animate-spin" : ""} />
+              Aggiorna
+            </Button>
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <SegmentedControl
+          aria-label="Lista"
+          value={lista}
+          onChange={setLista}
+          options={[
+            { value: "variazioni", label: "Variazioni di prezzo" },
+            { value: "divari", label: "Stesso prodotto, prezzi diversi" },
+          ]}
+        />
+        <select value={pv} onChange={(e) => setPv(e.target.value)} aria-label="Punto vendita" className={CAMPO}>
+          <option value="">Tutti i punti vendita</option>
+          {elencoPv.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.nome}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {data && !vuoto && mostra === "da_controllare" && <SpiegazioneDaControllare />}
+      {data && !vuoto && mostra !== "da_controllare" && (
+        <div className="grid grid-cols-2 gap-3">
+          {lista === "variazioni" ? (
+            <>
+              <KpiCard
+                label="Variazione media"
+                value={variazioni.length > 0 ? fmtPct(totali.variazioneMedia) : "—"}
+                sub={`${totali.aumenti} in aumento · ${totali.cali} in calo`}
+                tone={totali.variazioneMedia < 0 ? "positivo" : "negativo"}
+              />
+              <KpiCard
+                label="Impatto stimato/mese"
+                value={totali.impattoNetto !== 0 ? fmtEuro(totali.impattoNetto, true) : "—"}
+                sub={nomePv ?? "Tutti i punti vendita"}
+                tone={totali.impattoNetto < 0 ? "positivo" : "negativo"}
+              />
+            </>
+          ) : (
+            <>
+              <KpiCard
+                label="Prodotti con prezzi diversi"
+                value={String(totali.divari)}
+                sub={nomePv ?? "Tutti i punti vendita"}
+                tone="neutro"
+              />
+              <KpiCard
+                label="Pagato in più nel periodo"
+                value={totali.extraDivari !== 0 ? fmtEuro(totali.extraDivari) : "—"}
+                sub={nomePv ? `Da ${nomePv}, rispetto al punto vendita che paga meno` : "Rispetto al punto vendita che paga meno"}
+                tone="negativo"
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {data && !vuoto && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5">
+            <label htmlFor="soglia-prezzi-catena" className="whitespace-nowrap text-sm text-muted-foreground">
               Mostra da
             </label>
             <input
@@ -291,266 +418,292 @@ export function SchedaPrezziCatena() {
               }}
               onBlur={applicaSoglia}
               disabled={loading}
-              className="w-10 bg-transparent text-right text-xs text-foreground outline-none disabled:opacity-50"
+              className="w-12 bg-transparent text-right text-sm outline-none disabled:opacity-50"
             />
-            <span className="whitespace-nowrap text-xs text-muted-foreground">% in su</span>
+            <span className="whitespace-nowrap text-sm text-muted-foreground">% in su</span>
           </div>
-        </>
-      }
-    >
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <SegmentedControl
-          aria-label="Lista"
-          value={lista}
-          onChange={setLista}
-          options={[
-            { value: "variazioni", label: "Variazioni nei PV" },
-            { value: "divari", label: "Stesso prodotto, prezzi diversi" },
-          ]}
-        />
-        <SegmentedControl
-          aria-label="Mostra"
-          value={mostra}
-          onChange={setMostra}
-          options={[
-            { value: "tutti" as const, label: "Tutti" },
-            ...(lista === "variazioni"
-              ? [
-                  {
-                    value: "preferiti" as const,
-                    label: (
-                      <>
-                        <Star className={cn("size-3", mostra === "preferiti" ? "fill-current" : "fill-incerto text-incerto")} />
-                        Preferiti{nStelle > 0 ? ` (${nStelle})` : ""}
-                      </>
-                    ),
-                  },
-                ]
-              : []),
-            ...(nDaControllare > 0
-              ? [{ value: "da_controllare" as const, label: `Da controllare (${nDaControllare})`, title: SPIEGAZIONE_DA_CONTROLLARE }]
-              : []),
-          ]}
-        />
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={ricerca}
-            onChange={(e) => setRicerca(e.target.value)}
-            placeholder="Cerca prodotto o fornitore"
-            className="h-8 w-64 pl-8 text-xs"
+          <SegmentedControl
+            aria-label="Mostra"
+            value={mostra}
+            onChange={setMostra}
+            options={[
+              { value: "tutti" as const, label: "Tutti" },
+              {
+                value: "preferiti" as const,
+                label: (
+                  <>
+                    <Star className={cn("size-3", mostra === "preferiti" ? "fill-current" : "fill-incerto text-incerto")} />
+                    Preferiti{nStelle > 0 ? ` (${nStelle})` : ""}
+                  </>
+                ),
+              },
+              ...(nDaControllare > 0
+                ? [{ value: "da_controllare" as const, label: `${ETICHETTA_DA_CONTROLLARE} (${nDaControllare})`, title: SPIEGAZIONE_DA_CONTROLLARE }]
+                : []),
+            ]}
           />
-        </div>
-      </div>
-
-      {data && !vuoto && mostra === "da_controllare" && (
-        <p className="mb-4 rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-          {SPIEGAZIONE_DA_CONTROLLARE}
-        </p>
-      )}
-      {data && !vuoto && mostra !== "da_controllare" && (
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {lista === "variazioni" ? (
-            <>
-              <Kpi label="Prezzi aumentati" valore={String(totali.aumenti)} sotto={nomePv ?? "Tutti i punti vendita"} />
-              <Kpi label="Prezzi calati" valore={String(totali.cali)} />
-              <Kpi
-                label="Impatto/mese"
-                valore={euroSegno(totali.impattoNetto)}
-                classe={classeImpatto(totali.impattoNetto)}
-                sotto="Somma degli aumenti e dei cali"
-              />
-            </>
-          ) : (
-            <>
-              <Kpi label="Prodotti con prezzi diversi" valore={String(totali.divari)} sotto={nomePv ?? "Tutti i punti vendita"} />
-              <Kpi
-                label="Pagato in più nel periodo"
-                valore={euro2(totali.extraDivari)}
-                classe={classeImpatto(totali.extraDivari)}
-                sotto={nomePv ? `Da ${nomePv}, rispetto al PV che paga meno` : "Rispetto al PV che paga meno"}
-              />
-            </>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Cerca prodotto…"
+              value={ricerca}
+              onChange={(e) => setRicerca(e.target.value)}
+              aria-label="Cerca prodotto o fornitore"
+              className={cn(CAMPO, "w-52 pl-9 pr-3")}
+            />
+          </div>
+          <select value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Categoria" className={CAMPO}>
+            <option value="">Tutte le categorie</option>
+            {opzioni.categorie.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select value={fornitore} onChange={(e) => setFornitore(e.target.value)} aria-label="Fornitore" className={CAMPO}>
+            <option value="">Tutti i fornitori</option>
+            {opzioni.fornitori.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+          {filtriAttivi && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => {
+                setRicerca("");
+                setCategoria("");
+                setFornitore("");
+              }}
+            >
+              Azzera filtri
+            </Button>
           )}
         </div>
       )}
 
-      <div className={AREA_TABELLA}>
-        {loading && !data ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
-        ) : loadError && !data ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center">
-            <AlertTriangle className="size-7 text-negativo" />
-            <p className="text-sm text-muted-foreground">Non è stato possibile caricare i dati.</p>
-            <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
-              Riprova
-            </Button>
-          </div>
-        ) : !data ? null : vuoto ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">
-            Nessun acquisto nel periodo ({data.periodo_label}).
-          </div>
-        ) : lista === "variazioni" ? (
-          variazioni.length === 0 ? (
-            <div className="py-16 text-center text-sm text-muted-foreground">
-              {mostra === "preferiti"
-                ? "Nessun preferito fra le variazioni del periodo. Tocca la stella accanto a un prodotto per seguirlo."
-                : `Nessun prezzo cambiato di almeno il ${data.soglia}% nel periodo.`}
-            </div>
+      {loading && !data ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-16 animate-pulse rounded-lg border border-border bg-card" />
+          ))}
+        </div>
+      ) : loadError && !data ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card py-10 text-center">
+          <AlertTriangle className="size-7 text-negativo" />
+          <p className="text-sm text-muted-foreground">Non è stato possibile caricare i dati.</p>
+          <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+            Riprova
+          </Button>
+        </div>
+      ) : !data ? null : vuoto ? (
+        <div className="rounded-lg border border-border bg-card py-10 text-center">
+          <Calendar className="mx-auto mb-2 size-8 text-muted-foreground/40" />
+          <p className="text-sm font-medium">Nessuna fattura nel periodo</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Senza fatture non è possibile confrontare i prezzi. Scegli un altro periodo.
+          </p>
+        </div>
+      ) : righe === 0 ? (
+        <div className="rounded-lg border border-border bg-card py-10 text-center">
+          {mostra === "preferiti" ? (
+            <>
+              <Star className="mx-auto mb-2 size-7 text-incerto" />
+              <p className="text-sm font-medium">Nessun preferito in questa lista</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Tocca la ⭐ accanto a un prodotto, qui o nell&apos;Osservatorio di un punto vendita, per seguirlo.
+              </p>
+            </>
+          ) : filtriAttivi ? (
+            <p className="text-sm text-muted-foreground">Nessun risultato per i filtri selezionati</p>
           ) : (
-            <table className="w-full border-separate border-spacing-0 text-sm">
-              <thead className="sticky top-0 z-30 bg-card shadow-[0_1px_0_0_var(--color-border)]">
-                <tr>
-                  <th className="w-8" aria-label="Preferito" />
-                  <th className="px-3 py-2 text-left font-semibold">Prodotto</th>
-                  <th className="px-3 py-2 text-left font-semibold">Punto vendita</th>
-                  <th className="px-3 py-2 text-right font-semibold">Prima</th>
-                  <th className="px-3 py-2 text-right font-semibold">Ora</th>
-                  <th className="px-3 py-2 text-right font-semibold">Variazione</th>
-                  <th className="px-3 py-2 text-right font-semibold">Impatto/mese</th>
-                  <th className="w-8" />
-                </tr>
-              </thead>
-              <tbody>
-                {variazioni.map((v) => {
-                  const chiave = chiaveStellaCatena(v);
-                  const diffusione = etichettaDiffusione(v);
-                  const isAperta = aperta === chiave;
-                  return (
-                    <Fragment key={chiave}>
-                      <tr
-                        className="cursor-pointer border-t hover:bg-muted/30"
-                        onClick={() => apriVariazione(v)}
-                        aria-expanded={isAperta}
-                      >
-                        <td className="pl-3">
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleStella(v);
-                            }}
-                            aria-label={stelle.has(chiave) ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
-                            aria-pressed={stelle.has(chiave)}
-                            title={`Preferito di ${v.nome_pv}`}
-                          >
-                            <Star
-                              className={cn(
-                                "size-4 transition-colors",
-                                stelle.has(chiave) ? "fill-incerto text-incerto" : "text-muted-foreground/50 hover:text-incerto",
-                              )}
-                            />
-                          </Button>
-                        </td>
-                        <td className="max-w-[18rem] px-3 py-2">
-                          <span className="block truncate font-medium" title={v.prodotto}>{v.prodotto}</span>
-                          <span className="block truncate text-xs text-muted-foreground" title={`${v.fornitore} · ${v.categoria}`}>
-                            {v.fornitore} · {v.categoria} · {dataBreve(v.data)}
-                          </span>
-                        </td>
-                        <td className="max-w-[12rem] px-3 py-2">
-                          <span className="block truncate" title={v.nome_pv}>{v.nome_pv}</span>
-                          {diffusione && (
-                            <span
-                              className={cn(
-                                "mt-0.5 inline-block rounded-full border px-2 py-px text-[11px]",
-                                v.n_pv_stesso_verso >= 2 ? "border-incerto/50 text-foreground" : "text-muted-foreground",
-                              )}
-                              title={
-                                v.n_pv_stesso_verso >= 2
-                                  ? "Lo stesso cambio di prezzo c'è in più punti vendita: viene dal fornitore"
-                                  : "Gli altri punti vendita che comprano questo prodotto non hanno lo stesso cambio"
-                              }
-                            >
-                              {diffusione}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{euro2(v.penultimo)}</td>
-                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{euro2(v.ultimo)}</td>
-                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{pct(v.aumento_perc)}</td>
-                        <td className={cn("px-3 py-2 text-right font-semibold tabular-nums", classeImpatto(v.impatto_stimato))}>
-                          {v.impatto_stimato !== 0 ? euroSegno(v.impatto_stimato) : "—"}
-                        </td>
-                        <td className="px-2 py-2">
-                          <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", isAperta && "rotate-180")} />
-                        </td>
-                      </tr>
-                      {isAperta && (
-                        <tr>
-                          <td colSpan={8} className="bg-muted/10 px-6 pb-3">
-                            <p className="pt-2 text-xs text-muted-foreground">Acquisti di {v.nome_pv} nel periodo</p>
-                            <StoricoPv storico={storico} loading={storicoLoading} />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          )
-        ) : divari.length === 0 ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">
-            Nessun prodotto pagato più del {data.soglia}% in un punto vendita che in un altro.
+            <>
+              <CheckCircle2 className="mx-auto mb-2 size-8 text-positivo" />
+              <p className="text-sm font-medium">
+                {lista === "variazioni"
+                  ? `Nessuna variazione sopra il ${data.soglia}%`
+                  : `Nessun prodotto pagato più del ${data.soglia}% in un punto vendita che in un altro`}
+              </p>
+            </>
+          )}
+        </div>
+      ) : lista === "variazioni" ? (
+        <>
+          <ContaVariazioni
+            n={variazioni.length}
+            base={base}
+            critiche={variazioni.filter((v) => gravita(v) === "critico").length}
+          />
+          <IntestazioneVariazioni conPuntoVendita />
+          <div className="space-y-2">
+            {variazioni.slice((pagina - 1) * PAGE_SIZE, pagina * PAGE_SIZE).map((v) => {
+              const chiave = chiaveStellaCatena(v);
+              return (
+                <VariazioneCard
+                  key={chiave}
+                  r={v}
+                  expanded={aperta === chiave}
+                  preferito={stelle.has(chiave)}
+                  storico={aperta === chiave ? storico : null}
+                  storicoLoading={aperta === chiave && storicoLoading}
+                  onToggle={apriVariazione}
+                  onToggleStar={toggleStella}
+                  puntoVendita={<PuntoVenditaRiga v={v} />}
+                />
+              );
+            })}
           </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Ultimo prezzo pagato da ogni punto vendita per lo stesso prodotto dallo stesso fornitore. Sono confrontati
-              solo i punti vendita che lo hanno comprato a non più di {data.divario_finestra_giorni} giorni l&apos;uno
-              dall&apos;altro. «Pagato in più» = differenza col prezzo più basso × quantità comprata nel periodo.
-            </p>
-            {divari.map((d) => (
-              <div key={`${d.prodotto}|${d.fornitore}`} className="rounded-lg border bg-card">
-                <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold" title={d.prodotto}>{d.prodotto}</p>
-                    <p className="truncate text-xs text-muted-foreground" title={`${d.fornitore} · ${d.categoria}`}>
-                      {d.fornitore} · {d.categoria}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Divario</p>
-                    <p className="text-lg font-bold tabular-nums">{pct(d.divario_perc)}</p>
-                  </div>
-                  <div className="w-32 text-right">
-                    <p className="text-xs text-muted-foreground">Pagato in più</p>
-                    <p className={cn("text-sm font-semibold tabular-nums", classeImpatto(d.extra_stimato))}>
-                      {euro2(d.extra_stimato)}
-                    </p>
-                  </div>
-                </div>
-                <table className="w-full border-t text-xs">
-                  <tbody>
-                    {d.per_pv.map((p) => (
-                      <tr
-                        key={p.ristorante_id}
-                        className={cn("border-t border-border/60 first:border-t-0", p.ristorante_id === pv && "bg-muted/30")}
-                      >
-                        <td className="max-w-[14rem] px-4 py-1.5">
-                          <span className={cn("block truncate", p.ultimo === d.prezzo_max && "font-semibold")} title={p.nome_pv}>
-                            {p.nome_pv}
-                          </span>
-                        </td>
-                        <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{dataBreve(p.data)}</td>
-                        <td className="px-3 py-1.5 text-right font-medium tabular-nums">{euro2(p.ultimo)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
-                          {p.scarto_perc > 0 ? pct(p.scarto_perc) : "il più basso"}
-                        </td>
-                        <td className={cn("w-32 px-4 py-1.5 text-right tabular-nums", classeImpatto(p.extra_stimato))}>
-                          {p.extra_stimato > 0 ? euro2(p.extra_stimato) : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <Paginazione pagina={pagina} pagine={pagine} totale={righe} nome="variazioni" onPagina={setPage} />
+        </>
+      ) : (
+        <>
+          <ContaVariazioni
+            n={divari.length}
+            base={base}
+            critiche={divari.filter((d) => gravita({ impatto_stimato: d.extra_stimato }) === "critico").length}
+            nome="prodotti"
+            nomeCritiche="critici"
+            filtrate="filtrati"
+          />
+          <div className="space-y-2">
+            {divari.slice((pagina - 1) * PAGE_SIZE, pagina * PAGE_SIZE).map((d) => (
+              <DivarioCard key={chiaveDivario(d)} d={d} pv={pv} />
             ))}
           </div>
+          <Paginazione pagina={pagina} pagine={pagine} totale={righe} nome="prodotti" onPagina={setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** La colonna «Punto vendita» della riga: il nome e se il cambiamento c'e' anche altrove. */
+function PuntoVenditaRiga({ v }: { v: VariazionePrezzoCatena }) {
+  const etichetta = etichettaDiffusione(v);
+  const listino = v.n_pv_stesso_verso >= 2;
+  return (
+    <>
+      <p className="truncate text-sm" title={v.nome_pv}>
+        {v.nome_pv}
+      </p>
+      {etichetta && (
+        <span
+          title={spiegazioneDiffusione(v) ?? undefined}
+          className={cn(
+            "mt-0.5 inline-block max-w-full truncate rounded-full border px-2 py-0.5 text-[11px]",
+            listino ? "border-foreground/30 text-foreground" : "border-border text-muted-foreground",
+          )}
+        >
+          {etichetta}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * Lo stesso prodotto pagato diverso fra i punti vendita. Stessa scheda delle
+ * variazioni (striscia a sinistra per il peso in euro, pallino, nome) e sotto la
+ * tabella dei punti vendita con l'intestazione colorata della lista acquisti
+ * dell'Osservatorio: nel tema chiaro e' cio' che separa la tabella dalla scheda.
+ */
+function DivarioCard({ d, pv }: { d: DivarioPrezzo; pv: string }) {
+  const style = GRAVITA_STYLE[gravita({ impatto_stimato: d.extra_stimato })];
+  const { nome } = nomeProdotto(d.prodotto);
+  return (
+    <div className={`overflow-hidden rounded-lg border border-l-4 ${style.ring} border-border bg-card`}>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        {d.preferito ? (
+          <Star className="size-4 shrink-0 fill-incerto text-incerto" aria-label="Preferito in un punto vendita del confronto" />
+        ) : (
+          <span className="size-4 shrink-0" />
         )}
+        <span className={`size-2.5 shrink-0 rounded-full ${style.dot}`} aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold" title={nome}>
+            {nome}
+          </p>
+          <p className="truncate text-xs text-muted-foreground" title={`${d.fornitore} · ${d.categoria}`}>
+            {d.fornitore} · {d.categoria}
+          </p>
+        </div>
+        <div className="w-28 shrink-0 text-right">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Differenza</p>
+          <p className="text-lg font-bold leading-tight tabular-nums">{fmtPct(d.divario_perc)}</p>
+        </div>
+        <div className="w-28 shrink-0 text-right">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pagato in più</p>
+          <p className={cn("text-sm font-semibold tabular-nums", d.extra_stimato > 0 ? "text-negativo" : "text-muted-foreground")}>
+            {d.extra_stimato > 0 ? fmtEuro(d.extra_stimato) : "—"}
+          </p>
+        </div>
       </div>
-    </PannelloScheda>
+      <div className="overflow-x-auto border-t border-border">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/40">
+            <tr>
+              <th className="px-4 py-2 text-left font-medium text-muted-foreground">Punto vendita</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Ultimo acquisto</th>
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground">Prezzo</th>
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground">Rispetto al più basso</th>
+              <th className="px-4 py-2 text-right font-medium text-muted-foreground">Pagato in più</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/50">
+            {d.per_pv.map((p) => (
+              <tr key={p.ristorante_id} className={cn(p.ristorante_id === pv && "bg-muted/30")}>
+                <td className="max-w-[16rem] px-4 py-2">
+                  <span className={cn("block truncate", p.ultimo === d.prezzo_max && "font-semibold")} title={p.nome_pv}>
+                    {p.nome_pv}
+                  </span>
+                </td>
+                <td className="px-3 py-2 tabular-nums text-muted-foreground">{fmtData(p.data)}</td>
+                <td className="px-3 py-2 text-right font-medium tabular-nums">{fmtEuro(p.ultimo)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                  {p.scarto_perc > 0 ? fmtPct(p.scarto_perc) : "il prezzo più basso"}
+                </td>
+                <td className={cn("px-4 py-2 text-right tabular-nums", p.extra_stimato > 0 ? "text-negativo" : "text-muted-foreground")}>
+                  {p.extra_stimato > 0 ? fmtEuro(p.extra_stimato) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Paginazione({
+  pagina,
+  pagine,
+  totale,
+  nome,
+  onPagina,
+}: {
+  pagina: number;
+  pagine: number;
+  totale: number;
+  nome: string;
+  onPagina: (p: number) => void;
+}) {
+  if (pagine <= 1) return null;
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-muted-foreground">
+        Pagina {pagina} di {pagine} · {totale.toLocaleString("it-IT")} {nome}
+      </span>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" disabled={pagina <= 1} onClick={() => onPagina(pagina - 1)}>
+          ← Precedente
+        </Button>
+        <Button variant="outline" size="sm" disabled={pagina >= pagine} onClick={() => onPagina(pagina + 1)}>
+          Successiva →
+        </Button>
+      </div>
+    </div>
   );
 }

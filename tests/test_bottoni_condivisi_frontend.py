@@ -60,7 +60,9 @@ BASE_BUTTON: dict[str, int] = {
     "app/(app)/prezzi/sconti-tab.tsx": 2,
     "app/(app)/prezzi/score-tab.tsx": 3,
     "app/(app)/prezzi/tabs-switcher.tsx": 1,
-    "app/(app)/prezzi/variazioni-tab.tsx": 5,
+    # 13/10/2026: i tre del periodo sono diventati FilterChip, la riga e' traslocata
+    # in components/prezzi/variazione-card.tsx (condivisa con la catena).
+    "app/(app)/prezzi/variazioni-tab.tsx": 1,
     "app/(app)/scadenziario/scadenziario-client.tsx": 19,
     "app/(app)/workspace/diario-tab.tsx": 1,
     "app/(app)/workspace/foodcost-tab.tsx": 2,
@@ -73,6 +75,7 @@ BASE_BUTTON: dict[str, int] = {
     "app/(app)/workspace/spese-view.tsx": 3,
     "app/(app)/workspace/tabs-switcher.tsx": 1,
     "components/ascolta-button.tsx": 1,
+    "components/prezzi/variazione-card.tsx": 1,
     "components/fatture/coda-da-assegnare.tsx": 9,
     "components/home/card-home.tsx": 1,
     "components/home/da-fare-oggi.tsx": 1,

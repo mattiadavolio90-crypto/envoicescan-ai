@@ -13,7 +13,8 @@ MODULO = "lib/catena-prezzi"
 
 
 FUNZIONI = ("etichettaDiffusione", "filtraVariazioni", "filtraDivari", "totaliPrezzi", "pvDeiPrezzi",
-            "chiaveStellaCatena", "stelleIniziali", "sogliaDaApplicare", "testoSoglia")
+            "chiaveStellaCatena", "stelleIniziali", "sogliaDaApplicare", "testoSoglia",
+            "chiaveDivario", "valoriFiltro", "spiegazioneDiffusione")
 
 
 def _ts(codice, argomento=None):
@@ -42,15 +43,23 @@ def _div(prodotto, per_pv, fornitore="PARTESA"):
     }
 
 
-@pytest.mark.parametrize("stesso, confr, atteso", [
-    (3, 4, "In 3 PV su 4"),
-    (2, 2, "In 2 PV su 2"),
-    (1, 4, "Solo questo PV su 4"),
-    (1, 1, None),
+@pytest.mark.parametrize("stesso, confr, perc, atteso", [
+    (3, 4, 12.0, "Aumentato in 3 PV su 4"),
+    (2, 2, -8.0, "Calato in 2 PV su 2"),
+    (1, 4, 12.0, "Solo qui: gli altri 3 PV no"),
+    (1, 2, -5.0, "Solo qui: l'altro PV no"),
+    (1, 1, 12.0, None),
 ])
-def test_etichetta_della_diffusione(stesso, confr, atteso):
-    assert _ts("emit(m.etichettaDiffusione(input))",
-               {"n_pv_stesso_verso": stesso, "n_pv_confrontabili": confr}) == atteso
+def test_etichetta_della_diffusione(stesso, confr, perc, atteso):
+    """«Solo questo PV su 4» non si capiva (Mattia, 13/10/2026): l'etichetta
+    dice il verso e, se il cambiamento e' solo qui, quanti altri PV non ce l'hanno."""
+    v = {"n_pv_stesso_verso": stesso, "n_pv_confrontabili": confr, "aumento_perc": perc}
+    assert _ts("emit(m.etichettaDiffusione(input))", v) == atteso
+    spiegazione = _ts("emit(m.spiegazioneDiffusione(input))", v)
+    assert (spiegazione is None) == (atteso is None)
+    if spiegazione:
+        assert ("calato" if perc < 0 else "aumentato") in spiegazione
+        assert "cambio" not in spiegazione
 
 
 def test_filtro_pv_e_ordine_per_impatto_assoluto():
@@ -123,12 +132,40 @@ def test_preferiti_dalle_stelle_della_scheda_non_dal_dato_iniziale():
     assert solo_b == ["b"]
 
 
-def test_divari_da_controllare_e_preferiti_che_vale_tutti():
-    divari = [_div("AGLIO", [("a", 4.5, 0), ("b", 45, 400)]), _div("COCA", [("a", 15.8, 0), ("b", 17.58, 32)])]
+def test_divari_da_controllare_e_preferiti():
+    """Sui divari «Preferiti» e' il prodotto stellato in almeno un PV del
+    confronto (lo decide il worker): prima valeva «Tutti» e il rumore restava."""
+    divari = [_div("AGLIO", [("a", 4.5, 0), ("b", 45, 400)]), _div("COCA", [("a", 15.8, 0), ("b", 17.58, 32)]),
+              _div("LIMONE", [("a", 17, 0), ("b", 32, 300)])]
     divari[0]["da_controllare"] = True
-    assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: ""}).map(d => d.prodotto))', divari) == ["COCA"]
+    divari[2]["preferito"] = True
+    assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: ""}).map(d => d.prodotto))', divari) == ["COCA", "LIMONE"]
     assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: "", vista: "da_controllare"}).map(d => d.prodotto))', divari) == ["AGLIO"]
-    assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: "", vista: "preferiti"}).map(d => d.prodotto))', divari) == ["COCA"]
+    assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: "", vista: "preferiti"}).map(d => d.prodotto))', divari) == ["LIMONE"]
+
+
+def test_due_divari_con_lo_stesso_nome_hanno_chiavi_diverse():
+    a = {**_div("DENTICE GIBBOSO", [("a", 22, 0), ("b", 24, 10)]), "desc_key": "DENTICE GIBBOSO (DE)", "forn_key": "GE"}
+    b = {**a, "desc_key": "DENTICE GIBBOSO (EU)"}
+    vecchio = {k: v for k, v in a.items() if k not in ("desc_key", "forn_key")}
+    chiavi = _ts("emit(input.map(m.chiaveDivario))", [a, b, vecchio])
+    assert chiavi == ["DENTICE GIBBOSO (DE)|GE", "DENTICE GIBBOSO (EU)|GE", "DENTICE GIBBOSO|PARTESA"]
+
+
+def test_filtri_categoria_e_fornitore_come_nell_osservatorio():
+    righe = [_var("a", "LIMONE", 5, fornitore="MEFON"), _var("a", "COCA", 12), {**_var("b", "SALMONE", 4, fornitore="ADC"), "categoria": "PESCE"}]
+    assert _ts('emit(m.filtraVariazioni(input, {pv: "", ricerca: "", categoria: "PESCE"}).map(v => v.prodotto))', righe) == ["SALMONE"]
+    assert _ts('emit(m.filtraVariazioni(input, {pv: "", ricerca: "", fornitore: "MEFON"}).map(v => v.prodotto))', righe) == ["LIMONE"]
+    assert _ts("emit(m.valoriFiltro(input))", righe) == {"categorie": ["BEVANDE", "PESCE"], "fornitori": ["ADC", "MEFON", "PARTESA"]}
+    divari = [_div("COCA", [("a", 15.8, 0), ("b", 17.58, 32)]), _div("LIMONE", [("a", 17, 0), ("b", 32, 300)], fornitore="MEFON")]
+    assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: "", fornitore: "MEFON"}).map(d => d.prodotto))', divari) == ["LIMONE"]
+
+
+def test_la_variazione_media_e_sulle_righe_filtrate():
+    righe = [_var("a", "LIMONE", 5, perc=10.0), _var("b", "COCA", -3, perc=-4.0)]
+    t = _ts('emit(m.totaliPrezzi(input, [], ""))', righe)
+    assert t["variazioneMedia"] == pytest.approx(3.0)
+    assert _ts('emit(m.totaliPrezzi([], [], "").variazioneMedia)') == 0
 
 
 @pytest.mark.parametrize("testo, attuale, atteso", [

@@ -400,6 +400,27 @@ def _frequenza_mensile(n_date: int, prima, ultima) -> float:
     return n_date / max(1.0, giorni / 30.0)
 
 
+def _chiavi_stella(descrizione: str, fornitore: str, nota: str = "") -> set:
+    """Le forme di chiave con cui una stella salvata riconosce questo prodotto.
+
+    Fino all'11/10/2026 la stella salvava il nome TRONCATO della riga (prodotto
+    a 60, fornitore a 30): 10 preferiti su 19 non si riaccendevano piu' al
+    ricaricamento. Ora la riga porta le chiavi intere; quelle vecchie si
+    riconoscono ancora. La terza forma e' delle 4 stelle riscritte il 12/10 col
+    solo fornitore intero: il prodotto porta un numero d'ordine diverso a ogni
+    consegna («... NORVEGIA ORDER 2025916»), e la stella vale per la famiglia.
+    Condivisa con i divari di catena (`_calcola_divari_catena`).
+    """
+    desc_key = _pulisci_desc_key(descrizione)
+    forn_key = _pulisci_forn_key(fornitore)
+    desc_60 = _pulisci_desc_key((descrizione + nota)[:60])
+    return {
+        f"{desc_key}|{forn_key}",
+        f"{desc_60}|{_pulisci_forn_key(fornitore[:_FORNITORE_MAX])}",
+        f"{desc_60}|{forn_key}",
+    }
+
+
 def _deriva_variazione(
     *,
     ultimi_prezzi: list,
@@ -467,22 +488,12 @@ def _deriva_variazione(
 
     desc_key = _pulisci_desc_key(descrizione)
     forn_key = _pulisci_forn_key(fornitore)
-    # Fino all'11/10/2026 la stella salvava il nome TRONCATO della riga (prodotto
-    # a 60, fornitore a 30): 10 preferiti su 19 non si riaccendevano piu' al
-    # ricaricamento. Ora la riga porta le chiavi intere; quelle vecchie si
-    # riconoscono ancora. La terza forma e' delle 4 stelle riscritte il 12/10 col
-    # solo fornitore intero: il prodotto porta un numero d'ordine diverso a ogni
-    # consegna («... NORVEGIA ORDER 2025916»), e la stella vale per la famiglia.
-    desc_60 = _pulisci_desc_key((descrizione + nota)[:60])
-    chiavi_stella = {
-        f"{desc_key}|{forn_key}",
-        f"{desc_60}|{_pulisci_forn_key(fornitore[:_FORNITORE_MAX])}",
-        f"{desc_60}|{forn_key}",
-    }
     keys = preferiti_keys or set()
 
     return {
-        'prodotto': (descrizione + nota)[:60],
+        # La nota dopo il taglio: tagliata insieme al nome, oltre i 53 caratteri
+        # spariva (o ne restava un pezzo, «… ⚠️ >6», che la scheda non riconosce).
+        'prodotto': descrizione[:60] + nota,
         'categoria': str(categoria if categoria is not None else '')[:25],
         'fornitore': fornitore[:_FORNITORE_MAX],
         'storico': storico,
@@ -496,7 +507,7 @@ def _deriva_variazione(
         'trend': trend,
         'impatto_stimato': round(float(delta * qta_ref * freq), 2),
         'delta_euro': round(delta, 4),
-        'preferito': not chiavi_stella.isdisjoint(keys),
+        'preferito': not _chiavi_stella(descrizione, fornitore, nota).isdisjoint(keys),
         'desc_key': desc_key,
         'forn_key': forn_key,
         'da_controllare': salto_da_controllare(prezzo_pen, prezzo_ult),

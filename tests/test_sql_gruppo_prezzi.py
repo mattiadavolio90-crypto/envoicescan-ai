@@ -414,3 +414,46 @@ def test_il_divario_e_lo_storico_mostrano_il_nome_senza_numero_d_ordine(db_sql, 
     # Una richiesta vecchia col nome grezzo (ORDER dentro) apre lo stesso storico.
     grezzo = _storico_prodotto_sede(ClientSQL(db_sql), SEDE1, "AGLIO ORDER 9 (9)", forn)
     assert [p.prezzo_unitario for p in grezzo.punti] == [1.00, 2.00]
+
+
+def test_i_divari_hanno_chiavi_distinte_e_la_stella_di_un_pv_del_confronto(sql):
+    """Due provenienze dello stesso pesce hanno lo stesso nome nei primi 60
+    caratteri: la scheda le confondeva (chiave React = nome+fornitore) e, al
+    cambio di filtro, a video restavano schede della lista precedente. Ora il
+    divario porta la sua chiave e il nome intero. La stella vale se UNO dei PV
+    del confronto ha stellato il prodotto, e non se l'ha stellato un PV fuori."""
+    from services.routers.gruppo import _calcola_divari_catena
+
+    _semina_sedi(sql)
+    base = "DENTICE GIBBOSO 1/2 PESCATO DENTEX GIBBOSUS PESCATO FAO 34 ATL. CENTRO ORIENTALE AMI E PALANGARI "
+    for origine, (p1, p2) in (("(DE)", ("22.00", "24.00")), ("(EU)", ("24.00", "26.00"))):
+        _riga(sql, SEDE1, "2026-07-20", base + origine, "LA GE' GE' PESCA", Decimal(p1), categoria="PESCE")
+        _riga(sql, SEDE2, "2026-07-21", base + origine, "LA GE' GE' PESCA", Decimal(p2), categoria="PESCE")
+
+    stelle = {SEDE2: {f"{base}(EU)|LA GE' GE' PESCA"}, "fuori-gruppo": {f"{base}(DE)|LA GE' GE' PESCA"}}
+    divari = _calcola_divari_catena(_coppie(sql), NOMI, 5.0, preferiti_per_sede=stelle)
+    assert sorted(d["prodotto"][-4:] for d in divari) == ["(DE)", "(EU)"]
+    assert len({(d["desc_key"], d["forn_key"]) for d in divari}) == 2
+    assert {d["prodotto"][-4:]: d["preferito"] for d in divari} == {"(DE)": False, "(EU)": True}
+
+
+def test_la_stella_di_una_sede_fuori_dalla_finestra_non_accende_il_divario(sql):
+    """Il preferito del divario e' di un PV DEL CONFRONTO: una sede del gruppo
+    che il prodotto l'ha comprato mesi prima esce dal confronto, e la sua stella
+    non deve accendere il divario degli altri due."""
+    from services.routers.gruppo import _calcola_divari_catena
+
+    _semina_sedi(sql)
+    terza = "22222222-2222-4222-8222-222222222223"
+    sql("INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo) VALUES (%s, %s, %s, '01234567891', true)", terza, UTENTE, "Lago")
+    _riga(sql, SEDE1, "2026-07-20", "LIMONE", "MEFON", Decimal("17.00"), categoria="FRUTTA")
+    _riga(sql, SEDE2, "2026-07-21", "LIMONE", "MEFON", Decimal("32.00"), categoria="FRUTTA")
+    _riga(sql, terza, "2026-02-01", "LIMONE", "MEFON", Decimal("20.00"), categoria="FRUTTA")
+    nomi = {**NOMI, terza: "Lago"}
+    coppie = _coppie(sql, sedi=(SEDE1, SEDE2, terza))
+
+    [d] = _calcola_divari_catena(coppie, nomi, 5.0, preferiti_per_sede={terza: {"LIMONE|MEFON"}})
+    assert sorted(p["nome_pv"] for p in d["per_pv"]) == ["Centro", "Mare"]
+    assert d["preferito"] is False
+    [d] = _calcola_divari_catena(coppie, nomi, 5.0, preferiti_per_sede={SEDE2: {"LIMONE|MEFON"}})
+    assert d["preferito"] is True

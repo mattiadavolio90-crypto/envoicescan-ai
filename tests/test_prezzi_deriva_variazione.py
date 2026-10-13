@@ -213,3 +213,12 @@ def test_lo_score_conta_i_prodotti_senza_il_numero_d_ordine():
             _serie("AGLIO ORDER 2 (2)", "LA GE' GE' PESCA", [("2026-06-01", 1.0)]) +
             _serie("AGLIO NERO", "LA GE' GE' PESCA", [("2026-06-01", 9.0)]))
     assert [f.n_prodotti for f in _calcola_score_fornitori(rows, [], {}, oggi=OGGI)] == [2]
+
+
+def test_la_nota_dei_sei_mesi_resta_anche_sui_nomi_lunghi():
+    """Tagliata insieme al nome a 60, oltre i 53 caratteri la nota spariva o ne
+    restava un pezzo («… ⚠️ >6») che la scheda non riconosce."""
+    lungo = "SALMONI 5/6 FRESCHI SALMAR ACQUACULTUA SALMO SALAR ALLEVATO NORVEGIA"
+    v = _v([1.0, 2.0], descrizione=lungo, data_penultimo="2025-09-01")
+    assert v["prodotto"] == lungo[:60] + " ⚠️ >6m"
+    assert _v([1.0, 2.0], descrizione=lungo)["prodotto"] == lungo[:60]

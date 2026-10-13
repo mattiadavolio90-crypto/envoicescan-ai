@@ -78,6 +78,11 @@ export type DivarioPrezzo = {
   per_pv: PrezzoPV[];
   /** Prezzi a 10 volte o piu' l'uno dall'altro: confezioni diverse, non un divario. */
   da_controllare?: boolean;
+  /** Chiave del prodotto: due divari possono avere lo stesso nome a video. */
+  desc_key?: string;
+  forn_key?: string;
+  /** Stellato in almeno uno dei PV del confronto. */
+  preferito?: boolean;
 };
 
 export type GruppoPrezzi = {
@@ -93,9 +98,31 @@ export type FiltriPrezzi = {
   /** id del punto vendita, "" = tutti */
   pv: string;
   ricerca: string;
-  /** Assente = «Tutti». Sui divari «Preferiti» vale «Tutti»: un divario e' di piu' PV. */
+  /** Assente = «Tutti». Sui divari «Preferiti» = stellato in almeno un PV del confronto. */
   vista?: VistaPrezzi;
+  /** "" o assente = tutte / tutti, come nell'Osservatorio del PV. */
+  categoria?: string;
+  fornitore?: string;
 };
+
+/** La chiave di un divario: il nome a video non basta (stesso nome, provenienze
+ *  diverse) e con chiavi doppie la lista teneva a schermo schede vecchie. */
+export function chiaveDivario(d: Pick<DivarioPrezzo, "prodotto" | "fornitore" | "desc_key" | "forn_key">): string {
+  return d.desc_key ? `${d.desc_key}|${d.forn_key ?? ""}` : `${d.prodotto}|${d.fornitore}`;
+}
+
+function filtroValore(atteso: string | undefined, valore: string): boolean {
+  return !atteso || valore === atteso;
+}
+
+/** Categorie e fornitori delle righe, per le due tendine dei filtri. */
+export function valoriFiltro(righe: readonly { categoria: string; fornitore: string }[]): {
+  categorie: string[];
+  fornitori: string[];
+} {
+  const ordina = (xs: string[]) => Array.from(new Set(xs.filter(Boolean))).sort((a, b) => a.localeCompare(b, "it"));
+  return { categorie: ordina(righe.map((r) => r.categoria)), fornitori: ordina(righe.map((r) => r.fornitore)) };
+}
 
 /** La stella di una riga: PV + coppia intera. Due PV con lo stesso prodotto
  *  hanno due stelle distinte, come nei loro Osservatori. */
@@ -138,6 +165,8 @@ export function filtraVariazioni(
     .filter(
       (v) =>
         (!f.pv || v.ristorante_id === f.pv) &&
+        filtroValore(f.categoria, v.categoria) &&
+        filtroValore(f.fornitore, v.fornitore) &&
         corrisponde(f.ricerca, v.prodotto, v.fornitore) &&
         inVista(v, vista, stelle ? stelle.has(chiaveStellaCatena(v)) : v.preferito === true),
     )
@@ -149,8 +178,10 @@ export function filtraDivari(divari: DivarioPrezzo[], f: FiltriPrezzi): DivarioP
   return divari.filter(
     (d) =>
       (!f.pv || d.per_pv.some((p) => p.ristorante_id === f.pv)) &&
+      filtroValore(f.categoria, d.categoria) &&
+      filtroValore(f.fornitore, d.fornitore) &&
       corrisponde(f.ricerca, d.prodotto, d.fornitore) &&
-      inVista(d, f.vista === "da_controllare" ? "da_controllare" : "tutti", false),
+      inVista(d, f.vista ?? "tutti", d.preferito === true),
   );
 }
 
@@ -159,15 +190,32 @@ export function filtraDivari(divari: DivarioPrezzo[], f: FiltriPrezzi): DivarioP
  * compra un solo PV: non c'e' niente con cui confrontarlo, e «1 su 1» direbbe
  * «listino» su un caso che non lo prova.
  */
-export function etichettaDiffusione(v: Pick<VariazionePrezzoCatena, "n_pv_stesso_verso" | "n_pv_confrontabili">): string | null {
+type Diffusione = Pick<VariazionePrezzoCatena, "n_pv_stesso_verso" | "n_pv_confrontabili" | "aumento_perc">;
+
+export function etichettaDiffusione(v: Diffusione): string | null {
   if (v.n_pv_confrontabili < 2) return null;
-  if (v.n_pv_stesso_verso >= 2) return `In ${v.n_pv_stesso_verso} PV su ${v.n_pv_confrontabili}`;
-  return `Solo questo PV su ${v.n_pv_confrontabili}`;
+  const verbo = v.aumento_perc < 0 ? "Calato" : "Aumentato";
+  if (v.n_pv_stesso_verso >= 2) return `${verbo} in ${v.n_pv_stesso_verso} PV su ${v.n_pv_confrontabili}`;
+  const altri = v.n_pv_confrontabili - 1;
+  return `Solo qui: ${altri === 1 ? "l'altro PV no" : `gli altri ${altri} PV no`}`;
+}
+
+/** La frase al passaggio del mouse sull'etichetta. */
+export function spiegazioneDiffusione(v: Diffusione): string | null {
+  if (v.n_pv_confrontabili < 2) return null;
+  const verso = v.aumento_perc < 0 ? "calato" : "aumentato";
+  if (v.n_pv_stesso_verso >= 2) {
+    return `Il prezzo è ${verso} in ${v.n_pv_stesso_verso} dei ${v.n_pv_confrontabili} punti vendita che comprano questo prodotto: probabilmente è il fornitore che ha cambiato il listino.`;
+  }
+  const altri = v.n_pv_confrontabili - 1;
+  return `Il prezzo è ${verso} solo in questo punto vendita: ${altri === 1 ? "l'altro che compra" : `gli altri ${altri} che comprano`} questo prodotto non hanno avuto lo stesso cambiamento.`;
 }
 
 export type TotaliPrezzi = {
   aumenti: number;
   cali: number;
+  /** Media delle variazioni %, come «Variazione media» nell'Osservatorio del PV. */
+  variazioneMedia: number;
   impattoNetto: number;
   divari: number;
   extraDivari: number;
@@ -186,6 +234,7 @@ export function totaliPrezzi(variazioni: VariazionePrezzoCatena[], divari: Divar
   return {
     aumenti: variazioni.filter((v) => v.aumento_perc > 0).length,
     cali: variazioni.filter((v) => v.aumento_perc < 0).length,
+    variazioneMedia: variazioni.length ? variazioni.reduce((t, v) => t + v.aumento_perc, 0) / variazioni.length : 0,
     impattoNetto: Math.round(variazioni.reduce((s, v) => s + v.impatto_stimato, 0) * 100) / 100,
     divari: divari.length,
     extraDivari: Math.round(extra * 100) / 100,
