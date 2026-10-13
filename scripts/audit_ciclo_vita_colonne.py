@@ -132,9 +132,11 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # dal briefing riempiendo i posti liberi con quelle del settore (fase F).
 # `categoria_fonte` 13 dal 10/10/2026: `scripts/fase_k_categorie.py` (fase K)
 # salta le righe decise a mano (le fatture le filtra con `filter_active`).
+# 12 dal 13/10/2026: via l'Agent notturno da `services/fastapi_worker.py`, che
+# era l'unico punto di quel file a scrivere la fonte della categoria.
 TARATURA_FILE_CODICE = {
     "correzioni_count": 0, "ultimo_correttore": 0,           # morte, confermate da L4
-    "consecutive_correct_classifications": 4, "categoria_fonte": 13,
+    "consecutive_correct_classifications": 4, "categoria_fonte": 12,
     "tipo_attivita": 18, "deleted_at": 34,                   # vive
 }
 

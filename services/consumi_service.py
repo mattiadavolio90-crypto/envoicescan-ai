@@ -132,3 +132,39 @@ def mesi_badge(mese_corrente: str) -> List[str]:
     anno, mese = (int(x) for x in mese_corrente.split("-"))
     prec_anno, prec_mese = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
     return [mese_corrente, f"{prec_anno:04d}-{prec_mese:02d}"]
+
+
+def salute_sede(
+    sede: Dict[str, Any],
+    account_piano: Optional[str],
+    riga_mese: Optional[Dict[str, Any]],
+    ultimo_caricamento: Optional[str],
+) -> Dict[str, Any]:
+    """Lo stato di una sede nel mese in corso, per la lista e la scheda cliente.
+
+    `riga_mese` e' la riga di `costruisci_righe` del mese corrente, assente se
+    la sede non ha caricato nulla: allora 0 fatture, ma il limite del piano c'e'
+    lo stesso.
+    """
+    limite = limite_piano(piano_effettivo(sede.get("piano"), account_piano))
+    totale = int((riga_mese or {}).get("totale") or 0)
+    return {
+        "fatture_mese": totale,
+        "limite_mese": limite,
+        "sopra_soglia": sopra_soglia(totale, limite),
+        "ai_costo_mese": round(float((riga_mese or {}).get("ai_costo") or 0.0), 4),
+        "ultimo_caricamento_at": ultimo_caricamento,
+    }
+
+
+def riepilogo_cliente(sedi: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Somma le sedi di un cliente: fatture e limite del mese, costo AI, e il
+    caricamento piu' recente fra tutte (None se nessuna ha mai caricato)."""
+    sedi = list(sedi)
+    ultimi = [s["ultimo_caricamento_at"] for s in sedi if s.get("ultimo_caricamento_at")]
+    return {
+        "fatture_mese": sum(int(s.get("fatture_mese") or 0) for s in sedi),
+        "limite_mese": sum(int(s.get("limite_mese") or 0) for s in sedi),
+        "ai_costo_mese": round(sum(float(s.get("ai_costo_mese") or 0.0) for s in sedi), 4),
+        "ultimo_caricamento_at": max(ultimi) if ultimi else None,
+    }

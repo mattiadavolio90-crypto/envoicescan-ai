@@ -59,9 +59,10 @@ def _n(rel):
     return re.sub(r"\s+", "", t)
 
 
-def test_la_scheda_del_cliente_ha_la_ricarica_fra_le_azioni():
-    n = _n("app/(app)/admin/clienti/[id]/cliente-dettaglio-client.tsx")
-    assert "<RicaricheAiClienteclienteId={c.id}/></CardContent>" in n
+def test_la_scheda_del_cliente_ha_la_ricarica_accanto_alla_chat_ai():
+    n = _n("app/(app)/admin/clienti/[id]/tabs/funzioni.tsx")
+    assert "<RicaricheAiClienteclienteId={c.id}/>" in n
+    assert n.index("onCheckedChange={scriviChatAi}") < n.index("<RicaricheAiClienteclienteId={c.id}/>")
 
 
 def test_la_scheda_chiede_conferma_prima_di_scrivere():

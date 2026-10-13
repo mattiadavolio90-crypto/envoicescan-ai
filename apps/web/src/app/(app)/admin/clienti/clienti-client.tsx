@@ -8,44 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/select";
-import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock, MapPin } from "lucide-react";
-import { Cliente, PIANO_COLOR, PIANO_LABEL } from "@/lib/admin";
+import { Search, Plus, ChevronRight, Clock, MapPin } from "lucide-react";
+import { Cliente } from "@/lib/admin";
+import { FILTRI, clientiVisibili, contaFiltri, eFermo, testoGiorni, type Filtro } from "@/lib/admin-clienti";
 
-// P.IVA da mostrare in lista: nel modello account/sede la P.IVA vive sulle sedi.
-// 1 sede → la sua P.IVA; più sedi → conteggio; nessuna → trattino.
-function pivaDisplay(c: Cliente): string {
-  if (c.sedi.length === 1) return c.sedi[0].partita_iva || "—";
-  if (c.sedi.length > 1) return `${c.sedi.length} P.IVA`;
-  return "—";
-}
-
-// Piani distinti fra le sedi del cliente (read-only in lista; si modificano nel
-// dettaglio sede). Default 'base' per le sedi senza piano esplicito.
-function pianiSede(c: Cliente): string[] {
-  const set = new Set<string>();
-  for (const s of c.sedi) set.add((s.piano || "base").toLowerCase());
-  return Array.from(set);
-}
-
-function StatusBadge({ attivo }: { attivo: boolean }) {
-  return attivo ? (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
-      <CheckCircle className="size-3" /> Attivo
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-      <XCircle className="size-3" /> Disattivo
+function Giorni({ iso, adesso, allarme }: { iso: string | null | undefined; adesso: number; allarme: boolean }) {
+  return (
+    <span className={`text-xs font-medium ${allarme ? "text-red-600" : "text-muted-foreground"}`}>
+      {testoGiorni(iso, adesso)}
     </span>
   );
-}
-
-function AttivitaLabel({ lastSeen }: { lastSeen: string | null }) {
-  if (!lastSeen) return <span className="text-xs text-muted-foreground">Mai</span>;
-  const days = Math.floor((Date.now() - new Date(lastSeen).getTime()) / 86400000);
-  const color = days === 0 ? "text-emerald-600" : days < 7 ? "text-emerald-600" : days < 30 ? "text-amber-600" : "text-red-500";
-  const label = days === 0 ? "Oggi" : `${days}g fa`;
-  return <span className={`text-xs font-medium ${color}`}>{label}</span>;
 }
 
 type Props = { clientiIniziali: Cliente[] };
@@ -54,7 +26,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
   const router = useRouter();
   const [clienti, setClienti] = useState<Cliente[]>(clientiIniziali);
   const [search, setSearch] = useState("");
-  const [filtroStato, setFiltroStato] = useState<"tutti" | "attivi" | "disattivi">("tutti");
+  const [filtro, setFiltro] = useState<Filtro>("tutti");
+  const [adesso] = useState(() => Date.now());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -63,25 +36,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
   const [nEmail, setNEmail] = useState("");
   const [nNome, setNNome] = useState("");
 
-  const filtered = useMemo(() => {
-    return clienti.filter((c) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !search ||
-        c.email.toLowerCase().includes(q) ||
-        c.nome_ristorante.toLowerCase().includes(q) ||
-        (c.nome_gruppo || "").toLowerCase().includes(q) ||
-        // P.IVA: ora vive sulle sedi → cerca fra tutte le P.IVA delle sedi
-        // (più il campo account legacy, per i clienti non ancora migrati).
-        c.sedi.some((s) => (s.partita_iva || "").includes(search)) ||
-        (c.partita_iva || "").includes(search);
-      const matchStato =
-        filtroStato === "tutti" ||
-        (filtroStato === "attivi" && c.attivo) ||
-        (filtroStato === "disattivi" && !c.attivo);
-      return matchSearch && matchStato;
-    });
-  }, [clienti, search, filtroStato]);
+  const filtered = useMemo(() => clientiVisibili(clienti, search, filtro, adesso), [clienti, search, filtro, adesso]);
+  const conteggi = useMemo(() => contaFiltri(clienti, adesso), [clienti, adesso]);
 
   async function handleCreaCliente() {
     if (!nEmail || !nNome) {
@@ -134,113 +90,117 @@ export function ClientiClient({ clientiIniziali }: Props) {
     }
   }
 
-  // Piano e P.IVA non si modificano più dalla lista: sono dati di SEDE, gestiti
-  // nel dettaglio cliente (sezione Sedi). La lista li mostra in sola lettura.
-
-  // L'impersonazione si avvia dalla pagina di dettaglio cliente
-  // (cliente-dettaglio-client.tsx, "Entra come cliente"), non dalla lista.
-
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex gap-2 flex-1">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Cerca per email, nome, P.IVA…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <NativeSelect value={filtroStato} onValueChange={(v) => setFiltroStato(v as typeof filtroStato)} className="w-32">
-            <option value="tutti">Tutti</option>
-            <option value="attivi">Attivi</option>
-            <option value="disattivi">Disattivi</option>
-          </NativeSelect>
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Cerca per nome, email, P.IVA…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
         </div>
         <Button onClick={() => setDialogOpen(true)}>
           <Plus className="size-4 mr-1" /> Nuovo cliente
         </Button>
       </div>
 
-      {/* Contatore */}
-      <p className="text-sm text-muted-foreground">{filtered.length} clienti</p>
+      <div className="flex flex-wrap gap-2">
+        {FILTRI.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setFiltro(f.key)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              filtro === f.key ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"
+            }`}
+          >
+            {f.label} <span className="tabular-nums opacity-70">{conteggi[f.key]}</span>
+          </button>
+        ))}
+      </div>
 
-      {/* Tabella */}
       <div className="rounded-lg border overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50 text-left">
               <th className="px-4 py-3 font-medium">Cliente</th>
-              <th className="px-4 py-3 font-medium hidden md:table-cell">P.IVA</th>
-              <th className="px-4 py-3 font-medium">Stato</th>
-              <th className="px-4 py-3 font-medium hidden sm:table-cell">Piano (per sede)</th>
-              <th className="px-4 py-3 font-medium hidden lg:table-cell">Attività</th>
-              <th className="px-4 py-3 font-medium hidden lg:table-cell">N. Fatture</th>
+              <th className="px-4 py-3 font-medium">Ultimo caricamento</th>
+              <th className="px-4 py-3 font-medium hidden sm:table-cell">Fatture del mese</th>
+              <th className="px-4 py-3 font-medium hidden md:table-cell">Ultimo accesso</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y">
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                   Nessun cliente trovato
                 </td>
               </tr>
             )}
-            {filtered.map((c) => (
-              <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium truncate max-w-[180px]">
-                      {c.nome_gruppo || c.nome_ristorante || "—"}
-                    </span>
-                    {c.n_sedi > 1 && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-700 bg-sky-100 rounded px-1.5 py-0.5 shrink-0">
-                        <MapPin className="size-2.5" /> {c.n_sedi} sedi
+            {filtered.map((c) => {
+              const fermo = eFermo(c, adesso);
+              const sopra = c.limite_mese != null && (c.fatture_mese ?? 0) > c.limite_mese;
+              return (
+                <tr
+                  key={c.id}
+                  className="hover:bg-muted/30 transition-colors cursor-pointer"
+                  onClick={() => router.push(`/admin/clienti/${c.id}`)}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium truncate max-w-[220px]">
+                        {c.nome_gruppo || c.nome_ristorante || "—"}
                       </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate max-w-[180px]">{c.email}</div>
-                  {c.trial?.active && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 mt-0.5">
-                      <Clock className="size-2.5" /> Trial {c.trial.days_remaining ?? 0}gg
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell text-muted-foreground tabular-nums">{pivaDisplay(c)}</td>
-                <td className="px-4 py-3"><StatusBadge attivo={c.attivo} /></td>
-                <td className="px-4 py-3 hidden sm:table-cell">
-                  {pianiSede(c).length === 0 ? (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  ) : (
-                    <span className="inline-flex flex-wrap gap-1">
-                      {pianiSede(c).map((p, idx) => (
-                        <span key={idx} className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PIANO_COLOR[p] || "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-                          {PIANO_LABEL[p] || p}
+                      {c.n_sedi > 1 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-700 bg-sky-100 rounded px-1.5 py-0.5 shrink-0">
+                          <MapPin className="size-2.5" /> {c.n_sedi} sedi
                         </span>
-                      ))}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 hidden lg:table-cell">
-                  <AttivitaLabel lastSeen={c.last_seen_at} />
-                </td>
-                <td className="px-4 py-3 hidden lg:table-cell tabular-nums font-medium">
-                  {c.n_fatture.toLocaleString("it-IT")}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Link
-                    href={`/admin/clienti/${c.id}`}
-                    className="inline-flex items-center justify-center size-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                  >
-                    <ChevronRight className="size-5" />
-                  </Link>
-                </td>
-              </tr>
-            ))}
+                      )}
+                      {c.trial?.active && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 shrink-0">
+                          <Clock className="size-2.5" /> Prova {c.trial.days_remaining ?? 0}gg
+                        </span>
+                      )}
+                      {!c.attivo && (
+                        <span className="text-[10px] font-semibold text-red-600 bg-red-500/10 rounded px-1.5 py-0.5 shrink-0">
+                          Disattivo
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate max-w-[240px]">{c.email}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Giorni iso={c.ultimo_caricamento_at} adesso={adesso} allarme={fermo} />
+                  </td>
+                  <td className="px-4 py-3 hidden sm:table-cell tabular-nums">
+                    {c.limite_mese != null ? (
+                      <span className={sopra ? "font-semibold text-red-600" : undefined}>
+                        {(c.fatture_mese ?? 0).toLocaleString("it-IT")} / {c.limite_mese.toLocaleString("it-IT")}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    <Giorni iso={c.last_seen_at} adesso={adesso} allarme={false} />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/admin/clienti/${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Apri ${c.nome_gruppo || c.nome_ristorante || c.email}`}
+                      className="inline-flex items-center justify-center size-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronRight className="size-5" />
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

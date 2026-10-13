@@ -19,6 +19,8 @@ from services.consumi_service import (
     mesi_badge,
     piano_effettivo,
     primo_mese_finestra,
+    riepilogo_cliente,
+    salute_sede,
     sopra_soglia,
 )
 
@@ -249,3 +251,36 @@ class TestContaSopraSoglia:
         rosse = [r for r in righe if r["sopra_soglia"] and r["mese"] == "2026-08"]
 
         assert conta_sopra_soglia(righe, ["2026-08"]) == len(rosse) == 1
+
+
+class TestSaluteSede:
+    def test_sede_che_non_ha_caricato_nel_mese_ha_zero_ma_il_suo_limite(self):
+        # Nessuna riga nel mese: la sede non sparisce, mostra 0 su 100.
+        s = salute_sede({"piano": "plus"}, "base", None, None)
+        assert s["fatture_mese"] == 0
+        assert s["limite_mese"] == 100
+        assert s["sopra_soglia"] is False
+        assert s["ultimo_caricamento_at"] is None
+
+    def test_il_piano_della_sede_vince_su_quello_dell_account(self):
+        s = salute_sede({"piano": "base"}, "pro", {"totale": 51, "ai_costo": 0.12345}, "2026-10-12T08:00:00+00:00")
+        assert (s["fatture_mese"], s["limite_mese"], s["sopra_soglia"]) == (51, 50, True)
+        assert s["ai_costo_mese"] == 0.1235
+        assert s["ultimo_caricamento_at"] == "2026-10-12T08:00:00+00:00"
+
+
+class TestRiepilogoCliente:
+    def test_somma_le_sedi_e_prende_il_caricamento_piu_recente(self):
+        sedi = [
+            {"fatture_mese": 30, "limite_mese": 50, "ai_costo_mese": 0.1, "ultimo_caricamento_at": "2026-10-01T09:00:00+00:00"},
+            {"fatture_mese": 12, "limite_mese": 100, "ai_costo_mese": 0.2, "ultimo_caricamento_at": "2026-10-11T09:00:00+00:00"},
+            {"fatture_mese": 0, "limite_mese": 50, "ai_costo_mese": 0.0, "ultimo_caricamento_at": None},
+        ]
+        r = riepilogo_cliente(sedi)
+        assert (r["fatture_mese"], r["limite_mese"], r["ai_costo_mese"]) == (42, 200, 0.3)
+        assert r["ultimo_caricamento_at"] == "2026-10-11T09:00:00+00:00"
+
+    def test_cliente_che_non_ha_mai_caricato(self):
+        r = riepilogo_cliente([{"fatture_mese": 0, "limite_mese": 50, "ultimo_caricamento_at": None}])
+        assert r["ultimo_caricamento_at"] is None
+        assert riepilogo_cliente([])["limite_mese"] == 0

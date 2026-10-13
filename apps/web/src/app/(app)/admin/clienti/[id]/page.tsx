@@ -1,11 +1,9 @@
 import { redirect, notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft } from "lucide-react";
 import { ClienteDettaglioClient } from "./cliente-dettaglio-client";
 import type { ClienteDettaglio } from "@/lib/admin";
+import { tabDaUrl } from "@/lib/admin-clienti";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchCliente(token: string, id: string): Promise<ClienteDettaglio | null> {
@@ -21,9 +19,12 @@ async function fetchCliente(token: string, id: string): Promise<ClienteDettaglio
   }
 }
 
-type Ctx = { params: Promise<{ id: string }> };
+type Ctx = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
+};
 
-export default async function ClienteDettaglioPage({ params }: Ctx) {
+export default async function ClienteDettaglioPage({ params, searchParams }: Ctx) {
   const user = await getCurrentUser();
   if (!user || !user.is_admin) redirect("/dashboard");
 
@@ -33,15 +34,6 @@ export default async function ClienteDettaglioPage({ params }: Ctx) {
   const cliente = await fetchCliente(token, id);
   if (!cliente) notFound();
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/admin/clienti" />}>
-          <ChevronLeft className="size-4 mr-1" /> Clienti
-        </Button>
-        <h1 className="text-2xl font-bold tracking-tight">{cliente.nome_gruppo || cliente.nome_ristorante || cliente.email}</h1>
-      </div>
-      <ClienteDettaglioClient cliente={cliente} />
-    </div>
-  );
+  const { tab } = await searchParams;
+  return <ClienteDettaglioClient cliente={cliente} tabIniziale={tabDaUrl(Array.isArray(tab) ? tab[0] : tab)} />;
 }

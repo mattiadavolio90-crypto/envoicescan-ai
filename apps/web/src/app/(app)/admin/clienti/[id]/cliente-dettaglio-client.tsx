@@ -1,1021 +1,192 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RicaricheAiCliente } from "./ricariche-ai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { NativeSelect } from "@/components/ui/select";
 import {
-  LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil, Send, Lock
-} from "lucide-react";
-import { ClienteDettaglio, Sede, Settore, PIANO_LABEL, PIANO_COLOR, SETTORE_LABEL, SETTORE_OPTIONS, fmtDate, fmtDateTime } from "@/lib/admin";
-import { TAB_SEZIONI, tabOffKey, type SezioneConTab } from "@/lib/tab-flags";
-import { INTERRUTTORI_CATENA, tabOffKeyCatena } from "@/lib/catena-schede";
-import { InvioCommercialistaCard } from "@/components/admin/invio-commercialista";
-import { SottoUtentiCard } from "@/components/admin/sotto-utenti";
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { AlertTriangle, CheckCircle, ChevronLeft, Clock, LogIn, MoreHorizontal, Trash2, XCircle } from "lucide-react";
+import { type ClienteDettaglio, PIANO_COLOR, PIANO_LABEL, SETTORE_LABEL } from "@/lib/admin";
+import { TAB_CLIENTE, eliminazioneConfermata, type TabCliente } from "@/lib/admin-clienti";
+import { chiamaAdmin, messaggioErrore } from "./tabs/comune";
+import { PanoramicaTab } from "./tabs/panoramica";
+import { SediTab } from "./tabs/sedi";
+import { FunzioniTab } from "./tabs/funzioni";
+import { InviiTab } from "./tabs/invii";
+import { AccountTab } from "./tabs/account";
 
-type Props = { cliente: ClienteDettaglio };
+type Props = { cliente: ClienteDettaglio; tabIniziale: TabCliente };
 
-// `defaultOn` = stato mostrato quando la chiave non e' ancora a DB, e deve
-// combaciare con il default del BACKEND che applica il flag. Non e' uniforme:
-// upload_policy.py usa `cfg.get(BLOCCO_ANNO_KEY, True)` ma
-// `cfg.get(BLOCCO_MESI_KEY, False)`. Con un fail-open uniforme il pannello
-// mostrava acceso un blocco mesi che nessuno applicava — l'admin credeva di aver
-// ristretto i caricamenti e non era vero. Se cambi un default qui, cambia il
-// backend (o viceversa): tests/test_upload_policy.py presidia l'asimmetria.
-//
-// `sezione` collega la voce alle sue tab in TAB_SEZIONI (@/lib/tab-flags), che
-// restano l'unica fonte: qui non si duplicano.
-const SIDEBAR_FLAGS: {
-  key: string;
-  label: string;
-  desc: string;
-  defaultOn: boolean;
-  sezione?: SezioneConTab;
-}[] = [
-  { key: "analisi_fatture", label: "Analisi Fatture", desc: "Visualizza e gestisci fatture", defaultOn: true, sezione: "analisi_fatture" },
-  { key: "prezzi", label: "Osservatorio", desc: "Variazioni prezzi, sconti, note di credito, score fornitori", defaultOn: true, sezione: "prezzi" },
-  { key: "margini", label: "Ricavi e Margini", desc: "Calcolo marginalità e analisi avanzate", defaultOn: true, sezione: "margini" },
-  { key: "agenda", label: "Agenda", desc: "Appuntamenti, spese extra, turni del personale", defaultOn: true, sezione: "agenda" },
-  { key: "workspace", label: "Strumenti", desc: "Foodcost e inventario di magazzino", defaultOn: true, sezione: "workspace" },
-  { key: "analisi_e_tag", label: "Analisi e Tag", desc: "Tag personalizzati e analytics", defaultOn: true },
-  { key: "scadenziario", label: "Gestione Fatture", desc: "Gestione scadenze e pagamenti", defaultOn: true, sezione: "scadenziario" },
-  { key: "blocco_anno_precedente", label: "Blocca anno precedente", desc: "Impedisce caricamento fatture dell'anno scorso", defaultOn: true },
-  { key: "blocco_mesi_precedenti", label: "Blocca mesi precedenti", desc: "Consente solo mese corrente e precedente", defaultOn: false },
-];
+function Etichetta({ className, children }: { className: string; children: React.ReactNode }) {
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>{children}</span>;
+}
 
-export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
+export function ClienteDettaglioClient({ cliente: iniziale, tabIniziale }: Props) {
   const router = useRouter();
   const [c, setC] = useState<ClienteDettaglio>(iniziale);
+  const [tab, setTab] = useState<TabCliente>(tabIniziale);
+  const [eliminaAperto, setEliminaAperto] = useState(false);
+  const [confermaEmail, setConfermaEmail] = useState("");
+  const [eliminazione, setEliminazione] = useState(false);
 
-  // Email dialog
-  const [emailDialog, setEmailDialog] = useState(false);
-  const [nuovaEmail, setNuovaEmail] = useState("");
-  const [emailSaving, setEmailSaving] = useState(false);
-
-  // Crea/imposta password dialog (fallback manuale quando la mail non parte)
-  const [pwdDialog, setPwdDialog] = useState(false);
-  const [nuovaPwd, setNuovaPwd] = useState("");
-  const [pwdSaving, setPwdSaving] = useState(false);
-  const [pwdVisibile, setPwdVisibile] = useState(false);
-
-  // Sede dialog (crea)
-  const [sedeDialog, setSedeDialog] = useState(false);
-  const [sNome, setSNome] = useState("");
-  const [sPiva, setSPiva] = useState("");
-  const [sRagione, setSRagione] = useState("");
-  const [sIndirizzo, setSIndirizzo] = useState("");
-  const [sCap, setSCap] = useState("");
-  const [sComune, setSComune] = useState("");
-  const [sPiano, setSPiano] = useState("base");
-  const [sTipo, setSTipo] = useState<Settore>("ristorazione");
-  const [sedeSaving, setSedeSaving] = useState(false);
-
-  // Sede dialog (modifica)
-  const [editSede, setEditSede] = useState<Sede | null>(null);
-  const [eNome, setENome] = useState("");
-  const [ePiva, setEPiva] = useState("");
-  const [eRagione, setERagione] = useState("");
-  const [eIndirizzo, setEIndirizzo] = useState("");
-  const [eCap, setECap] = useState("");
-  const [eComune, setEComune] = useState("");
-  const [ePiano, setEPiano] = useState("base");
-  const [eTipo, setETipo] = useState<Settore>("ristorazione");
-  const [editSedeSaving, setEditSedeSaving] = useState(false);
-
-  // In v1 le sedi di un account hanno lo stesso settore (lo impone il worker):
-  // con almeno una sede il settore e' deciso, e i dialog lo mostrano bloccato.
-  const settoreAccount: Settore | null = c.sedi.length > 0 ? (c.sedi[0].tipo_attivita ?? "ristorazione") : null;
-
-  // Modifica dati account (etichetta + gruppo). Il piano è per-SEDE, non qui.
-  const [modificaDialog, setModificaDialog] = useState(false);
-  const [mNome, setMNome] = useState("");
-  const [mGruppo, setMGruppo] = useState("");
-  const [modificaSaving, setModificaSaving] = useState(false);
-
-  // Elimina account dialog
-  const [eliminaDialog, setEliminaDialog] = useState(false);
-  const [eliminaSaving, setEliminaSaving] = useState(false);
-
-  // Elimina sede dialog
-  const [sedeDaEliminare, setSedeDaEliminare] = useState<Sede | null>(null);
-  const [eliminaSedeSaving, setEliminaSedeSaving] = useState(false);
-
-  async function patch(url: string, method: string, body?: object) {
-    const res = await fetch(url, {
-      method,
-      headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Errore");
-    return data;
+  // La tab sta nell'URL (?tab=) cosi' un link porta dritto al punto giusto e un
+  // ricarico non riporta alla Panoramica. replaceState: cambiare tab non e' una
+  // navigazione, non deve riempire la cronologia ne' rifare la pagina server.
+  function cambiaTab(t: TabCliente) {
+    setTab(t);
+    const url = new URL(window.location.href);
+    if (t === "panoramica") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", t);
+    window.history.replaceState(null, "", url.toString());
   }
 
-  async function toggleAttivo() {
-    try {
-      await patch(`/api/admin/clienti/${c.id}/account`, "PATCH", { attivo: !c.attivo });
-      setC((prev) => ({ ...prev, attivo: !prev.attivo }));
-      toast.success(c.attivo ? "Account disattivato" : "Account attivato");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    }
-  }
+  const nome = c.nome_gruppo || c.nome_ristorante || c.email;
+  const piani = Array.from(new Set(c.sedi.map((s) => (s.piano || "base").toLowerCase())));
+  const retail = c.sedi.some((s) => s.tipo_attivita === "retail");
 
-  async function handleResetPassword() {
+  async function entraComeCliente() {
     try {
-      const data = await patch(`/api/admin/clienti/${c.id}/reset-password`, "POST");
-      toast.success(data.email_inviata ? "Email reset inviata" : `Email NON inviata. Link: ${data.link}`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    }
-  }
-
-  async function handleImpostaPassword() {
-    if (!nuovaPwd.trim()) return;
-    setPwdSaving(true);
-    try {
-      const eraAttivo = c.attivo;
-      await patch(`/api/admin/clienti/${c.id}/imposta-password`, "POST", { password: nuovaPwd });
-      setC((prev) => ({ ...prev, attivo: true }));
-      toast.success(eraAttivo ? "Password aggiornata." : "Password impostata. Account attivo.");
-      setPwdDialog(false);
-      setNuovaPwd("");
-      setPwdVisibile(false);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    } finally {
-      setPwdSaving(false);
-    }
-  }
-
-  async function handleRinviaAttivazione() {
-    try {
-      const data = await patch(`/api/admin/clienti/${c.id}/rinvia-attivazione`, "POST");
-      // Il backend ritorna 502 (→ throw) se Brevo fallisce, quindi qui email_inviata
-      // è sempre true; il link resta come fallback copiabile.
-      toast.success(`Email di attivazione reinviata a ${data.email}`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore reinvio");
-    }
-  }
-
-  async function handleCambioEmail() {
-    if (!nuovaEmail.trim()) return;
-    setEmailSaving(true);
-    try {
-      await patch(`/api/admin/clienti/${c.id}/email`, "PATCH", { nuova_email: nuovaEmail.trim() });
-      setC((prev) => ({ ...prev, email: nuovaEmail.trim().toLowerCase() }));
-      toast.success("Email aggiornata");
-      setEmailDialog(false);
-      setNuovaEmail("");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    } finally {
-      setEmailSaving(false);
-    }
-  }
-
-  async function handleImpersona() {
-    try {
-      await patch(`/api/admin/clienti/${c.id}/impersona`, "POST");
+      await chiamaAdmin(`/api/admin/clienti/${c.id}/impersona`, "POST");
       toast.success(`Accesso come ${c.email}`);
       router.push("/dashboard");
       router.refresh();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
+    } catch (e) {
+      toast.error(messaggioErrore(e));
     }
   }
 
-  function openModifica() {
-    setMNome(c.nome_ristorante || "");
-    setMGruppo(c.nome_gruppo || "");
-    setModificaDialog(true);
-  }
-
-  async function handleModifica() {
-    setModificaSaving(true);
+  async function cambiaAttivo() {
     try {
-      const res = await fetch(`/api/admin/clienti/${c.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nome_ristorante: mNome.trim() || undefined,
-          nome_gruppo: mGruppo.trim() || null,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data.detail || "Errore salvataggio"); return; }
-      setC((prev) => ({
-        ...prev,
-        nome_ristorante: mNome.trim() || prev.nome_ristorante,
-        nome_gruppo: mGruppo.trim() || null,
-      }));
-      toast.success("Dati aggiornati");
-      setModificaDialog(false);
-    } catch {
-      toast.error("Errore di connessione");
-    } finally {
-      setModificaSaving(false);
+      await chiamaAdmin(`/api/admin/clienti/${c.id}/account`, "PATCH", { attivo: !c.attivo });
+      setC((prev) => ({ ...prev, attivo: !prev.attivo }));
+      toast.success(c.attivo ? "Account disattivato" : "Account attivato");
+    } catch (e) {
+      toast.error(messaggioErrore(e));
     }
   }
 
-  async function handleAttivaTrial() {
+  async function attivaProva() {
     try {
-      const data = await patch(`/api/admin/clienti/${c.id}/trial`, "POST");
-      toast.success(data.message || "Trial attivata");
+      const data = await chiamaAdmin(`/api/admin/clienti/${c.id}/trial`, "POST");
+      toast.success(data.message || "Prova attivata");
       router.refresh();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
+    } catch (e) {
+      toast.error(messaggioErrore(e));
     }
   }
 
-  async function handleCreaSedeSubmit() {
-    if (!sNome.trim() || !sPiva.trim()) { toast.error("Nome e P.IVA obbligatori"); return; }
-    setSedeSaving(true);
+  async function eliminaAccount() {
+    setEliminazione(true);
     try {
-      const sede: Sede = await patch(`/api/admin/clienti/${c.id}/sedi`, "POST", {
-        nome_ristorante: sNome.trim(),
-        partita_iva: sPiva.trim(),
-        ragione_sociale: sRagione.trim() || undefined,
-        indirizzo: sIndirizzo.trim() || undefined,
-        cap: sCap.trim() || undefined,
-        comune: sComune.trim() || undefined,
-        piano: sPiano,
-        tipo_attivita: settoreAccount ?? sTipo,
-      });
-      setC((prev) => ({ ...prev, sedi: [...prev.sedi, sede], n_sedi: prev.n_sedi + 1 }));
-      toast.success("Sede creata");
-      setSedeDialog(false);
-      setSNome(""); setSPiva(""); setSRagione("");
-      setSIndirizzo(""); setSCap(""); setSComune(""); setSPiano("base"); setSTipo("ristorazione");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    } finally {
-      setSedeSaving(false);
-    }
-  }
-
-  async function handleEliminaSede() {
-    const sede = sedeDaEliminare;
-    if (!sede) return;
-    setEliminaSedeSaving(true);
-    try {
-      await patch(`/api/admin/clienti/${c.id}/sedi/${sede.id}`, "DELETE");
-      setC((prev) => ({ ...prev, sedi: prev.sedi.filter((s) => s.id !== sede.id), n_sedi: prev.n_sedi - 1 }));
-      toast.success("Sede eliminata");
-      setSedeDaEliminare(null);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    } finally {
-      setEliminaSedeSaving(false);
-    }
-  }
-
-  function openModificaSede(sede: Sede) {
-    setEditSede(sede);
-    setENome(sede.nome_ristorante || "");
-    setEPiva(sede.partita_iva || "");
-    setERagione(sede.ragione_sociale || "");
-    setEIndirizzo(sede.indirizzo || "");
-    setECap(sede.cap || "");
-    setEComune(sede.comune || "");
-    setEPiano(sede.piano || "base");
-    setETipo(sede.tipo_attivita ?? "ristorazione");
-  }
-
-  async function handleModificaSedeSubmit() {
-    if (!editSede) return;
-    if (!eNome.trim() || !ePiva.trim()) { toast.error("Nome e P.IVA obbligatori"); return; }
-    setEditSedeSaving(true);
-    try {
-      const updated: Sede = await patch(`/api/admin/clienti/${c.id}/sedi/${editSede.id}`, "PATCH", {
-        nome_ristorante: eNome.trim(),
-        partita_iva: ePiva.trim(),
-        ragione_sociale: eRagione.trim() || null,
-        indirizzo: eIndirizzo.trim() || null,
-        cap: eCap.trim() || null,
-        comune: eComune.trim() || null,
-        piano: ePiano,
-        tipo_attivita: eTipo,
-      });
-      setC((prev) => ({ ...prev, sedi: prev.sedi.map((s) => (s.id === updated.id ? updated : s)) }));
-      toast.success("Sede aggiornata");
-      setEditSede(null);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    } finally {
-      setEditSedeSaving(false);
-    }
-  }
-
-  const [sdiSaving, setSdiSaving] = useState<string | null>(null);
-  async function toggleSdiSede(sede: Sede) {
-    const nuovo = !sede.sdi_attivo;
-    setSdiSaving(sede.id);
-    try {
-      const updated: Sede = await patch(`/api/admin/clienti/${c.id}/sedi/${sede.id}`, "PATCH", {
-        sdi_attivo: nuovo,
-      });
-      setC((prev) => ({ ...prev, sedi: prev.sedi.map((s) => (s.id === updated.id ? updated : s)) }));
-      toast.success(nuovo ? "Ricezione SDI attivata" : "Ricezione SDI disattivata");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    } finally {
-      setSdiSaving(null);
-    }
-  }
-
-  // `etichetta` e `acceso` esistono perche' per i flag a convenzione inversa
-  // (tab, trigger servizi) il valore scritto e' l'OPPOSTO di cio' che l'admin ha
-  // acceso: un toast che leggesse `enabled` direbbe "attivato" quando spegni, e
-  // mostrerebbe la chiave grezza (`tab_off_analisi_fatture_categorie`).
-  async function handleToggleFlag(
-    key: string,
-    enabled: boolean,
-    etichetta?: string,
-    acceso?: boolean,
-  ) {
-    try {
-      await patch(`/api/admin/clienti/${c.id}/flags`, "PATCH", {
-        pagine_abilitate: { [key]: enabled },
-      });
-      setC((prev) => ({ ...prev, pagine_abilitate: { ...prev.pagine_abilitate, [key]: enabled } }));
-      toast.success(`${etichetta ?? key} ${(acceso ?? enabled) ? "attivato" : "disattivato"}`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    }
-  }
-
-  async function handleToggleChatAi(enabled: boolean) {
-    try {
-      await patch(`/api/admin/clienti/${c.id}/flags`, "PATCH", { chat_ai_enabled: enabled });
-      setC((prev) => ({ ...prev, chat_ai_enabled: enabled }));
-      toast.success(`Assistente AI ${enabled ? "attivato" : "disattivato"}`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    }
-  }
-
-  async function handleToggleEmailSettimanale(enabled: boolean) {
-    try {
-      await patch(`/api/admin/clienti/${c.id}/flags`, "PATCH", { email_settimanale_abilitata: enabled });
-      setC((prev) => ({ ...prev, email_settimanale_abilitata: enabled }));
-      toast.success(`Email settimanale ${enabled ? "abilitata" : "disabilitata"}`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    }
-  }
-
-  async function handleProvaEmailSettimanale() {
-    try {
-      const res = await fetch(`/api/admin/clienti/${c.id}/email-settimanale-prova`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.detail || data?.error || "Errore");
-      if (data.inviata) toast.success(`Prova inviata a ${data.a}`);
-      else toast.error(`Nessuna email: ${data.motivo || "il cliente non la riceverebbe"}`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
-    }
-  }
-
-  async function handleEliminaAccount() {
-    setEliminaSaving(true);
-    try {
-      const res = await fetch(`/api/admin/clienti/${c.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Eliminazione non riuscita");
-      }
+      await chiamaAdmin(`/api/admin/clienti/${c.id}`, "DELETE");
       toast.success("Account eliminato");
       router.push("/admin/clienti");
       router.refresh();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore eliminazione");
+    } catch (e) {
+      toast.error(messaggioErrore(e));
     } finally {
-      setEliminaSaving(false);
+      setEliminazione(false);
     }
   }
 
-  const flags = c.pagine_abilitate || {};
+  const emailConfermata = eliminazioneConfermata(confermaEmail, c.email);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Colonna sinistra: dati + azioni rapide */}
-      <div className="lg:col-span-1 space-y-4">
-        {/* Card dati cliente */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Dati cliente</CardTitle>
-            <Button variant="ghost" size="sm" onClick={openModifica}>
-              <Pencil className="size-4 mr-1" /> Modifica
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <dl className="space-y-2">
-              <div>
-                <dt className="text-muted-foreground text-xs">Email</dt>
-                <dd className="font-medium break-all">{c.email}</dd>
-              </div>
-              {c.nome_gruppo && (
-                <div>
-                  <dt className="text-muted-foreground text-xs">Nome gruppo / catena</dt>
-                  <dd className="font-medium">{c.nome_gruppo}</dd>
-                </div>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Link href="/admin/clienti" className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground">
+          <ChevronLeft className="size-3.5" /> Clienti
+        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight truncate">{nome}</h1>
+            <p className="text-sm text-muted-foreground break-all">{c.email}</p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {c.attivo ? (
+                <Etichetta className="bg-emerald-500/10 text-emerald-700"><CheckCircle className="size-3" /> Attivo</Etichetta>
+              ) : c.last_seen_at === null ? (
+                <Etichetta className="bg-amber-500/10 text-amber-700"><AlertTriangle className="size-3" /> Attivazione in sospeso</Etichetta>
+              ) : (
+                <Etichetta className="bg-red-500/10 text-red-600"><XCircle className="size-3" /> Disattivo</Etichetta>
               )}
-              <div>
-                <dt className="text-muted-foreground text-xs">Nome account</dt>
-                <dd className="font-medium">{c.nome_ristorante || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs">Membro dal</dt>
-                <dd className="font-medium">{fmtDate(c.created_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs">Ultimo accesso</dt>
-                <dd className="font-medium">{fmtDateTime(c.last_seen_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs">Fatture totali</dt>
-                <dd className="font-medium tabular-nums">{c.n_fatture?.toLocaleString("it-IT") ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs">Stato account</dt>
-                <dd>
-                  {c.attivo
-                    ? <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><CheckCircle className="size-3" /> Attivo</span>
-                    : <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600"><XCircle className="size-3" /> Disattivo</span>
-                  }
-                  {!c.attivo && c.last_seen_at === null && (
-                    <span className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-600">
-                      <AlertTriangle className="size-3" /> Attivazione in sospeso — mai effettuato accesso
-                    </span>
-                  )}
-                </dd>
-              </div>
               {c.trial?.active && (
-                <div>
-                  <dt className="text-muted-foreground text-xs">Trial</dt>
-                  <dd className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
-                    <Clock className="size-3" /> {c.trial.days_remaining ?? 0} giorni rimasti
-                  </dd>
-                </div>
+                <Etichetta className="bg-amber-100 text-amber-700"><Clock className="size-3" /> Prova: {c.trial.days_remaining ?? 0} giorni</Etichetta>
               )}
-            </dl>
-          </CardContent>
-        </Card>
-
-        {/* Azioni rapide */}
-        <Card>
-          <CardHeader><CardTitle className="text-base">Azioni</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            <Button className="w-full justify-start" onClick={handleImpersona}>
-              <LogIn className="size-4 mr-2" /> Entra come cliente
+              {piani.map((p) => (
+                <Etichetta key={p} className={PIANO_COLOR[p] || ""}>{PIANO_LABEL[p] || p}</Etichetta>
+              ))}
+              {c.sedi.length > 1 && <Etichetta className="bg-muted text-muted-foreground">{c.sedi.length} sedi</Etichetta>}
+              {retail && <Etichetta className="bg-amber-100 text-amber-700">{SETTORE_LABEL.retail}</Etichetta>}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button onClick={entraComeCliente}>
+              <LogIn className="size-4 mr-1" /> Entra come cliente
             </Button>
-            {!c.attivo && (
-              <Button variant="outline" className="w-full justify-start" onClick={handleRinviaAttivazione}>
-                <Send className="size-4 mr-2" /> Rinvia email attivazione
-              </Button>
-            )}
-            <Button variant="outline" className="w-full justify-start" onClick={handleResetPassword}>
-              <KeyRound className="size-4 mr-2" /> Invia reset password
-            </Button>
-            <Button variant="outline" className="w-full justify-start" onClick={() => { setNuovaPwd(""); setPwdVisibile(false); setPwdDialog(true); }}>
-              <Lock className="size-4 mr-2" /> {c.attivo ? "Modifica password" : "Crea password"}
-            </Button>
-            <Button variant="outline" className="w-full justify-start" onClick={() => setEmailDialog(true)}>
-              <Mail className="size-4 mr-2" /> Cambia email
-            </Button>
-            <Button
-              variant={c.attivo ? "outline" : "default"}
-              className="w-full justify-start"
-              onClick={toggleAttivo}
-            >
-              {c.attivo
-                ? <><XCircle className="size-4 mr-2" /> Disattiva account</>
-                : <><CheckCircle className="size-4 mr-2" /> Attiva account</>
-              }
-            </Button>
-            {!c.trial?.active && (
-              <Button variant="outline" className="w-full justify-start" onClick={handleAttivaTrial}>
-                <Clock className="size-4 mr-2" /> Attiva trial 7 giorni
-              </Button>
-            )}
-            <RicaricheAiCliente clienteId={c.id} />
-          </CardContent>
-        </Card>
-
-        {/* Zona pericolosa */}
-        <Card className="border-destructive/40">
-          <CardHeader><CardTitle className="text-base text-destructive">Zona pericolosa</CardTitle></CardHeader>
-          <CardContent>
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => setEliminaDialog(true)}
-            >
-              <Trash2 className="size-4 mr-2" /> Elimina account
-            </Button>
-          </CardContent>
-        </Card>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="icon" aria-label="Altre azioni sul cliente" title="Altre azioni">
+                    <MoreHorizontal />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={cambiaAttivo}>
+                  {c.attivo ? <><XCircle /> Disattiva account</> : <><CheckCircle /> Attiva account</>}
+                </DropdownMenuItem>
+                {!c.trial?.active && (
+                  <DropdownMenuItem onClick={attivaProva}>
+                    <Clock /> Attiva prova 7 giorni
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => { setConfermaEmail(""); setEliminaAperto(true); }}>
+                  <Trash2 /> Elimina account
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
       </div>
 
-      {/* Colonna destra: feature flags + sedi */}
-      <div className="lg:col-span-2 space-y-4">
-        {/* Feature flags */}
-        <Card>
-          <CardHeader><CardTitle className="text-base">Accesso sezioni</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {SIDEBAR_FLAGS.map((f) => {
-              // `??` e non `!== false`: quest'ultimo tratta "assente" e true allo
-              // stesso modo, e rende impossibile esprimere un default spento.
-              const enabled = flags[f.key] ?? f.defaultOn;
-              const tabs = f.sezione ? TAB_SEZIONI[f.sezione] : [];
-              return (
-                <div key={f.key} className="py-1 border-b last:border-0">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium">{f.label}</p>
-                      <p className="text-xs text-muted-foreground">{f.desc}</p>
-                    </div>
-                    <Switch
-                      checked={enabled}
-                      onCheckedChange={(v: boolean) => handleToggleFlag(f.key, v, f.label)}
-                    />
-                  </div>
-                  {/* Tab figlie: solo a sezione accesa (spegnerla le rende
-                      irraggiungibili comunque). I flag restano a DB e si
-                      riapplicano se la sezione viene riaccesa. */}
-                  {enabled && tabs.length > 0 && (
-                    <div className="mt-2 ml-1 pl-3 border-l space-y-1.5">
-                      {tabs.map((t) => {
-                        const chiave = tabOffKey(f.sezione as SezioneConTab, t.key);
-                        // Convenzione inversa: chiave presente = tab SPENTA.
-                        const tabOn = flags[chiave] !== true;
-                        return (
-                          <div key={t.key} className="flex items-center justify-between gap-4">
-                            <p className="text-xs text-muted-foreground">{t.label}</p>
-                            <Switch
-                              checked={tabOn}
-                              onCheckedChange={(v: boolean) =>
-                                handleToggleFlag(chiave, !v, `${f.label} › ${t.label}`, !v)
-                              }
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {/* Catena (fase H3, 09/10/2026): non ha un interruttore di pagina,
-                solo le schede, e le colonne dei coperti per chi non li
-                registra. Solo per gli account con almeno due sedi: con una
-                sola la vista di catena non esiste. Convenzione inversa, come
-                le tab del PV: chiave presente = spenta. */}
-            {c.sedi.length > 1 && (
-              <div className="py-1 border-b">
-                <p className="text-sm font-medium">Catena</p>
-                <p className="text-xs text-muted-foreground">Schede della vista di gruppo</p>
-                <div className="mt-2 ml-1 pl-3 border-l space-y-1.5">
-                  {INTERRUTTORI_CATENA.flatMap((g) =>
-                    g.voci.map((v) => {
-                      const chiave = tabOffKeyCatena(v.key);
-                      const acceso = flags[chiave] !== true;
-                      const etichetta = `Catena › ${g.pagina} › ${v.label}`;
-                      return (
-                        <div key={chiave} className="flex items-center justify-between gap-4">
-                          <p className="text-xs text-muted-foreground">{g.pagina} › {v.label}</p>
-                          <Switch
-                            checked={acceso}
-                            onCheckedChange={(on: boolean) => handleToggleFlag(chiave, !on, etichetta, on)}
-                          />
-                        </div>
-                      );
-                    }),
-                  )}
-                </div>
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-4 py-1 border-b">
-              <div>
-                <p className="text-sm font-medium">Assistente AI (Chat)</p>
-                <p className="text-xs text-muted-foreground">Chat AI nella Home del cliente</p>
-              </div>
-              <Switch
-                checked={c.chat_ai_enabled}
-                onCheckedChange={handleToggleChatAi}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4 py-1 border-b">
-              <div>
-                <p className="text-sm font-medium">Email settimanale</p>
-                <p className="text-xs text-muted-foreground">
-                  {/* La scelta del cliente vince sempre: abilitarlo non riaccende
-                      un'email che ha spento lui. */}
-                  {c.email_settimanale_cliente === false
-                    ? "Il cliente l'ha disattivata: non la riceve finché non la riaccende lui"
-                    : "Il lunedì mattina, il riepilogo della settimana del locale"}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <Button variant="outline" size="sm" onClick={handleProvaEmailSettimanale}>
-                  Mandami una prova
-                </Button>
-                <Switch
-                  checked={c.email_settimanale_abilitata === true}
-                  onCheckedChange={handleToggleEmailSettimanale}
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-4 py-1">
-              <div>
-                <p className="text-sm font-medium">Suggerimenti servizi</p>
-                <p className="text-xs text-muted-foreground">
-                  Hint contestuali discreti che propongono i servizi giusti nelle pagine
-                </p>
-              </div>
-              {/* Convenzione inversa: salviamo il flag solo da SPENTO
-                  (trigger_servizi_off). Assente = ON di default, anche per i
-                  clienti gia' esistenti. La lista pagine_abilitate lato cliente
-                  porta solo le chiavi true, quindi un OFF deve essere una chiave
-                  presente, non assente. Lo switch mostra l'opposto del flag-off. */}
-              <Switch
-                checked={flags.trigger_servizi_off !== true}
-                onCheckedChange={(v: boolean) => handleToggleFlag("trigger_servizi_off", !v, "Suggerimenti servizi", v)}
-              />
-            </div>
-          </CardContent>
-        </Card>
+      <UnderlineTabs
+        value={tab}
+        onChange={cambiaTab}
+        tabs={TAB_CLIENTE.map((t) => ({ value: t.key, label: t.label }))}
+        className="overflow-x-auto"
+      />
 
-        {/* Sedi */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Sedi ({c.sedi.length})</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setSedeDialog(true)}>
-              <Plus className="size-4 mr-1" /> Aggiungi sede
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {c.sedi.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nessuna sede configurata</p>
-            ) : (
-              <div className="space-y-2">
-                {c.sedi.map((sede) => {
-                  const ubicazione = [sede.indirizzo, sede.cap, sede.comune].filter(Boolean).join(" · ");
-                  return (
-                  <div key={sede.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium truncate">{sede.nome_ristorante}</p>
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 ${PIANO_COLOR[sede.piano || "base"] || ""}`}>
-                          {PIANO_LABEL[sede.piano || "base"] || sede.piano}
-                        </span>
-                        {sede.tipo_attivita === "retail" && (
-                          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                            {SETTORE_LABEL.retail}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground tabular-nums">{sede.partita_iva || "—"}</p>
-                      {ubicazione ? (
-                        <p className="text-xs text-muted-foreground truncate">{ubicazione}</p>
-                      ) : (
-                        c.sedi.length > 1 && (
-                          <p className="text-xs text-amber-600 truncate">⚠ Indirizzo mancante — smistamento fatture manuale</p>
-                        )
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => toggleSdiSede(sede)}
-                        disabled={sdiSaving === sede.id}
-                        title={sede.sdi_attivo
-                          ? "Ricezione SDI automatica ATTIVA — clic per disattivare"
-                          : "Ricezione SDI automatica spenta — clic per attivare (caricamento manuale)"}
-                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-50 ${
-                          sede.sdi_attivo
-                            ? "bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25"
-                            : "bg-muted text-muted-foreground hover:bg-border"
-                        }`}
-                      >
-                        {sede.sdi_attivo ? "SDI ✓" : "SDI off"}
-                      </button>
-                      <span className={`text-xs font-medium ${sede.attivo ? "text-emerald-600" : "text-red-500"}`}>
-                        {sede.attivo ? "Attiva" : "Inattiva"}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="size-7 p-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => openModificaSede(sede)}
-                        title="Modifica sede"
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="size-7 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => setSedeDaEliminare(sede)}
-                        title="Elimina sede"
-                      >
-                        <X className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {tab === "panoramica" && <PanoramicaTab c={c} setC={setC} onVaiA={cambiaTab} />}
+      {tab === "sedi" && <SediTab c={c} setC={setC} />}
+      {tab === "funzioni" && <FunzioniTab c={c} setC={setC} />}
+      {tab === "invii" && <InviiTab c={c} setC={setC} />}
+      {tab === "account" && <AccountTab c={c} setC={setC} />}
 
-        <SottoUtentiCard clienteId={c.id} />
-
-        <InvioCommercialistaCard clienteId={c.id} />
-      </div>
-
-      {/* Dialog cambia email */}
-      <Dialog open={emailDialog} onOpenChange={setEmailDialog}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Cambia email</DialogTitle>
-            <DialogDescription>La sessione corrente del cliente verrà invalidata.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label>Email attuale</Label>
-              <p className="text-sm text-muted-foreground">{c.email}</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="nuova-email">Nuova email</Label>
-              <Input
-                id="nuova-email"
-                type="email"
-                value={nuovaEmail}
-                onChange={(e) => setNuovaEmail(e.target.value)}
-                placeholder="nuova@email.it"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEmailDialog(false)} disabled={emailSaving}>Annulla</Button>
-            <Button onClick={handleCambioEmail} disabled={emailSaving || !nuovaEmail.trim()}>
-              {emailSaving ? "Salvataggio…" : "Conferma"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog crea/imposta password */}
-      <Dialog open={pwdDialog} onOpenChange={setPwdDialog}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{c.attivo ? "Modifica password" : "Crea password"}</DialogTitle>
-            <DialogDescription>
-              Imposti tu la password per <strong>{c.email}</strong>.
-              {c.attivo
-                ? " Sostituisce quella attuale e chiude ogni sessione aperta del cliente."
-                : " L'account viene attivato e ogni sessione aperta del cliente viene chiusa."}
-              {" "}Da comunicare al cliente a voce.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="nuova-pwd">Nuova password</Label>
-              <div className="relative">
-                <Input
-                  id="nuova-pwd"
-                  type={pwdVisibile ? "text" : "password"}
-                  value={nuovaPwd}
-                  onChange={(e) => setNuovaPwd(e.target.value)}
-                  placeholder="Almeno 10 caratteri"
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setPwdVisibile((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {pwdVisibile ? "Nascondi" : "Mostra"}
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Min. 10 caratteri con maiuscola, minuscola, numero e simbolo. No email o nome del locale.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPwdDialog(false)} disabled={pwdSaving}>Annulla</Button>
-            <Button onClick={handleImpostaPassword} disabled={pwdSaving || !nuovaPwd.trim()}>
-              {pwdSaving ? "Salvataggio…" : "Imposta e attiva"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog modifica dati cliente */}
-      <Dialog open={modificaDialog} onOpenChange={setModificaDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Modifica dati account</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="m-nome">Nome account</Label>
-              <Input id="m-nome" value={mNome} onChange={(e) => setMNome(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="m-gruppo">Nome gruppo / catena</Label>
-              <Input id="m-gruppo" placeholder="Es: SUSHILAND (opzionale, per clienti multi-sede)" value={mGruppo} onChange={(e) => setMGruppo(e.target.value)} />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              P.IVA, ragione sociale e piano si gestiscono per <strong>sede</strong>, nella sezione Sedi.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModificaDialog(false)} disabled={modificaSaving}>Annulla</Button>
-            <Button onClick={handleModifica} disabled={modificaSaving}>
-              {modificaSaving ? "Salvataggio…" : "Salva"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog aggiungi sede */}
-      <Dialog open={sedeDialog} onOpenChange={setSedeDialog}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Aggiungi sede</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="s-nome">Nome sede *</Label>
-              <Input id="s-nome" placeholder="Es: Trattoria Mario 2" value={sNome} onChange={(e) => setSNome(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-piva">P.IVA * (11 cifre)</Label>
-              <Input id="s-piva" placeholder="12345678901" maxLength={11} value={sPiva} onChange={(e) => setSPiva(e.target.value.replace(/\D/g, ""))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-ragione">Ragione sociale</Label>
-              <Input id="s-ragione" placeholder="Opzionale" value={sRagione} onChange={(e) => setSRagione(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-indirizzo">Indirizzo</Label>
-              <Input id="s-indirizzo" placeholder="Via e numero civico" value={sIndirizzo} onChange={(e) => setSIndirizzo(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="s-cap">CAP</Label>
-                <Input id="s-cap" placeholder="00000" maxLength={10} value={sCap} onChange={(e) => setSCap(e.target.value)} />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="s-comune">Comune</Label>
-                <Input id="s-comune" placeholder="Città" value={sComune} onChange={(e) => setSComune(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-piano">Piano</Label>
-              <NativeSelect id="s-piano" value={sPiano} onValueChange={setSPiano}>
-                <option value="free">Free (chat AI esclusa)</option>
-                <option value="base">Base (50 fatture)</option>
-                <option value="plus">Plus (100 fatture)</option>
-                <option value="pro">Pro (200 fatture)</option>
-              </NativeSelect>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="s-tipo">Settore</Label>
-              <NativeSelect id="s-tipo" value={settoreAccount ?? sTipo} onValueChange={(v) => setSTipo(v as Settore)} disabled={settoreAccount !== null}>
-                {SETTORE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </NativeSelect>
-              {settoreAccount !== null && (
-                <p className="text-xs text-muted-foreground">Le sedi di un account hanno lo stesso settore: un ristorante e un negozio sono due account.</p>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSedeDialog(false)} disabled={sedeSaving}>Annulla</Button>
-            <Button onClick={handleCreaSedeSubmit} disabled={sedeSaving || !sNome.trim() || !sPiva.trim()}>
-              {sedeSaving ? "Creazione…" : "Crea sede"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog modifica sede */}
-      <Dialog open={editSede !== null} onOpenChange={(o) => !o && setEditSede(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Modifica sede</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="e-nome">Nome sede *</Label>
-              <Input id="e-nome" value={eNome} onChange={(e) => setENome(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="e-piva">P.IVA * (11 cifre)</Label>
-              <Input id="e-piva" maxLength={11} value={ePiva} onChange={(e) => setEPiva(e.target.value.replace(/\D/g, ""))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="e-ragione">Ragione sociale</Label>
-              <Input id="e-ragione" placeholder="Opzionale" value={eRagione} onChange={(e) => setERagione(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="e-indirizzo">Indirizzo</Label>
-              <Input id="e-indirizzo" placeholder="Via e numero civico" value={eIndirizzo} onChange={(e) => setEIndirizzo(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="e-cap">CAP</Label>
-                <Input id="e-cap" placeholder="00000" maxLength={10} value={eCap} onChange={(e) => setECap(e.target.value)} />
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="e-comune">Comune</Label>
-                <Input id="e-comune" placeholder="Città" value={eComune} onChange={(e) => setEComune(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="e-piano">Piano</Label>
-              <NativeSelect id="e-piano" value={ePiano} onValueChange={setEPiano}>
-                <option value="free">Free (chat AI esclusa)</option>
-                <option value="base">Base (50 fatture)</option>
-                <option value="plus">Plus (100 fatture)</option>
-                <option value="pro">Pro (200 fatture)</option>
-              </NativeSelect>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="e-tipo">Settore</Label>
-              <NativeSelect id="e-tipo" value={eTipo} onValueChange={(v) => setETipo(v as Settore)} disabled={c.sedi.length > 1}>
-                {SETTORE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </NativeSelect>
-              {c.sedi.length > 1 && (
-                <p className="text-xs text-muted-foreground">Con più sedi il settore non si cambia da qui: le sedi di un account hanno lo stesso settore.</p>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditSede(null)} disabled={editSedeSaving}>Annulla</Button>
-            <Button onClick={handleModificaSedeSubmit} disabled={editSedeSaving || !eNome.trim() || !ePiva.trim()}>
-              {editSedeSaving ? "Salvataggio…" : "Salva modifiche"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog elimina sede */}
-      <Dialog open={sedeDaEliminare !== null} onOpenChange={(o) => !o && setSedeDaEliminare(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-destructive">Elimina sede</DialogTitle>
-            <DialogDescription>
-              Stai per eliminare la sede <strong>{sedeDaEliminare?.nome_ristorante}</strong>.
-              Tutte le sue fatture verranno eliminate. Azione irreversibile.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSedeDaEliminare(null)} disabled={eliminaSedeSaving}>Annulla</Button>
-            <Button variant="destructive" onClick={handleEliminaSede} disabled={eliminaSedeSaving}>
-              {eliminaSedeSaving ? "Eliminazione…" : "Elimina sede"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog elimina account */}
-      <Dialog open={eliminaDialog} onOpenChange={setEliminaDialog}>
+      <Dialog open={eliminaAperto} onOpenChange={setEliminaAperto}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-destructive">Elimina account</DialogTitle>
             <DialogDescription>
-              Stai per eliminare definitivamente <strong>{c.email}</strong> e tutti i suoi dati. Questa azione è irreversibile.
+              Stai per eliminare definitivamente <strong>{c.email}</strong> e tutti i suoi dati:
+              fatture e righe prodotto, caricamenti, ricette, ingredienti e tutte le sedi. Non si torna indietro.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-2 space-y-3">
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive space-y-1">
-              <p className="font-medium"><AlertTriangle className="inline size-4 mr-1" />Verranno eliminati:</p>
-              <ul className="list-disc list-inside text-xs space-y-0.5 text-destructive/80">
-                <li>Account utente</li>
-                <li>Tutte le fatture e righe prodotto</li>
-                <li>Upload events, ricette, ingredienti</li>
-                <li>Tutti i ristoranti/sedi</li>
-              </ul>
-            </div>
+          <div className="space-y-1.5 py-2">
+            <Label htmlFor="conferma-email">Per confermare scrivi l&apos;email del cliente</Label>
+            <Input id="conferma-email" value={confermaEmail} onChange={(e) => setConfermaEmail(e.target.value)} placeholder={c.email} autoComplete="off" />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEliminaDialog(false)} disabled={eliminaSaving}>Annulla</Button>
-            <Button variant="destructive" onClick={handleEliminaAccount} disabled={eliminaSaving}>
-              {eliminaSaving ? "Eliminazione…" : "Sì, elimina definitivamente"}
+            <Button variant="outline" onClick={() => setEliminaAperto(false)} disabled={eliminazione}>Annulla</Button>
+            <Button variant="destructive" onClick={eliminaAccount} disabled={eliminazione || !emailConfermata}>
+              {eliminazione ? "Eliminazione…" : "Elimina definitivamente"}
             </Button>
           </DialogFooter>
         </DialogContent>

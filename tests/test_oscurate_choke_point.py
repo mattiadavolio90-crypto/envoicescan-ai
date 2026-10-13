@@ -65,7 +65,6 @@ ELENCO_SENZA_FILTRO = {
     ("routers/admin.py", "_categorie_da_controllare"): "tooling admin qualita'",
     ("routers/admin.py", "_compute_admin_overview"): "volumi per fatturazione",
     ("routers/admin.py", "_imp"): "tooling admin qualita'",
-    ("routers/admin.py", "_promuovibile"): "tooling admin memoria AI",
     ("routers/admin.py", "admin_qualita_audit_annulla"): "tooling admin qualita'",
     ("routers/admin.py", "admin_qualita_classifica"): "tooling admin qualita'",
     ("routers/admin.py", "admin_qualita_coda"): "tooling admin qualita'",

@@ -199,7 +199,6 @@ def test_percorso_pdf_senza_utente_non_eredita_la_provenienza():
     [
         ("services/upload_handler.py", "valuta_fiducia(\n"),
         ("worker/queue_processor.py", "_valuta_fiducia_safe(fonte, categoria, desc, _forn)"),
-        ("services/fastapi_worker.py", "valuta_fiducia(\n"),
     ],
 )
 def test_i_chiamanti_passano_la_descrizione(percorso, atteso):

@@ -1,10 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft } from "lucide-react";
-import { ClientiTabs } from "./clienti-tabs";
+import { ClientiClient } from "./clienti-client";
 import type { Cliente } from "@/lib/admin";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
@@ -28,15 +25,5 @@ export default async function AdminClientiPage() {
   const token = store.get(SESSION_COOKIE)?.value ?? "";
   const clienti = await fetchClienti(token);
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/admin" />}>
-          <ChevronLeft className="size-4 mr-1" /> Admin
-        </Button>
-        <h1 className="text-2xl font-bold tracking-tight">Clienti</h1>
-      </div>
-      <ClientiTabs clientiIniziali={clienti} />
-    </div>
-  );
+  return <ClientiClient clientiIniziali={clienti} />;
 }

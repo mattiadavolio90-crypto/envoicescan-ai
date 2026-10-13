@@ -39,6 +39,7 @@ logger = logging.getLogger("fastapi_worker")
 from utils.ttl_cache import TTLCache
 # db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
 from services.db_service import aggiorna_categoria_fatture
+from services.consumi_service import riepilogo_cliente, salute_sede
 from utils.supabase_paging import fetch_all
 from config.constants import (
     CATEGORIA_ARTICOLO_DI_VENDITA,
@@ -312,6 +313,36 @@ def _compute_admin_overview():
 
 # ── Lista clienti ────────────────────────────────────────────────────────────
 
+def _arricchisci_salute_sedi(sb, sedi_per_utente: Dict[str, List[Dict[str, Any]]],
+                             piano_account: Dict[str, Optional[str]]) -> List[str]:
+    """Aggiunge a ogni sede fatture e limite del mese, costo AI e ultimo
+    caricamento. Difensiva: una RPC che fallisce lascia i campi vuoti e finisce
+    negli errori ritornati, mai un 500 sulla lista."""
+    errors: List[str] = []
+    ids = [str(s["id"]) for sedi in sedi_per_utente.values() for s in sedi]
+    ultimi: Dict[str, Optional[str]] = {}
+    try:
+        for i in range(0, len(ids), 200):
+            resp = sb.rpc("admin_ultimo_caricamento", {"p_ristorante_ids": ids[i:i + 200]}).execute()
+            for r in (resp.data or []):
+                ultimi[str(r["ristorante_id"])] = r.get("ultimo")
+    except Exception as e:
+        logger.warning("admin_ultimo_caricamento RPC fallita", exc_info=True)
+        errors.append(f"ultimo_caricamento: {type(e).__name__}: {e}")
+
+    consumi = _ADMIN_CACHE.get_or_set("consumi:1", lambda: _compute_admin_consumi(1))
+    errors.extend(consumi.get("_errors") or [])
+    del_mese = {
+        str(r["ristorante_id"]): r
+        for r in consumi.get("righe") or []
+        if r.get("mese") == consumi.get("mese_corrente")
+    }
+    for uid, sedi in sedi_per_utente.items():
+        for s in sedi:
+            sid = str(s["id"])
+            s.update(salute_sede(s, piano_account.get(uid), del_mese.get(sid), ultimi.get(sid)))
+    return errors
+
 @router.get("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 def admin_lista_clienti():
     """Lista tutti i clienti non-admin con stats aggregate (fatture, ultimo accesso, piano, trial)."""
@@ -349,6 +380,8 @@ def admin_lista_clienti():
     except Exception:
         pass
 
+    _arricchisci_salute_sedi(sb, sedi_map, {u["id"]: u.get("piano") for u in clienti_raw})
+
     result = []
     for u in clienti_raw:
         uid = u["id"]
@@ -385,6 +418,7 @@ def admin_lista_clienti():
             "pagine_abilitate": u.get("pagine_abilitate") or {},
             "n_sedi": len(sedi),
             "sedi": sedi,
+            **riepilogo_cliente(sedi),
         })
 
     return result
@@ -414,6 +448,7 @@ def admin_dettaglio_cliente(cliente_id: str):
     # questo era il terzo punto in cui lo stesso cliente aveva due conteggi di sedi.
     sedi_resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("user_id", cliente_id).eq("sede_tecnica", False).execute()
     sedi = sedi_resp.data or []
+    _arricchisci_salute_sedi(sb, {cliente_id: sedi}, {cliente_id: u.get("piano")})
 
     piano = (u.get("piano") or "base").lower()
     limite = PIANO_LIMITI_FATTURE_MESE.get(piano, PIANO_LIMITE_FATTURE_DEFAULT)
@@ -477,6 +512,7 @@ def admin_dettaglio_cliente(cliente_id: str):
         "n_fatture": n_fatture,
         "n_sedi": len(sedi),
         "piano_inizio_at": u.get("piano_inizio_at"),
+        **riepilogo_cliente(sedi),
     }
 
 

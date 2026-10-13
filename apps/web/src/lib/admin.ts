@@ -32,6 +32,17 @@ export type Sede = {
   // Opzionale: una risposta del worker precedente alla colonna non lo porta, e
   // l'assenza vale 'ristorazione'.
   tipo_attivita?: Settore;
+} & Partial<SaluteMese>;
+
+// Il mese in corso di una sede o di un cliente (somma delle sedi). Opzionale
+// sulle sedi: una sede appena creata dal dialog non li porta finche' non si
+// ricarica la pagina.
+export type SaluteMese = {
+  fatture_mese: number;
+  limite_mese: number;
+  ai_costo_mese: number;
+  ultimo_caricamento_at: string | null;
+  sopra_soglia?: boolean;
 };
 
 export type TrialInfo = {
@@ -60,7 +71,7 @@ export type Cliente = {
   pagine_abilitate: Record<string, boolean>;
   n_sedi: number;
   sedi: Sede[];
-};
+} & Partial<SaluteMese>;
 
 export type ClienteDettaglio = Cliente & {
   price_alert_threshold: number | null;
