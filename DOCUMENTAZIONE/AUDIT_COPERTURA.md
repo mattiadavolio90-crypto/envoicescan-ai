@@ -2448,6 +2448,31 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   con la pagina in C2. **Fuori scopo, da segnalare:** `gruppo_tags` ha RLS non forzata e
 >   `user_id` senza FK verso `users`; il conteggio dei prodotti in `GET /api/gruppo/tag` legge
 >   le associazioni senza paginazione (oltre 1000 righe sbaglierebbe; oggi il massimo e' 67).
+>   **Fase C2, stesso giorno: la scheda «Tag di catena» con l'impianto della pagina del PV (Opus),
+>   NON pushato, nessuna migration nuova.** Mattia: «puoi procedere anche in catena allo stesso
+>   modo». **Fatto:** lista e riquadro «Modifica tag» spostati in `apps/web/src/components/tag/`
+>   e usati da sede e catena con una **sorgente** (`lib/tag-sorgenti.ts`: base delle rotte e
+>   ricerca dei prodotti sul server per la catena, dove la lista iniziale e' dei primi 500 per
+>   spesa); `lib/tag-cartelle.ts` generico su `TagOrganizzabile`. Nel riquadro, per la catena:
+>   ricerca fra tutti i punti vendita da 2 lettere con pausa di 250 ms, risultati del server
+>   **non rifiltrati** nel browser (il server confronta tutte le varianti e ne mostra una sola,
+>   che puo' non contenere il testo), «Seleziona tutti» spento finche' i risultati non arrivano,
+>   e una memoria delle descrizioni viste, cosi' una spunta uscita di lista con la ricerca dopo
+>   si salva col suo testo. La scheda di catena e' riscritta: a sinistra la lista con cartelle,
+>   stella e Preferiti, a destra il tag scelto con stella, «N prodotti», «Modifica tag», cestino
+>   con conferma, periodo ed «Esporta», e l'analisi per punto vendita (prima in una finestra)
+>   con i numeri disposti come nel PV. Fuori dal riquadro esterno, come la scheda Prezzi: non
+>   schede bianche dentro una scheda bianca. Via il riquadro «Prodotti» e i 5 `<button>` a mano.
+>   **Prove:** `tests/test_tag_sorgenti_frontend.py` (sorgenti, soglia, codifica, `n` letto come
+>   occorrenze, risposte malformate, ricerca gia' applicata, memoria); test dei tag di sede verdi
+>   **senza modifiche**; presidio emoji puntato al riquadro condiviso, base dei bottoni della
+>   scheda di catena da 5 a 0. **Mutazione:** 9 uccisi su 9. Pagina vera montata con le risposte
+>   del worker finte nel browser (pagina di prova sotto `/demo`, rimossa; il Next locale scrive
+>   sul DB vero e l'unico account con tag di catena e' un cliente): a 1440, 1280, 1024 e 400 px
+>   nessuno sforamento orizzontale; stella, Preferiti, nuova cartella, ricerca «prodotto 1» sul
+>   server (11 righe, «Seleziona tutti» = +11). 361 test dei tag e 1.817 presidi frontend verdi,
+>   `tsc` ed eslint puliti. **Non provato:** il trascinamento in catena (e' lo stesso componente
+>   della sede) e la pagina sul DB vero, che aspetta la migration C1 sul live.
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e

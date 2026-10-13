@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import type { CartellaTag, CustomTag } from "@/lib/tag";
+import type { CartellaTag, TagOrganizzabile } from "@/lib/tag";
+import type { SorgenteTag } from "@/lib/tag-sorgenti";
 import {
   type RigaCartella, type VistaTag,
   alternaChiusa, applicaOrdine, cartellaDaIdRiga, idRiga, idTagTrascinabile, messaggioErroreCartella,
@@ -42,10 +43,10 @@ async function dettaglio(res: Response): Promise<string> {
   return typeof d?.detail === "string" ? d.detail : "";
 }
 
-type Trascinato = { tipo: "tag"; tag: CustomTag } | { tipo: "cartella"; cartella: CartellaTag };
+type Trascinato = { tipo: "tag"; tag: TagOrganizzabile } | { tipo: "cartella"; cartella: CartellaTag };
 
 /* ── Riga di un tag ── */
-function RigaTag({ tag, attivo, onClick }: { tag: CustomTag; attivo: boolean; onClick?: () => void }) {
+function RigaTag({ tag, attivo, onClick }: { tag: TagOrganizzabile; attivo: boolean; onClick?: () => void }) {
   return (
     <Button
       variant="ghost"
@@ -68,7 +69,7 @@ function RigaTag({ tag, attivo, onClick }: { tag: CustomTag; attivo: boolean; on
 // Il trascinamento della riga parte solo col puntatore e col dito: Invio e
 // Spazio devono continuare a selezionare il tag. Da tastiera la cartella di un
 // tag si cambia dal campo «Cartella» di «Modifica tag».
-function RigaTagTrascinabile({ tag, attivo, onClick }: { tag: CustomTag; attivo: boolean; onClick: () => void }) {
+function RigaTagTrascinabile({ tag, attivo, onClick }: { tag: TagOrganizzabile; attivo: boolean; onClick: () => void }) {
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: idTagTrascinabile(tag.id),
     data: { tipo: "tag" },
@@ -298,13 +299,16 @@ function DialogNomeCartella({
 /* ══════════════════════════════════════════════════════════ PANNELLO */
 // Il riquadro «I tuoi tag» (Fase 3, 13/10/2026): una scheda con bordo e titolo,
 // non una fascia a tutta altezza, perche' accanto c'e' gia' il menu dell'app.
-export function PannelloTag({
-  tags, cartelle, setTags, setCartelle, vista, onVista, chiuse, onChiuse,
+// Lo stesso riquadro serve «Analisi e Tag» e i «Tag di catena»: cambia solo la
+// sorgente, cioe' la base delle rotte.
+export function PannelloTag<T extends TagOrganizzabile>({
+  sorgente, tags, cartelle, setTags, setCartelle, vista, onVista, chiuse, onChiuse,
   selectedTagId, onSelezionaTag, onNuovoTag, onRicarica, info, suggerimenti,
 }: {
-  tags: CustomTag[];
+  sorgente: SorgenteTag;
+  tags: T[];
   cartelle: CartellaTag[];
-  setTags: Dispatch<SetStateAction<CustomTag[]>>;
+  setTags: Dispatch<SetStateAction<T[]>>;
   setCartelle: Dispatch<SetStateAction<CartellaTag[]>>;
   vista: VistaTag;
   onVista: (v: VistaTag) => void;
@@ -406,7 +410,7 @@ export function PannelloTag({
     if (attuale === destinazione) return;
     setTags(ts => spostaTag(ts, tagId, destinazione));
     try {
-      const res = await fetch(`/api/tag/${tagId}`, {
+      const res = await fetch(`${sorgente.base}/${tagId}`, {
         method: "PATCH",
         headers: JSON_HEADERS,
         body: JSON.stringify({ cartella_id: destinazione }),
@@ -434,7 +438,7 @@ export function PannelloTag({
 
   async function salvaOrdine(nuovi: number[], precedenti: number[]) {
     try {
-      const res = await fetch("/api/tag/cartelle/ordine", {
+      const res = await fetch(`${sorgente.base}/cartelle/ordine`, {
         method: "PUT",
         headers: JSON_HEADERS,
         body: JSON.stringify({ ids: nuovi }),
@@ -465,8 +469,8 @@ export function PannelloTag({
     if (nomeCartellaGiaUsato(cartelle, nome, cartella?.id)) return messaggioErroreCartella(409, "");
     try {
       const res = cartella
-        ? await fetch(`/api/tag/cartelle/${cartella.id}`, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ nome }) })
-        : await fetch("/api/tag/cartelle", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ nome }) });
+        ? await fetch(`${sorgente.base}/cartelle/${cartella.id}`, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ nome }) })
+        : await fetch(`${sorgente.base}/cartelle`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ nome }) });
       if (!res.ok) {
         if (res.status === 404) onRicarica();
         return messaggioErroreCartella(res.status, await dettaglio(res));
@@ -492,7 +496,7 @@ export function PannelloTag({
     setCartelle(cs => cs.filter(c => c.id !== cartella.id));
     setTags(ts => ts.map(t => (t.cartella_id === cartella.id ? { ...t, cartella_id: null } : t)));
     try {
-      const res = await fetch(`/api/tag/cartelle/${cartella.id}`, { method: "DELETE" });
+      const res = await fetch(`${sorgente.base}/cartelle/${cartella.id}`, { method: "DELETE" });
       if (res.ok || res.status === 404) {
         toast.success("Cartella eliminata: i suoi tag sono in Senza cartella");
         return;

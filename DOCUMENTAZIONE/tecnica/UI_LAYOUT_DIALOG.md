@@ -26,7 +26,7 @@ l'header è `flex-wrap` con select e bottoni, su viewport stretti va a capo,
 supera i 5rem, e il fondo della lista viene tagliato **senza scrollbar**.
 
 **Pattern corretto** (riferimento: `ModificaTagDialog` in
-`apps/web/src/app/(app)/analisi-e-tag/modifica-tag-dialog.tsx`):
+`apps/web/src/components/tag/modifica-tag-dialog.tsx`):
 
 ```
 DialogContent  →  flex flex-col gap-0 p-0 max-h-[…vh]

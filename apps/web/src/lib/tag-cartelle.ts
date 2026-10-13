@@ -1,15 +1,17 @@
-// Cartelle e preferiti della barra dei tag in «Analisi e Tag». Servono solo a
-// organizzare la vista: non entrano in nessuna analisi. Logica estratta qui
-// perche' un .tsx non e' raggiungibile dai test (tests/test_tag_cartelle_frontend.py).
+// Cartelle e preferiti della lista dei tag, in «Analisi e Tag» e nei «Tag di
+// catena». Servono solo a organizzare la vista: non entrano in nessuna analisi.
+// Logica estratta qui perche' un .tsx non e' raggiungibile dai test
+// (tests/test_tag_cartelle_frontend.py). Le funzioni prendono qualunque tag con
+// la forma `TagOrganizzabile` e restituiscono lo stesso tipo che ricevono.
 
-import type { CartellaTag, CustomTag } from "./tag";
+import type { CartellaTag, TagOrganizzabile } from "./tag";
 
 export type VistaTag = "preferiti" | "tutte";
 
-export type RigaCartella = {
+export type RigaCartella<T extends TagOrganizzabile = TagOrganizzabile> = {
   /** null = «Senza cartella». */
   cartella: CartellaTag | null;
-  tags: CustomTag[];
+  tags: T[];
 };
 
 export type StatoComodo = {
@@ -24,7 +26,7 @@ export const STATO_COMODO_PREDEFINITO: StatoComodo = { vista: "tutte", chiuse: [
 // da tempo: non vale la pena portarseli dietro in localStorage.
 const MAX_CHIUSE = 200;
 
-function perNome(a: CustomTag, b: CustomTag): number {
+function perNome(a: TagOrganizzabile, b: TagOrganizzabile): number {
   return a.nome.localeCompare(b.nome, "it", { sensitivity: "base" }) || a.id - b.id;
 }
 
@@ -39,19 +41,19 @@ export function ordinaCartelle(cartelle: CartellaTag[]): CartellaTag[] {
  * Un tag che punta a una cartella sconosciuta finisce in «Senza cartella»:
  * nascosto non si potrebbe piu' ne' vedere ne' spostare.
  */
-export function raggruppa(
-  tags: CustomTag[],
+export function raggruppa<T extends TagOrganizzabile>(
+  tags: T[],
   cartelle: CartellaTag[],
   opzioni: { mostraSenzaCartella?: boolean } = {},
-): RigaCartella[] {
+): RigaCartella<T>[] {
   const ordinate = ordinaCartelle(cartelle);
-  const perCartella = new Map<number, CustomTag[]>(ordinate.map(c => [c.id, []]));
-  const senza: CustomTag[] = [];
+  const perCartella = new Map<number, T[]>(ordinate.map(c => [c.id, []]));
+  const senza: T[] = [];
   for (const t of tags) {
     const lista = t.cartella_id != null ? perCartella.get(t.cartella_id) : undefined;
     (lista ?? senza).push(t);
   }
-  const righe: RigaCartella[] = ordinate.map(c => ({
+  const righe: RigaCartella<T>[] = ordinate.map(c => ({
     cartella: c,
     tags: (perCartella.get(c.id) ?? []).sort(perNome),
   }));
@@ -61,7 +63,7 @@ export function raggruppa(
   return righe;
 }
 
-export function soloPreferiti(tags: CustomTag[]): CustomTag[] {
+export function soloPreferiti<T extends TagOrganizzabile>(tags: T[]): T[] {
   return tags.filter(t => t.preferito === true).sort(perNome);
 }
 
@@ -89,7 +91,7 @@ export function stessoOrdine(cartelle: CartellaTag[], ids: number[]): boolean {
 }
 
 /** Il tag con `cartella_id` cambiato, gli altri intatti. */
-export function spostaTag(tags: CustomTag[], tagId: number, cartellaId: number | null): CustomTag[] {
+export function spostaTag<T extends TagOrganizzabile>(tags: T[], tagId: number, cartellaId: number | null): T[] {
   return tags.map(t => (t.id === tagId ? { ...t, cartella_id: cartellaId } : t));
 }
 
@@ -102,7 +104,7 @@ export function spostaTag(tags: CustomTag[], tagId: number, cartellaId: number |
 export function primoTagMostrato(
   vista: VistaTag,
   righe: RigaCartella[],
-  preferiti: CustomTag[],
+  preferiti: TagOrganizzabile[],
   chiuse: number[] = [],
 ): number | null {
   if (vista === "preferiti" && preferiti.length > 0) return preferiti[0].id;
@@ -144,7 +146,7 @@ function chiaveNome(nome: string): string {
   return nome.trim().toLocaleLowerCase("it");
 }
 
-/** Stesso criterio dell'indice unico del DB: lower(btrim(nome)) nella sede. */
+/** Stesso criterio dell'indice unico del DB: lower(btrim(nome)) nella sede o nell'account. */
 export function nomeCartellaGiaUsato(cartelle: CartellaTag[], nome: string, escludiId?: number): boolean {
   const chiave = chiaveNome(nome);
   return cartelle.some(c => c.id !== escludiId && chiaveNome(c.nome) === chiave);
@@ -172,7 +174,7 @@ export type CampiTag = {
  * barra: lasciarla com'e' non deve diventare una modifica.
  */
 export function campiCambiati(
-  base: CustomTag,
+  base: TagOrganizzabile,
   scelti: { nome: string; emoji: string | null; cartella_id: number | null },
   cartelle: CartellaTag[],
 ): CampiTag {

@@ -20,7 +20,18 @@ export type CustomTag = {
   preferito?: boolean;
 };
 
+// Quello che serve a lista, cartelle e stella: hanno questa forma sia i tag di
+// sede (`CustomTag`) sia quelli di catena (`GruppoTag`).
+export type TagOrganizzabile = {
+  id: number;
+  nome: string;
+  emoji: string | null;
+  cartella_id?: number | null;
+  preferito?: boolean;
+};
+
 // Solo per organizzare la barra dei tag: non entra in nessuna analisi.
+// Stessa forma per le cartelle di sede e per quelle di catena.
 export type CartellaTag = {
   id: number;
   nome: string;

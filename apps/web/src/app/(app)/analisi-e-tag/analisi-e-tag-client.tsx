@@ -29,8 +29,9 @@ import {
   type VistaTag,
   leggiStatoComodo, primoTagMostrato, raggruppa, scriviStatoComodo, soloPreferiti,
 } from "@/lib/tag-cartelle";
-import { PannelloTag } from "./pannello-tag";
-import { ModificaTagDialog } from "./modifica-tag-dialog";
+import { PannelloTag } from "@/components/tag/pannello-tag";
+import { ModificaTagDialog } from "@/components/tag/modifica-tag-dialog";
+import { sorgenteSede } from "@/lib/tag-sorgenti";
 
 // Vista scelta e cartelle chiuse: comodita' di chi guarda, per browser. Lo stato
 // vero (cartelle, stelle) sta nel DB.
@@ -791,6 +792,7 @@ export function AnalisiETagClient({
   return (
     <div className="grid items-start gap-6 xl:grid-cols-[17rem_minmax(0,1fr)]">
       <PannelloTag
+        sorgente={sorgenteSede}
         tags={tags}
         cartelle={cartelle}
         setTags={setTags}
@@ -1100,6 +1102,7 @@ export function AnalisiETagClient({
         onClose={() => setConfermaElimina(false)}
       />
       <ModificaTagDialog
+        sorgente={sorgenteSede}
         open={dialogTag.open}
         onOpenChange={v => {
           setDialogTag(d => ({ ...d, open: v }));

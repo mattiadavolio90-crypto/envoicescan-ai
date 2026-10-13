@@ -62,8 +62,9 @@ def test_i_due_selettori_usano_la_STESSA_tavolozza():
     web = Path(__file__).resolve().parents[1] / "apps/web/src"
     consumatori = [
         web / "app/(app)/analisi-e-tag/analisi-e-tag-client.tsx",
-        web / "app/(app)/analisi-e-tag/modifica-tag-dialog.tsx",
-        web / "app/(app)/catena/analisi/scheda-tag-catena.tsx",
+        # Dal 13/10/2026 il riquadro «Modifica tag» e' uno solo per sede e catena:
+        # la scheda di catena non ha piu' un selettore suo.
+        web / "components/tag/modifica-tag-dialog.tsx",
     ]
     for f in consumatori:
         assert f.exists(), f"{f} spostato: aggiorna il test invece di cancellarlo"

@@ -1,8 +1,20 @@
 // Logica del riquadro «Modifica tag»: una lista unica a spunte in cui un
 // prodotto spuntato e' dentro il tag. Estratta qui perche' un .tsx non e'
-// raggiungibile dai test (tests/test_tag_selezione_frontend.py).
+// raggiungibile dai test (tests/test_tag_selezione_frontend.py). Serve i tag di
+// sede e quelli di catena: i tipi chiedono solo i campi che usa.
 
-import type { DescrizioneDistinta, TagProdotto } from "./tag";
+/** Una descrizione fra cui scegliere (sede: `DescrizioneDistinta`; catena: `n` letto come occorrenze). */
+export type DescrizioneScelta = {
+  descrizione: string;
+  descrizione_key: string;
+  occorrenze: number;
+};
+
+/** Un prodotto gia' nel tag. */
+export type ProdottoDelTag = {
+  descrizione: string;
+  descrizione_key: string;
+};
 
 /** Tetto di righe renderizzate nel selettore. Non e' un filtro di dominio:
  *  serve solo a non montare 1800 nodi in un dialog. Quando taglia, la UI lo
@@ -27,7 +39,7 @@ export type EsitoSelettore = {
   spuntateCorrispondenti: number;
 };
 
-export function chiaviDelTag(prodottiTag: TagProdotto[]): Set<string> {
+export function chiaviDelTag(prodottiTag: ProdottoDelTag[]): Set<string> {
   return new Set(prodottiTag.map((p) => p.descrizione_key));
 }
 
@@ -40,13 +52,19 @@ export function chiaviDelTag(prodottiTag: TagProdotto[]): Set<string> {
  * - «Nel tag» guarda le chiavi presenti nel tag ALL'APERTURA (`prodottiTag`),
  *   non le spunte correnti: togliere una spunta non fa sparire la riga sotto
  *   il dito.
+ * - `ricercaSulServer`: le descrizioni sono gia' il risultato della ricerca
+ *   (catena) e non si rifiltrano. Il server confronta TUTTE le varianti di una
+ *   descrizione e ne restituisce una sola, che puo' non contenere il testo: un
+ *   secondo filtro qui toglierebbe risultati giusti. I prodotti del tag che non
+ *   sono fra i risultati si filtrano invece qui, col testo.
  */
 export function righeSelettore(
-  descrizioni: DescrizioneDistinta[],
-  prodottiTag: TagProdotto[],
+  descrizioni: DescrizioneScelta[],
+  prodottiTag: ProdottoDelTag[],
   ricerca: string,
   filtro: FiltroSelettore,
   selezionati: Set<string> = new Set(),
+  ricercaSulServer = false,
 ): EsitoSelettore {
   const iniziali = chiaviDelTag(prodottiTag);
   const viste = new Set<string>();
@@ -66,7 +84,7 @@ export function righeSelettore(
   const corrispondenti = tutte.filter(
     (r) =>
       (filtro === "tutti" || iniziali.has(r.descrizione_key)) &&
-      (!testo || r.descrizione.toLowerCase().includes(testo)),
+      (!testo || (ricercaSulServer && r.occorrenze !== null) || r.descrizione.toLowerCase().includes(testo)),
   );
   const visibili = corrispondenti.slice(0, MAX_DESC_VISIBILI);
   return {
@@ -112,12 +130,26 @@ export type CorpoModificheProdotti = {
   togli: string[];
 };
 
-/** Il body di PATCH /api/tag/{id}/prodotti. */
+/**
+ * Chiave -> descrizione di tutte le righe viste da quando il riquadro e' aperto.
+ * Con la ricerca sul server una riga spuntata sparisce dalla lista alla ricerca
+ * successiva, ma al Salva serve ancora la sua descrizione.
+ */
+export function ricordaDescrizioni(
+  memoria: Map<string, string>,
+  righe: Iterable<{ descrizione: string; descrizione_key: string }>,
+): Map<string, string> {
+  const nuova = new Map(memoria);
+  for (const r of righe) if (!nuova.has(r.descrizione_key)) nuova.set(r.descrizione_key, r.descrizione);
+  return nuova;
+}
+
+/** Il body di PATCH /api/tag/{id}/prodotti (e /api/gruppo/tag/{id}/prodotti). */
 export function corpoModifiche(
   diff: { aggiungi: string[]; togli: string[] },
-  righe: RigaSelettore[],
+  righe: Iterable<{ descrizione: string; descrizione_key: string }>,
 ): CorpoModificheProdotti {
-  const perChiave = new Map(righe.map((r) => [r.descrizione_key, r.descrizione]));
+  const perChiave = new Map([...righe].map((r) => [r.descrizione_key, r.descrizione]));
   return {
     aggiungi: diff.aggiungi.map((k) => ({
       descrizione: perChiave.get(k) ?? k,

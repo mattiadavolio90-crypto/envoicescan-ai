@@ -45,7 +45,7 @@ BASE_BUTTON: dict[str, int] = {
     "app/(app)/analisi-fatture/upload-modal.tsx": 1,
     "app/(app)/catena/analisi/scheda-margini-coperti.tsx": 2,
     "app/(app)/catena/analisi/scheda-spesa-pv.tsx": 1,
-    "app/(app)/catena/analisi/scheda-tag-catena.tsx": 5,
+    # 13/10/2026: scheda-tag-catena.tsx a 0, sul pannello e sul riquadro dei tag di sede (Fase C2).
     "app/(app)/catena/fatture/scheda-costi-gruppo.tsx": 4,
     "app/(app)/catena/sintesi-catena.tsx": 4,
     "app/(app)/dashboard/block-retry.tsx": 1,

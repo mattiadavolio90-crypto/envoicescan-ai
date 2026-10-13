@@ -11,14 +11,18 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { NativeSelect } from "@/components/ui/select";
-import type { CartellaTag, CustomTag, DescrizioneDistinta, TagProdotto } from "@/lib/tag";
+import type { CartellaTag, TagOrganizzabile } from "@/lib/tag";
 import { EMOJI_TAG } from "@/lib/tag";
 import { campiCambiati, ordinaCartelle } from "@/lib/tag-cartelle";
+import { MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
 import {
-  type FiltroSelettore,
+  type DescrizioneScelta, type FiltroSelettore, type ProdottoDelTag,
   blocchiModifiche, chiaviDelTag, corpoModifiche, deselezionaTutti, differenze, inverti,
-  partiContatore, righeSelettore, selezionaTutti, testoEsito,
+  partiContatore, ricordaDescrizioni, righeSelettore, selezionaTutti, testoEsito,
 } from "@/lib/tag-selezione";
+import {
+  type SorgenteTag, descrizioniDaRisposta, ricercaSulServer, urlDescrizioni, urlRicerca,
+} from "@/lib/tag-sorgenti";
 
 const SERVIZIO_GIU = "Il servizio non risponde, riprova fra poco";
 
@@ -48,14 +52,17 @@ async function dettaglio(res: Response): Promise<string> {
 }
 
 /* ── Riquadro unico per «Nuovo tag» (tag=null) e «Modifica tag» ── */
-export function ModificaTagDialog({
-  open, onOpenChange, tag, cartelle, onSaved, onProdottiCambiati,
+// Serve i tag di sede e quelli di catena: la sorgente dice dove leggere e
+// scrivere, e se i prodotti si cercano sul server (catena).
+export function ModificaTagDialog<T extends TagOrganizzabile>({
+  sorgente, open, onOpenChange, tag, cartelle, onSaved, onProdottiCambiati,
 }: {
+  sorgente: SorgenteTag;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  tag: CustomTag | null;
+  tag: T | null;
   cartelle: CartellaTag[];
-  onSaved: (saved: CustomTag, isNew: boolean) => void;
+  onSaved: (saved: T, isNew: boolean) => void;
   /** Almeno una PATCH dei prodotti e' andata a segno (anche solo in parte). */
   onProdottiCambiati: () => void;
 }) {
@@ -65,10 +72,17 @@ export function ModificaTagDialog({
   const [cartellaScelta, setCartellaScelta] = useState("");
   const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
 
-  const [descrizioni, setDescrizioni] = useState<DescrizioneDistinta[]>([]);
-  const [prodottiTag, setProdottiTag] = useState<TagProdotto[]>([]);
+  const [descrizioni, setDescrizioni] = useState<DescrizioneScelta[]>([]);
+  const [prodottiTag, setProdottiTag] = useState<ProdottoDelTag[]>([]);
   const [caricamento, setCaricamento] = useState(false);
   const [erroreCaricamento, setErroreCaricamento] = useState(false);
+  // Ricerca sul server (catena): i risultati del testo corrente, null finche'
+  // non arrivano. `memoria` tiene la descrizione di ogni riga vista, perche' al
+  // Salva serve anche per le spunte uscite di lista con una ricerca successiva.
+  const [risultati, setRisultati] = useState<DescrizioneScelta[] | null>(null);
+  const [cercando, setCercando] = useState(false);
+  const [erroreRicerca, setErroreRicerca] = useState(false);
+  const [memoria, setMemoria] = useState<Map<string, string>>(new Map());
 
   const [filtro, setFiltro] = useState<FiltroSelettore>("tutti");
   const [ricerca, setRicerca] = useState("");
@@ -77,7 +91,7 @@ export function ModificaTagDialog({
   // L'ultimo stato salvato dal riquadro: un tag nuovo gia' creato da un Salva i
   // cui prodotti sono falliti, o un tag esistente dopo una PATCH riuscita. Il
   // secondo Salva confronta con questo, non con la copia presa all'apertura.
-  const [creato, setCreato] = useState<CustomTag | null>(null);
+  const [creato, setCreato] = useState<T | null>(null);
   // Guardia sincrona contro il doppio invio (Invio ripetuto nel campo Nome):
   // `saving` e' uno stato e arriva al secondo keydown troppo tardi.
   const inCorso = useRef(false);
@@ -100,27 +114,30 @@ export function ModificaTagDialog({
     setCreato(null);
     setDescrizioni([]);
     setProdottiTag([]);
+    setRisultati(null);
+    setMemoria(new Map());
     setSelezionati(new Set());
     setFiltro("tutti");
     setErroreCaricamento(false);
     setCaricamento(true);
 
     const richiesteProdotti = tag
-      ? fetch(`/api/tag/${tag.id}/prodotti`).then(r => {
+      ? fetch(`${sorgente.base}/${tag.id}/prodotti`, { cache: "no-store" }).then(r => {
           if (!r.ok) throw new Error();
           return r.json();
-        }).then(d => (d.prodotti ?? []) as TagProdotto[])
-      : Promise.resolve([] as TagProdotto[]);
-    const richiestaDescrizioni = fetch("/api/tag/descrizioni").then(r => {
+        }).then(d => (d.prodotti ?? []) as ProdottoDelTag[])
+      : Promise.resolve([] as ProdottoDelTag[]);
+    const richiestaDescrizioni = fetch(urlDescrizioni(sorgente), { cache: "no-store" }).then(r => {
       if (!r.ok) throw new Error();
       return r.json();
-    }).then(d => (d.descrizioni ?? []) as DescrizioneDistinta[]);
+    }).then(descrizioniDaRisposta);
 
     Promise.all([richiestaDescrizioni, richiesteProdotti])
       .then(([desc, prod]) => {
         if (!attivo) return;
         setDescrizioni(desc);
         setProdottiTag(prod);
+        setMemoria(m => ricordaDescrizioni(ricordaDescrizioni(m, desc), prod));
         setSelezionati(chiaviDelTag(prod));
         setFiltro(prod.length > 0 ? "nel_tag" : "tutti");
       })
@@ -132,16 +149,46 @@ export function ModificaTagDialog({
     // riquadro e' aperto non deve azzerare le spunte gia' fatte.
   }, [open, tag]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Catena: da MIN_LETTERE_RICERCA lettere si cerca fra tutti i punti vendita,
+  // con una pausa per non mandare una richiesta a ogni tasto.
+  const url = open ? urlRicerca(sorgente, ricerca) : null;
+  useEffect(() => {
+    setRisultati(null);
+    setErroreRicerca(false);
+    if (!url) { setCercando(false); return; }
+    let attivo = true;
+    setCercando(true);
+    const t = setTimeout(() => {
+      fetch(url, { cache: "no-store" })
+        .then(r => (r.ok ? r.json() : Promise.reject()))
+        .then(d => {
+          if (!attivo) return;
+          const trovate = descrizioniDaRisposta(d);
+          setRisultati(trovate);
+          setMemoria(m => ricordaDescrizioni(m, trovate));
+        })
+        // Una lista vuota direbbe «nessun prodotto trovato»: e' una ricerca
+        // fallita, non un prodotto che non esiste.
+        .catch(() => { if (attivo) setErroreRicerca(true); })
+        .finally(() => { if (attivo) setCercando(false); });
+    }, 250);
+    return () => { attivo = false; clearTimeout(t); };
+  }, [url]);
+
   const cartelleOrdinate = useMemo(() => ordinaCartelle(cartelle), [cartelle]);
 
+  const sulServer = ricercaSulServer(sorgente, ricerca);
   const iniziali = useMemo(() => chiaviDelTag(prodottiTag), [prodottiTag]);
   const esito = useMemo(
-    () => righeSelettore(descrizioni, prodottiTag, ricerca, filtro, selezionati),
-    [descrizioni, prodottiTag, ricerca, filtro, selezionati],
+    () => righeSelettore(sulServer ? (risultati ?? []) : descrizioni, prodottiTag, ricerca, filtro, selezionati, sulServer),
+    [sulServer, risultati, descrizioni, prodottiTag, ricerca, filtro, selezionati],
   );
-  const tutteLeRighe = useMemo(
-    () => righeSelettore(descrizioni, prodottiTag, "", "tutti").corrispondenti,
-    [descrizioni, prodottiTag],
+  // In attesa dei risultati la lista non e' quella del testo scritto: «Seleziona
+  // tutti» spunterebbe le righe sbagliate.
+  const inAttesa = sulServer && (cercando || risultati === null) && !erroreRicerca;
+  const righeNote = useMemo(
+    () => [...memoria].map(([descrizione_key, descrizione]) => ({ descrizione, descrizione_key })),
+    [memoria],
   );
   const diff = useMemo(() => differenze(iniziali, selezionati), [iniziali, selezionati]);
   const contatore = partiContatore(diff.aggiungi.length, diff.togli.length);
@@ -159,9 +206,9 @@ export function ModificaTagDialog({
     inCorso.current = true;
     setSaving(true);
     try {
-      let salvato: CustomTag | null = base;
+      let salvato: T | null = base;
       if (!base) {
-        const res = await fetch("/api/tag", {
+        const res = await fetch(sorgente.base, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ nome: n, emoji: em, colore: null }),
@@ -179,7 +226,7 @@ export function ModificaTagDialog({
       // come le altre, e se fallisce il secondo Salva la riprova sul tag creato.
       const campi = campiCambiati(salvato, { nome: n, emoji: em, cartella_id: cartellaId }, cartelle);
       if (Object.keys(campi).length > 0) {
-        const res = await fetch(`/api/tag/${salvato.id}`, {
+        const res = await fetch(`${sorgente.base}/${salvato.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(campi),
@@ -189,18 +236,18 @@ export function ModificaTagDialog({
           throw new Error(!base ? `Tag creato, ma non è stato messo nella cartella: ${motivo}` : motivo);
         }
         const data = await res.json().catch(() => null);
-        const aggiornato: CustomTag = { ...salvato, ...campi, ...(data?.tag ?? {}) };
+        const aggiornato: T = { ...salvato, ...campi, ...(data?.tag ?? {}) };
         setCreato(aggiornato);
         onSaved(aggiornato, false);
         salvato = aggiornato;
       }
 
       let esitoProdotti = "";
-      const blocchi = blocchiModifiche(corpoModifiche(diff, tutteLeRighe));
+      const blocchi = blocchiModifiche(corpoModifiche(diff, righeNote));
       let aggiunte = 0;
       let tolte = 0;
       for (let i = 0; i < blocchi.length; i++) {
-        const res = await fetch(`/api/tag/${salvato.id}/prodotti`, {
+        const res = await fetch(`${sorgente.base}/${salvato.id}/prodotti`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(blocchi[i]),
@@ -361,7 +408,7 @@ export function ModificaTagDialog({
             <Input
               aria-label="Cerca prodotto"
               className="pl-8"
-              placeholder="Cerca prodotto…"
+              placeholder={sorgente.ricercaRemota ? "Cerca fra tutti i punti vendita…" : "Cerca prodotto…"}
               value={ricerca}
               onChange={e => setRicerca(e.target.value)}
               autoFocus={!!tag}
@@ -372,7 +419,7 @@ export function ModificaTagDialog({
             <Button
               variant="ghost"
               size="xs"
-              disabled={caricamento || esito.totale === 0 || esito.spuntateCorrispondenti === esito.totale}
+              disabled={caricamento || inAttesa || esito.totale === 0 || esito.spuntateCorrispondenti === esito.totale}
               onClick={() => setSelezionati(s => selezionaTutti(s, chiaviCorrispondenti))}
             >
               Seleziona tutti ({esito.totale})
@@ -398,6 +445,12 @@ export function ModificaTagDialog({
             <p className="text-sm text-muted-foreground py-6 px-5 text-center">
               Non è stato possibile caricare i prodotti. Chiudi e riapri il riquadro fra un momento.
             </p>
+          ) : sulServer && erroreRicerca ? (
+            <p className="text-sm text-muted-foreground py-6 px-5 text-center">
+              Non è stato possibile cercare i prodotti. Riprova a scrivere per ripetere la ricerca.
+            </p>
+          ) : inAttesa && esito.visibili.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Cerco fra tutti i punti vendita…</p>
           ) : esito.visibili.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">Nessun prodotto trovato</p>
           ) : (
@@ -439,6 +492,12 @@ export function ModificaTagDialog({
         {!caricamento && esito.nascoste > 0 && (
           <p className="border-t border-border px-5 pt-2 pb-2 text-xs text-muted-foreground shrink-0">
             Mostrati {esito.visibili.length} di {esito.totale} prodotti — usa la ricerca per trovare gli altri.
+          </p>
+        )}
+        {/* Catena: senza ricerca la lista ha solo i prodotti con piu' spesa. */}
+        {!caricamento && sorgente.ricercaRemota && !sulServer && filtro === "tutti" && esito.nascoste === 0 && (
+          <p className="border-t border-border px-5 pt-2 pb-2 text-xs text-muted-foreground shrink-0">
+            In elenco i prodotti con più spesa: scrivi almeno {MIN_LETTERE_RICERCA} lettere per cercare fra tutti i punti vendita.
           </p>
         )}
 

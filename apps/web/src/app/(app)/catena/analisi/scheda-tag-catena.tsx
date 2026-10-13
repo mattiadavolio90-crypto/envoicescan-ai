@@ -1,13 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download, Truck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Building2, Download, Pencil, Plus, Star, Tags, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatEuro, formatEuro as euro, formatPct } from "@/lib/format";
 import { MESI_LUNGHI as MESI_LABEL } from "@/lib/mesi";
-import { calcolaCandidati, MIN_LETTERE_RICERCA } from "@/lib/tag-candidati";
-import { EMOJI_TAG } from "@/lib/tag";
+import type { CartellaTag } from "@/lib/tag";
+import {
+  type VistaTag,
+  leggiStatoComodo, primoTagMostrato, raggruppa, scriviStatoComodo, soloPreferiti,
+} from "@/lib/tag-cartelle";
+import { etichettaProdotti } from "@/lib/tag-selezione";
+import { sorgenteCatena } from "@/lib/tag-sorgenti";
 import {
   altezzaBarraTrend,
   analisiVuota,
@@ -19,24 +24,14 @@ import {
   righeExportFornitori,
   righeExportPv,
   soloUnPvConSpesa,
-  tuttiSelezionati as calcolaTuttiSelezionati,
 } from "@/lib/catena-tag";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { NativeSelect } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import type {
-  GruppoTag,
-  GruppoTagDescrizione,
-  GruppoTagProdotto,
-  GruppoTagAnalisi,
-} from "@/lib/gruppo";
-import { PannelloScheda } from "@/components/ui/pannello-scheda";
+import { PannelloTag } from "@/components/tag/pannello-tag";
+import { ModificaTagDialog } from "@/components/tag/modifica-tag-dialog";
+import type { GruppoTag, GruppoTagAnalisi } from "@/lib/gruppo";
 
 // `formatEuro(v, 2)` con la guardia sul null: "—" e non "0,00 €" quando il dato
 // non c'e'. Le due copie di questa funzione divergevano (una con il separatore
@@ -51,486 +46,325 @@ function pct(n: number): string {
   return formatPct(n);
 }
 
-// Stessi preset emoji del tag di sede (parità UX).
-// Tavolozza condivisa con la pagina Analisi e Tag: era duplicata qui identica
-// byte per byte.
-const EMOJI = EMOJI_TAG;
+// Vista e cartelle chiuse, per browser. Chiave diversa dalla sede: gli id delle
+// cartelle di catena e di sede vengono da sequenze diverse.
+const CHIAVE_STATO_COMODO = "oneflux:catena-tag:barra";
 
-// Tag di catena = scheda di «Analisi catena» (fino al 28/9 era una finestra
-// della Home di catena). Raggruppa lo stesso prodotto su tutti i PV e confronta
-// la spesa per sede.
-export function SchedaTagCatena() {
-  const [tags, setTags] = useState<GruppoTag[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [nuovo, setNuovo] = useState("");
-  const [nuovaEmoji, setNuovaEmoji] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [prodottiTag, setProdottiTag] = useState<GruppoTag | null>(null);
-  const [analisiTag, setAnalisiTag] = useState<GruppoTag | null>(null);
-
-  const loadTags = useCallback(async () => {
-    try {
-      const res = await fetch("/api/gruppo/tag", { cache: "no-store" });
-      if (!res.ok) throw new Error();
-      const j = await res.json();
-      setTags(j.tags ?? []);
-    } catch {
-      toast.error("Errore nel caricamento dei tag di catena");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadTags();
-  }, [loadTags]);
-
-  async function creaTag() {
-    const nome = nuovo.trim();
-    if (!nome) return;
-    setCreating(true);
-    try {
-      const res = await fetch("/api/gruppo/tag", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome, emoji: nuovaEmoji || null }),
-      });
-      if (!res.ok) throw new Error();
-      const j = await res.json().catch(() => null);
-      setNuovo("");
-      setNuovaEmoji("");
-      await loadTags();
-      toast.success("Tag di catena creato");
-      // Flusso fluido: appena creato, apre subito "Prodotti" per riempirlo.
-      if (j?.tag) setProdottiTag(j.tag as GruppoTag);
-    } catch {
-      toast.error("Impossibile creare il tag");
-    } finally {
-      setCreating(false);
-    }
+function leggiStorage(): string | null {
+  try {
+    return window.localStorage.getItem(CHIAVE_STATO_COMODO);
+  } catch {
+    return null;
   }
-
-  async function eliminaTag(id: number) {
-    try {
-      const res = await fetch(`/api/gruppo/tag/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      setTags((prev) => prev.filter((t) => t.id !== id));
-      toast.success("Tag eliminato");
-    } catch {
-      toast.error("Impossibile eliminare il tag");
-    }
-  }
-
-  return (
-    <>
-      <PannelloScheda
-        titolo={
-          <>
-            <Building2 className="size-5 text-primary-text" />
-            Tag di catena
-          </>
-        }
-      >
-        {/* Due colonne da xl (Mattia, 28/9): con un solo blocco largo 3xl la
-            scheda restava schiacciata a sinistra e mezza pagina vuota. A
-            sinistra si crea, a destra si lavora sui tag. Non da lg: con la
-            sidebar aperta la colonna dei tag scende sotto i ~390px che una
-            riga occupa senza il nome, e i bottoni sbordano. */}
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
-              per sede. Sono separati dai tag del singolo locale.
-            </p>
-
-            {/* Crea nuovo tag: nome + emoji (opzionale) → poi si aprono i prodotti */}
-            <div className="mt-4 space-y-2">
-              <div className="flex gap-2">
-                <Input
-                  value={nuovo}
-                  onChange={(e) => setNuovo(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && creaTag()}
-                  placeholder="Nuovo tag di catena (es. Salmone, Imballaggi…)"
-                  disabled={creating}
-                />
-                <Button onClick={creaTag} disabled={creating || !nuovo.trim()}>
-                  <Plus className="size-4" />
-                  Crea
-                </Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="mr-1 text-xs text-muted-foreground">Emoji:</span>
-                {EMOJI.map((em) => (
-                  <button
-                    key={em}
-                    type="button"
-                    onClick={() => setNuovaEmoji((p) => (p === em ? "" : em))}
-                    className={`flex size-7 items-center justify-center rounded-md border text-base transition-colors ${
-                      nuovaEmoji === em ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"
-                    }`}
-                  >
-                    {em}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Lista tag */}
-          {/* Tante colonne quante ne entrano da 28rem: decide lo spazio vero
-              della colonna, non la larghezza dello schermo (con la sidebar
-              aperta o chiusa cambia di 256px). */}
-          <div className="grid content-start gap-2 grid-cols-[repeat(auto-fill,minmax(min(100%,28rem),1fr))]">
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Caricamento…</p>
-            ) : tags.length === 0 ? (
-              <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground col-span-full">
-                Nessun tag di catena. Creane uno per confrontare un prodotto fra i punti vendita.
-              </p>
-            ) : (
-              tags.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center gap-3 rounded-xl border bg-background/40 px-4 py-3"
-                >
-                  {t.emoji ? (
-                    <span className="shrink-0 text-base">{t.emoji}</span>
-                  ) : (
-                    <TagIcon className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium" title={t.nome}>{t.nome}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t.n_prodotti ?? 0} {t.n_prodotti === 1 ? "prodotto" : "prodotti"}
-                  </span>
-                  <Button variant="ghost" size="sm" onClick={() => setProdottiTag(t)}>
-                    <Search className="size-4" />
-                    Prodotti
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setAnalisiTag(t)}>
-                    <BarChart3 className="size-4" />
-                    Analisi
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => eliminaTag(t.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </PannelloScheda>
-
-      {prodottiTag && (
-        <ProdottiDialog
-          tag={prodottiTag}
-          onClose={() => setProdottiTag(null)}
-          onChanged={loadTags}
-        />
-      )}
-      {analisiTag && <AnalisiDialog tag={analisiTag} onClose={() => setAnalisiTag(null)} />}
-    </>
-  );
 }
 
-// ─── Dialog: gestione prodotti del tag (aggiungi da descrizioni distinte) ──
+function scriviStorage(valore: string) {
+  try {
+    window.localStorage.setItem(CHIAVE_STATO_COMODO, valore);
+  } catch {
+    // Finestra privata o storage bloccato: la lista funziona lo stesso.
+  }
+}
 
-function ProdottiDialog({
-  tag,
-  onClose,
-  onChanged,
-}: {
-  tag: GruppoTag;
-  onClose: () => void;
-  onChanged: () => void;
+function primoDaMostrare(tags: GruppoTag[], cartelle: CartellaTag[], vista: VistaTag, chiuse: number[]) {
+  return primoTagMostrato(vista, raggruppa(tags, cartelle), soloPreferiti(tags), chiuse);
+}
+
+// Stessi posti dei cinque numeri della pagina «Analisi e Tag»: nessuna riga a
+// meta', larghezze del riquadro e non dello schermo.
+const KPI_POSTI = [
+  "col-span-2 @lg:col-span-2 @3xl:col-span-1",
+  "@lg:col-span-2 @3xl:col-span-1",
+  "@lg:col-span-2 @3xl:col-span-1",
+  "@lg:col-span-3 @3xl:col-span-1",
+  "@lg:col-span-3 @3xl:col-span-1",
+] as const;
+
+function KpiCard({ label, value, principale, className }: {
+  label: string; value: string; principale?: boolean; className?: string;
 }) {
-  const [assoc, setAssoc] = useState<GruppoTagProdotto[]>([]);
-  const [disponibili, setDisponibili] = useState<GruppoTagDescrizione[]>([]);
-  const [risultati, setRisultati] = useState<GruppoTagDescrizione[] | null>(null);
-  const [cercando, setCercando] = useState(false);
-  const [ricercaError, setRicercaError] = useState(false);
-  const [filtro, setFiltro] = useState("");
-  const [loading, setLoading] = useState(true);
-  // Selezione multipla (key → descrizione): si conferma con un solo "Aggiungi".
-  const [selected, setSelected] = useState<Map<string, string>>(new Map());
-  const [salvando, setSalvando] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [pRes, dRes] = await Promise.all([
-        fetch(`/api/gruppo/tag/${tag.id}/prodotti`, { cache: "no-store" }),
-        fetch(`/api/gruppo/tag/descrizioni`, { cache: "no-store" }),
-      ]);
-      const p = pRes.ok ? await pRes.json() : { prodotti: [] };
-      const d = dRes.ok ? await dRes.json() : { descrizioni: [] };
-      setAssoc(p.prodotti ?? []);
-      setDisponibili(d.descrizioni ?? []);
-    } catch {
-      toast.error("Errore nel caricamento prodotti");
-    } finally {
-      setLoading(false);
-    }
-  }, [tag.id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const giaAssociate = useMemo(
-    () => new Set(assoc.map((a) => a.descrizione_key)),
-    [assoc],
-  );
-
-  // Ricerca SERVER-SIDE (debounce): con ≥2 caratteri interroga il DB su tutte le
-  // sedi, così si trovano anche i prodotti oltre le prime 500 per spesa. Sotto i
-  // 2 caratteri si mostra/filtra la lista iniziale (top per spesa).
-  useEffect(() => {
-    const f = filtro.trim();
-    if (f.length < MIN_LETTERE_RICERCA) {
-      setRisultati(null);
-      setCercando(false);
-      return;
-    }
-    let alive = true;
-    setCercando(true);
-    setRicercaError(false);
-    const t = setTimeout(() => {
-      fetch(`/api/gruppo/tag/descrizioni?q=${encodeURIComponent(f)}`, { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((j) => { if (alive) setRisultati(j.descrizioni ?? []); })
-        // Lista vuota su errore direbbe "nessun prodotto trovato": è una ricerca
-        // fallita, non un prodotto che non esiste.
-        .catch(() => { if (alive) setRicercaError(true); })
-        .finally(() => { if (alive) setCercando(false); });
-    }, 250);
-    return () => { alive = false; clearTimeout(t); };
-  }, [filtro]);
-
-  // Logica in lib/tag-candidati.ts: qui era un useMemo anonimo che nessun test
-  // poteva raggiungere, ed e' dove F7 aveva misurato la soglia dopo i filtri.
-  // `risposta` e' cio' che il server ha mandato, NON filtrato: e' il contratto
-  // di calcolaCandidati, e va passata cosi'.
-  const { candidati, nascosti, poolSaturo } = useMemo(() => {
-    const inRicerca = filtro.trim().length >= MIN_LETTERE_RICERCA;
-    const risposta = inRicerca ? (risultati ?? []) : disponibili;
-    return calcolaCandidati(risposta, giaAssociate, filtro, inRicerca);
-  }, [disponibili, risultati, giaAssociate, filtro]);
-
-  function toggle(d: GruppoTagDescrizione) {
-    setSelected((prev) => {
-      const m = new Map(prev);
-      if (m.has(d.descrizione_key)) m.delete(d.descrizione_key);
-      else m.set(d.descrizione_key, d.descrizione);
-      return m;
-    });
-  }
-
-  const tuttiSelezionati = calcolaTuttiSelezionati(candidati, selected);
-
-  function toggleTutti() {
-    setSelected((prev) => {
-      // Il "sono gia' tutti selezionati?" si ricalcola da `prev`, non si legge
-      // dalla closure: `tuttiSelezionati` e' il valore del render in cui il
-      // click e' partito, e dentro l'updater puo' essere gia' stantio (un
-      // toggle() nello stesso batch lo invalida). Con lo stato vecchio il
-      // pulsante fa l'azione opposta a quella che mostra.
-      const tutti = calcolaTuttiSelezionati(candidati, prev);
-      const m = new Map(prev);
-      if (tutti) {
-        candidati.forEach((d) => m.delete(d.descrizione_key));
-      } else {
-        candidati.forEach((d) => m.set(d.descrizione_key, d.descrizione));
-      }
-      return m;
-    });
-  }
-
-  async function salvaSelezionati() {
-    if (selected.size === 0) return;
-    setSalvando(true);
-    try {
-      const items = [...selected.values()].map((descrizione) => ({ descrizione }));
-      const res = await fetch(`/api/gruppo/tag/${tag.id}/prodotti`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ descrizioni: items }),
-      });
-      if (!res.ok) throw new Error();
-      const n = selected.size;
-      setSelected(new Map());
-      await load();
-      onChanged();
-      toast.success(`${n} ${n === 1 ? "prodotto aggiunto" : "prodotti aggiunti"}`);
-    } catch {
-      toast.error("Impossibile aggiungere i prodotti");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  async function rimuovi(assocId: number) {
-    try {
-      const res = await fetch(`/api/gruppo/tag/prodotti/${assocId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      setAssoc((prev) => prev.filter((a) => a.id !== assocId));
-      onChanged();
-    } catch {
-      toast.error("Impossibile rimuovere il prodotto");
-    }
-  }
-
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[90vh] w-[min(96vw,52rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="shrink-0 border-b px-5 py-4">
-          <DialogTitle>Prodotti di «{tag.nome}»</DialogTitle>
-        </DialogHeader>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-5 sm:grid-cols-2">
-          {/* Associati */}
-          <div className="flex min-h-0 min-w-0 flex-col">
-            <h3 className="mb-2 shrink-0 text-sm font-semibold">Nel tag ({assoc.length})</h3>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-            {assoc.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nessun prodotto ancora.</p>
-            ) : (
-              <ul className="space-y-1">
-                {assoc.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex items-center gap-2 rounded-lg border bg-background/40 px-3 py-2 text-sm"
-                  >
-                    <span className="min-w-0 flex-1 truncate" title={a.descrizione}>{a.descrizione}</span>
-                    <button
-                      type="button"
-                      onClick={() => rimuovi(a.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            </div>
-          </div>
-          {/* Disponibili */}
-          <div className="flex min-h-0 min-w-0 flex-col">
-            <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Aggiungi prodotti</h3>
-              {candidati.length > 0 && (
-                <button
-                  type="button"
-                  onClick={toggleTutti}
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  {tuttiSelezionati
-                    ? "Deseleziona tutti"
-                    : nascosti > 0
-                      ? `Seleziona questi ${candidati.length}`
-                      : "Seleziona tutti"}
-                </button>
-              )}
-            </div>
-            <Input
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Cerca una descrizione…"
-              className="mb-2 shrink-0"
-            />
-            <div className="min-h-0 flex-1 overflow-y-auto">
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Caricamento…</p>
-            ) : cercando && candidati.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Cerco fra tutti i punti vendita…</p>
-            ) : ricercaError && candidati.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Non è stato possibile cercare i prodotti. Riprova a scrivere per ripetere la ricerca.
-              </p>
-            ) : candidati.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {filtro.trim().length >= MIN_LETTERE_RICERCA ? "Nessun prodotto trovato." : "Nessun prodotto da aggiungere."}
-              </p>
-            ) : (
-              <ul className="space-y-1">
-                {candidati.map((d) => {
-                  const sel = selected.has(d.descrizione_key);
-                  return (
-                    <li key={d.descrizione_key}>
-                      <button
-                        type="button"
-                        onClick={() => toggle(d)}
-                        className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                          sel ? "border-primary/50 bg-primary/10" : "bg-background/40 hover:bg-accent"
-                        }`}
-                      >
-                        <span
-                          className={`flex size-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                            sel ? "border-primary bg-primary" : "border-border"
-                          }`}
-                        >
-                          {sel && <Check className="size-3 text-primary-foreground" />}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate" title={d.descrizione}>{d.descrizione}</span>
-                        <span className="text-xs text-muted-foreground">{euro(d.spesa)}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-                {nascosti > 0 && (
-                  <li className="px-3 py-2 text-xs text-muted-foreground">
-                    {poolSaturo
-                      ? "Altri prodotti non mostrati"
-                      : `Altri ${nascosti} prodotti non mostrati`}
-                    : scrivi almeno 2 lettere per cercarli fra tutti i punti vendita.
-                  </li>
-                )}
-              </ul>
-            )}
-            </div>
-          </div>
-        </div>
-        {/* Footer: un solo Salva per tutta la selezione */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-popover px-5 py-3">
-          <span className="text-sm text-muted-foreground">
-            {selected.size > 0
-              ? `${selected.size} ${selected.size === 1 ? "selezionato" : "selezionati"}`
-              : "Seleziona i prodotti da aggiungere"}
-          </span>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={salvando}>
-              Chiudi
-            </Button>
-            <Button onClick={salvaSelezionati} disabled={salvando || selected.size === 0}>
-              {salvando ? "Salvataggio…" : <><Plus className="size-4" /> Aggiungi</>}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Dialog: analisi macro per PV del tag ──────────────────────────────────
-
-function KpiCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border bg-background/40 px-3 py-2.5">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground/70">{label}</div>
-      <div className="mt-0.5 text-lg font-bold tabular-nums">{value}</div>
+    <div className={cn(
+      "flex min-w-0 flex-col gap-1 rounded-lg border bg-card px-4 pb-2.5 pt-3",
+      principale ? "border-primary/40" : "border-border",
+      className,
+    )}>
+      <p className="text-[11px] font-medium uppercase leading-tight tracking-wider text-muted-foreground">{label}</p>
+      <p className="truncate text-xl font-bold tracking-tight tabular-nums" title={value}>{value}</p>
     </div>
   );
 }
 
-function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }) {
+// Tag di catena = scheda di «Analisi catena». Raggruppa lo stesso prodotto su
+// tutti i punti vendita e confronta la spesa per sede. Dal 13/10/2026 ha
+// l'impianto di «Analisi e Tag» (Mattia: «replichiamo anche in catena allo
+// stesso modo»): a sinistra la lista con cartelle e stella, a destra il tag
+// scelto con l'analisi per punto vendita, che prima stava in una finestra.
+export function SchedaTagCatena() {
+  const [tags, setTags] = useState<GruppoTag[]>([]);
+  const [cartelle, setCartelle] = useState<CartellaTag[]>([]);
+  const [caricamento, setCaricamento] = useState(true);
+  const [guasto, setGuasto] = useState(false);
+  const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
+  const [vista, setVista] = useState<VistaTag>("tutte");
+  const [chiuse, setChiuse] = useState<number[]>([]);
+  const [comodoLetto, setComodoLetto] = useState(false);
+  const [periodo, setPeriodo] = useState<string>("anno");
+
+  const [dialogTag, setDialogTag] = useState<{ open: boolean; tag: GruppoTag | null }>({ open: false, tag: null });
+  // Si ricarica solo se il riquadro ha cambiato qualcosa: chiuderlo con Annulla
+  // non deve rifare lista e analisi.
+  const dialogHaModificato = useRef(false);
+  const [chiusureDialog, setChiusureDialog] = useState(0);
+  const [confermaElimina, setConfermaElimina] = useState(false);
+  // Guardia sincrona: un doppio clic su «Elimina tag» manderebbe due DELETE.
+  const eliminando = useRef(false);
+
+  const carica = useCallback(async (): Promise<{ tags: GruppoTag[]; cartelle: CartellaTag[] } | null> => {
+    try {
+      const res = await fetch("/api/gruppo/tag", { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      const j = await res.json();
+      const nuovi: GruppoTag[] = j.tags ?? [];
+      const nuoveCartelle: CartellaTag[] = Array.isArray(j.cartelle) ? j.cartelle : [];
+      setTags(nuovi);
+      setCartelle(nuoveCartelle);
+      setGuasto(false);
+      return { tags: nuovi, cartelle: nuoveCartelle };
+    } catch {
+      setGuasto(true);
+      toast.error("Errore nel caricamento dei tag di catena");
+      return null;
+    } finally {
+      setCaricamento(false);
+    }
+  }, []);
+
+  const ricarica = useCallback(() => { void carica(); }, [carica]);
+
+  // Montaggio: vista ricordata, poi il primo tag mostrato.
+  useEffect(() => {
+    const stato = leggiStatoComodo(leggiStorage());
+    setVista(stato.vista);
+    setChiuse(stato.chiuse);
+    setComodoLetto(true);
+    carica().then(dati => {
+      if (dati) setSelectedTagId(primoDaMostrare(dati.tags, dati.cartelle, stato.vista, stato.chiuse));
+    });
+  }, [carica]);
+
+  useEffect(() => {
+    if (comodoLetto) scriviStorage(scriviStatoComodo({ vista, chiuse }));
+  }, [comodoLetto, vista, chiuse]);
+
+  // Dopo un salvataggio nel riquadro: il numero di prodotti viene dalla lista.
+  useEffect(() => {
+    if (chiusureDialog > 0) void carica();
+  }, [chiusureDialog, carica]);
+
+  async function alternaPreferito(tag: GruppoTag) {
+    const nuovo = !tag.preferito;
+    setTags(prev => prev.map(t => (t.id === tag.id ? { ...t, preferito: nuovo } : t)));
+    try {
+      const res = await fetch(`/api/gruppo/tag/${tag.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferito: nuovo }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // Indietro solo se nessun altro clic ha gia' cambiato la stella nel frattempo.
+      setTags(prev => prev.map(t => (t.id === tag.id && t.preferito === nuovo ? { ...t, preferito: !nuovo } : t)));
+      toast.error("Non sono riuscito ad aggiornare i preferiti");
+    }
+  }
+
+  async function eliminaTag(tagId: number) {
+    if (eliminando.current) return;
+    eliminando.current = true;
+    try {
+      const res = await fetch(`/api/gruppo/tag/${tagId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Tag eliminato");
+      const restanti = tags.filter(t => t.id !== tagId);
+      setTags(restanti);
+      if (selectedTagId === tagId) setSelectedTagId(primoDaMostrare(restanti, cartelle, vista, chiuse));
+    } catch {
+      toast.error("Impossibile eliminare il tag");
+    } finally {
+      eliminando.current = false;
+    }
+  }
+
+  const selectedTag = tags.find(t => t.id === selectedTagId) ?? null;
+
+  return (
+    <div className="grid items-start gap-6 xl:grid-cols-[17rem_minmax(0,1fr)]">
+      <PannelloTag
+        sorgente={sorgenteCatena}
+        tags={tags}
+        cartelle={cartelle}
+        setTags={setTags}
+        setCartelle={setCartelle}
+        vista={vista}
+        onVista={setVista}
+        chiuse={chiuse}
+        onChiuse={setChiuse}
+        selectedTagId={selectedTagId}
+        onSelezionaTag={setSelectedTagId}
+        onNuovoTag={() => setDialogTag({ open: true, tag: null })}
+        onRicarica={ricarica}
+        info={
+          <InfoPopover title="Come funzionano i tag di catena">
+            <p className="text-muted-foreground">
+              Un tag di catena raggruppa <strong className="text-foreground">lo stesso prodotto su tutti i punti
+              vendita</strong> e confronta la spesa sede per sede. È separato dai tag del singolo locale.
+            </p>
+            <div className="space-y-1.5 text-muted-foreground">
+              <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em> e spunta i prodotti: la ricerca guarda le fatture di tutti i punti vendita. Per cambiarlo usa <em>Modifica tag</em>.</p>
+              <p><strong className="text-foreground">Cartelle e preferiti</strong> servono solo a tenere in ordine la lista: trascina un tag in una cartella e segna con la ☆ quelli che usi di più. Non cambiano nessuna analisi.</p>
+            </div>
+          </InfoPopover>
+        }
+      />
+
+      <div className="min-w-0 space-y-5">
+        {!caricamento && tags.length === 0 && (
+          <div className="rounded-xl border border-dashed border-border bg-card py-16 text-center">
+            <Tags className="mx-auto mb-3 size-10 text-muted-foreground" />
+            {guasto ? (
+              <>
+                <p className="text-sm font-medium">Tag di catena non disponibili in questo momento</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Non è stato possibile caricarli. Ricarica la pagina fra un momento: i tuoi tag non sono stati persi.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium">Nessun tag di catena</p>
+                <p className="mb-4 mt-1 text-xs text-muted-foreground">
+                  Creane uno per confrontare un prodotto fra i punti vendita.
+                </p>
+                <Button onClick={() => setDialogTag({ open: true, tag: null })}>
+                  <Plus />
+                  Crea il primo tag
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {caricamento && <div className="h-96 animate-pulse rounded-xl border bg-muted/40" />}
+
+        {/* Ci sono tag ma nessuno e' scelto (cartelle chiuse, nessun preferito). */}
+        {!caricamento && tags.length > 0 && !selectedTag && (
+          <div className="rounded-xl border border-dashed border-border bg-card py-16 text-center">
+            <Tags className="mx-auto mb-3 size-10 text-muted-foreground" />
+            <p className="text-sm font-medium">Scegli un tag dalla lista</p>
+            <p className="mt-1 text-xs text-muted-foreground">Vedrai la spesa di ogni punto vendita, i fornitori e l&apos;andamento.</p>
+          </div>
+        )}
+
+        {selectedTag && (
+          <section aria-label={`Tag ${selectedTag.nome}`} className="@container overflow-hidden rounded-xl border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 pb-3 pt-4">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                {selectedTag.emoji && <span className="text-2xl leading-none" aria-hidden>{selectedTag.emoji}</span>}
+                <h2 className="min-w-0 truncate text-xl font-semibold tracking-tight" title={selectedTag.nome}>{selectedTag.nome}</h2>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-pressed={!!selectedTag.preferito}
+                  aria-label={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+                  title={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+                  onClick={() => alternaPreferito(selectedTag)}
+                >
+                  <Star className={selectedTag.preferito ? "fill-incerto text-incerto" : "text-muted-foreground"} />
+                </Button>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="px-1 text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
+                  onClick={() => setDialogTag({ open: true, tag: selectedTag })}
+                >
+                  {etichettaProdotti(selectedTag.n_prodotti ?? 0)}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setDialogTag({ open: true, tag: selectedTag })}>
+                  <Pencil />
+                  Modifica tag
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label="Elimina tag"
+                  title="Elimina tag"
+                  onClick={() => setConfermaElimina(true)}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
+            </div>
+
+            <AnalisiPerPuntoVendita
+              key={`${selectedTag.id}:${chiusureDialog}`}
+              tag={selectedTag}
+              periodo={periodo}
+              onPeriodo={setPeriodo}
+            />
+          </section>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={confermaElimina && selectedTag !== null}
+        titolo={`Eliminare il tag «${selectedTag?.nome ?? ""}»?`}
+        messaggio="Si cancellano il tag e la sua lista di prodotti. Le fatture e le altre analisi non cambiano."
+        confermaLabel="Elimina tag"
+        onConferma={() => { if (selectedTag) eliminaTag(selectedTag.id); }}
+        onClose={() => setConfermaElimina(false)}
+      />
+      <ModificaTagDialog
+        sorgente={sorgenteCatena}
+        open={dialogTag.open}
+        onOpenChange={v => {
+          setDialogTag(d => ({ ...d, open: v }));
+          if (v) dialogHaModificato.current = false;
+          else if (dialogHaModificato.current) {
+            dialogHaModificato.current = false;
+            setChiusureDialog(n => n + 1);
+          }
+        }}
+        onProdottiCambiati={() => { dialogHaModificato.current = true; }}
+        tag={dialogTag.tag}
+        cartelle={cartelle}
+        onSaved={(saved, isNew) => {
+          dialogHaModificato.current = true;
+          if (isNew) {
+            setTags(prev => [...prev, { ...saved, n_prodotti: 0 }]);
+            setSelectedTagId(saved.id);
+          } else {
+            setTags(prev => prev.map(t => (t.id === saved.id ? { ...t, ...saved } : t)));
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+/* ── Periodo e analisi del tag scelto, per punto vendita ── */
+function AnalisiPerPuntoVendita({
+  tag, periodo, onPeriodo,
+}: {
+  tag: GruppoTag;
+  periodo: string;
+  onPeriodo: (p: string) => void;
+}) {
   const [data, setData] = useState<GruppoTagAnalisi | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [periodo, setPeriodo] = useState<string>("anno");
   const reqRef = useRef(0);
 
   const annoCorrente = new Date().getFullYear();
@@ -562,155 +396,149 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
 
   async function exportXls() {
     if (!data) return;
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(righeExportPv(data.per_pv)), "Per punto vendita");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(righeExportFornitori(data.fornitori)), "Fornitori");
-    XLSX.writeFile(wb, nomeFileExport(data.nome, data.periodo_label));
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(righeExportPv(data.per_pv)), "Per punto vendita");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(righeExportFornitori(data.fornitori)), "Fornitori");
+      XLSX.writeFile(wb, nomeFileExport(data.nome, data.periodo_label));
+    } catch {
+      toast.error("Errore nell'export");
+    }
   }
 
   const vuoto = analisiVuota(data);
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="shrink-0 border-b px-5 py-4">
-          <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
-            <span className="flex items-center gap-2">
-              {(data?.emoji || tag.emoji) && <span>{data?.emoji || tag.emoji}</span>}
-              «{tag.nome}» per punto vendita
-            </span>
-            <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-              <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-48 text-xs">
-                <option value="anno">Anno in corso ({annoCorrente})</option>
-                {MESI_LABEL.slice(0, meseCorrente).map((m, i) => (
-                  <option key={i + 1} value={String(i + 1)}>{m} {annoCorrente}</option>
-                ))}
-              </NativeSelect>
-              <button
-                type="button"
-                onClick={exportXls}
-                disabled={vuoto}
-                className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                <Download className="size-3.5" /> Esporta
-              </button>
-            </span>
-          </DialogTitle>
-        </DialogHeader>
-        <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
-          {loading && !data ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">Caricamento…</p>
-          ) : loadError && !data ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <p className="text-sm text-muted-foreground">
-                Non è stato possibile caricare i dati.
-              </p>
-              <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
-                Riprova
-              </Button>
-            </div>
-          ) : vuoto ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">
-              Nessuna spesa nel periodo per questo tag.
-            </p>
-          ) : (
-            <>
-              {/* KPI di gruppo */}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                <KpiCard label="Spesa totale" value={euro(data!.spesa_totale)} />
-                <KpiCard label="Quantità" value={num(data!.quantita_totale)} />
-                <KpiCard label="Prezzo medio" value={euro2(data!.prezzo_medio)} />
-                <KpiCard label="Fornitori" value={String(data!.n_fornitori)} />
-                <KpiCard label="Voci in fattura" value={String(data!.per_pv.reduce((s, p) => s + p.n_righe, 0))} />
-              </div>
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 pb-4">
+        <label className="flex items-center gap-2 text-sm">
+          <span className="font-medium">Periodo</span>
+          <NativeSelect value={periodo} onValueChange={onPeriodo} aria-label="Periodo dell'analisi" className="w-52">
+            <option value="anno">Anno in corso ({annoCorrente})</option>
+            {MESI_LABEL.slice(0, meseCorrente).map((m, i) => (
+              <option key={i + 1} value={String(i + 1)}>{m} {annoCorrente}</option>
+            ))}
+          </NativeSelect>
+        </label>
+        <Button variant="outline" size="sm" onClick={exportXls} disabled={vuoto || loading}>
+          <Download />
+          Esporta
+        </Button>
+      </div>
 
-              {/* Per punto vendita */}
-              <div>
-                <h3 className="mb-2 text-sm font-semibold">Per punto vendita</h3>
-                <ul className="space-y-2">
-                  {data!.per_pv.map((p) => (
-                    <li key={p.ristorante_id} className="rounded-xl border bg-background/40 p-3">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-medium" title={p.nome}>{p.nome}</span>
-                        <span className="text-sm font-semibold tabular-nums">{euro(p.spesa)}</span>
-                      </div>
-                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary"
-                          style={{ width: larghezzaBarra(p.spesa, maxPv) }} />
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span>{pct(p.incidenza_pct)} del gruppo</span>
-                        <span>·</span>
-                        <span>
-                          prezzo medio{" "}
-                          <span className={cn(
-                            "font-medium tabular-nums",
-                            classePrezzo(p.prezzo_medio, minPrezzo, maxPrezzo),
-                          )}>{euro2(p.prezzo_medio)}</span>
+      <div className="space-y-6 p-5">
+        {loading && !data ? (
+          <div className="grid grid-cols-2 gap-3 @lg:grid-cols-6 @3xl:grid-cols-5">
+            {KPI_POSTI.map((posto, i) => <div key={i} className={cn("h-20 animate-pulse rounded-lg border bg-card", posto)} />)}
+          </div>
+        ) : loadError && !data ? (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <p className="text-sm text-muted-foreground">Non è stato possibile caricare i dati.</p>
+            <Button size="sm" variant="outline" onClick={carica} disabled={loading}>
+              Riprova
+            </Button>
+          </div>
+        ) : vuoto ? (
+          <div className="rounded-lg border border-dashed border-border py-10 text-center">
+            <p className="text-sm text-muted-foreground">Nessuna spesa nel periodo per questo tag.</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 @lg:grid-cols-6 @3xl:grid-cols-5">
+              <KpiCard className={KPI_POSTI[0]} principale label="Spesa totale" value={euro(data!.spesa_totale)} />
+              <KpiCard className={KPI_POSTI[1]} label="Quantità" value={num(data!.quantita_totale)} />
+              <KpiCard className={KPI_POSTI[2]} label="Prezzo medio" value={euro2(data!.prezzo_medio)} />
+              <KpiCard className={KPI_POSTI[3]} label="Fornitori" value={String(data!.n_fornitori)} />
+              <KpiCard className={KPI_POSTI[4]} label="Voci in fattura" value={String(data!.per_pv.reduce((s, p) => s + p.n_righe, 0))} />
+            </div>
+
+            <section className="space-y-3 border-t pt-5" aria-label="Per punto vendita">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <Building2 className="size-4 text-muted-foreground" aria-hidden />
+                Per punto vendita
+              </h3>
+              <ul className="space-y-2">
+                {data!.per_pv.map((p) => (
+                  <li key={p.ristorante_id} className="rounded-lg border px-4 py-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-sm font-medium" title={p.nome}>{p.nome}</span>
+                      <span className="text-sm font-semibold tabular-nums">{euro(p.spesa)}</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary"
+                        style={{ width: larghezzaBarra(p.spesa, maxPv) }} />
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span>{pct(p.incidenza_pct)} del gruppo</span>
+                      <span aria-hidden>·</span>
+                      <span>
+                        prezzo medio{" "}
+                        <span className={cn(
+                          "font-medium tabular-nums",
+                          classePrezzo(p.prezzo_medio, minPrezzo, maxPrezzo),
+                        )}>{euro2(p.prezzo_medio)}</span>
+                      </span>
+                      <span aria-hidden>·</span>
+                      <span>{p.n_righe} righe · {p.n_fornitori} forn.</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {/* Se un solo PV ha spesa, le descrizioni del tag sono di quella
+                  sede: il confronto fra PV si abilita aggiungendo le varianti
+                  delle altre. */}
+              {soloUnPvConSpesa(data!.per_pv) && (
+                <p className="rounded-md border border-primary/30 bg-accent px-3 py-2 text-xs text-primary-text">
+                  Solo un punto vendita ha spesa: aggiungi al tag anche le descrizioni «{tag.nome}» delle
+                  altre sedi (da «Modifica tag») per confrontare i prezzi tra i punti vendita.
+                </p>
+              )}
+            </section>
+
+            {data!.fornitori.length > 0 && (
+              <section className="space-y-3 border-t pt-5" aria-label="Fornitori">
+                <h3 className="text-sm font-semibold">Fornitori (tutto il gruppo)</h3>
+                <ul className="space-y-1.5">
+                  {data!.fornitori.map((f) => (
+                    <li key={f.nome} className="rounded-lg border px-3 py-2">
+                      <div className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <Truck className="size-3.5 shrink-0 text-muted-foreground/60" />
+                          <span className="truncate font-medium" title={f.nome}>{f.nome}</span>
                         </span>
-                        <span>·</span>
-                        <span>{p.n_righe} righe · {p.n_fornitori} forn.</span>
+                        <span className="shrink-0 tabular-nums">{euro(f.spesa)} · {pct(f.incidenza_pct)}</span>
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary/70"
+                          style={{ width: larghezzaBarra(f.spesa, maxForn) }} />
                       </div>
                     </li>
                   ))}
                 </ul>
-                {/* Hint: se un solo PV ha spesa, le descrizioni del tag sono di
-                    quella sede → il confronto prezzi tra PV si abilita aggiungendo
-                    le varianti delle altre. */}
-                {soloUnPvConSpesa(data!.per_pv) && (
-                  <p className="mt-2 rounded-md border border-primary/30 bg-accent px-3 py-2 text-xs text-primary-text">
-                    Solo un punto vendita ha spesa: aggiungi al tag anche le descrizioni «{tag.nome}» delle
-                    altre sedi (da «Prodotti») per confrontare i prezzi tra i punti vendita.
-                  </p>
-                )}
-              </div>
+              </section>
+            )}
 
-              {/* Fornitori del gruppo */}
-              {data!.fornitori.length > 0 && (
-                <div>
-                  <h3 className="mb-2 text-sm font-semibold">Fornitori (tutto il gruppo)</h3>
-                  <ul className="space-y-1.5">
-                    {data!.fornitori.map((f) => (
-                      <li key={f.nome} className="rounded-lg border bg-background/40 px-3 py-2">
-                        <div className="flex items-baseline justify-between gap-2 text-sm">
-                          <span className="flex min-w-0 items-center gap-1.5">
-                            <Truck className="size-3.5 shrink-0 text-muted-foreground/60" />
-                            <span className="truncate font-medium" title={f.nome}>{f.nome}</span>
-                          </span>
-                          <span className="shrink-0 tabular-nums">{euro(f.spesa)} · {pct(f.incidenza_pct)}</span>
-                        </div>
-                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-primary/70"
-                            style={{ width: larghezzaBarra(f.spesa, maxForn) }} />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Trend mensile (solo se più di un mese nel periodo) */}
-              {data!.trend.length > 1 && (
-                <div>
-                  <h3 className="mb-2 text-sm font-semibold">Andamento mensile</h3>
-                  <div className="flex items-end gap-1.5">
-                    {data!.trend.map((t) => (
-                      <div key={`${t.anno}-${t.mese}`} className="flex flex-1 flex-col items-center gap-1">
-                        <div className="flex h-24 w-full items-end">
-                          <div className="w-full rounded-t bg-primary/70" title={euro(t.spesa)}
-                            style={{ height: altezzaBarraTrend(t.spesa, maxTrend) }} />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">{MESI_LABEL[t.mese - 1].slice(0, 3)}</span>
+            {/* Andamento mensile (solo se più di un mese nel periodo) */}
+            {data!.trend.length > 1 && (
+              <section className="space-y-3 border-t pt-5" aria-label="Andamento mensile">
+                <h3 className="text-sm font-semibold">Andamento mensile</h3>
+                <div className="flex items-end gap-1.5">
+                  {data!.trend.map((t) => (
+                    <div key={`${t.anno}-${t.mese}`} className="flex flex-1 flex-col items-center gap-1">
+                      <div className="flex h-24 w-full items-end">
+                        <div className="w-full rounded-t bg-primary/70" title={euro(t.spesa)}
+                          style={{ height: altezzaBarraTrend(t.spesa, maxTrend) }} />
                       </div>
-                    ))}
-                  </div>
+                      <span className="text-[10px] text-muted-foreground">{MESI_LABEL[t.mese - 1].slice(0, 3)}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+              </section>
+            )}
+          </>
+        )}
+      </div>
+    </>
   );
 }

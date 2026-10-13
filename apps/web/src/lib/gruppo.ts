@@ -209,6 +209,10 @@ export type GruppoTag = {
   emoji: string | null;
   colore: string | null;
   n_prodotti?: number;
+  // Organizzazione della lista, come i tag di sede: assenti = «Senza cartella»
+  // e senza stella.
+  cartella_id?: number | null;
+  preferito?: boolean;
 };
 
 export type GruppoTagDescrizione = {
