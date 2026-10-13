@@ -265,12 +265,50 @@ def test_forza_manda_anche_fuori_orario_senza_consumare_il_giorno(monkeypatch):
     assert sb.chiamate == []
 
 
-def test_telegram_che_rifiuta_e_un_errore(monkeypatch):
+def test_telegram_che_rifiuta_e_un_errore_e_libera_il_giorno(monkeypatch):
+    """Il giorno e' segnato «inviato» prima dell'invio: se Telegram rifiuta lo
+    si libera, cosi' il giro delle 07 UTC ci riprova invece di dire «gia' fatto»."""
     import pytest
     from fastapi import HTTPException
+    import services.routers.admin as admin
+
+    chiamate = []
+    originale = _RPC.rpc
+
+    def _rpc(self, nome, parametri):
+        chiamate.append(parametri)
+        return originale(self, nome, parametri)
+    monkeypatch.setattr(_RPC, "rpc", _rpc)
     with pytest.raises(HTTPException) as e:
         _endpoint(monkeypatch, ora_utc=6, telegram_ok=False)
     assert e.value.status_code == 502
+    assert [c["p_problema"] for c in chiamate] == [True, False]
+    assert {c["p_chiave"] for c in chiamate} == {"riepilogo:2026-10-13"}
+    del admin
+
+
+def test_le_azioni_di_oggi_svuotano_la_lista_in_cache():
+    import services.fastapi_worker  # noqa: F401
+    import services.routers.admin as admin
+    from fastapi.routing import APIRoute
+
+    azioni = {
+        ("POST", "/api/admin/fatture-queue/assegna-piva"), ("POST", "/api/admin/fatture-queue/riprova"),
+        ("POST", "/api/admin/fatture-queue/assegna-sede"), ("POST", "/api/admin/ragione-sociale-map"),
+        ("DELETE", "/api/admin/ragione-sociale-map/{mapping_id}"), ("PATCH", "/api/admin/marketplace/leads/{lead_id}"),
+    }
+    trovate = set()
+    for r in admin.router.routes:
+        if isinstance(r, APIRoute):
+            for m in r.methods:
+                if (m, r.path) in azioni and any(d.call is admin._dimentica_attenzione for d in r.dependant.dependencies):
+                    trovate.add((m, r.path))
+    assert trovate == azioni
+
+    admin._ADMIN_CACHE.set("attenzione", {"voci": ["vecchia"]})
+    dip = admin._dimentica_attenzione()
+    next(dip)
+    assert admin._ADMIN_CACHE.get("attenzione") is None
 
 
 def test_una_fattura_senza_cliente_fallita_al_download_si_riprova_non_si_assegna():
@@ -287,3 +325,23 @@ def test_una_fattura_senza_cliente_fallita_al_download_si_riprova_non_si_assegna
 def test_negli_altri_stati_nessuna_voce():
     orfane = [_p(i, s) for i, s in enumerate(["pending", "processing", "done", "scartata", "", None], start=20)]
     assert not [v for v in _voci(fatture={"items": [], "orfane": orfane}) if v["chiave"].startswith("fattura:")]
+
+
+def test_oggi_dice_quando_l_ultimo_caricamento_non_si_e_letto(monkeypatch):
+    import services.fastapi_worker  # noqa: F401
+    import services.routers.admin as admin
+
+    cliente = {**CLIENTI[0], "salute_incompleta": True}
+    monkeypatch.setattr(admin, "admin_lista_clienti", lambda: [cliente])
+    for nome in ("admin_sistema_invoicetronic_salute", "admin_sistema_ricavi_salute", "admin_sistema_ricavi_import",
+                 "_compute_admin_consumi", "_conta_categorie_da_controllare", "_richieste_nuove", "_conta_documenti"):
+        monkeypatch.setattr(admin, nome, lambda *a, **k: (_ for _ in ()).throw(RuntimeError("giu'")))
+    admin._ADMIN_CACHE.invalidate()
+
+    class _SB:
+        def table(self, _nome):
+            raise RuntimeError("giu'")
+
+    dati = admin._raccogli_attenzione(_SB())
+    assert any("ultimo caricamento" in e for e in dati["_errors"])
+    assert not [v for v in dati["voci"] if v["chiave"].startswith("attivazione:")]

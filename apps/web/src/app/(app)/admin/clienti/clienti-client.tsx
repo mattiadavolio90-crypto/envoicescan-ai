@@ -193,7 +193,11 @@ export function ClientiClient({ clientiIniziali, problemiNoti }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Giorni iso={c.ultimo_caricamento_at} adesso={adesso} allarme={fermo} />
+                    {c.salute_incompleta ? (
+                      <span className="text-muted-foreground" title="Il server non ha potuto leggere questo dato">—</span>
+                    ) : (
+                      <Giorni iso={c.ultimo_caricamento_at} adesso={adesso} allarme={fermo} />
+                    )}
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell tabular-nums">
                     {c.limite_mese != null ? (

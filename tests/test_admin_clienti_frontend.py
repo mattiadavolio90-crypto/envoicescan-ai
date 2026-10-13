@@ -113,3 +113,8 @@ def test_l_eliminazione_si_sblocca_solo_con_l_email_esatta():
     assert ok("mario@trattoria") is False
     assert ok("") is False
     assert ok("", "") is False
+
+
+def test_se_l_ultimo_caricamento_non_si_e_letto_nessuno_e_fermo():
+    c = {**_c("A", giorni=None), "salute_incompleta": True}
+    assert _f(f"m.eFermo(input, {ADESSO})", c) is False

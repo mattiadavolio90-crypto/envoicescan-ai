@@ -113,7 +113,7 @@ jobs:
               --link "https://railway.app/dashboard" \
               --risolto "la coda ricavi e' ripartita." > /tmp/ricavi.txt || ESITO=1
             cat /tmp/ricavi.txt
-            grep -o 'azione=[a-z]*' /tmp/ricavi.txt | tail -n1 | sed 's/^/ricavi_/' >> $GITHUB_OUTPUT
+            { grep -o 'azione=[a-z]*' /tmp/ricavi.txt || true; } | tail -n1 | sed 's/^/ricavi_/' >> $GITHUB_OUTPUT
           fi
           python3 scripts/allarme_admin.py --chiave monitor_code_cieco --gravita critico \
             --problema "$([ "$CIECO" = "1" ] && echo 1 || echo 0)" \

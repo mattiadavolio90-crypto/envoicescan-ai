@@ -17,12 +17,13 @@ jobs:
       - name: Controlla se l'app è online
         id: ping
         run: |
-          # || echo "000" evita che un timeout (curl exit 28) faccia crashare lo step
+          # || true evita che un timeout (curl exit 28) faccia crashare lo step: con
+          # -w curl scrive gia' 000, un echo in piu' darebbe 000000.
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -L \
             --max-time 60 \
             --connect-timeout 15 \
-            https://app.oneflux.it/ || echo "000")
+            https://app.oneflux.it/ || true)
           echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
           if [ "$HTTP_CODE" = "200" ]; then
             echo "down=false" >> $GITHUB_OUTPUT
@@ -44,7 +45,7 @@ jobs:
             -L \
             --max-time 60 \
             --connect-timeout 15 \
-            https://app.oneflux.it/ || echo "000")
+            https://app.oneflux.it/ || true)
           echo "Risposta dopo wake-up: $WAKE_CODE"
           if [ "$WAKE_CODE" = "200" ]; then
             echo "woke_up=true" >> $GITHUB_OUTPUT

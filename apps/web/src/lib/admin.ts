@@ -73,6 +73,8 @@ export type Cliente = {
   sedi: Sede[];
   // Voci aperte in Admin → Oggi: lo aggiunge la pagina, non il worker.
   n_problemi?: number;
+  // Ultimo caricamento e mese non letti dal worker: le colonne mostrano «—».
+  salute_incompleta?: boolean;
 } & Partial<SaluteMese>;
 
 export type ClienteDettaglio = Cliente & {

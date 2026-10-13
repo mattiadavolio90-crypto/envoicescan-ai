@@ -120,6 +120,14 @@ class MarketplaceLeadStatoBody(BaseModel):
 router = APIRouter(dependencies=[Depends(_verify_worker_key)])
 
 
+def _dimentica_attenzione():
+    """Dipendenza delle azioni che risolvono una voce di Oggi: la lista in cache
+    si butta prima e dopo, cosi' il ricarico della pagina la ricalcola."""
+    _ADMIN_CACHE.invalidate("attenzione")
+    yield
+    _ADMIN_CACHE.invalidate("attenzione")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # ADMIN — guard + endpoints /api/admin/*
 # Doppio guard: X-Worker-Key (server-to-server) + Bearer token admin
@@ -152,6 +160,7 @@ def _verify_admin(
 
 @router.patch(
     "/api/admin/marketplace/leads/{lead_id}",
+    dependencies=[Depends(_dimentica_attenzione)],
     summary="Aggiorna stato di una richiesta servizio (admin)",
     tags=["Admin"],
 )
@@ -234,7 +243,9 @@ def admin_lista_clienti():
     except Exception:
         pass
 
-    _arricchisci_salute_sedi(sb, sedi_map, {u["id"]: u.get("piano") for u in clienti_raw})
+    # Se l'arricchimento fallisce i clienti risulterebbero «mai caricato» e
+    # finirebbero fra i fermi: lo si dice, invece di tacere.
+    salute_incompleta = bool(_arricchisci_salute_sedi(sb, sedi_map, {u["id"]: u.get("piano") for u in clienti_raw}))
 
     result = []
     for u in clienti_raw:
@@ -273,6 +284,7 @@ def admin_lista_clienti():
             "n_sedi": len(sedi),
             "sedi": sedi,
             **riepilogo_cliente(sedi),
+            "salute_incompleta": salute_incompleta,
         })
 
     return result
@@ -302,7 +314,7 @@ def admin_dettaglio_cliente(cliente_id: str):
     # questo era il terzo punto in cui lo stesso cliente aveva due conteggi di sedi.
     sedi_resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("user_id", cliente_id).eq("sede_tecnica", False).execute()
     sedi = sedi_resp.data or []
-    _arricchisci_salute_sedi(sb, {cliente_id: sedi}, {cliente_id: u.get("piano")})
+    salute_incompleta = bool(_arricchisci_salute_sedi(sb, {cliente_id: sedi}, {cliente_id: u.get("piano")}))
 
     piano = (u.get("piano") or "base").lower()
     limite = PIANO_LIMITI_FATTURE_MESE.get(piano, PIANO_LIMITE_FATTURE_DEFAULT)
@@ -367,6 +379,7 @@ def admin_dettaglio_cliente(cliente_id: str):
         "n_sedi": len(sedi),
         "piano_inizio_at": u.get("piano_inizio_at"),
         **riepilogo_cliente(sedi),
+        "salute_incompleta": salute_incompleta,
     }
 
 
@@ -1840,7 +1853,7 @@ def _conta_categorie_da_controllare(sb) -> int:
     admin_emails = _admin_emails_set()
     allowed_ids = [
         u["id"] for u in (sb.table("users").select("id,email").execute().data or [])
-        if u.get("email", "").lower() not in admin_emails
+        if (u.get("email") or "").strip().lower() not in admin_emails
     ]
     if not allowed_ids:
         return 0
@@ -2097,7 +2110,7 @@ class AssegnaPivaBody(BaseModel):
     ristorante_id: Optional[str] = None
 
 
-@router.post("/api/admin/fatture-queue/assegna-piva", tags=["Admin"])
+@router.post("/api/admin/fatture-queue/assegna-piva", tags=["Admin"], dependencies=[Depends(_dimentica_attenzione)])
 def admin_queue_assegna_piva(body: AssegnaPivaBody, admin_user: dict = Depends(_verify_admin)):
     """Sblocca le fatture unknown_tenant di una P.IVA, abbinandole a un cliente.
 
@@ -2140,7 +2153,7 @@ class RiprovaQueueBody(BaseModel):
     queue_id: int
 
 
-@router.post("/api/admin/fatture-queue/riprova", tags=["Admin"])
+@router.post("/api/admin/fatture-queue/riprova", tags=["Admin"], dependencies=[Depends(_dimentica_attenzione)])
 def admin_queue_riprova(body: RiprovaQueueBody, admin_user: dict = Depends(_verify_admin)):
     """Rimette in 'pending' una fattura failed/dead, azzerando i tentativi."""
     sb = get_supabase_client()
@@ -2166,7 +2179,7 @@ class AssegnaSedeQueueBody(BaseModel):
     ristorante_id: str
 
 
-@router.post("/api/admin/fatture-queue/assegna-sede", tags=["Admin"])
+@router.post("/api/admin/fatture-queue/assegna-sede", tags=["Admin"], dependencies=[Depends(_dimentica_attenzione)])
 def admin_queue_assegna_sede(body: AssegnaSedeQueueBody, admin_user: dict = Depends(_verify_admin)):
     """Smista una fattura multi-sede 'da_assegnare' alla sede scelta dall'admin.
 
@@ -2727,7 +2740,7 @@ def admin_lista_mapping():
     ]
 
 
-@router.post("/api/admin/ragione-sociale-map", tags=["Admin"])
+@router.post("/api/admin/ragione-sociale-map", tags=["Admin"], dependencies=[Depends(_dimentica_attenzione)])
 def admin_crea_mapping(body: MappingBody, admin_user: dict = Depends(_verify_admin)):
     sb = get_supabase_client()
     # Normalizzazione IDENTICA a quella del parser (worker/email_queue_processor:
@@ -2767,7 +2780,7 @@ def admin_crea_mapping(body: MappingBody, admin_user: dict = Depends(_verify_adm
     }
 
 
-@router.delete("/api/admin/ragione-sociale-map/{mapping_id}", tags=["Admin"])
+@router.delete("/api/admin/ragione-sociale-map/{mapping_id}", tags=["Admin"], dependencies=[Depends(_dimentica_attenzione)])
 def admin_elimina_mapping(mapping_id: str, admin_user: dict = Depends(_verify_admin)):
     sb = get_supabase_client()
     sb.table("ricavi_ragione_sociale_map").delete().eq("id", mapping_id).execute()
@@ -3106,6 +3119,8 @@ def _raccogli_attenzione(sb) -> Dict[str, Any]:
 
     adesso = datetime.now(timezone.utc)
     clienti = _prova("clienti", admin_lista_clienti, [])
+    if any(c.get("salute_incompleta") for c in clienti):
+        errors.append("ultimo caricamento e fatture del mese non letti: i clienti fermi potrebbero non comparire")
     fatture = _prova("fatture", lambda: admin_sistema_invoicetronic_salute(giorni=30), None)
     ricavi = _prova("ricavi", lambda: admin_sistema_ricavi_salute(silenzio_giorni=2), None)
     ricavi_import = _prova("ricavi_import", admin_sistema_ricavi_import, None)
@@ -3176,7 +3191,7 @@ def admin_attenzione():
     """La lista «Da fare» della pagina Oggi, con i numeri della riga in fondo e
     il conteggio delle voci per cliente (colonna Problemi della lista clienti).
     Mai 500: una sonda che fallisce finisce in `_errors` e il resto si mostra."""
-    return _raccogli_attenzione(get_supabase_client())
+    return _ADMIN_CACHE.get_or_set("attenzione", lambda: _raccogli_attenzione(get_supabase_client()))
 
 
 @router.post("/api/admin/sistema/riepilogo-telegram", tags=["Admin"],
@@ -3205,5 +3220,14 @@ def admin_riepilogo_telegram(forza: bool = False) -> Dict[str, Any]:
     testo = att.testo_riepilogo(dati["voci"], dati["numeri"], "https://app.oneflux.it/admin")
     inviato = invia_messaggio(testo, silenzioso=True)
     if not inviato:
+        # Il giorno era gia' segnato come «inviato»: lo si libera, cosi' il
+        # secondo giro del mattino ci riprova invece di rispondere «gia' fatto».
+        if not forza:
+            try:
+                sb.rpc("admin_allarme_segnala", {
+                    "p_chiave": att.chiave_riepilogo(adesso), "p_gravita": "oggi", "p_problema": False,
+                }).execute()
+            except Exception:
+                logger.warning("riepilogo: impossibile liberare il giorno dopo l'errore Telegram", exc_info=True)
         raise HTTPException(status_code=502, detail="Telegram non ha accettato il riepilogo")
     return {"inviato": True, "voci": len(dati["voci"]), "_errors": dati["_errors"]}

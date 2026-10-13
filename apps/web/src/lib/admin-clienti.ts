@@ -43,6 +43,8 @@ export type ClienteLista = {
   ultimo_caricamento_at?: string | null;
   // Voci aperte nella pagina Oggi per questo cliente (problemi_per_cliente).
   n_problemi?: number;
+  // Il worker non ha potuto leggere l'ultimo caricamento: «mai» sarebbe falso.
+  salute_incompleta?: boolean;
   sedi: { partita_iva: string | null }[];
 };
 
@@ -64,9 +66,10 @@ export function testoGiorni(iso: string | null | undefined, adesso: number): str
 }
 
 /** Un cliente attivo e' fermo se non carica da GIORNI_FERMO giorni o non ha
- *  mai caricato. Un account disattivo non e' «fermo»: e' spento. */
+ *  mai caricato. Un account disattivo non e' «fermo»: e' spento. Se il dato non
+ *  si e' potuto leggere non si dice niente: un'assenza non e' un «mai». */
 export function eFermo(c: ClienteLista, adesso: number): boolean {
-  if (!c.attivo) return false;
+  if (!c.attivo || c.salute_incompleta) return false;
   const g = giorniDa(c.ultimo_caricamento_at, adesso);
   return g === null || g >= GIORNI_FERMO;
 }

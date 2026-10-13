@@ -25,8 +25,8 @@ tenerlo solo qui.
    - Crash/riavvii: `railway logs --service worker`, cerca `OOM`, `killed`,
      `SIGTERM`, `Traceback`. Se sì → `railway redeploy --service=worker --yes`,
      poi torna al punto 1.
-   - Saturazione (caso più probabile): la spia di latenza, `GET /api/admin/sistema/salute-worker` con la chiave del worker (comando nel runbook §2b)
-     (`/api/admin/sistema/salute-worker`), guarda il p95 delle rotte in cima.
+   - Saturazione (caso più probabile): la spia di latenza, `GET /api/admin/sistema/salute-worker`
+     con la chiave del worker (comando nel runbook §2b): guarda il p95 delle rotte in cima.
      Giallo/rosso su `/api/auth/me` o `/api/home/*` → threadpool sotto
      pressione, spesso perché un'operazione Admin pesante gira in
      contemporanea ai clienti. Aspetta/chiudi l'operazione pesante e

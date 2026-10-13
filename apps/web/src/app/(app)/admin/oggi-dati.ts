@@ -7,7 +7,11 @@ export async function datiOggi(token: string): Promise<DatiOggi | null> {
   try {
     const h: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-    const res = await fetch(`${WORKER_URL}/api/admin/attenzione`, { headers: h, cache: "no-store" });
+    const res = await fetch(`${WORKER_URL}/api/admin/attenzione`, {
+      headers: h,
+      cache: "no-store",
+      signal: AbortSignal.timeout(20000),
+    });
     if (!res.ok) {
       console.error(`[admin/attenzione] ${res.status}:`, (await res.text().catch(() => "")).slice(0, 300));
       return null;

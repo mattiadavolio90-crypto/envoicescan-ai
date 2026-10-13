@@ -317,6 +317,24 @@ Mappa ragione sociale (dal gestionale) → `ristorante_id`. Usato nell'import XL
 
 ---
 
+## Allarmi dell'admin
+
+### `admin_allarmi` — Memoria degli allarmi Telegram (13/10/2026)
+
+Una riga per allarme (`chiave`: `app_offline`, `server_giu`, `server_lento`,
+`coda_fatture_ferma`, `coda_ricavi_ferma`, `monitor_code_cieco`, e
+`riepilogo:<giorno>` per il messaggio delle 8). `gravita` `critico`|`oggi`,
+`aperto_at` (NULL = chiuso), `ultimo_invio_at`, `risolto_at`, `occorrenze`,
+`testo`, `link`. Si scrive solo dalla RPC `admin_allarme_segnala(chiave,
+gravita, problema, testo, link, ripeti)`, che risponde `invia` / `ripeti` (critico
+ancora aperto dopo 6 ore) / `zitto` / `risolto` / `niente`. RLS attiva senza
+policy, nessun permesso ad anon/authenticated: la usano solo il worker e gli
+script di GitHub con la service key. Migration `20261013140000_admin_allarmi.sql`.
+
+Nella stessa sessione: RPC `admin_ultimo_caricamento(ristorante_ids)`, l'ultimo
+documento non cancellato per sede (lista clienti dell'admin), migration
+`20261013120000_rpc_admin_ultimo_caricamento.sql`.
+
 ## Autenticazione e Sicurezza
 
 ### `login_attempts` — Rate limiting persistente

@@ -51,7 +51,7 @@ jobs:
           START_MS=$(date +%s%3N)
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             --max-time 15 --connect-timeout 10 \
-            "${WORKER_URL}/health" || echo "000")
+            "${WORKER_URL}/health" || true)
           END_MS=$(date +%s%3N)
           ELAPSED_MS=$((END_MS - START_MS))
           # Un errore isolato (riavvio, rete) non e' un worker giu': si riprova
@@ -61,7 +61,7 @@ jobs:
             START_MS=$(date +%s%3N)
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
               --max-time 15 --connect-timeout 10 \
-              "${WORKER_URL}/health" || echo "000")
+              "${WORKER_URL}/health" || true)
             ELAPSED_MS=$(( $(date +%s%3N) - START_MS ))
           fi
 
@@ -102,7 +102,9 @@ jobs:
 
       - name: Allarme Telegram (worker lento)
         id: lento
-        if: always()
+        # Con il worker giu' la lentezza non si puo' misurare: niente «risolto»
+        # sulla lentezza mentre parte «server giu'». Si riprende al giro dopo.
+        if: always() && steps.check.outputs.problema != 'down'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
