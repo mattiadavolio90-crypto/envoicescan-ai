@@ -246,3 +246,14 @@ def test_sede_che_ha_escluso_il_senza_iva_non_lo_fa_chiedere(monkeypatch):
     assert "senza_iva = 0" in escluso
     sempre = fw._build_chat_system_prompt(USER, _sb(), None, "r-1", SETTORE_RISTORAZIONE, cifre_dettate=True)
     assert "CHIEDIGLI quanto e' al 10% e quanto senza IVA" in sempre
+
+
+def test_le_descrizioni_degli_strumenti_non_impongono_il_senza_iva():
+    """Sono le stesse per ogni sede: se dicessero «servono 10% e senza IVA»
+    contraddirebbero il prompt della sede che l'ha escluso. La divisione la dice
+    il prompt (`_divisione_iva`)."""
+    for nome in ("proponi_incasso", "proponi_fatturato_mese"):
+        [tool] = [t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == nome]
+        descrizione = tool["function"]["description"]
+        assert "senza IVA:" not in descrizione and "parte senza IVA" not in descrizione, nome
+        assert "istruzioni della sede" in descrizione, nome

@@ -6003,9 +6003,10 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             "description": (
                 "Prepara la registrazione dell'INCASSO DI UN GIORNO che il cliente ti ha "
                 "DETTATO (es. 'ieri ho incassato 2.340: 1.800 al 10% e 540 senza IVA'). NON "
-                "registra: mostra al cliente una card con il pulsante Conferma. Servono la "
-                "parte al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
-                "chiediglielo prima. Solo cifre dette dal cliente, mai stime tue."
+                "registra: mostra al cliente una card con il pulsante Conferma. Serve la "
+                "divisione per aliquota che chiedono le istruzioni della sede: se il cliente "
+                "ha dato solo il totale, chiediglielo prima. Solo cifre dette dal cliente, "
+                "mai stime tue."
             ),
             "parameters": {
                 "type": "object",
@@ -6053,9 +6054,9 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                 "Prepara la registrazione del FATTURATO DI UN MESE INTERO dettato dal cliente, "
                 "per chi tiene il fatturato come totale del mese (es. 'ad agosto ho fatturato "
                 "80.000'). NON registra: mostra una card con il pulsante Conferma. Se il mese "
-                "ha gia' incassi giorno per giorno lo strumento lo rifiuta. Servono la parte "
-                "al 10% e la parte senza IVA: se il cliente ha dato solo il totale, "
-                "chiediglielo prima."
+                "ha gia' incassi giorno per giorno lo strumento lo rifiuta. Serve la divisione "
+                "per aliquota che chiedono le istruzioni della sede: se il cliente ha dato solo "
+                "il totale, chiediglielo prima."
             ),
             "parameters": {
                 "type": "object",
