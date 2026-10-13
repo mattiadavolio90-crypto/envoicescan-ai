@@ -158,6 +158,9 @@ def _semina(conn, lettera: str, base_bigint: int) -> Cliente:
                 "custom_tag_suggestions_id_seq", "custom_tag_suggestion_items_id_seq",
                 "prezzi_preferiti_id_seq"):
         conn.execute(f"SELECT setval('public.{seq}', %s)", (base_bigint + 100,))
+    # Cartelle su una base loro: con lo stesso id del tag, un endpoint che
+    # confondesse cartella_id e tag_id passerebbe il controllo sui propri id.
+    conn.execute("SELECT setval('public.custom_tag_cartelle_id_seq', %s)", (base_bigint + 300,))
 
     conn.execute(
         "INSERT INTO public.users (id, email, password_hash, nome_ristorante, attivo, piano, "
@@ -208,10 +211,15 @@ def _semina(conn, lettera: str, base_bigint: int) -> Cliente:
                 (user, file),
             )
 
-    # Tag di sede, associazione, suggerimento.
+    # Tag di sede (dentro una cartella), associazione, suggerimento.
+    ids["cartella_id"] = uno(
+        "INSERT INTO public.custom_tag_cartelle (user_id, ristorante_id, nome) VALUES (%s, %s, %s) RETURNING id",
+        user, s1, m("CARTELLA"),
+    )
     ids["tag_id"] = uno(
-        "INSERT INTO public.custom_tags (user_id, ristorante_id, nome) VALUES (%s, %s, %s) RETURNING id",
-        user, s1, m("TAG"),
+        "INSERT INTO public.custom_tags (user_id, ristorante_id, nome, cartella_id) VALUES (%s, %s, %s, %s) "
+        "RETURNING id",
+        user, s1, m("TAG"), ids["cartella_id"],
     )
     ids["assoc_id"] = uno(
         "INSERT INTO public.custom_tag_prodotti (tag_id, user_id, ristorante_id, descrizione, "
@@ -480,6 +488,12 @@ RICETTE: List[Ricetta] = [
     R("POST", "/api/notifiche/{notifica_id}/dismiss"),
     # tag di sede
     R("PUT", "/api/tag/{tag_id}", {"nome": "rinominato"}),
+    R("PATCH", "/api/tag/{tag_id}", {"preferito": True}),
+    R("PATCH", "/api/tag/{mio.tag_id}", {"cartella_id": "$altro.cartella_id"},
+      nota="mio tag nella cartella altrui"),
+    R("PUT", "/api/tag/cartelle/{cartella_id}", {"nome": "rinominata"}),
+    R("DELETE", "/api/tag/cartelle/{cartella_id}"),
+    R("PUT", "/api/tag/cartelle/ordine", {"ids": ["$altro.cartella_id"]}),
     R("DELETE", "/api/tag/{tag_id}"),
     R("GET", "/api/tag/{tag_id}/prodotti"),
     R("POST", "/api/tag/{tag_id}/prodotti", DESCRIZIONI),

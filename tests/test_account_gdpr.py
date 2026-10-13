@@ -137,9 +137,12 @@ def test_esporta_include_le_sezioni_dati():
         "users": [{"id": "u1", "email": "c@x.it"}],
         "fatture": [{"id": 1, "user_id": "u1"}],
         "ricette": [{"id": 9, "user_id": "u1"}],
+        "custom_tag_cartelle": [{"id": 3, "user_id": "u1", "nome": "Pesce"}],
     })
     with _patch({"id": "u1", "email": "c@x.it"}, sb):
         out = account.account_esporta_dati(authorization="Bearer t")
     assert out["profilo"]["email"] == "c@x.it"
     assert isinstance(out["fatture"], list) and len(out["fatture"]) == 1
     assert isinstance(out["ricette"], list) and len(out["ricette"]) == 1
+    # I nomi delle cartelle dei tag sono dati scritti dal cliente (art. 20).
+    assert isinstance(out["custom_tag_cartelle"], list) and len(out["custom_tag_cartelle"]) == 1

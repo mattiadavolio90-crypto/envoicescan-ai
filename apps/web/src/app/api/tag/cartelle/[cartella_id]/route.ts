@@ -1,0 +1,29 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getToken, workerUnreachable, unauthorized, workerFetch } from "../../_worker";
+
+type Ctx = { params: Promise<{ cartella_id: string }> };
+
+export async function PUT(req: NextRequest, ctx: Ctx) {
+  const token = await getToken();
+  if (!token) return unauthorized();
+  const { cartella_id } = await ctx.params;
+  const body = await req.json();
+  try {
+    const res = await workerFetch("PUT", `/api/tag/cartelle/${cartella_id}`, token, { body: JSON.stringify(body) });
+    return NextResponse.json(await res.json(), { status: res.status });
+  } catch {
+    return workerUnreachable();
+  }
+}
+
+export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  const token = await getToken();
+  if (!token) return unauthorized();
+  const { cartella_id } = await ctx.params;
+  try {
+    const res = await workerFetch("DELETE", `/api/tag/cartelle/${cartella_id}`, token, { json: false });
+    return NextResponse.json(await res.json(), { status: res.status });
+  } catch {
+    return workerUnreachable();
+  }
+}

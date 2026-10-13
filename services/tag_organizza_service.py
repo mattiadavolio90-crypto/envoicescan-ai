@@ -156,3 +156,295 @@ def applica_modifiche_prodotti(
             db_service.clear_tags_cache()
 
     return {"aggiunte": len(associazioni), "tolte": tolte, "associazioni": associazioni}
+
+
+# ─── Cartelle e preferiti (Fase 2) ────────────────────────────────────────────
+# Pura visualizzazione: niente di questo entra in analizza_tag, nel briefing,
+# nella catena o nei margini. Tutto e' per sede (user_id + ristorante_id) come i
+# tag; la FK composta custom_tags -> custom_tag_cartelle fa da seconda rete.
+
+CAMPI_TAG = "id,nome,emoji,colore,created_at,cartella_id,preferito"
+CAMPI_CARTELLA = "id,nome,ordine,created_at"
+CAMPI_TAG_MODIFICABILI = ("nome", "emoji", "colore", "cartella_id", "preferito")
+# Stesso tetto del campo nel browser (`maxLength={60}` in barra-cartelle.tsx):
+# una chiamata diretta non deve poter salvare un nome che la barra non mostra.
+MAX_NOME_CARTELLA = 60
+
+
+class NonTrovato(Exception):
+    """Il tag o la cartella non sono della sede del chiamante (-> 404)."""
+
+
+class Conflitto(Exception):
+    """Nome gia' usato nella sede, o elenco da riordinare non aggiornato (-> 409)."""
+
+
+class ScritturaParziale(Exception):
+    """Riordino interrotto a meta': sul DB resta un ordine misto (-> 502, il client ricarica)."""
+
+
+def _client():
+    from services import get_supabase_client
+    return get_supabase_client()
+
+
+def _codice(e: Exception) -> str:
+    return str(getattr(e, "code", "") or "")
+
+
+def _e_duplicato(e: Exception) -> bool:
+    return _codice(e) == "23505" or "duplicate key" in str(e).lower()
+
+
+def _e_chiave_esterna(e: Exception) -> bool:
+    return _codice(e) == "23503" or "foreign key" in str(e).lower()
+
+
+def _e_vincolo_check(e: Exception) -> bool:
+    return _codice(e) == "23514" or "check constraint" in str(e).lower()
+
+
+def _nome_obbligatorio(nome: Optional[str], cosa: str) -> str:
+    pulito = (nome or "").strip()
+    if not pulito:
+        raise ValueError(f"Nome {cosa} obbligatorio")
+    if cosa == "cartella" and len(pulito) > MAX_NOME_CARTELLA:
+        raise ValueError(f"Il nome della cartella non puo' superare {MAX_NOME_CARTELLA} caratteri")
+    return pulito
+
+
+def _tag_normalizzato(riga: Dict[str, Any]) -> Dict[str, Any]:
+    out = {k: riga.get(k) for k in CAMPI_TAG.split(",")}
+    cartella = out.get("cartella_id")
+    out["cartella_id"] = int(cartella) if cartella is not None else None
+    out["preferito"] = bool(out.get("preferito"))
+    return out
+
+
+def _cartella_normalizzata(riga: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: riga.get(k) for k in CAMPI_CARTELLA.split(",")}
+
+
+def lista_tag_organizzati(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+    """I tag della sede con cartella e stella, in ordine di nome.
+
+    Non passa da `db_service.get_custom_tags` (cachata, select senza le colonne
+    nuove). Un errore di lettura sale: una lista vuota direbbe «nessun tag».
+    """
+    response = (
+        _client().table("custom_tags")
+        .select(CAMPI_TAG)
+        .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .order("nome")
+        .execute()
+    )
+    return [_tag_normalizzato(r) for r in (response.data or [])]
+
+
+def lista_cartelle(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+    response = (
+        _client().table("custom_tag_cartelle")
+        .select(CAMPI_CARTELLA)
+        .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .order("ordine")
+        .order("id")
+        .execute()
+    )
+    return [_cartella_normalizzata(r) for r in (response.data or [])]
+
+
+def _cartella_della_sede(sb, cartella_id: int, user_id: str, ristorante_id: str) -> Optional[Dict[str, Any]]:
+    response = (
+        sb.table("custom_tag_cartelle")
+        .select(CAMPI_CARTELLA)
+        .eq("id", int(cartella_id))
+        .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .limit(1)
+        .execute()
+    )
+    righe = response.data or []
+    return righe[0] if righe else None
+
+
+def crea_cartella(user_id: str, ristorante_id: str, nome: Optional[str]) -> Dict[str, Any]:
+    """Nuova cartella in fondo alla barra (ordine = massimo della sede + 1)."""
+    pulito = _nome_obbligatorio(nome, "cartella")
+    esistenti = lista_cartelle(user_id, ristorante_id)
+    ordine = max((int(c.get("ordine") or 0) for c in esistenti), default=-1) + 1
+    try:
+        response = (
+            _client().table("custom_tag_cartelle")
+            .insert({
+                "user_id": user_id,
+                "ristorante_id": ristorante_id,
+                "nome": pulito,
+                "ordine": ordine,
+            })
+            .execute()
+        )
+    except Exception as e:
+        if _e_duplicato(e):
+            raise Conflitto(f"Esiste gia' una cartella «{pulito}»") from e
+        raise
+    finally:
+        db_service.clear_tags_cache()
+    righe = response.data or []
+    if not righe:
+        raise RuntimeError("Cartella non creata: nessuna riga restituita")
+    return _cartella_normalizzata(righe[0])
+
+
+def rinomina_cartella(cartella_id: int, user_id: str, ristorante_id: str, nome: Optional[str]) -> Dict[str, Any]:
+    pulito = _nome_obbligatorio(nome, "cartella")
+    sb = _client()
+    if not _cartella_della_sede(sb, cartella_id, user_id, ristorante_id):
+        raise NonTrovato("Cartella non trovata")
+    try:
+        response = (
+            sb.table("custom_tag_cartelle")
+            .update({"nome": pulito})
+            .eq("id", int(cartella_id))
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .execute()
+        )
+    except Exception as e:
+        if _e_duplicato(e):
+            raise Conflitto(f"Esiste gia' una cartella «{pulito}»") from e
+        raise
+    finally:
+        db_service.clear_tags_cache()
+    righe = response.data or []
+    if not righe:
+        raise NonTrovato("Cartella non trovata")
+    return _cartella_normalizzata(righe[0])
+
+
+def elimina_cartella(cartella_id: int, user_id: str, ristorante_id: str) -> None:
+    """Elimina la cartella; i suoi tag tornano in «Senza cartella».
+
+    I tag non si toccano qui: lo fa la FK `ON DELETE SET NULL (cartella_id)`,
+    nella stessa istruzione del DELETE.
+    """
+    sb = _client()
+    if not _cartella_della_sede(sb, cartella_id, user_id, ristorante_id):
+        raise NonTrovato("Cartella non trovata")
+    try:
+        (
+            sb.table("custom_tag_cartelle")
+            .delete()
+            .eq("id", int(cartella_id))
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .execute()
+        )
+    finally:
+        db_service.clear_tags_cache()
+
+
+def riordina_cartelle(user_id: str, ristorante_id: str, ids: List[int]) -> None:
+    """Riscrive l'ordine di TUTTE le cartelle della sede: ordine = posizione in `ids`.
+
+    Prima si controlla l'elenco intero, poi si scrive: un id che non e' della
+    sede (NonTrovato) o un elenco che non coincide con le cartelle di adesso
+    (Conflitto: un'altra scheda ne ha create o eliminate) non scrivono niente.
+
+    Le scritture sono un UPDATE per cartella spostata, non una transazione: se
+    una fallisce a meta' sul DB resta un ordine misto. Sale ScritturaParziale,
+    cosi' il client ricarica invece di mostrare l'ordine di prima.
+    """
+    richiesti = [int(i) for i in ids]
+    attuali = {int(c["id"]): int(c.get("ordine") or 0) for c in lista_cartelle(user_id, ristorante_id)}
+    if any(i not in attuali for i in richiesti):
+        raise NonTrovato("Cartella non trovata")
+    if len(richiesti) != len(set(richiesti)) or set(richiesti) != set(attuali):
+        raise Conflitto("Elenco delle cartelle non aggiornato: ricarica la pagina")
+    sb = _client()
+    try:
+        for posizione, cartella_id in enumerate(richiesti):
+            if attuali[cartella_id] == posizione:
+                continue
+            try:
+                (
+                    sb.table("custom_tag_cartelle")
+                    .update({"ordine": posizione})
+                    .eq("id", cartella_id)
+                    .eq("user_id", user_id)
+                    .eq("ristorante_id", ristorante_id)
+                    .execute()
+                )
+            except Exception as e:
+                raise ScritturaParziale("Riordino salvato solo in parte: ricarica la pagina") from e
+    finally:
+        db_service.clear_tags_cache()
+
+
+def _leggi_tag(sb, tag_id: int, user_id: str, ristorante_id: str) -> Dict[str, Any]:
+    response = (
+        sb.table("custom_tags")
+        .select(CAMPI_TAG)
+        .eq("id", int(tag_id))
+        .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .limit(1)
+        .execute()
+    )
+    righe = response.data or []
+    if not righe:
+        raise NonTrovato("Tag non trovato")
+    return _tag_normalizzato(righe[0])
+
+
+def aggiorna_tag_parziale(tag_id: int, user_id: str, ristorante_id: str, campi: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiorna SOLO i campi presenti in `campi` (le chiavi inviate nel body).
+
+    `cartella_id: None` = «Senza cartella». Una cartella che non e' della sede e'
+    NonTrovato, prima di scrivere; la FK composta rifiuterebbe comunque.
+    """
+    sb = _client()
+    payload: Dict[str, Any] = {}
+    if "nome" in campi:
+        payload["nome"] = _nome_obbligatorio(campi["nome"], "tag")
+    if "emoji" in campi:
+        payload["emoji"] = campi["emoji"] or None
+    if "colore" in campi:
+        payload["colore"] = campi["colore"] or None
+    if "preferito" in campi:
+        if campi["preferito"] is None:
+            raise ValueError("Preferito deve essere vero o falso")
+        payload["preferito"] = bool(campi["preferito"])
+    if "cartella_id" in campi:
+        cartella_id = campi["cartella_id"]
+        if cartella_id is not None and not _cartella_della_sede(sb, cartella_id, user_id, ristorante_id):
+            raise NonTrovato("Cartella non trovata")
+        payload["cartella_id"] = int(cartella_id) if cartella_id is not None else None
+
+    if not payload:
+        return _leggi_tag(sb, tag_id, user_id, ristorante_id)
+
+    try:
+        response = (
+            sb.table("custom_tags")
+            .update(payload)
+            .eq("id", int(tag_id))
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .execute()
+        )
+    except Exception as e:
+        if _e_duplicato(e):
+            raise Conflitto(f"Esiste gia' un tag «{payload.get('nome', '')}»") from e
+        if _e_chiave_esterna(e):
+            raise NonTrovato("Cartella non trovata") from e
+        if _e_vincolo_check(e):
+            raise ValueError("Valore non valido per il tag") from e
+        raise
+    finally:
+        db_service.clear_tags_cache()
+    righe = response.data or []
+    if not righe:
+        raise NonTrovato("Tag non trovato")
+    return _tag_normalizzato(righe[0])

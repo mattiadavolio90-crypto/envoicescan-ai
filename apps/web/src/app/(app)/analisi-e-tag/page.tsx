@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { requirePagina } from "@/lib/page-guard";
 import { PageHeader } from "@/components/ui/page-header";
-import type { CustomTag, TagSuggestion } from "@/lib/tag";
+import type { CartellaTag, CustomTag, TagSuggestion } from "@/lib/tag";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 import { esitoLista } from "@/lib/esito-caricamento";
 
@@ -36,18 +36,21 @@ export default async function AnalisiETagPage() {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
 
   let tags: CustomTag[] = [];
+  let cartelle: CartellaTag[] = [];
   let suggestions: TagSuggestion[] = [];
   // Senza token non c'e' stata nessuna chiamata: non e' un guasto del worker.
   let caricamentoFallito = false;
 
   if (token) {
     const [tagsRes, suggestionsRes] = await Promise.all([
-      fetchInitial<{ tags: CustomTag[] }>("/api/tag", token),
+      fetchInitial<{ tags: CustomTag[]; cartelle?: CartellaTag[] }>("/api/tag", token),
       fetchInitial<{ suggestions: TagSuggestion[] }>("/api/tag/suggestions", token),
     ]);
     const esitoTag = esitoLista<CustomTag>(tagsRes, "tags");
     tags = esitoTag.righe;
     caricamentoFallito = esitoTag.stato === "non_disponibile";
+    // Stessa risposta dei tag: se quella e' fallita il guasto e' gia' segnalato.
+    cartelle = esitoLista<CartellaTag>(tagsRes, "cartelle").righe;
     suggestions = esitoLista<TagSuggestion>(suggestionsRes, "suggestions").righe;
   }
 
@@ -60,6 +63,7 @@ export default async function AnalisiETagPage() {
       />
       <AnalisiETagClient
         initialTags={tags}
+        initialCartelle={cartelle}
         initialSuggestions={suggestions}
         caricamentoFallito={caricamentoFallito}
       />

@@ -10,18 +10,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import type { CustomTag, DescrizioneDistinta, TagProdotto } from "@/lib/tag";
+import { NativeSelect } from "@/components/ui/select";
+import type { CartellaTag, CustomTag, DescrizioneDistinta, TagProdotto } from "@/lib/tag";
 import { EMOJI_TAG } from "@/lib/tag";
+import { campiCambiati, ordinaCartelle } from "@/lib/tag-cartelle";
 import {
   type FiltroSelettore,
   blocchiModifiche, chiaviDelTag, corpoModifiche, deselezionaTutti, differenze, inverti,
   partiContatore, righeSelettore, selezionaTutti, testoEsito,
 } from "@/lib/tag-selezione";
 
+const SERVIZIO_GIU = "Il servizio non risponde, riprova fra poco";
+
 function messaggioErrore(status: number, generico: string): string {
   if (status === 401) return "Sessione scaduta, ricarica la pagina";
   if (status === 404) return "Il tag non esiste più: ricarica la pagina";
   return generico;
+}
+
+/** Errore sul tag stesso (POST/PATCH): nome doppio, cartella sparita, worker giu'. */
+function messaggioErroreTag(status: number, detail: string, conCartella: boolean): string {
+  if (status === 409) return "Esiste già un tag con questo nome";
+  if (status === 404 && conCartella) return "Il tag o la cartella scelta non esistono più: ricarica la pagina";
+  if (status === 400 && detail) return detail;
+  if (status === 502 && !detail) return SERVIZIO_GIU;
+  return messaggioErrore(status, detail || "Errore nel salvataggio del tag");
 }
 
 /** 401 e 404 non passano riprovando: lo dice gia' `messaggioErrore`. */
@@ -36,17 +49,20 @@ async function dettaglio(res: Response): Promise<string> {
 
 /* ── Riquadro unico per «Nuovo tag» (tag=null) e «Modifica tag» ── */
 export function ModificaTagDialog({
-  open, onOpenChange, tag, onSaved, onProdottiCambiati,
+  open, onOpenChange, tag, cartelle, onSaved, onProdottiCambiati,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tag: CustomTag | null;
+  cartelle: CartellaTag[];
   onSaved: (saved: CustomTag, isNew: boolean) => void;
   /** Almeno una PATCH dei prodotti e' andata a segno (anche solo in parte). */
   onProdottiCambiati: () => void;
 }) {
   const [nome, setNome] = useState("");
   const [emoji, setEmoji] = useState("");
+  // "" = «Senza cartella»: il valore di un <select> e' sempre una stringa.
+  const [cartellaScelta, setCartellaScelta] = useState("");
   const [tavolozzaAperta, setTavolozzaAperta] = useState(false);
 
   const [descrizioni, setDescrizioni] = useState<DescrizioneDistinta[]>([]);
@@ -58,8 +74,9 @@ export function ModificaTagDialog({
   const [ricerca, setRicerca] = useState("");
   const [selezionati, setSelezionati] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
-  // Un tag nuovo gia' creato da un Salva i cui prodotti sono falliti: il
-  // secondo Salva non deve crearne un altro.
+  // L'ultimo stato salvato dal riquadro: un tag nuovo gia' creato da un Salva i
+  // cui prodotti sono falliti, o un tag esistente dopo una PATCH riuscita. Il
+  // secondo Salva confronta con questo, non con la copia presa all'apertura.
   const [creato, setCreato] = useState<CustomTag | null>(null);
   // Guardia sincrona contro il doppio invio (Invio ripetuto nel campo Nome):
   // `saving` e' uno stato e arriva al secondo keydown troppo tardi.
@@ -75,6 +92,9 @@ export function ModificaTagDialog({
     let attivo = true;
     setNome(tag?.nome ?? "");
     setEmoji(tag?.emoji ?? "");
+    setCartellaScelta(
+      tag?.cartella_id != null && cartelle.some(c => c.id === tag.cartella_id) ? String(tag.cartella_id) : "",
+    );
     setTavolozzaAperta(false);
     setRicerca("");
     setCreato(null);
@@ -108,7 +128,11 @@ export function ModificaTagDialog({
       .finally(() => { if (attivo) setCaricamento(false); });
 
     return () => { attivo = false; };
-  }, [open, tag]);
+    // `cartelle` fuori di proposito: una cartella creata o riordinata mentre il
+    // riquadro e' aperto non deve azzerare le spunte gia' fatte.
+  }, [open, tag]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cartelleOrdinate = useMemo(() => ordinaCartelle(cartelle), [cartelle]);
 
   const iniziali = useMemo(() => chiaviDelTag(prodottiTag), [prodottiTag]);
   const esito = useMemo(
@@ -128,24 +152,48 @@ export function ModificaTagDialog({
     const n = nome.trim();
     if (!n) { toast.error("Inserisci un nome per il tag"); return; }
     const em = emoji.trim() || null;
-    const base = tag ?? creato;
+    const cartellaId = cartellaScelta ? Number(cartellaScelta) : null;
+    // L'ultimo stato salvato, anche per un tag esistente: dopo una PATCH riuscita
+    // il confronto successivo parte da quello che e' sul DB.
+    const base = creato ?? tag;
     inCorso.current = true;
     setSaving(true);
     try {
       let salvato: CustomTag | null = base;
-      if (!base || base.nome !== n || (base.emoji ?? null) !== em) {
-        const body = JSON.stringify({ nome: n, emoji: em, colore: base?.colore ?? null });
-        const res = base
-          ? await fetch(`/api/tag/${base.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body })
-          : await fetch("/api/tag", { method: "POST", headers: { "Content-Type": "application/json" }, body });
-        if (!res.ok) throw new Error(messaggioErrore(res.status, "Errore nel salvataggio del tag"));
+      if (!base) {
+        const res = await fetch("/api/tag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nome: n, emoji: em, colore: null }),
+        });
+        if (!res.ok) throw new Error(messaggioErroreTag(res.status, await dettaglio(res), false));
         const data = await res.json();
         salvato = data?.tag ?? null;
         if (!salvato) throw new Error("Errore nel salvataggio del tag");
-        if (!base) setCreato(salvato);
-        onSaved(salvato, !base);
+        setCreato(salvato);
+        onSaved(salvato, true);
       }
       if (!salvato) return;
+
+      // Un tag nuovo nasce senza cartella: la cartella scelta e' una modifica
+      // come le altre, e se fallisce il secondo Salva la riprova sul tag creato.
+      const campi = campiCambiati(salvato, { nome: n, emoji: em, cartella_id: cartellaId }, cartelle);
+      if (Object.keys(campi).length > 0) {
+        const res = await fetch(`/api/tag/${salvato.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(campi),
+        });
+        if (!res.ok) {
+          const motivo = messaggioErroreTag(res.status, await dettaglio(res), "cartella_id" in campi);
+          throw new Error(!base ? `Tag creato, ma non è stato messo nella cartella: ${motivo}` : motivo);
+        }
+        const data = await res.json().catch(() => null);
+        const aggiornato: CustomTag = { ...salvato, ...campi, ...(data?.tag ?? {}) };
+        setCreato(aggiornato);
+        onSaved(aggiornato, false);
+        salvato = aggiornato;
+      }
 
       let esitoProdotti = "";
       const blocchi = blocchiModifiche(corpoModifiche(diff, tutteLeRighe));
@@ -158,11 +206,24 @@ export function ModificaTagDialog({
           body: JSON.stringify(blocchi[i]),
         }).catch(() => null);
         if (res && res.status === 502) {
-          // Il worker ha scritto le aggiunte e non (tutte) le rimozioni: il suo
-          // messaggio dice gia' cosa e' successo. Lo stato del riquadro non e'
-          // piu' quello del DB: si chiude e la pagina ricarica.
-          toast.error(await dettaglio(res) || "Salvataggio riuscito solo in parte: riapri il tag per controllare.");
-          onProdottiCambiati();
+          const detail = await dettaglio(res);
+          if (detail) {
+            // Il worker ha scritto le aggiunte e non (tutte) le rimozioni: il suo
+            // messaggio dice gia' cosa e' successo. Lo stato del riquadro non e'
+            // piu' quello del DB: si chiude e la pagina ricarica.
+            toast.error(detail);
+            onProdottiCambiati();
+            inCorso.current = false;
+            onOpenChange(false);
+            return;
+          }
+          // Senza `detail` il 502 e' del proxy (workerUnreachable): il worker non
+          // ha ricevuto questo blocco, e il riquadro resta com'e' per riprovare.
+          if (i === 0) {
+            toast.error(!tag ? `Tag creato, ma i prodotti non sono stati salvati: ${SERVIZIO_GIU.toLowerCase()}` : SERVIZIO_GIU);
+            return;
+          }
+          toast.error(`Prodotti salvati solo in parte (${testoEsito(aggiunte, tolte)}): ${SERVIZIO_GIU.toLowerCase()}. Riapri il tag per completare.`);
           inCorso.current = false;
           onOpenChange(false);
           return;
@@ -219,7 +280,7 @@ export function ModificaTagDialog({
             orizzontale (375 px di altezza) la lista restava alta 1 px. Ricerca e
             «Seleziona tutti» restano agganciati in cima mentre si scorre. */}
         <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* Campi del tag. La Fase 2 aggiunge qui la «Cartella». */}
+        {/* Campi del tag: emoji, nome, cartella. */}
         <div className="min-w-0 px-5 pt-4 pb-2 space-y-3">
           <div className="flex min-w-0 items-center gap-2">
             <Popover open={tavolozzaAperta} onOpenChange={setTavolozzaAperta}>
@@ -262,6 +323,21 @@ export function ModificaTagDialog({
               autoFocus={!tag}
             />
           </div>
+
+          <label className="flex min-w-0 items-center gap-2">
+            <span className="w-16 shrink-0 text-sm font-medium">Cartella</span>
+            <NativeSelect
+              aria-label="Cartella del tag"
+              value={cartellaScelta}
+              onValueChange={setCartellaScelta}
+              className="min-w-0 flex-1"
+            >
+              <option value="">Senza cartella</option>
+              {cartelleOrdinate.map(c => (
+                <option key={c.id} value={String(c.id)}>{c.nome}</option>
+              ))}
+            </NativeSelect>
+          </label>
 
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">Prodotti</span>

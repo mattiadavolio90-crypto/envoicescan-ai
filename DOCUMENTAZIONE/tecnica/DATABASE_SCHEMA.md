@@ -640,6 +640,21 @@ Logica: se `briefing_date = oggi` E `notif_fingerprint` invariato → restituisc
 | emoji | TEXT (nullable) | |
 | colore | TEXT (nullable) | Hex color |
 | created_at | TIMESTAMPTZ | |
+| cartella_id | BIGINT (nullable) | Cartella della barra di Analisi e Tag; NULL = «Senza cartella». FK composta `(cartella_id, user_id, ristorante_id)` → `custom_tag_cartelle`, `ON DELETE SET NULL (cartella_id)`: la cartella è sempre della stessa sede, eliminarla lascia il tag |
+| preferito | BOOLEAN NOT NULL DEFAULT false | Stella della vista «Preferiti». Pura visualizzazione, fuori da analisi/briefing/margini |
+
+### `custom_tag_cartelle` — Cartelle dei tag di sede
+
+Solo ordine e visualizzazione (`20261013082535_tag_cartelle_preferiti.sql`). Per sede come i tag. RLS ENABLE + FORCE, solo `service_role`.
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | BIGSERIAL (PK) | `UNIQUE (id, user_id, ristorante_id)`, bersaglio della FK composta |
+| user_id | UUID (FK → users, CASCADE) | |
+| ristorante_id | UUID (FK → ristoranti, CASCADE) | |
+| nome | TEXT NOT NULL | Non vuoto; unico per sede su `lower(btrim(nome))` |
+| ordine | INT NOT NULL DEFAULT 0 | Posizione nella barra, riscritta per intero da `PUT /api/tag/cartelle/ordine` |
+| created_at | TIMESTAMPTZ | |
 
 ### `custom_tag_prodotti` — Associazioni tag ↔ prodotti
 

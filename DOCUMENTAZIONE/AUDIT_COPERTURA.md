@@ -2349,6 +2349,46 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   al primo clic fuori: non era fra i rilievi, resta com'e'. Il «solo preferiti» di default su
 >   tutte le sedi e lo spostamento delle cifre di Sushiland (righe «da controllare» fuori dai
 >   totali) erano constatazioni, non difetti.
+> - **13/10/2026 — Analisi e Tag, Fase 2: cartelle trascinabili + stella e vista Preferiti
+>   (Opus negli esecutori; analisi di debug e correzioni con Fable), NON pushato, migration
+>   `20261013082535_tag_cartelle_preferiti.sql` DA APPLICARE al live PRIMA del push.**
+>   Richiesta di Mattia: cartelle per tenere in ordine i tag, solo per la vista e mai per
+>   l'analisi; stella su qualunque tag e vista «Preferiti». **Scelta di Mattia su bozza:** righe
+>   per cartella con maniglia ⋮⋮ e freccia ▾, in alto «★ Preferiti | Tutte». **Fatto:** tabella
+>   `custom_tag_cartelle` per sede (nome unico su `lower(btrim)`, RLS ENABLE+FORCE, REVOKE anche
+>   da anon/authenticated e dalla sequenza), `custom_tags.cartella_id` con **FK composta**
+>   `(cartella_id, user_id, ristorante_id)` e `ON DELETE SET NULL (cartella_id)` (PG ≥ 15: il live
+>   e' 17.6, pgserver 16.2) — e' il DB a rifiutare un tag nella cartella di un'altra sede —,
+>   `custom_tags.preferito`. Worker: `GET /api/tag` con `cartelle` e campi nuovi (502 su errore,
+>   non lista vuota), `POST/PUT/DELETE /api/tag/cartelle…`, `PUT …/ordine` (tutto-o-niente nel
+>   controllo: 404 su id altrui, 409 su elenco non aggiornato), `PATCH /api/tag/{tag_id}` sui soli
+>   campi inviati (`model_fields_set`); tutto in `tag_organizza_service.py`, `db_service` intatto.
+>   Frontend: `barra-cartelle.tsx` con @dnd-kit (MouseSensor 6 px + TouchSensor 250 ms: col dito
+>   lo scorrimento non trascina), logica in `lib/tag-cartelle.ts`, stella nell'intestazione,
+>   «Cartella» nel riquadro, vista e cartelle chiuse in `localStorage` lette solo al montaggio.
+>   **Revisione:** 2 esecutori, 4 revisori avversari (7 rilievi), 52 mutanti (43 uccisi; 6 dei 9
+>   vivi ridondanti/equivalenti per scelta — doppio filtro di sede e FK —, 3 buchi veri), poi
+>   `code-reviewer`. Chiusi:
+>   - riordino interrotto a meta' lasciava un ordine misto sul DB e la UI rimetteva quello di
+>     prima: ora il worker risponde **502 col detail «ricarica»** e la barra ricarica (la RPC
+>     tutto-o-niente e' rimandata: pura visualizzazione, il riordino dopo riscrive tutto);
+>   - rollback ottimistico **condizionale** e un solo PUT /ordine in volo (coda), come `elimina`;
+>   - nel riquadro il secondo Salva confrontava con la copia presa all'apertura: ora con
+>     l'ultimo stato salvato (`creato ?? tag`);
+>   - l'export GDPR art. 20 non portava i nomi delle cartelle: aggiunta `custom_tag_cartelle`;
+>   - PATCH di emoji/colore mai provata; CHECK del colore (23514) → 400; spareggio per id delle
+>     cartelle; REVOKE sulla sequenza provata con un GRANT prima; tag nuovo senza stella; tutte
+>     le rotte `/api/tag*` su `_p(T)`.
+>   **Presidio nuovo:** `test_proxy_metodo_inoltrato_frontend.py` controlla anche il **percorso**
+>   (`${x}` = `[x]`, 2 eccezioni dichiarate su 76): un PUT inoltrato a `/api/tag/{id}` avrebbe
+>   rinominato il TAG con lo stesso numero della cartella e il controllo del metodo restava verde.
+>   **Mutazione sulle correzioni:** 13/13 uccisi (11 veloci + 2 sulla migration in `-m sql`).
+>   **Prove:** 61 test worker, 14 `-m sql` cartelle (FK composta, SET NULL, ruoli, RLS), 52 lib,
+>   5 presidio proxy, 6 ricette d'isolamento (378 `-m sql` verdi fra cartelle e isolamento);
+>   `tsc` ed eslint puliti; OpenAPI 222 endpoint senza drift. **Non fatto:** pagina non aperta
+>   nel browser (nessuna sede di prova; il Next locale scrive sul DB vero): trascinamento e
+>   dialoghi vanno provati da Mattia dopo il deploy. Al deploy: migration sul live PRIMA del
+>   push, altrimenti `GET /api/tag` risponde 502 e la pagina resta senza tag.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

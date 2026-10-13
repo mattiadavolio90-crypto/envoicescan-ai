@@ -507,6 +507,7 @@ def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[st
         ("diario_eventi", "user_id", "diario_eventi"),
         ("note_diario", "user_id", "note_diario"),
         ("custom_tags", "user_id", "custom_tags"),
+        ("custom_tag_cartelle", "user_id", "custom_tag_cartelle"),
         ("turni_personale", "user_id", "turni_personale"),
         ("notification_inbox", "user_id", "notifiche"),
         ("invio_commercialista_config", "user_id", "invio_commercialista_configurazioni"),

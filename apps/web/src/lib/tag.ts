@@ -14,6 +14,18 @@ export type CustomTag = {
   emoji: string | null;
   colore: string | null;
   created_at: string;
+  // Opzionali: le risposte di POST/PUT e un worker ancora senza la migration
+  // delle cartelle non li portano. Assente = «Senza cartella» e senza stella.
+  cartella_id?: number | null;
+  preferito?: boolean;
+};
+
+// Solo per organizzare la barra dei tag: non entra in nessuna analisi.
+export type CartellaTag = {
+  id: number;
+  nome: string;
+  ordine: number;
+  created_at: string;
 };
 
 export type TagProdotto = {

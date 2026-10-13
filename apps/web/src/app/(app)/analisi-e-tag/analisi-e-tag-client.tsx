@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus, X, RefreshCw, Download, ChevronDown, ChevronUp,
-  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2, Pencil,
+  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2, Pencil, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -16,11 +16,40 @@ import { mostraGuasto } from "@/lib/esito-caricamento";
 import { formatEuro } from "@/lib/format";
 import { intervalloPeriodo } from "@/lib/periodo";
 import type {
-  CustomTag, TagSuggestion, TagAnalisiResponse, TagProdotto,
+  CartellaTag, CustomTag, TagSuggestion, TagAnalisiResponse, TagProdotto,
 } from "@/lib/tag";
 import { EMOJI_TAG } from "@/lib/tag";
 import { etichettaProdotti } from "@/lib/tag-selezione";
+import {
+  type VistaTag,
+  leggiStatoComodo, primoTagMostrato, raggruppa, scriviStatoComodo, soloPreferiti,
+} from "@/lib/tag-cartelle";
+import { BarraCartelle } from "./barra-cartelle";
 import { ModificaTagDialog } from "./modifica-tag-dialog";
+
+// Vista scelta e cartelle chiuse: comodita' di chi guarda, per browser. Lo stato
+// vero (cartelle, stelle) sta nel DB.
+const CHIAVE_STATO_COMODO = "oneflux:analisi-e-tag:barra";
+
+function leggiStorage(): string | null {
+  try {
+    return window.localStorage.getItem(CHIAVE_STATO_COMODO);
+  } catch {
+    return null;
+  }
+}
+
+function scriviStorage(valore: string) {
+  try {
+    window.localStorage.setItem(CHIAVE_STATO_COMODO, valore);
+  } catch {
+    // Finestra privata o storage bloccato: la barra funziona lo stesso.
+  }
+}
+
+function primoDaMostrare(tags: CustomTag[], cartelle: CartellaTag[], vista: VistaTag, chiuse: number[]) {
+  return primoTagMostrato(vista, raggruppa(tags, cartelle), soloPreferiti(tags), chiuse);
+}
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
@@ -515,10 +544,12 @@ function SuggerimentiBanner({
 /* ── Componente principale ── */
 export function AnalisiETagClient({
   initialTags,
+  initialCartelle,
   initialSuggestions,
   caricamentoFallito = false,
 }: {
   initialTags: CustomTag[];
+  initialCartelle: CartellaTag[];
   initialSuggestions: TagSuggestion[];
   /**
    * Il caricamento server e' fallito (worker giu', timeout): senza questo flag
@@ -528,8 +559,16 @@ export function AnalisiETagClient({
   caricamentoFallito?: boolean;
 }) {
   const [tags, setTags] = useState<CustomTag[]>(initialTags);
+  const [cartelle, setCartelle] = useState<CartellaTag[]>(initialCartelle);
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>(initialSuggestions);
-  const [selectedTagId, setSelectedTagId] = useState<number | null>(initialTags[0]?.id ?? null);
+  // Il server non vede localStorage: si parte dalla vista «Tutte» e il montaggio
+  // corregge con la vista ricordata.
+  const [selectedTagId, setSelectedTagId] = useState<number | null>(
+    () => primoDaMostrare(initialTags, initialCartelle, "tutte", []),
+  );
+  const [vista, setVista] = useState<VistaTag>("tutte");
+  const [chiuse, setChiuse] = useState<number[]>([]);
+  const [comodoLetto, setComodoLetto] = useState(false);
 
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [mese, setMese] = useState<number | null>(null);
@@ -612,6 +651,7 @@ export function AnalisiETagClient({
       fetch("/api/tag/suggestions").then(r => r.json()).catch(() => null),
     ]);
     if (tagsRes?.tags) setTags(tagsRes.tags);
+    if (Array.isArray(tagsRes?.cartelle)) setCartelle(tagsRes.cartelle);
     if (sugRes?.suggestions) setSuggestions(sugRes.suggestions);
   }, []);
 
@@ -641,13 +681,41 @@ export function AnalisiETagClient({
     loadProdotti(id);
   }
 
-  // Mount: carica analisi + prodotti del primo tag selezionato
+  // Mount: vista ricordata, poi analisi + prodotti del primo tag mostrato
   useEffect(() => {
-    if (selectedTagId) {
-      loadAnalisi(selectedTagId, anno, mese);
-      loadProdotti(selectedTagId);
+    const stato = leggiStatoComodo(leggiStorage());
+    setVista(stato.vista);
+    setChiuse(stato.chiuse);
+    setComodoLetto(true);
+    const primo = primoDaMostrare(initialTags, initialCartelle, stato.vista, stato.chiuse);
+    setSelectedTagId(primo);
+    if (primo) {
+      loadAnalisi(primo, anno, mese);
+      loadProdotti(primo);
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (comodoLetto) scriviStorage(scriviStatoComodo({ vista, chiuse }));
+  }, [comodoLetto, vista, chiuse]);
+
+  // ── Stella: solo organizzazione, non cambia l'analisi ──
+  async function alternaPreferito(tag: CustomTag) {
+    const nuovo = !tag.preferito;
+    setTags(prev => prev.map(t => (t.id === tag.id ? { ...t, preferito: nuovo } : t)));
+    try {
+      const res = await fetch(`/api/tag/${tag.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferito: nuovo }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // Indietro solo se nessun altro clic ha gia' cambiato la stella nel frattempo.
+      setTags(prev => prev.map(t => (t.id === tag.id && t.preferito === nuovo ? { ...t, preferito: !nuovo } : t)));
+      toast.error("Non sono riuscito ad aggiornare i preferiti");
+    }
+  }
 
   useEffect(() => {
     if (chiusureDialog > 0 && selectedTagId) {
@@ -667,11 +735,11 @@ export function AnalisiETagClient({
       setTags(newTags);
       setDeleteConfirm(null);
       if (selectedTagId === tagId) {
-        const next = newTags[0] ?? null;
-        setSelectedTagId(next?.id ?? null);
+        const next = primoDaMostrare(newTags, cartelle, vista, chiuse);
+        setSelectedTagId(next);
         setAnalisi(null);
         setProdotti([]);
-        if (next) { loadAnalisiPeriodoCorrente(next.id); loadProdotti(next.id); }
+        if (next) { loadAnalisiPeriodoCorrente(next); loadProdotti(next); }
       }
     } catch {
       toast.error("Errore nell'eliminazione");
@@ -741,60 +809,65 @@ export function AnalisiETagClient({
         onChiudi={() => setSuggerimentiAperti(false)}
       />
 
-      {/* ── Chip tag + azioni ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <InfoPopover title="Come funzionano i Tag">
-          <p className="text-muted-foreground">
-            I tag sono <strong className="text-foreground">etichette tue</strong> per raggruppare prodotti che l&apos;app non distingue da sola (es. &ldquo;Bio&rdquo;, &ldquo;Fornitore X&rdquo;, &ldquo;Vegano&rdquo;), e analizzarne spesa e andamento insieme.
-          </p>
-          <div className="space-y-1.5 text-muted-foreground">
-            <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em> e spunta i prodotti che vuoi raggrupparvi. Per cambiarlo più tardi (nome, emoji, prodotti da aggiungere o togliere) usa <em>Modifica tag</em> accanto al suo nome.</p>
-            <p><strong className="text-foreground">Suggerimenti</strong>: l&apos;app propone tag pronti in base a quello che compri spesso — accettali con un clic.</p>
-            <p>Seleziona un tag per vedere <strong className="text-foreground">quanto spendi</strong>, il trend nel tempo e i fornitori coinvolti, nel periodo scelto.</p>
-          </div>
-        </InfoPopover>
-        {tags.map(tag => (
-          <FilterChip key={tag.id} active={tag.id === selectedTagId} onClick={() => selectTag(tag.id)}>
-            {tag.emoji && <span>{tag.emoji}</span>}
-            {tag.nome}
+      {/* ── Cartelle e tag + azioni ── */}
+      <BarraCartelle
+        tags={tags}
+        cartelle={cartelle}
+        setTags={setTags}
+        setCartelle={setCartelle}
+        vista={vista}
+        onVista={setVista}
+        chiuse={chiuse}
+        onChiuse={setChiuse}
+        selectedTagId={selectedTagId}
+        onSelezionaTag={selectTag}
+        onNuovoTag={() => setDialogTag({ open: true, tag: null })}
+        onRicarica={reloadTags}
+        prima={
+          <InfoPopover title="Come funzionano i Tag">
+            <p className="text-muted-foreground">
+              I tag sono <strong className="text-foreground">etichette tue</strong> per raggruppare prodotti che l&apos;app non distingue da sola (es. &ldquo;Bio&rdquo;, &ldquo;Fornitore X&rdquo;, &ldquo;Vegano&rdquo;), e analizzarne spesa e andamento insieme.
+            </p>
+            <div className="space-y-1.5 text-muted-foreground">
+              <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em> e spunta i prodotti che vuoi raggrupparvi. Per cambiarlo più tardi (nome, emoji, prodotti da aggiungere o togliere) usa <em>Modifica tag</em> accanto al suo nome.</p>
+              <p><strong className="text-foreground">Cartelle e preferiti</strong> servono solo a tenere in ordine la barra: raccogli i tag in cartelle (trascinale per riordinarle, trascina un tag per spostarlo) e segna con la ☆ quelli che usi di più. Non cambiano nessuna analisi.</p>
+              <p><strong className="text-foreground">Suggerimenti</strong>: l&apos;app propone tag pronti in base a quello che compri spesso — accettali con un clic.</p>
+              <p>Seleziona un tag per vedere <strong className="text-foreground">quanto spendi</strong>, il trend nel tempo e i fornitori coinvolti, nel periodo scelto.</p>
+            </div>
+          </InfoPopover>
+        }
+        dopo={
+          <FilterChip
+            active={suggerimentiAperti && suggestions.length > 0}
+            onClick={async () => {
+              if (suggestions.length > 0) { setSuggerimentiAperti(v => !v); return; }
+              await refreshSuggestions();
+              await reloadTags();
+              setSuggerimentiAperti(true);
+            }}
+            disabled={refreshingSuggestions}
+            className={`ml-auto ${
+              suggestions.length === 0
+                ? "bg-muted"
+                : suggerimentiAperti
+                  ? "bg-incerto/10 border-incerto text-incerto ring-2 ring-incerto/40 hover:bg-incerto/10 hover:text-incerto"
+                  : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10 hover:text-incerto"
+            }`}
+            title={suggestions.length > 0 ? "Mostra o nascondi i suggerimenti" : "Analizza prodotti non taggati e trova suggerimenti"}
+          >
+            {refreshingSuggestions
+              ? <RefreshCw className="animate-spin" />
+              : <Lightbulb />
+            }
+            {refreshingSuggestions
+              ? "Analisi in corso…"
+              : suggestions.length > 0
+                ? <><span className="inline-flex items-center justify-center size-5 rounded-full bg-incerto text-white text-[10px] font-bold">{suggestions.length}</span> Suggerimenti</>
+                : "Suggerimenti"
+            }
           </FilterChip>
-        ))}
-        <FilterChip className="border-dashed" onClick={() => setDialogTag({ open: true, tag: null })}>
-          <Plus />
-          Nuovo tag
-        </FilterChip>
-
-        {/* Bottone suggerimenti — widget colorato */}
-        <FilterChip
-          active={suggerimentiAperti && suggestions.length > 0}
-          onClick={async () => {
-            if (suggestions.length > 0) { setSuggerimentiAperti(v => !v); return; }
-            await refreshSuggestions();
-            await reloadTags();
-            setSuggerimentiAperti(true);
-          }}
-          disabled={refreshingSuggestions}
-          className={`ml-auto ${
-            suggestions.length === 0
-              ? "bg-muted"
-              : suggerimentiAperti
-                ? "bg-incerto/10 border-incerto text-incerto ring-2 ring-incerto/40 hover:bg-incerto/10 hover:text-incerto"
-                : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10 hover:text-incerto"
-          }`}
-          title={suggestions.length > 0 ? "Mostra o nascondi i suggerimenti" : "Analizza prodotti non taggati e trova suggerimenti"}
-        >
-          {refreshingSuggestions
-            ? <RefreshCw className="animate-spin" />
-            : <Lightbulb />
-          }
-          {refreshingSuggestions
-            ? "Analisi in corso…"
-            : suggestions.length > 0
-              ? <><span className="inline-flex items-center justify-center size-5 rounded-full bg-incerto text-white text-[10px] font-bold">{suggestions.length}</span> Suggerimenti</>
-              : "Suggerimenti"
-          }
-        </FilterChip>
-      </div>
+        }
+      />
 
       {/* ── Empty state ── */}
       {tags.length === 0 && (
@@ -828,6 +901,16 @@ export function AnalisiETagClient({
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {selectedTag.emoji && <span className="text-2xl">{selectedTag.emoji}</span>}
               <h2 className="text-lg font-semibold">{selectedTag.nome}</h2>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-pressed={!!selectedTag.preferito}
+                aria-label={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+                title={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+                onClick={() => alternaPreferito(selectedTag)}
+              >
+                <Star className={selectedTag.preferito ? "fill-incerto text-incerto" : "text-muted-foreground"} />
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setDialogTag({ open: true, tag: selectedTag })}>
                 <Pencil />
                 Modifica tag
@@ -1040,6 +1123,7 @@ export function AnalisiETagClient({
         }}
         onProdottiCambiati={() => { dialogHaModificato.current = true; }}
         tag={dialogTag.tag}
+        cartelle={cartelle}
         onSaved={(saved, isNew) => {
           dialogHaModificato.current = true;
           if (isNew) {
@@ -1048,7 +1132,7 @@ export function AnalisiETagClient({
             setAnalisi(null);
             setProdotti([]);
           } else {
-            setTags(prev => prev.map(t => (t.id === saved.id ? saved : t)));
+            setTags(prev => prev.map(t => (t.id === saved.id ? { ...t, ...saved } : t)));
           }
         }}
       />

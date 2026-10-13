@@ -66,6 +66,22 @@ class TagUpdateRequest(BaseModel):
     colore: Optional[str] = None
 
 
+class TagPatchRequest(BaseModel):
+    nome: Optional[str] = None
+    emoji: Optional[str] = None
+    colore: Optional[str] = None
+    cartella_id: Optional[int] = None
+    preferito: Optional[bool] = None
+
+
+class CartellaRequest(BaseModel):
+    nome: str
+
+
+class RiordinaCartelleRequest(BaseModel):
+    ids: list[int]
+
+
 class AssociazioneItem(BaseModel):
     descrizione: str
     descrizione_key: Optional[str] = None
@@ -126,13 +142,85 @@ def _parse_date_param(value: str, name: str):
 # ─── Route ────────────────────────────────────────────────────────────────────
 @router.get("/api/tag", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
 def list_tags(authorization: Optional[str] = Header(None)):
-    from services.db_service import get_custom_tags
+    from services.tag_organizza_service import lista_cartelle, lista_tag_organizzati
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
-    return {"tags": get_custom_tags(str(user["id"]), ristorante_id)}
+    try:
+        return {
+            "tags": lista_tag_organizzati(str(user["id"]), ristorante_id),
+            "cartelle": lista_cartelle(str(user["id"]), ristorante_id),
+        }
+    except Exception as e:
+        logger.error(f"list_tags ristorante_id={ristorante_id}: {e}")
+        raise HTTPException(status_code=502, detail="Impossibile caricare i tag: riprova")
+
+
+def _organizza_http(funzione, *args):
+    from services.tag_organizza_service import Conflitto, NonTrovato, ScritturaParziale
+    try:
+        return funzione(*args)
+    except NonTrovato as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Conflitto as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ScritturaParziale as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/api/tag/cartelle", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
+def create_cartella(body: CartellaRequest, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import crea_cartella
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    return {"cartella": _organizza_http(crea_cartella, str(user["id"]), ristorante_id, body.nome)}
+
+
+@router.put("/api/tag/cartelle/ordine", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
+def riordina_cartelle_endpoint(body: RiordinaCartelleRequest, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import riordina_cartelle
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    _organizza_http(riordina_cartelle, str(user["id"]), ristorante_id, body.ids)
+    return {"ok": True}
+
+
+@router.put("/api/tag/cartelle/{cartella_id}", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
+def rinomina_cartella_endpoint(
+    cartella_id: int, body: CartellaRequest, authorization: Optional[str] = Header(None)
+):
+    from services.tag_organizza_service import rinomina_cartella
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    cartella = _organizza_http(
+        rinomina_cartella, int(cartella_id), str(user["id"]), ristorante_id, body.nome
+    )
+    return {"cartella": cartella}
+
+
+@router.delete("/api/tag/cartelle/{cartella_id}", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
+def elimina_cartella_endpoint(cartella_id: int, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import elimina_cartella
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    _organizza_http(elimina_cartella, int(cartella_id), str(user["id"]), ristorante_id)
+    return {"ok": True}
 
 
 @router.post("/api/tag", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
@@ -163,6 +251,20 @@ def update_tag(tag_id: int, body: TagUpdateRequest, authorization: Optional[str]
     if not nome:
         raise HTTPException(status_code=400, detail="Nome tag obbligatorio")
     tag = aggiorna_tag(int(tag_id), str(user["id"]), nome, body.emoji, body.colore)
+    return {"tag": tag}
+
+
+@router.patch("/api/tag/{tag_id}", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
+def patch_tag(tag_id: int, body: TagPatchRequest, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import aggiorna_tag_parziale
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    _assert_tag_ownership(sb, tag_id, str(user["id"]), ristorante_id)
+    campi = {k: getattr(body, k) for k in body.model_fields_set}
+    tag = _organizza_http(aggiorna_tag_parziale, int(tag_id), str(user["id"]), ristorante_id, campi)
     return {"tag": tag}
 
 
