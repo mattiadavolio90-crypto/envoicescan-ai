@@ -30,6 +30,7 @@ import {
   confermaEliminazioneValida,
   mostraEmailSettimanale,
   mostraRicaviNoIva,
+  ricaviNoIvaNellaVista,
   sedeEliminabile,
   idsDaEliminare,
   euroNoIvaDaEliminare,
@@ -891,7 +892,7 @@ export function AccountClient({
           <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />
         )}
         <CambioPasswordForm />
-        {!data.sotto_utente && <RicaviNoIvaCard />}
+        {!data.sotto_utente && ricaviNoIvaNellaVista(true, sedi.length) && <RicaviNoIvaCard />}
       </div>
     );
   }
@@ -1005,8 +1006,8 @@ export function AccountClient({
       {/* Cambio password */}
       <CambioPasswordForm />
 
-      {/* Ricavi senza IVA — elimina e blocca per sede, accanto alla zona pericolosa */}
-      {!data.sotto_utente && <RicaviNoIvaCard />}
+      {/* Ricavi senza IVA — con piu' sedi solo nella vista catena */}
+      {!data.sotto_utente && ricaviNoIvaNellaVista(false, sedi.length) && <RicaviNoIvaCard />}
 
       {/* Privacy e dati (GDPR) — solo clienti: export Art.20 + elimina account Art.17 */}
       {!data.is_admin && !data.sotto_utente && <PrivacyGdprCard />}

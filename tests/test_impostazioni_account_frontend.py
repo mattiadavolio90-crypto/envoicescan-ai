@@ -195,7 +195,8 @@ def test_la_scheda_email_settimanale_compare_solo_se_abilitata(data, atteso):
 
 # ─── Ricavi senza IVA: chi vede il riquadro e quali sedi si mandano ─────────
 
-_NOIVA = ["mostraRicaviNoIva", "sedeEliminabile", "idsDaEliminare", "euroNoIvaDaEliminare"]
+_NOIVA = ["mostraRicaviNoIva", "ricaviNoIvaNellaVista", "sedeEliminabile", "idsDaEliminare",
+          "euroNoIvaDaEliminare"]
 
 
 def _sede(id_, euro=0, escluso=False):
@@ -254,3 +255,15 @@ def test_sede_esclusa_con_no_iva_rimasto_resta_eliminabile():
 def test_l_importo_del_dialog_somma_solo_le_sedi_scelte():
     sedi = [_sede("a", euro=100.5), _sede("b", euro=50), _sede("c", euro=7)]
     assert _euro(sedi, ["a", "c"]) == 107.5
+
+
+@pytest.mark.parametrize("chain, num_sedi, atteso", [
+    (True, 4, True),     # catena: si sceglie fra le sedi
+    (False, 4, False),   # dentro un punto vendita di una catena: niente, si fa dalla catena
+    (False, 2, False),
+    (False, 1, True),    # ristorante singolo: non c'e' una vista catena
+    (False, 0, True),
+])
+def test_con_piu_sedi_il_riquadro_sta_solo_nella_catena(chain, num_sedi, atteso):
+    assert esegui_ts(MODULO, "emit(m.ricaviNoIvaNellaVista(input.chain, input.n));",
+                     argomento={"chain": chain, "n": num_sedi}, richiede=_NOIVA) is atteso

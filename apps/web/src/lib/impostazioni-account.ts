@@ -116,6 +116,12 @@ export function mostraRicaviNoIva(sedi: SedeRicaviNoIva[] | null | undefined): b
   return (sedi ?? []).some((s) => s.escluso || (s.euro_noiva ?? 0) !== 0);
 }
 
+// In un account con piu' sedi il riquadro sta solo nella vista catena: dentro
+// un punto vendita non si toccano le altre sedi.
+export function ricaviNoIvaNellaVista(chain: boolean, numSedi: number): boolean {
+  return chain || numSedi <= 1;
+}
+
 // Si puo' eliminare su una sede che non e' ancora esclusa, o che lo e' ma ha
 // ancora no IVA (per esempio arrivato prima dell'esclusione da un altro canale).
 export function sedeEliminabile(s: SedeRicaviNoIva): boolean {
