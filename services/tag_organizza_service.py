@@ -1,11 +1,14 @@
-"""Modifica in blocco dei prodotti di un tag di sede: aggiunte e rimozioni in una chiamata.
+"""Modifica in blocco dei prodotti di un tag e organizzazione dei tag (cartelle, stella).
 
 Il chiamante verifica PRIMA che il tag sia dell'utente e della sede
 (`_assert_tag_ownership` nel router): le rimozioni filtrano comunque tag, utente
 e sede, cosi' una chiave presente anche in un altro tag o in un'altra sede non
-viene mai toccata.
+viene mai toccata. Cartelle e stella servono anche i tag di catena
+(`AMBITO_CATENA`); i prodotti di un tag di catena li modifica
+`services/gruppo_tag_organizza_service.py` coi controlli e le rimozioni di qui.
 """
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from services import db_service
 
@@ -42,25 +45,25 @@ def _chiavi_da_togliere(togli: List[Optional[str]]) -> List[str]:
     return viste
 
 
-def _righe_del_tag(supabase_client, tag_id: int, user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+def _righe_prodotti(supabase_client, tabella: str, tag_id: int, chiave: Dict[str, str]) -> List[Dict[str, Any]]:
     righe: List[Dict[str, Any]] = []
     inizio = 0
     while True:
-        response = (
-            supabase_client.table("custom_tag_prodotti")
-            .select("id,descrizione_key")
-            .eq("tag_id", int(tag_id))
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .order("id")
-            .range(inizio, inizio + PAGINA_LETTURA - 1)
-            .execute()
-        )
+        query = supabase_client.table(tabella).select("id,descrizione_key").eq("tag_id", int(tag_id))
+        for colonna, valore in chiave.items():
+            query = query.eq(colonna, valore)
+        response = query.order("id").range(inizio, inizio + PAGINA_LETTURA - 1).execute()
         pagina = response.data or []
         righe.extend(pagina)
         if len(pagina) < PAGINA_LETTURA:
             return righe
         inizio += PAGINA_LETTURA
+
+
+def _righe_del_tag(supabase_client, tag_id: int, user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+    return _righe_prodotti(
+        supabase_client, "custom_tag_prodotti", tag_id, {"user_id": user_id, "ristorante_id": ristorante_id}
+    )
 
 
 def _id_da_togliere(righe: List[Dict[str, Any]], chiavi: List[str]) -> List[int]:
@@ -88,27 +91,18 @@ def _id_da_togliere(righe: List[Dict[str, Any]], chiavi: List[str]) -> List[int]
     return ids
 
 
-def applica_modifiche_prodotti(
-    tag_id: int,
-    user_id: str,
-    ristorante_id: str,
-    aggiungi: Optional[List[Dict[str, Any]]],
-    togli: Optional[List[str]],
-) -> Dict[str, Any]:
-    """Aggiunge e toglie prodotti da un tag. Ritorna {aggiunte, tolte, associazioni}.
+def chiavi_da_togliere_coerenti(
+    aggiungi: List[Dict[str, Any]], togli: List[Optional[str]]
+) -> List[str]:
+    """Le chiavi da togliere, dopo aver rifiutato le richieste incoerenti.
 
     ValueError se una lista supera MAX_ELEMENTI_PER_LISTA o se lo stesso prodotto
-    e' sia da aggiungere sia da togliere: la richiesta e' incoerente e non si
-    sceglie a caso quale delle due vince. PermissionError (da
-    aggiungi_associazioni) se il tag non e' dell'utente.
+    e' sia da aggiungere sia da togliere: non si sceglie a caso quale vince.
     """
-    aggiungi = list(aggiungi or [])
-    togli = list(togli or [])
     if len(aggiungi) > MAX_ELEMENTI_PER_LISTA or len(togli) > MAX_ELEMENTI_PER_LISTA:
         raise ValueError(
             f"Troppi prodotti in una sola modifica (massimo {MAX_ELEMENTI_PER_LISTA} per lista)"
         )
-
     chiavi_togli = _chiavi_da_togliere(togli)
     in_conflitto = _chiavi_aggiunte(aggiungi).intersection(
         db_service._normalize_custom_tag_key(c) for c in chiavi_togli
@@ -118,6 +112,50 @@ def applica_modifiche_prodotti(
         raise ValueError(
             f"Lo stesso prodotto e' sia da aggiungere sia da togliere: {esempio}"
         )
+    return chiavi_togli
+
+
+def togli_prodotti(
+    supabase_client, tabella: str, tag_id: int, chiave: Dict[str, str], chiavi_togli: List[str], aggiunte: int
+) -> int:
+    """Toglie dal tag le righe delle chiavi date, a lotti per id. Ritorna quante.
+
+    RimozioniNonRiuscite se la lettura o un lotto falliscono: le aggiunte (gia'
+    scritte) restano, e il messaggio dice quante.
+    """
+    try:
+        ids = _id_da_togliere(_righe_prodotti(supabase_client, tabella, tag_id, chiave), chiavi_togli)
+    except Exception as e:
+        raise RimozioniNonRiuscite(f"aggiunte={aggiunte} lettura: {e}") from e
+    tolte = 0
+    for inizio in range(0, len(ids), LOTTO_RIMOZIONI):
+        lotto = ids[inizio:inizio + LOTTO_RIMOZIONI]
+        query = supabase_client.table(tabella).delete().eq("tag_id", int(tag_id))
+        for colonna, valore in chiave.items():
+            query = query.eq(colonna, valore)
+        try:
+            response = query.in_("id", lotto).execute()
+        except Exception as e:
+            raise RimozioniNonRiuscite(f"aggiunte={aggiunte} tolte={tolte}: {e}") from e
+        tolte += len(response.data or [])
+    return tolte
+
+
+def applica_modifiche_prodotti(
+    tag_id: int,
+    user_id: str,
+    ristorante_id: str,
+    aggiungi: Optional[List[Dict[str, Any]]],
+    togli: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Aggiunge e toglie prodotti da un tag. Ritorna {aggiunte, tolte, associazioni}.
+
+    ValueError per una richiesta incoerente (chiavi_da_togliere_coerenti).
+    PermissionError (da aggiungi_associazioni) se il tag non e' dell'utente.
+    """
+    aggiungi = list(aggiungi or [])
+    togli = list(togli or [])
+    chiavi_togli = chiavi_da_togliere_coerenti(aggiungi, togli)
 
     associazioni: List[Dict[str, Any]] = []
     if aggiungi:
@@ -126,31 +164,10 @@ def applica_modifiche_prodotti(
     tolte = 0
     try:
         if chiavi_togli:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-            try:
-                ids = _id_da_togliere(
-                    _righe_del_tag(supabase_client, tag_id, user_id, ristorante_id), chiavi_togli
-                )
-            except Exception as e:
-                raise RimozioniNonRiuscite(f"aggiunte={len(associazioni)} lettura: {e}") from e
-            for inizio in range(0, len(ids), LOTTO_RIMOZIONI):
-                lotto = ids[inizio:inizio + LOTTO_RIMOZIONI]
-                try:
-                    response = (
-                        supabase_client.table("custom_tag_prodotti")
-                        .delete()
-                        .eq("tag_id", int(tag_id))
-                        .eq("user_id", user_id)
-                        .eq("ristorante_id", ristorante_id)
-                        .in_("id", lotto)
-                        .execute()
-                    )
-                except Exception as e:
-                    raise RimozioniNonRiuscite(
-                        f"aggiunte={len(associazioni)} tolte={tolte}: {e}"
-                    ) from e
-                tolte += len(response.data or [])
+            tolte = togli_prodotti(
+                _client(), "custom_tag_prodotti", tag_id,
+                {"user_id": user_id, "ristorante_id": ristorante_id}, chiavi_togli, len(associazioni),
+            )
     finally:
         if aggiungi or chiavi_togli:
             db_service.clear_tags_cache()
@@ -160,8 +177,10 @@ def applica_modifiche_prodotti(
 
 # ─── Cartelle e preferiti (Fase 2) ────────────────────────────────────────────
 # Pura visualizzazione: niente di questo entra in analizza_tag, nel briefing,
-# nella catena o nei margini. Tutto e' per sede (user_id + ristorante_id) come i
-# tag; la FK composta custom_tags -> custom_tag_cartelle fa da seconda rete.
+# nell'analisi di catena o nei margini. Le stesse funzioni servono due AMBITI:
+# la sede (custom_tags, chiave user_id + ristorante_id) e la catena
+# (gruppo_tags, chiave user_id). In tutti e due la FK composta tag -> cartella
+# fa da seconda rete. Le firme pubbliche senza ambito sono quelle della sede.
 
 CAMPI_TAG = "id,nome,emoji,colore,created_at,cartella_id,preferito"
 CAMPI_CARTELLA = "id,nome,ordine,created_at"
@@ -172,15 +191,30 @@ MAX_NOME_CARTELLA = 60
 
 
 class NonTrovato(Exception):
-    """Il tag o la cartella non sono della sede del chiamante (-> 404)."""
+    """Il tag o la cartella non sono dell'ambito del chiamante (-> 404)."""
 
 
 class Conflitto(Exception):
-    """Nome gia' usato nella sede, o elenco da riordinare non aggiornato (-> 409)."""
+    """Nome gia' usato nell'ambito, o elenco da riordinare non aggiornato (-> 409)."""
 
 
 class ScritturaParziale(Exception):
     """Riordino interrotto a meta': sul DB resta un ordine misto (-> 502, il client ricarica)."""
+
+
+@dataclass(frozen=True)
+class Ambito:
+    """Dove vivono tag e cartelle, e con quale chiave si filtrano.
+
+    `chiave` elenca le colonne che ogni lettura e scrittura filtra (e che ogni
+    INSERT scrive). `cartella_propria` e `svuota_cache` passano per nome dal
+    modulo, cosi' un test che le sostituisce le sostituisce davvero.
+    """
+    tabella_tag: str
+    tabella_cartelle: str
+    chiave: Tuple[str, ...]
+    cartella_propria: Callable[[Any, int, Dict[str, str]], Optional[Dict[str, Any]]]
+    svuota_cache: Callable[[], None]
 
 
 def _client():
@@ -225,43 +259,22 @@ def _cartella_normalizzata(riga: Dict[str, Any]) -> Dict[str, Any]:
     return {k: riga.get(k) for k in CAMPI_CARTELLA.split(",")}
 
 
-def lista_tag_organizzati(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
-    """I tag della sede con cartella e stella, in ordine di nome.
+def _filtra(query, chiave: Dict[str, str]):
+    for colonna, valore in chiave.items():
+        query = query.eq(colonna, valore)
+    return query
 
-    Non passa da `db_service.get_custom_tags` (cachata, select senza le colonne
-    nuove). Un errore di lettura sale: una lista vuota direbbe «nessun tag».
-    """
+
+def _chiave(ambito: Ambito, chiave: Dict[str, str]) -> Dict[str, str]:
+    """La chiave con TUTTE e sole le colonne dell'ambito, mai vuote."""
+    if set(chiave) != set(ambito.chiave) or not all(chiave.values()):
+        raise ValueError(f"Chiave {sorted(chiave)} non valida per {ambito.tabella_tag}")
+    return {c: chiave[c] for c in ambito.chiave}
+
+
+def _cartella_propria(sb, ambito: Ambito, cartella_id: int, chiave: Dict[str, str]) -> Optional[Dict[str, Any]]:
     response = (
-        _client().table("custom_tags")
-        .select(CAMPI_TAG)
-        .eq("user_id", user_id)
-        .eq("ristorante_id", ristorante_id)
-        .order("nome")
-        .execute()
-    )
-    return [_tag_normalizzato(r) for r in (response.data or [])]
-
-
-def lista_cartelle(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
-    response = (
-        _client().table("custom_tag_cartelle")
-        .select(CAMPI_CARTELLA)
-        .eq("user_id", user_id)
-        .eq("ristorante_id", ristorante_id)
-        .order("ordine")
-        .order("id")
-        .execute()
-    )
-    return [_cartella_normalizzata(r) for r in (response.data or [])]
-
-
-def _cartella_della_sede(sb, cartella_id: int, user_id: str, ristorante_id: str) -> Optional[Dict[str, Any]]:
-    response = (
-        sb.table("custom_tag_cartelle")
-        .select(CAMPI_CARTELLA)
-        .eq("id", int(cartella_id))
-        .eq("user_id", user_id)
-        .eq("ristorante_id", ristorante_id)
+        _filtra(sb.table(ambito.tabella_cartelle).select(CAMPI_CARTELLA).eq("id", int(cartella_id)), chiave)
         .limit(1)
         .execute()
     )
@@ -269,20 +282,65 @@ def _cartella_della_sede(sb, cartella_id: int, user_id: str, ristorante_id: str)
     return righe[0] if righe else None
 
 
-def crea_cartella(user_id: str, ristorante_id: str, nome: Optional[str]) -> Dict[str, Any]:
-    """Nuova cartella in fondo alla barra (ordine = massimo della sede + 1)."""
+def _cartella_della_sede(sb, cartella_id: int, user_id: str, ristorante_id: str) -> Optional[Dict[str, Any]]:
+    return _cartella_propria(sb, AMBITO_SEDE, cartella_id, {"user_id": user_id, "ristorante_id": ristorante_id})
+
+
+def _cartella_dell_account(sb, cartella_id: int, user_id: str) -> Optional[Dict[str, Any]]:
+    return _cartella_propria(sb, AMBITO_CATENA, cartella_id, {"user_id": user_id})
+
+
+AMBITO_SEDE = Ambito(
+    tabella_tag="custom_tags",
+    tabella_cartelle="custom_tag_cartelle",
+    chiave=("user_id", "ristorante_id"),
+    cartella_propria=lambda sb, cid, k: _cartella_della_sede(sb, cid, k["user_id"], k["ristorante_id"]),
+    svuota_cache=lambda: db_service.clear_tags_cache(),
+)
+
+# I tag di catena non hanno cache: la lista si rilegge a ogni GET.
+AMBITO_CATENA = Ambito(
+    tabella_tag="gruppo_tags",
+    tabella_cartelle="gruppo_tag_cartelle",
+    chiave=("user_id",),
+    cartella_propria=lambda sb, cid, k: _cartella_dell_account(sb, cid, k["user_id"]),
+    svuota_cache=lambda: None,
+)
+
+
+def lista_tag_organizzati_in(ambito: Ambito, chiave: Dict[str, str]) -> List[Dict[str, Any]]:
+    """I tag dell'ambito con cartella e stella, in ordine di nome.
+
+    Per la sede non passa da `db_service.get_custom_tags` (cachata, select senza
+    le colonne nuove). Un errore di lettura sale: una lista vuota direbbe
+    «nessun tag».
+    """
+    chiave = _chiave(ambito, chiave)
+    response = _filtra(_client().table(ambito.tabella_tag).select(CAMPI_TAG), chiave).order("nome").execute()
+    return [_tag_normalizzato(r) for r in (response.data or [])]
+
+
+def lista_cartelle_in(ambito: Ambito, chiave: Dict[str, str]) -> List[Dict[str, Any]]:
+    chiave = _chiave(ambito, chiave)
+    response = (
+        _filtra(_client().table(ambito.tabella_cartelle).select(CAMPI_CARTELLA), chiave)
+        .order("ordine")
+        .order("id")
+        .execute()
+    )
+    return [_cartella_normalizzata(r) for r in (response.data or [])]
+
+
+def crea_cartella_in(ambito: Ambito, chiave: Dict[str, str], nome: Optional[str]) -> Dict[str, Any]:
+    """Nuova cartella in fondo alla barra (ordine = massimo dell'ambito + 1)."""
+    chiave = _chiave(ambito, chiave)
     pulito = _nome_obbligatorio(nome, "cartella")
-    esistenti = lista_cartelle(user_id, ristorante_id)
+    esistenti = lista_cartelle_in(ambito, chiave)
     ordine = max((int(c.get("ordine") or 0) for c in esistenti), default=-1) + 1
     try:
         response = (
-            _client().table("custom_tag_cartelle")
-            .insert({
-                "user_id": user_id,
-                "ristorante_id": ristorante_id,
-                "nome": pulito,
-                "ordine": ordine,
-            })
+            _client().table(ambito.tabella_cartelle)
+            .insert({**chiave, "nome": pulito, "ordine": ordine})
             .execute()
         )
     except Exception as e:
@@ -290,74 +348,68 @@ def crea_cartella(user_id: str, ristorante_id: str, nome: Optional[str]) -> Dict
             raise Conflitto(f"Esiste gia' una cartella «{pulito}»") from e
         raise
     finally:
-        db_service.clear_tags_cache()
+        ambito.svuota_cache()
     righe = response.data or []
     if not righe:
         raise RuntimeError("Cartella non creata: nessuna riga restituita")
     return _cartella_normalizzata(righe[0])
 
 
-def rinomina_cartella(cartella_id: int, user_id: str, ristorante_id: str, nome: Optional[str]) -> Dict[str, Any]:
+def rinomina_cartella_in(
+    ambito: Ambito, chiave: Dict[str, str], cartella_id: int, nome: Optional[str]
+) -> Dict[str, Any]:
+    chiave = _chiave(ambito, chiave)
     pulito = _nome_obbligatorio(nome, "cartella")
     sb = _client()
-    if not _cartella_della_sede(sb, cartella_id, user_id, ristorante_id):
+    if not ambito.cartella_propria(sb, cartella_id, chiave):
         raise NonTrovato("Cartella non trovata")
     try:
-        response = (
-            sb.table("custom_tag_cartelle")
-            .update({"nome": pulito})
-            .eq("id", int(cartella_id))
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .execute()
-        )
+        response = _filtra(
+            sb.table(ambito.tabella_cartelle).update({"nome": pulito}).eq("id", int(cartella_id)), chiave
+        ).execute()
     except Exception as e:
         if _e_duplicato(e):
             raise Conflitto(f"Esiste gia' una cartella «{pulito}»") from e
         raise
     finally:
-        db_service.clear_tags_cache()
+        ambito.svuota_cache()
     righe = response.data or []
     if not righe:
         raise NonTrovato("Cartella non trovata")
     return _cartella_normalizzata(righe[0])
 
 
-def elimina_cartella(cartella_id: int, user_id: str, ristorante_id: str) -> None:
+def elimina_cartella_in(ambito: Ambito, chiave: Dict[str, str], cartella_id: int) -> None:
     """Elimina la cartella; i suoi tag tornano in «Senza cartella».
 
     I tag non si toccano qui: lo fa la FK `ON DELETE SET NULL (cartella_id)`,
     nella stessa istruzione del DELETE.
     """
+    chiave = _chiave(ambito, chiave)
     sb = _client()
-    if not _cartella_della_sede(sb, cartella_id, user_id, ristorante_id):
+    if not ambito.cartella_propria(sb, cartella_id, chiave):
         raise NonTrovato("Cartella non trovata")
     try:
-        (
-            sb.table("custom_tag_cartelle")
-            .delete()
-            .eq("id", int(cartella_id))
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .execute()
-        )
+        _filtra(sb.table(ambito.tabella_cartelle).delete().eq("id", int(cartella_id)), chiave).execute()
     finally:
-        db_service.clear_tags_cache()
+        ambito.svuota_cache()
 
 
-def riordina_cartelle(user_id: str, ristorante_id: str, ids: List[int]) -> None:
-    """Riscrive l'ordine di TUTTE le cartelle della sede: ordine = posizione in `ids`.
+def riordina_cartelle_in(ambito: Ambito, chiave: Dict[str, str], ids: List[int]) -> None:
+    """Riscrive l'ordine di TUTTE le cartelle dell'ambito: ordine = posizione in `ids`.
 
-    Prima si controlla l'elenco intero, poi si scrive: un id che non e' della
-    sede (NonTrovato) o un elenco che non coincide con le cartelle di adesso
-    (Conflitto: un'altra scheda ne ha create o eliminate) non scrivono niente.
+    Prima si controlla l'elenco intero, poi si scrive: un id che non e'
+    dell'ambito (NonTrovato) o un elenco che non coincide con le cartelle di
+    adesso (Conflitto: un'altra scheda ne ha create o eliminate) non scrivono
+    niente.
 
     Le scritture sono un UPDATE per cartella spostata, non una transazione: se
     una fallisce a meta' sul DB resta un ordine misto. Sale ScritturaParziale,
     cosi' il client ricarica invece di mostrare l'ordine di prima.
     """
+    chiave = _chiave(ambito, chiave)
     richiesti = [int(i) for i in ids]
-    attuali = {int(c["id"]): int(c.get("ordine") or 0) for c in lista_cartelle(user_id, ristorante_id)}
+    attuali = {int(c["id"]): int(c.get("ordine") or 0) for c in lista_cartelle_in(ambito, chiave)}
     if any(i not in attuali for i in richiesti):
         raise NonTrovato("Cartella non trovata")
     if len(richiesti) != len(set(richiesti)) or set(richiesti) != set(attuali):
@@ -368,27 +420,18 @@ def riordina_cartelle(user_id: str, ristorante_id: str, ids: List[int]) -> None:
             if attuali[cartella_id] == posizione:
                 continue
             try:
-                (
-                    sb.table("custom_tag_cartelle")
-                    .update({"ordine": posizione})
-                    .eq("id", cartella_id)
-                    .eq("user_id", user_id)
-                    .eq("ristorante_id", ristorante_id)
-                    .execute()
-                )
+                _filtra(
+                    sb.table(ambito.tabella_cartelle).update({"ordine": posizione}).eq("id", cartella_id), chiave
+                ).execute()
             except Exception as e:
                 raise ScritturaParziale("Riordino salvato solo in parte: ricarica la pagina") from e
     finally:
-        db_service.clear_tags_cache()
+        ambito.svuota_cache()
 
 
-def _leggi_tag(sb, tag_id: int, user_id: str, ristorante_id: str) -> Dict[str, Any]:
+def _leggi_tag(sb, ambito: Ambito, tag_id: int, chiave: Dict[str, str]) -> Dict[str, Any]:
     response = (
-        sb.table("custom_tags")
-        .select(CAMPI_TAG)
-        .eq("id", int(tag_id))
-        .eq("user_id", user_id)
-        .eq("ristorante_id", ristorante_id)
+        _filtra(sb.table(ambito.tabella_tag).select(CAMPI_TAG).eq("id", int(tag_id)), chiave)
         .limit(1)
         .execute()
     )
@@ -398,12 +441,15 @@ def _leggi_tag(sb, tag_id: int, user_id: str, ristorante_id: str) -> Dict[str, A
     return _tag_normalizzato(righe[0])
 
 
-def aggiorna_tag_parziale(tag_id: int, user_id: str, ristorante_id: str, campi: Dict[str, Any]) -> Dict[str, Any]:
+def aggiorna_tag_parziale_in(
+    ambito: Ambito, chiave: Dict[str, str], tag_id: int, campi: Dict[str, Any]
+) -> Dict[str, Any]:
     """Aggiorna SOLO i campi presenti in `campi` (le chiavi inviate nel body).
 
-    `cartella_id: None` = «Senza cartella». Una cartella che non e' della sede e'
-    NonTrovato, prima di scrivere; la FK composta rifiuterebbe comunque.
+    `cartella_id: None` = «Senza cartella». Una cartella che non e' dell'ambito
+    e' NonTrovato, prima di scrivere; la FK composta rifiuterebbe comunque.
     """
+    chiave = _chiave(ambito, chiave)
     sb = _client()
     payload: Dict[str, Any] = {}
     if "nome" in campi:
@@ -418,22 +464,15 @@ def aggiorna_tag_parziale(tag_id: int, user_id: str, ristorante_id: str, campi: 
         payload["preferito"] = bool(campi["preferito"])
     if "cartella_id" in campi:
         cartella_id = campi["cartella_id"]
-        if cartella_id is not None and not _cartella_della_sede(sb, cartella_id, user_id, ristorante_id):
+        if cartella_id is not None and not ambito.cartella_propria(sb, cartella_id, chiave):
             raise NonTrovato("Cartella non trovata")
         payload["cartella_id"] = int(cartella_id) if cartella_id is not None else None
 
     if not payload:
-        return _leggi_tag(sb, tag_id, user_id, ristorante_id)
+        return _leggi_tag(sb, ambito, tag_id, chiave)
 
     try:
-        response = (
-            sb.table("custom_tags")
-            .update(payload)
-            .eq("id", int(tag_id))
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .execute()
-        )
+        response = _filtra(sb.table(ambito.tabella_tag).update(payload).eq("id", int(tag_id)), chiave).execute()
     except Exception as e:
         if _e_duplicato(e):
             raise Conflitto(f"Esiste gia' un tag «{payload.get('nome', '')}»") from e
@@ -443,8 +482,41 @@ def aggiorna_tag_parziale(tag_id: int, user_id: str, ristorante_id: str, campi: 
             raise ValueError("Valore non valido per il tag") from e
         raise
     finally:
-        db_service.clear_tags_cache()
+        ambito.svuota_cache()
     righe = response.data or []
     if not righe:
         raise NonTrovato("Tag non trovato")
     return _tag_normalizzato(righe[0])
+
+
+# ─── Firme della sede (router tag.py) ─────────────────────────────────────────
+def _sede(user_id: str, ristorante_id: str) -> Dict[str, str]:
+    return {"user_id": user_id, "ristorante_id": ristorante_id}
+
+
+def lista_tag_organizzati(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+    return lista_tag_organizzati_in(AMBITO_SEDE, _sede(user_id, ristorante_id))
+
+
+def lista_cartelle(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+    return lista_cartelle_in(AMBITO_SEDE, _sede(user_id, ristorante_id))
+
+
+def crea_cartella(user_id: str, ristorante_id: str, nome: Optional[str]) -> Dict[str, Any]:
+    return crea_cartella_in(AMBITO_SEDE, _sede(user_id, ristorante_id), nome)
+
+
+def rinomina_cartella(cartella_id: int, user_id: str, ristorante_id: str, nome: Optional[str]) -> Dict[str, Any]:
+    return rinomina_cartella_in(AMBITO_SEDE, _sede(user_id, ristorante_id), cartella_id, nome)
+
+
+def elimina_cartella(cartella_id: int, user_id: str, ristorante_id: str) -> None:
+    elimina_cartella_in(AMBITO_SEDE, _sede(user_id, ristorante_id), cartella_id)
+
+
+def riordina_cartelle(user_id: str, ristorante_id: str, ids: List[int]) -> None:
+    riordina_cartelle_in(AMBITO_SEDE, _sede(user_id, ristorante_id), ids)
+
+
+def aggiorna_tag_parziale(tag_id: int, user_id: str, ristorante_id: str, campi: Dict[str, Any]) -> Dict[str, Any]:
+    return aggiorna_tag_parziale_in(AMBITO_SEDE, _sede(user_id, ristorante_id), tag_id, campi)

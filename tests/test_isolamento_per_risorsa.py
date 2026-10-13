@@ -161,6 +161,7 @@ def _semina(conn, lettera: str, base_bigint: int) -> Cliente:
     # Cartelle su una base loro: con lo stesso id del tag, un endpoint che
     # confondesse cartella_id e tag_id passerebbe il controllo sui propri id.
     conn.execute("SELECT setval('public.custom_tag_cartelle_id_seq', %s)", (base_bigint + 300,))
+    conn.execute("SELECT setval('public.gruppo_tag_cartelle_id_seq', %s)", (base_bigint + 400,))
 
     conn.execute(
         "INSERT INTO public.users (id, email, password_hash, nome_ristorante, attivo, piano, "
@@ -239,9 +240,13 @@ def _semina(conn, lettera: str, base_bigint: int) -> Cliente:
     # Tag di catena (id senza default nello schema).
     ids["gtag_id"] = base_bigint + 1
     ids["gassoc_id"] = base_bigint + 2
+    ids["gcartella_id"] = uno(
+        "INSERT INTO public.gruppo_tag_cartelle (user_id, nome) VALUES (%s, %s) RETURNING id",
+        user, m("CARTELLACATENA"),
+    )
     conn.execute(
-        "INSERT INTO public.gruppo_tags (id, user_id, nome) VALUES (%s, %s, %s)",
-        (ids["gtag_id"], user, m("TAGCATENA")),
+        "INSERT INTO public.gruppo_tags (id, user_id, nome, cartella_id) VALUES (%s, %s, %s, %s)",
+        (ids["gtag_id"], user, m("TAGCATENA"), ids["gcartella_id"]),
     )
     conn.execute(
         "INSERT INTO public.gruppo_tag_prodotti (id, tag_id, user_id, descrizione, descrizione_key) "
@@ -583,6 +588,16 @@ RICETTE: List[Ricetta] = [
     R("DELETE", "/api/workspace/spese/{spesa_id}"),
     # tag di catena
     R("DELETE", "/api/gruppo/tag/{gtag_id}"),
+    R("PATCH", "/api/gruppo/tag/{gtag_id}", {"preferito": True}),
+    R("PATCH", "/api/gruppo/tag/{mio.gtag_id}", {"cartella_id": "$altro.gcartella_id"},
+      nota="mio tag di catena nella cartella altrui"),
+    R("PATCH", "/api/gruppo/tag/{gtag_id}/prodotti",
+      {"aggiungi": [{"descrizione": "$mio.fornitore"}], "togli": ["$altro.prodotto"]}),
+    R("PATCH", "/api/gruppo/tag/{mio.gtag_id}/prodotti", {"togli": ["$altro.prodotto"]},
+      nota="mio tag di catena, chiave che esiste solo nel tag altrui"),
+    R("PUT", "/api/gruppo/tag/cartelle/{gcartella_id}", {"nome": "rinominata"}),
+    R("DELETE", "/api/gruppo/tag/cartelle/{gcartella_id}"),
+    R("PUT", "/api/gruppo/tag/cartelle/ordine", {"ids": ["$altro.gcartella_id"]}),
     R("GET", "/api/gruppo/tag/{gtag_id}/prodotti"),
     R("POST", "/api/gruppo/tag/{gtag_id}/prodotti", DESCRIZIONI),
     R("DELETE", "/api/gruppo/tag/prodotti/{gassoc_id}"),

@@ -666,6 +666,36 @@ Solo ordine e visualizzazione (`20261013082535_tag_cartelle_preferiti.sql`). Per
 | descrizione | TEXT | Descrizione prodotto da `fatture` |
 | created_at | TIMESTAMPTZ | |
 
+### `gruppo_tags` — Tag di catena (per account)
+
+Scollegati dai tag di sede: vivono a livello account (`user_id`, niente `ristorante_id`) e si applicano a tutti i punti vendita (`20260617230000_gruppo_tags.sql`). RLS ENABLE (non FORCE), solo `service_role`. Nessun indice unico sul nome.
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | BIGINT IDENTITY (PK) | |
+| user_id | UUID NOT NULL | Senza FK verso `users` |
+| nome | TEXT NOT NULL | |
+| emoji, colore | TEXT (nullable) | |
+| created_at | TIMESTAMPTZ | |
+| cartella_id | BIGINT (nullable) | NULL = «Senza cartella». FK composta `(cartella_id, user_id)` → `gruppo_tag_cartelle`, `ON DELETE SET NULL (cartella_id)` (`20261013141040_gruppo_tag_cartelle_preferiti.sql`) |
+| preferito | BOOLEAN NOT NULL DEFAULT false | Stella della vista «Preferiti». Pura visualizzazione, fuori dall'analisi per punto vendita |
+
+### `gruppo_tag_cartelle` — Cartelle dei tag di catena
+
+Calco di `custom_tag_cartelle` con chiave solo `user_id`. RLS ENABLE + FORCE, solo `service_role`.
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | BIGSERIAL (PK) | `UNIQUE (id, user_id)`, bersaglio della FK composta |
+| user_id | UUID (FK → users, CASCADE) | |
+| nome | TEXT NOT NULL | Non vuoto; unico per account su `lower(btrim(nome))` |
+| ordine | INT NOT NULL DEFAULT 0 | Riscritta per intero da `PUT /api/gruppo/tag/cartelle/ordine` |
+| created_at | TIMESTAMPTZ | |
+
+### `gruppo_tag_prodotti` — Associazioni tag di catena ↔ prodotti
+
+Chiave della descrizione calcolata in Python (`_normalize_custom_tag_key`), unica per `(tag_id, descrizione_key)`; `tag_id` → `gruppo_tags` ON DELETE CASCADE.
+
 ---
 
 ## Infrastruttura Cache

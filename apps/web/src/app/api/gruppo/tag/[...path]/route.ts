@@ -4,7 +4,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 import { WORKER_URL, WORKER_SECRET_KEY, WORKER_TIMEOUT_MS } from "@/lib/worker-config";
 
 // Proxy generico per gli endpoint tag di catena (/api/gruppo/tag/...). Un solo
-// handler per CRUD + associazioni + analisi: inoltra GET/POST/DELETE al worker
+// handler per CRUD + associazioni + cartelle + analisi: inoltra GET/POST/PUT/PATCH/DELETE al worker
 // con Bearer + X-Worker-Key. Sola lettura/scrittura tag di gruppo, gated dalla
 // UI multi-sede.
 
@@ -15,7 +15,9 @@ function workerHeaders(token: string, json = false): Record<string, string> {
   return h;
 }
 
-async function proxy(req: NextRequest, path: string[], method: "GET" | "POST" | "DELETE") {
+type Metodo = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+async function proxy(req: NextRequest, path: string[], method: Metodo) {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,7 +26,7 @@ async function proxy(req: NextRequest, path: string[], method: "GET" | "POST" | 
   const qs = req.nextUrl.search;
   const url = `${WORKER_URL}/api/gruppo/tag/${sub}${qs}`;
 
-  const hasBody = method === "POST";
+  const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
   let body: string | undefined;
   if (hasBody) {
     body = await req.text();
@@ -52,6 +54,12 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 }
 export async function POST(req: NextRequest, { params }: Ctx) {
   return proxy(req, (await params).path, "POST");
+}
+export async function PUT(req: NextRequest, { params }: Ctx) {
+  return proxy(req, (await params).path, "PUT");
+}
+export async function PATCH(req: NextRequest, { params }: Ctx) {
+  return proxy(req, (await params).path, "PATCH");
 }
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   return proxy(req, (await params).path, "DELETE");

@@ -2944,6 +2944,26 @@ class GruppoTagAssocRequest(BaseModel):
     descrizioni: List[GruppoTagAssocItem]
 
 
+class GruppoTagPatch(BaseModel):
+    nome: Optional[str] = None
+    emoji: Optional[str] = None
+    cartella_id: Optional[int] = None
+    preferito: Optional[bool] = None
+
+
+class GruppoCartellaRequest(BaseModel):
+    nome: str
+
+
+class GruppoRiordinaCartelleRequest(BaseModel):
+    ids: List[int]
+
+
+class GruppoModificaProdottiRequest(BaseModel):
+    aggiungi: List[GruppoTagAssocItem] = []
+    togli: List[str] = []
+
+
 def _norm_key(*args, **kwargs):
     """Normalizzazione descrizione → chiave, IDENTICA ai tag di sede."""
     from services.db_service import _normalize_custom_tag_key
@@ -2961,11 +2981,14 @@ def _assert_gruppo_tag(sb, tag_id: int, user_id: str) -> None:
 
 @router.get("/api/gruppo/tag", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
 def gruppo_tag_list(authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import AMBITO_CATENA, lista_cartelle_in, lista_tag_organizzati_in
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
-    tags = (
-        sb.table("gruppo_tags").select("id,nome,emoji,colore")
-        .eq("user_id", user_id).order("created_at").execute()
-    ).data or []
+    try:
+        tags = lista_tag_organizzati_in(AMBITO_CATENA, {"user_id": user_id})
+        cartelle = lista_cartelle_in(AMBITO_CATENA, {"user_id": user_id})
+    except Exception as e:
+        logger.error(f"gruppo_tag_list user_id={user_id}: {e}")
+        raise HTTPException(status_code=502, detail="Impossibile caricare i tag di catena: riprova")
     # conteggio associazioni per tag (una query)
     if tags:
         assoc = (
@@ -2976,7 +2999,47 @@ def gruppo_tag_list(authorization: Optional[str] = Header(None)):
         cnt = Counter(int(a["tag_id"]) for a in assoc)
         for t in tags:
             t["n_prodotti"] = cnt.get(int(t["id"]), 0)
-    return {"tags": tags}
+    return {"tags": tags, "cartelle": cartelle}
+
+
+def _organizza_catena(funzione, *args):
+    from services.routers.tag import _organizza_http
+    return _organizza_http(funzione, *args)
+
+
+@router.post("/api/gruppo/tag/cartelle", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_cartella_create(body: GruppoCartellaRequest, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import AMBITO_CATENA, crea_cartella_in
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    return {"cartella": _organizza_catena(crea_cartella_in, AMBITO_CATENA, {"user_id": user_id}, body.nome)}
+
+
+@router.put("/api/gruppo/tag/cartelle/ordine", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_cartelle_riordina(body: GruppoRiordinaCartelleRequest, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import AMBITO_CATENA, riordina_cartelle_in
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _organizza_catena(riordina_cartelle_in, AMBITO_CATENA, {"user_id": user_id}, body.ids)
+    return {"ok": True}
+
+
+@router.put("/api/gruppo/tag/cartelle/{cartella_id}", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_cartella_rinomina(
+    cartella_id: int, body: GruppoCartellaRequest, authorization: Optional[str] = Header(None)
+):
+    from services.tag_organizza_service import AMBITO_CATENA, rinomina_cartella_in
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    cartella = _organizza_catena(
+        rinomina_cartella_in, AMBITO_CATENA, {"user_id": user_id}, int(cartella_id), body.nome
+    )
+    return {"cartella": cartella}
+
+
+@router.delete("/api/gruppo/tag/cartelle/{cartella_id}", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_cartella_elimina(cartella_id: int, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import AMBITO_CATENA, elimina_cartella_in
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _organizza_catena(elimina_cartella_in, AMBITO_CATENA, {"user_id": user_id}, int(cartella_id))
+    return {"ok": True}
 
 
 @router.post("/api/gruppo/tag", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
@@ -2997,6 +3060,16 @@ def gruppo_tag_delete(tag_id: int, authorization: Optional[str] = Header(None)):
     _assert_gruppo_tag(sb, tag_id, user_id)
     sb.table("gruppo_tags").delete().eq("id", int(tag_id)).eq("user_id", user_id).execute()
     return {"ok": True}
+
+
+@router.patch("/api/gruppo/tag/{tag_id}", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_patch(tag_id: int, body: GruppoTagPatch, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import AMBITO_CATENA, aggiorna_tag_parziale_in
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _assert_gruppo_tag(sb, tag_id, user_id)
+    campi = {k: getattr(body, k) for k in body.model_fields_set}
+    tag = _organizza_catena(aggiorna_tag_parziale_in, AMBITO_CATENA, {"user_id": user_id}, int(tag_id), campi)
+    return {"tag": tag}
 
 
 @router.get("/api/gruppo/tag/descrizioni", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
@@ -3041,20 +3114,10 @@ def gruppo_tag_prodotti_add(
 ):
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     _assert_gruppo_tag(sb, tag_id, user_id)
-    records = []
-    visti = set()
-    for item in body.descrizioni:
-        desc = (item.descrizione or "").strip()
-        if not desc:
-            continue
-        key = _norm_key(desc)
-        if not key or key in visti:
-            continue
-        visti.add(key)
-        records.append({
-            "tag_id": int(tag_id), "user_id": user_id,
-            "descrizione": desc, "descrizione_key": key, "fattore_kg": item.fattore_kg,
-        })
+    from services.gruppo_tag_organizza_service import record_prodotti_catena
+    records = record_prodotti_catena(
+        tag_id, user_id, [{"descrizione": i.descrizione, "fattore_kg": i.fattore_kg} for i in body.descrizioni]
+    )
     if not records:
         return {"associazioni": [], "aggiunte": 0}
     # upsert per non duplicare (vincolo unico tag_id+descrizione_key)
@@ -3062,6 +3125,27 @@ def gruppo_tag_prodotti_add(
         records, on_conflict="tag_id,descrizione_key"
     ).execute()
     return {"associazioni": res.data or [], "aggiunte": len(records)}
+
+
+@router.patch("/api/gruppo/tag/{tag_id}/prodotti", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_prodotti_modifica(
+    tag_id: int, body: GruppoModificaProdottiRequest, authorization: Optional[str] = Header(None)
+):
+    from services.gruppo_tag_organizza_service import applica_modifiche_prodotti_catena
+    from services.tag_organizza_service import RimozioniNonRiuscite
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _assert_gruppo_tag(sb, tag_id, user_id)
+    aggiungi = [{"descrizione": i.descrizione, "fattore_kg": i.fattore_kg} for i in body.aggiungi]
+    try:
+        return applica_modifiche_prodotti_catena(int(tag_id), user_id, aggiungi, body.togli)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RimozioniNonRiuscite as e:
+        logger.error(f"gruppo_tag_prodotti_modifica tag_id={tag_id}: rimozioni non riuscite ({e})")
+        raise HTTPException(
+            status_code=502,
+            detail="I prodotti aggiunti sono salvati, ma non e' stato possibile toglierne alcuni: riprova",
+        )
 
 
 @router.delete("/api/gruppo/tag/prodotti/{assoc_id}", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])

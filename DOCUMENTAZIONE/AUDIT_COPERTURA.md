@@ -2410,15 +2410,44 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   posto vuoto e le frecce «aperto» che sembravano premute. Suite `python -m pytest tests/ -q
 >   -m "not sql" -p no:randomly`: **19.239 verdi + 59 skip, 13 rossi**, tutti nel worker
 >   (agente notturno, salute, upload) e dovuti alle 569 righe tolte e non committate da un'altra
->   sessione in `fastapi_worker.py` e `routers/admin.py`, nessuno nei file di questa fase; dopo i
+>   sessione in `fastapi_worker.py` e `routers/admin.py` (poi committate in `9d208ede`), nessuno nei file di questa fase; dopo i
 >   ritocchi del revisore test dei tag e presidi **1.970 verdi**, `check_documentazione.py` exit 0.
 >   `code-reviewer` 🟡 solo per la chiusura (non committato); corretti i suoi rilievi minori:
 >   doppio clic su «Elimina tag», cartella creata dalla vista Preferiti, elenco dei mesi a
 >   capodanno, conteggio della cartella per i lettori di schermo, «Suggerimenti» con 0 voci non
 >   piu' annunciato come interruttore. **Trappola:** il
 >   frontend locale (Turbopack) non vede le modifiche ai file nemmeno col polling dello script
->   di avvio locale (non versionato): per il codice nuovo va riavviato. **Non fatto:** la replica in catena
->   (Fasi C1 e C2 del piano), dopo l'ok di Mattia sulla pagina.
+>   di avvio locale (non versionato): per il codice nuovo va riavviato. **Poi, ok di Mattia sulla
+>   pagina** con due ritocchi: il menu ⋯ con la sola «Elimina tag» diventa un cestino diretto
+>   (stessa conferma) e nel filtro di «Modifica tag» «Tutti» diventa «Tutti i prodotti».
+> - **13/10/2026 — Tag di catena, Fase C1: cartelle e stella anche per i tag di catena, lato DB
+>   e worker (Opus), NON pushato, migration `20261013141040_gruppo_tag_cartelle_preferiti.sql`
+>   da applicare al live PRIMA del push.** Calco della Fase 2 sui tag di catena, che sono
+>   dell'account (`gruppo_tags.user_id`, niente sede): tabella `gruppo_tag_cartelle` (nome
+>   unico per account su `lower(btrim)`, RLS ENABLE+FORCE, REVOKE anche da anon/authenticated e
+>   dalla sequenza), `gruppo_tags.cartella_id` con FK composta `(cartella_id, user_id)` e
+>   `ON DELETE SET NULL (cartella_id)`, `gruppo_tags.preferito`. **Niente copie nel servizio:**
+>   `tag_organizza_service.py` lavora su un `Ambito` (tabelle e colonne della chiave; la chiave
+>   si controlla prima di ogni query, perche' un filtro mancante trova tutti) con `AMBITO_SEDE`
+>   e `AMBITO_CATENA`; le firme della sede restano come involucri e i **92 test della sede
+>   passano senza modifiche**. Prodotti in blocco di catena in
+>   `gruppo_tag_organizza_service.py` con gli stessi controlli e le stesse rimozioni a lotti.
+>   Worker: `GET /api/gruppo/tag` con `cartelle`, `cartella_id`, `preferito` (502 su errore di
+>   lettura, non lista vuota; ordine per nome come la sede), `POST/PUT/DELETE
+>   /api/gruppo/tag/cartelle…`, `PUT …/ordine`, `PATCH /api/gruppo/tag/{id}` sui soli campi
+>   inviati, `PATCH /api/gruppo/tag/{id}/prodotti`; tutte su `_resolve_gruppo` (Catena del
+>   sotto-utente, due sedi) e `_p(C)`; proxy Next con PUT e PATCH; export GDPR art. 20 con tag e
+>   cartelle di catena (i tag di catena non c'erano). **Prove:** `test_gruppo_tag_cartelle.py`
+>   62 verdi (fake in `tests/fake_supabase_tag.py` con indice unico, FK composta, SET NULL e
+>   upsert dichiarati per tabella; la prima rotta che combacia per ogni URL, cosi' «ordine» non
+>   finisce nel `{cartella_id}`), `test_sql_gruppo_tag_cartelle.py` 12 su Postgres vero, 7
+>   ricette d'isolamento nuove (414 `-m sql` verdi fra catena, sede e isolamento); OpenAPI
+>   222 endpoint senza drift. **Mutazione:** 13 uccisi su 14; vivo il controllo di proprieta'
+>   nel PATCH del tag, ridondante perche' l'UPDATE filtra per account (doppia rete come nella
+>   sede). **Non provato:** il proxy Next (PUT/PATCH) non ha test che lo eseguano: si prova
+>   con la pagina in C2. **Fuori scopo, da segnalare:** `gruppo_tags` ha RLS non forzata e
+>   `user_id` senza FK verso `users`; il conteggio dei prodotti in `GET /api/gruppo/tag` legge
+>   le associazioni senza paginazione (oltre 1000 righe sbaglierebbe; oggi il massimo e' 67).
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e
