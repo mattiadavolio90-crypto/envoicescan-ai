@@ -263,6 +263,8 @@ def test_l_importo_del_dialog_somma_solo_le_sedi_scelte():
     (False, 2, False),
     (False, 1, True),    # ristorante singolo: non c'e' una vista catena
     (False, 0, True),
+    (False, None, False),  # numero di sedi ignoto (worker giu', /m senza dato): potrebbe essere una catena
+    (True, None, True),
 ])
 def test_con_piu_sedi_il_riquadro_sta_solo_nella_catena(chain, num_sedi, atteso):
     assert esegui_ts(MODULO, "emit(m.ricaviNoIvaNellaVista(input.chain, input.n));",

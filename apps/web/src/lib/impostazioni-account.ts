@@ -117,9 +117,15 @@ export function mostraRicaviNoIva(sedi: SedeRicaviNoIva[] | null | undefined): b
 }
 
 // In un account con piu' sedi il riquadro sta solo nella vista catena: dentro
-// un punto vendita non si toccano le altre sedi.
-export function ricaviNoIvaNellaVista(chain: boolean, numSedi: number): boolean {
-  return chain || numSedi <= 1;
+// un punto vendita non si toccano le altre sedi. Se il numero di sedi non e'
+// noto non si mostra: potrebbe essere una catena.
+export function ricaviNoIvaNellaVista(
+  chain: boolean,
+  numSedi: number | null | undefined,
+): boolean {
+  if (chain) return true;
+  if (numSedi == null) return false;
+  return numSedi <= 1;
 }
 
 // Si puo' eliminare su una sede che non e' ancora esclusa, o che lo e' ma ha

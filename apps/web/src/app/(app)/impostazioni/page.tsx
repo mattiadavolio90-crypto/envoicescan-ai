@@ -59,7 +59,13 @@ export default async function ImpostazioniPage() {
         title={chain ? "Account del gruppo" : "Account"}
         hint={chain ? "Dati del gruppo e preferenze" : "I tuoi dati e le preferenze"}
       />
-      <AccountClient data={data} chain={chain} nomeGruppo={nomeGruppo} sedi={sedi} />
+      <AccountClient
+        data={data}
+        chain={chain}
+        nomeGruppo={nomeGruppo}
+        sedi={sedi}
+        numSedi={sediRes ? sedi.length : null}
+      />
     </div>
   );
 }

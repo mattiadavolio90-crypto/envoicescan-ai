@@ -870,11 +870,13 @@ export function AccountClient({
   chain = false,
   nomeGruppo = null,
   sedi = [],
+  numSedi = null,
 }: {
   data: AccountData;
   chain?: boolean;
   nomeGruppo?: string | null;
   sedi?: Sede[];
+  numSedi?: number | null;
 }) {
   const pianoLabel = etichettaPiano(data.piano);
   const pianoPrezzo = prezzoPiano(data.piano);
@@ -892,7 +894,7 @@ export function AccountClient({
           <EmailSettimanaleCard attivaSalvata={data.email_settimanale !== false} />
         )}
         <CambioPasswordForm />
-        {!data.sotto_utente && ricaviNoIvaNellaVista(true, sedi.length) && <RicaviNoIvaCard />}
+        {!data.sotto_utente && ricaviNoIvaNellaVista(true, numSedi) && <RicaviNoIvaCard />}
       </div>
     );
   }
@@ -1007,7 +1009,7 @@ export function AccountClient({
       <CambioPasswordForm />
 
       {/* Ricavi senza IVA — con piu' sedi solo nella vista catena */}
-      {!data.sotto_utente && ricaviNoIvaNellaVista(false, sedi.length) && <RicaviNoIvaCard />}
+      {!data.sotto_utente && ricaviNoIvaNellaVista(false, numSedi) && <RicaviNoIvaCard />}
 
       {/* Privacy e dati (GDPR) — solo clienti: export Art.20 + elimina account Art.17 */}
       {!data.is_admin && !data.sotto_utente && <PrivacyGdprCard />}

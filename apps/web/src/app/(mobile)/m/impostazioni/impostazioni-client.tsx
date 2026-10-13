@@ -7,7 +7,7 @@ import { AccountClient } from "@/app/(app)/impostazioni/account-client";
 // Cosi' la pagina si apre SEMPRE: il render server non dipende da una chiamata
 // al worker (che, se lenta/fallita in SSR, faceva "this page couldn't load"
 // nel WebView della PWA). I dati arrivano subito dopo, con skeleton nel mentre.
-export function ImpostazioniClient() {
+export function ImpostazioniClient({ numSedi }: { numSedi: number | null }) {
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [stato, setStato] = useState<"loading" | "ok" | "errore">("loading");
 
@@ -52,5 +52,5 @@ export function ImpostazioniClient() {
   // AccountClient tipizza `data` internamente; il fetch restituisce la stessa
   // forma di /api/account/me usata dalla pagina desktop.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return <AccountClient data={data as any} />;
+  return <AccountClient data={data as any} numSedi={numSedi} />;
 }
