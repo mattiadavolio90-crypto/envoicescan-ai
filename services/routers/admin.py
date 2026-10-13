@@ -9,11 +9,9 @@ preservate identiche all'originale:
 
 `_verify_admin` e' stato SPOSTATO qui perche' usato esclusivamente dalle route
 admin. Tutto il resto resta nel worker ed e' importato:
-  - `_admin_emails_set`: usato anche da _run_agent_notturno (worker) → resta.
-  - `_log_review_action`: usato anche da _run_agent_notturno (worker) → resta.
-  - `_is_admin_email`, `_get_ristorante_id_for_user`, `get_supabase_client`,
-    `logger`, `WORKER_DEV_MODE`, `WORKER_SECRET_KEY`, lo stato/funzioni
-    dell'agent notturno: condivisi/definiti nel worker → importati.
+  - `_admin_emails_set`, `_log_review_action`, `_is_admin_email`,
+    `_get_ristorante_id_for_user`, `get_supabase_client`, `logger`,
+    `WORKER_DEV_MODE`, `WORKER_SECRET_KEY`: definiti nel worker → importati.
   - I model Marketplace (Item/List/StatoBody) vivono nella sezione Notifiche del
     worker accanto al lead non-admin → importati.
 
@@ -29,16 +27,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-import threading
-
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
 # WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
 # __getattr__ NON basta, perche' PEP 562 risolve solo gli accessi-attributo
 # ESTERNI e mai i lookup di nome globale bare dentro le funzioni -> NameError ->
-# HTTP 500 su ogni endpoint admin. Costanti (WORKER_*) e stato mutabile
-# (_agent_notturno_state, dict mutato in-place) si leggono via accessor: lo stato
-# DEVE essere lo stesso oggetto del worker, che _run_agent_notturno modifica.
+# HTTP 500 su ogni endpoint admin. Le costanti (WORKER_*) si leggono via accessor.
 import logging
 logger = logging.getLogger("fastapi_worker")
 
@@ -94,19 +88,6 @@ def _chat_crediti_stato(*args, **kwargs):
 
 def _invalidate_fatture_rows_cache(*args, **kwargs):
     return _fw()._invalidate_fatture_rows_cache(*args, **kwargs)
-
-
-def _agent_notturno_persist(*args, **kwargs):
-    return _fw()._agent_notturno_persist(*args, **kwargs)
-
-
-def _run_agent_notturno(*args, **kwargs):
-    return _fw()._run_agent_notturno(*args, **kwargs)
-
-
-def _agent_state():
-    """Stato (dict) dell'agent notturno dal worker: stesso oggetto, mutato in-place."""
-    return _fw()._agent_notturno_state
 
 
 def _worker_dev_mode():
@@ -1078,7 +1059,7 @@ def prepara_suggerimenti_ai(sb, allowed_ids: list, only_ids: Optional[list] = No
     fatture.categoria ne' needs_review: e' solo una proposta da approvare a mano.
 
     Idempotente: salta descrizioni con un suggerimento gia' fresco (<24h).
-    Condivisa fra l'endpoint on-demand (A3) e l'agent notturno (B2).
+    Usata dall'endpoint on-demand coda/suggerisci-ai.
     """
     import pandas as pd
     from datetime import datetime, timezone, timedelta
@@ -1252,155 +1233,6 @@ def admin_qualita_suggerisci_ai(body: SuggerisciAiBody, admin_user: dict = Depen
         attore=f"admin:{admin_user.get('email', 'admin')}",
     )
     return {"ok": True, **res}
-
-
-class AutoReviewBody(BaseModel):
-    cliente_id: Optional[str] = None
-
-
-@router.post("/api/admin/qualita-ai/coda/auto-review", tags=["Admin"])
-def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_verify_admin)):
-    """Auto-classifica diciture sicure e sconti/omaggi in batch."""
-    import pandas as pd
-    from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE, SPECIAL_ROW_DICITURA, SPECIAL_ROW_SCONTO_OMAGGIO
-    from utils.text_utils import pulisci_caratteri_corrotti
-    from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
-    from datetime import datetime, timezone
-
-    sb = get_supabase_client()
-    admin_emails = _admin_emails_set()
-    now = datetime.now(timezone.utc).isoformat()
-    # Una passata di auto-review = un lotto, anche se tocca clienti diversi.
-    lotto_auto_review = str(uuid.uuid4())
-
-    if body.cliente_id:
-        allowed_ids = [body.cliente_id]
-    else:
-        users_resp = sb.table("users").select("id,email").execute()
-        allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
-
-    all_rows: list = []
-    page_size = 1000
-    offset = 0
-    while True:
-        q = (sb.table("fatture")
-             .select("id,descrizione,categoria,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review,user_id")
-             .is_("deleted_at", "null")
-             .in_("user_id", allowed_ids)
-             .order("id")
-             .range(offset, offset + page_size - 1))
-        resp = q.execute()
-        chunk = resp.data or []
-        if not chunk:
-            break
-        all_rows.extend(chunk)
-        if len(chunk) < page_size:
-            break
-        offset += page_size
-
-    if not all_rows:
-        return {"ok": True, "classificate": 0, "salvate_memoria": 0, "errori": 0}
-
-    df = pd.DataFrame(all_rows)
-    # Retail: le righe si classificano (una dicitura a importo zero e' una dicitura
-    # anche per un negozio; lo sconto conferma la categoria che la riga ha gia'),
-    # ma la memoria globale e' dei ristoranti: una descrizione si promuove solo se
-    # almeno una delle sue righe e' di un account ristorazione. Senza questa
-    # guardia "ARTICOLO DI VENDITA" entrerebbe in prodotti_master verified=True e
-    # da li' arriverebbe ai ristoranti come bypass.
-    from services.settore_service import settore_utente
-    df["_ristorazione"] = df["user_id"].map(lambda u: settore_utente(u, sb) != SETTORE_RETAIL)
-
-    def _promuovibile(descrizione: str) -> bool:
-        return bool(df[df["descrizione"] == descrizione]["_ristorazione"].any())
-    df["descrizione"] = df["descrizione"].apply(lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x)
-    meta = classify_special_row_vectorized(df)
-    df["bucket"] = meta["bucket"]
-    df = df[df["bucket"] != SPECIAL_ROW_NORMALE].copy()
-
-    auto_diciture = df[df["bucket"] == SPECIAL_ROW_DICITURA]["descrizione"].dropna().unique().tolist()
-    auto_sconti = df[df["bucket"] == SPECIAL_ROW_SCONTO_OMAGGIO]["descrizione"].dropna().unique().tolist()
-
-    classificate = 0
-    salvate = 0
-    errori = 0
-
-    for desc in auto_diciture:
-        try:
-            prezzo_max = float(df[df["descrizione"] == desc]["prezzo_unitario"].max() or 0)
-            if prezzo_max > 0:
-                errori += 1
-                continue
-            ids = df[df["descrizione"] == desc]["id"].tolist()
-            cat_da = str(df[df["descrizione"] == desc]["categoria"].iloc[0] or "")
-            aggiorna_categoria_fatture(
-                sb,
-                ids=ids,
-                categoria="📝 NOTE E DICITURE",
-                source="admin_auto_review",
-                extra={
-                    "needs_review": False,
-                    "reviewed_at": now,
-                    "reviewed_by": "auto-review",
-                    "categoria_fonte": "L4_dicitura",
-                    "categoria_fiducia": "certa",
-                },
-                attore_email=admin_user.get("email"),
-                attore_user_id=str(admin_user.get("id")) if admin_user.get("id") else None,
-                batch_id=lotto_auto_review,
-            )
-            if _promuovibile(desc):
-                sb.table("prodotti_master").upsert({
-                    "descrizione": desc,
-                    "categoria": "📝 NOTE E DICITURE",
-                    "confidence": "altissima",
-                    "verified": True,
-                    "classificato_da": "auto-review",
-                    "ultima_modifica": now,
-                }, on_conflict="descrizione").execute()
-            _log_review_action(sb, "auto-review", "auto_review", "📝 NOTE E DICITURE", ids, desc, cat_da, "bucket=dicitura")
-            classificate += len(ids)
-            salvate += 1
-        except Exception as exc:
-            errori += 1
-            logger.warning("auto-review dicitura error '%s': %s", desc[:40], exc)
-
-    for desc in auto_sconti:
-        try:
-            row = df[df["descrizione"] == desc].iloc[0]
-            cat = row.get("categoria") or ""
-            if not cat or cat in ("Da Classificare", "Da Clasificare"):
-                continue
-            ids = df[df["descrizione"] == desc]["id"].tolist()
-            sb.table("fatture").update({
-                "needs_review": False,
-                "reviewed_at": now,
-                "reviewed_by": "auto-review",
-            }).in_("id", ids).is_("deleted_at", "null").execute()
-            if _promuovibile(desc):
-                sb.table("prodotti_master").upsert({
-                    "descrizione": desc,
-                    "categoria": cat,
-                    "confidence": "alta",
-                    "verified": True,
-                    "classificato_da": "auto-review",
-                    "ultima_modifica": now,
-                }, on_conflict="descrizione").execute()
-            _log_review_action(sb, "auto-review", "auto_review", cat, ids, desc, cat, "bucket=sconto_omaggio")
-            classificate += len(ids)
-            salvate += 1
-        except Exception as exc:
-            errori += 1
-            logger.warning("auto-review sconto error '%s': %s", desc[:40], exc)
-
-    # Invalidazione globale (non per-ristorante): l'auto-review agisce su tutti gli
-    # account in una sola passata, quindi le righe toccate appartengono a piu' sedi.
-    # Senza questo il contatore "da controllare" in Home resta stale fino a 30 min.
-    if classificate:
-        _invalidate_fatture_rows_cache()
-
-    logger.info("admin_auto_review: classificate=%d, salvate=%d, errori=%d | admin=%s", classificate, salvate, errori, admin_user.get("email"))
-    return {"ok": True, "classificate": classificate, "salvate_memoria": salvate, "errori": errori}
 
 
 # ── Qualità AI — Memoria globale ─────────────────────────────────────────────
@@ -2591,60 +2423,6 @@ def admin_queue_assegna_sede(body: AssegnaSedeQueueBody, admin_user: dict = Depe
     return {"ok": True}
 
 
-# ── Sistema — Agent notturno ──────────────────────────────────────────────────
-
-@router.get("/api/admin/sistema/agent-notturno", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-def admin_agent_notturno_status():
-    """Ritorna lo stato corrente dell'agent notturno."""
-    _agent_notturno_state = _agent_state()
-    return {
-        "enabled": _agent_notturno_state["enabled"],
-        "ora_utc": _agent_notturno_state["ora_utc"],
-        "last_run_at": _agent_notturno_state["last_run_at"],
-        "last_digest": _agent_notturno_state["last_digest"],
-        "running": _agent_notturno_state["running"],
-    }
-
-
-class AgentNotturnoToggleBody(BaseModel):
-    enabled: bool
-    ora_utc: Optional[int] = None
-
-
-@router.post("/api/admin/sistema/agent-notturno/toggle", tags=["Admin"])
-def admin_agent_notturno_toggle(body: AgentNotturnoToggleBody, admin_user: dict = Depends(_verify_admin)):
-    """Abilita o disabilita l'agent notturno. Opzionalmente cambia l'ora di esecuzione (0-23 UTC)."""
-    _agent_notturno_state = _agent_state()
-    _agent_notturno_state["enabled"] = body.enabled
-    if body.ora_utc is not None:
-        _agent_notturno_state["ora_utc"] = max(0, min(23, body.ora_utc))
-    _agent_notturno_persist()
-    logger.info("agent_notturno toggle: enabled=%s ora_utc=%s | admin=%s",
-                body.enabled, _agent_notturno_state["ora_utc"], admin_user.get("email"))
-    return {
-        "ok": True,
-        "enabled": _agent_notturno_state["enabled"],
-        "ora_utc": _agent_notturno_state["ora_utc"],
-    }
-
-
-@router.post("/api/admin/sistema/agent-notturno/esegui-ora", tags=["Admin"])
-def admin_agent_notturno_esegui_ora(admin_user: dict = Depends(_verify_admin)):
-    """Lancia subito l'agent notturno (indipendentemente dall'orario programmato)."""
-    _agent_notturno_state = _agent_state()
-    if _agent_notturno_state["running"]:
-        raise HTTPException(status_code=409, detail="Agent già in esecuzione")
-    # Questa route e' `def` sincrona: gira nel threadpool, senza event loop.
-    # asyncio.create_task qui solleva RuntimeError (no running event loop) DOPO
-    # aver gia' eseguito l'agente inline, restituendo 500 all'admin per un lavoro
-    # in realta' completato. Un thread daemon e' il pattern corretto nel contesto sync.
-    threading.Thread(
-        target=_run_agent_notturno, name="agent-notturno-manual", daemon=True
-    ).start()
-    logger.info("agent_notturno esecuzione manuale avviata | admin=%s", admin_user.get("email"))
-    return {"ok": True, "message": "Agent avviato in background — aggiorna lo stato tra qualche secondi"}
-
-
 # ── Azioni cliente (attiva/disattiva, reset password, cambia email, elimina) ──
 
 class AzioneAccountBody(BaseModel):
@@ -3017,13 +2795,6 @@ class ModificaSedeBody(BaseModel):
     # fatture-mancanti ("verifica flusso" vs "carica a mano").
     sdi_attivo: Optional[bool] = None
     tipo_attivita: Optional[str] = Field(None, pattern=_SETTORE_PATTERN)
-
-
-@router.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-def admin_lista_sedi(cliente_id: str):
-    sb = get_supabase_client()
-    resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("user_id", cliente_id).eq("sede_tecnica", False).execute()
-    return resp.data or []
 
 
 @router.post("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"])

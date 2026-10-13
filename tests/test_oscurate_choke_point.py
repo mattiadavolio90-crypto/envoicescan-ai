@@ -67,7 +67,6 @@ ELENCO_SENZA_FILTRO = {
     ("routers/admin.py", "_imp"): "tooling admin qualita'",
     ("routers/admin.py", "_promuovibile"): "tooling admin memoria AI",
     ("routers/admin.py", "admin_qualita_audit_annulla"): "tooling admin qualita'",
-    ("routers/admin.py", "admin_qualita_auto_review"): "tooling admin qualita'",
     ("routers/admin.py", "admin_qualita_classifica"): "tooling admin qualita'",
     ("routers/admin.py", "admin_qualita_coda"): "tooling admin qualita'",
     ("routers/admin.py", "prepara_suggerimenti_ai"): "tooling admin memoria AI",
@@ -83,7 +82,6 @@ ELENCO_SENZA_FILTRO = {
     ("upload_handler.py", "_run_post_upload_ai_categorization"): "categorizzazione post-upload",
     ("auth_service.py", "_is_invoicetronic_event"): "instradamento evento SDI",
     ("fastapi_worker.py", "_strip_suffix_n"): "dedup upload per nome file",
-    ("fastapi_worker.py", "_run_agent_notturno"): "classifica righe, non conta soldi",
     ("fastapi_worker.py", "_esegui"): "tooling admin",
 
     # ── Presenza e copertura temporale dei dati, non importi. Una fattura

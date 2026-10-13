@@ -13,7 +13,6 @@
 | 🚨 "ONEFLUX è offline" | `uptime_check.yml` (ogni 15 min) | Vercel/frontend non risponde HTTP 200 |
 | ⚠️ "worker LENTO" | `worker_latency_check.yml` (ogni 10 min) | Il worker Railway risponde ma sopra soglia (3s su `/health`, che non tocca nemmeno il DB) — i clienti probabilmente vedono già "Servizio non raggiungibile" |
 | 🚨 "Coda ricavi bloccata" | `ricavi_queue_monitor.yml` (ogni ora) | Il queue-worker non sta consumando `ricavi_email_queue` — gli incassi non entrano in app |
-| 🤖 "Agent notturno completato/FALLITO" | agent notturno (worker, ogni notte) | Riepilogo categorizzazione automatica; se FALLITO è un'anomalia da controllare |
 | ⚠️/🚨 "Saldo Invoicetronic basso / ESAURITO" | queue-worker (ogni 6 ore) e webhook (al primo 403) — **solo Telegram** | Crediti in esaurimento o finiti: a zero le fatture in arrivo non si scaricano — vedi §4bis |
 
 **Canali**: email (`md@oneflux.it`, via Brevo) + Telegram (bot `@Oneflux_alert_bot`). Ridondanti: se uno dei due è giù, l'altro arriva comunque.

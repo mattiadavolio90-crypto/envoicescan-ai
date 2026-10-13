@@ -4,57 +4,6 @@ Perimetro: margini / briefing / chat. Ogni test qui e' stato verificato fallire
 col codice pre-fix: un test verde al primo colpo non prova nulla (lezione 9 del
 documento di stato).
 """
-import asyncio
-from unittest.mock import patch
-
-import pytest
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HIGH — agent notturno: create_task su funzione sincrona
-# ─────────────────────────────────────────────────────────────────────────────
-
-def test_create_task_su_funzione_sincrona_esplode():
-    """Documenta PERCHE' serve to_thread: passare una funzione sync a create_task
-    la esegue inline (bloccando) e poi solleva TypeError sul valore di ritorno.
-    Se un domani qualcuno "semplifica" il fix, questo test spiega il danno."""
-    eseguita = []
-
-    def _sync():
-        eseguita.append(True)
-        return {"ok": 1}
-
-    async def _main():
-        with pytest.raises(TypeError):
-            asyncio.create_task(_sync(), name="t")
-
-    asyncio.run(_main())
-    # Il corpo E' stato eseguito: il bug non era "non parte mai", era "parte
-    # bloccando l'event loop e poi fallisce".
-    assert eseguita == [True]
-
-
-def test_agent_notturno_schedulato_via_to_thread():
-    """Il loop notturno deve passare la funzione a to_thread, non chiamarla."""
-    import services.fastapi_worker as fw
-    import inspect
-
-    src = inspect.getsource(fw._agent_notturno_loop)
-    assert "asyncio.to_thread(_run_agent_notturno)" in src, (
-        "il loop deve usare to_thread: _run_agent_notturno e' sincrona e fa I/O"
-    )
-    assert "create_task(_run_agent_notturno()" not in src
-
-
-def test_endpoint_esegui_ora_usa_thread_non_asyncio():
-    """La route admin e' `def` sincrona: asyncio.create_task darebbe RuntimeError
-    (no running event loop) dopo aver gia' eseguito tutto il lavoro."""
-    import services.routers.admin as adm
-    import inspect
-
-    src = inspect.getsource(adm.admin_agent_notturno_esegui_ora)
-    assert "threading.Thread" in src
-    assert "asyncio.create_task" not in src.replace("# asyncio.create_task", "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

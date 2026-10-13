@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   RefreshCw, CheckCircle, Trash2, ArrowRightLeft, Search, Undo2, Activity,
-  Lock, Sparkles, Moon, Play,
+  Lock, Sparkles,
 } from "lucide-react";
 import { CATEGORIE_TUTTE } from "@/lib/admin";
 
@@ -741,124 +741,6 @@ function StoricoTab() {
   );
 }
 
-// ─── Pannello Agent Notturno (dialog) ───────────────────────────────────────────
-type AgentStatus = {
-  enabled: boolean; ora_utc: number; last_run_at: string | null; last_digest: Record<string, unknown> | null; running: boolean;
-};
-
-function AgentNotturnoDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [oraUtc, setOraUtc] = useState("2");
-  const [confermaEsecuzione, setConfermaEsecuzione] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/sistema/agent-notturno");
-      if (!res.ok) { toast.error("Errore caricamento stato agent"); return; }
-      const d: AgentStatus = await res.json();
-      setStatus(d);
-      setOraUtc(String(d.ora_utc ?? 2));
-    } catch { toast.error("Errore di connessione"); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { if (open) load(); }, [open, load]);
-
-  async function handleToggle(enabled: boolean) {
-    setToggling(true);
-    try {
-      const res = await fetch("/api/admin/sistema/agent-notturno/toggle", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, ora_utc: parseInt(oraUtc) || 2 }),
-      });
-      const d = await res.json();
-      if (!res.ok) { toast.error(d.detail || "Errore"); return; }
-      toast.success(enabled ? "Agent notturno abilitato" : "Agent notturno disabilitato");
-      load();
-    } catch { toast.error("Errore di connessione"); }
-    finally { setToggling(false); }
-  }
-
-  async function handleEseguiOra() {
-    setRunning(true);
-    try {
-      const res = await fetch("/api/admin/sistema/agent-notturno/esegui-ora", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) { toast.error(d.detail || "Errore avvio"); return; }
-      toast.success(d.message || "Agent avviato — ricarica tra qualche secondo");
-      setTimeout(load, 5000);
-    } catch { toast.error("Errore di connessione"); }
-    finally { setRunning(false); }
-  }
-
-  const digest = status?.last_digest as Record<string, unknown> | null;
-  const oraItaliana = status ? `${((status.ora_utc + 2) % 24).toString().padStart(2, "0")}:00` : "—";
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Moon className="size-5 text-violet-500" /> Agent Notturno AI</DialogTitle>
-          <DialogDescription>
-            Ogni notte classifica le diciture/sconti sicuri e <strong>prepara i suggerimenti AI</strong> sulle righe dubbie (senza applicarli). La mattina trovi la coda già pronta da approvare.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm">Stato</span>
-            <span className={`text-sm font-semibold ${status?.enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
-              {loading ? "…" : status?.enabled ? "Attivo" : "Disattivato"}
-              {status?.running && <span className="ml-2 text-amber-600 animate-pulse">in esecuzione…</span>}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Ora esecuzione (UTC)</label>
-              <NativeSelect value={oraUtc} onValueChange={setOraUtc} className="w-40">
-                {Array.from({ length: 24 }, (_, h) => (
-                  <option key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC ({String((h + 2) % 24).padStart(2, "0")}:00 IT)</option>
-                ))}
-              </NativeSelect>
-            </div>
-            <div className="flex gap-2">
-              {status?.enabled ? (
-                <Button variant="outline" onClick={() => handleToggle(false)} disabled={toggling}>{toggling ? "…" : "Disabilita"}</Button>
-              ) : (
-                <Button onClick={() => handleToggle(true)} disabled={toggling}><Moon className="size-4 mr-1" />{toggling ? "…" : "Abilita"}</Button>
-              )}
-              <Button variant="outline" onClick={() => setConfermaEsecuzione(true)} disabled={running || status?.running}>
-                <Play className="size-4 mr-1" />{running ? "Avvio…" : "Esegui ora"}
-              </Button>
-            </div>
-          </div>
-          {status?.enabled && (
-            <p className="text-xs text-muted-foreground">Programmato ogni giorno alle <strong>{oraItaliana} ora italiana</strong> ({status.ora_utc}:00 UTC)</p>
-          )}
-          {status?.last_run_at && digest && !digest.errore && (
-            <div className="rounded-md border p-3 space-y-1 text-xs">
-              <p className="text-muted-foreground">Ultima esecuzione: {new Date(status.last_run_at).toLocaleString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-              <p>Classificate: <strong>{String(digest.classificate ?? "—")}</strong> · Suggerimenti AI: <strong>{String(digest.suggerite_ai ?? "—")}</strong> · Errori: <strong>{String(digest.errori ?? "—")}</strong></p>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-
-      <ConfirmDialog
-        open={confermaEsecuzione}
-        titolo="Eseguire subito l'agent notturno?"
-        messaggio="Classifica le diciture/sconti sicuri e prepara i suggerimenti AI sulle righe dubbie."
-        confermaLabel="Esegui ora"
-        onConferma={handleEseguiOra}
-        onClose={() => setConfermaEsecuzione(false)}
-      />
-    </Dialog>
-  );
-}
-
 // ─── ROOT ───────────────────────────────────────────────────────────────────────
 const TABS = ["da_controllare", "scelte_clienti", "memoria", "storico"] as const;
 const TAB_LABELS: Record<string, string> = {
@@ -872,7 +754,6 @@ export function CategorieClient() {
   const [tab, setTab] = useState<typeof TABS[number]>("da_controllare");
   const [clienti, setClienti] = useState<ClienteOpzione[]>([]);
   const [filtroCliente, setFiltroCliente] = useState("tutti");
-  const [agentOpen, setAgentOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/clienti")
@@ -884,26 +765,19 @@ export function CategorieClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex gap-1 border-b flex-1 min-w-0 overflow-x-auto">
-          {TABS.map((t) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setAgentOpen(true)}>
-          <Moon className="size-4 mr-1" /> Agent notturno
-        </Button>
+      <div className="flex gap-1 border-b min-w-0 overflow-x-auto">
+        {TABS.map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+            {TAB_LABELS[t]}
+          </button>
+        ))}
       </div>
 
       {tab === "da_controllare" && <DaControllareTab clienti={clienti} filtroCliente={filtroCliente} setFiltroCliente={setFiltroCliente} />}
       {tab === "scelte_clienti" && <ScelteClientiTab clienti={clienti} filtroCliente={filtroCliente} setFiltroCliente={setFiltroCliente} />}
       {tab === "memoria" && <MemoriaTab />}
       {tab === "storico" && <StoricoTab />}
-
-      <AgentNotturnoDialog open={agentOpen} onOpenChange={setAgentOpen} />
     </div>
   );
 }

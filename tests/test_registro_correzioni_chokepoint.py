@@ -255,7 +255,7 @@ def test_il_fallback_senza_guardia_non_filtra_le_arbitrate():
 def test_i_percorsi_di_produzione_restano_compatibili_con_la_rpc_a_sette_argomenti():
     """Nessun percorso del cliente/worker/admin deve dipendere dalla migration.
 
-    L'inerenza che questo test presidia: `aggiorna_categoria_fatture` ha 11
+    L'inerenza che questo test presidia: `aggiorna_categoria_fatture` ha molti
     chiamanti applicativi, e uno solo di loro (gli script) chiede la guardia.
     Se il parametro nuovo finisse nel payload di tutti, sul DB con la sola firma
     a 7 argomenti PostgREST risponderebbe PGRST202 a OGNI scrittura e tutte
@@ -269,7 +269,6 @@ def test_i_percorsi_di_produzione_restano_compatibili_con_la_rpc_a_sette_argomen
         {"source": "admin_propagazione", "attore_email": "a@b.it"},
         {"source": "admin_classifica", "attore_user_id": "U"},
         {"source": "post_upload", "batch_id": "L"},
-        {"source": "agent_notturno", "batch_id": "L"},
     ]
     for kwargs in percorsi:
         client = _ClientRPC()

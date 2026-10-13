@@ -575,7 +575,7 @@ dizionario dei ristoranti senza guardare il settore:
    `Da Classificare` (regola #1); per i ristoranti invariato. Il sorgente conserva le tre
    chiamate letterali a `decisione_deterministica(desc)`: un test esistente
    (`test_classifica_con_ai_non_ricompone_la_pipeline`) ne conta la presenza.
-2. **L'agente notturno** (`_run_agent_notturno`) riclassificava la coda di **tutti** gli
+2. **L'agente notturno** (rimosso il 13/10/2026 col riordino dell'admin) riclassificava la coda di **tutti** gli
    utenti non-admin col dizionario e promuoveva la descrizione in `prodotti_master`
    `verified=True`: per un negozio righe riscritte in CARNE/VINI **e** memoria globale dei
    ristoranti contaminata. Ora gli account retail sono esclusi **prima** della query sulle
@@ -619,9 +619,9 @@ multi-riga, 20 punti) — e ne è uscito un quarto buco, della stessa famiglia d
 | `ai_service.py:4483` (`salva_correzione_in_memoria_locale`) | utente | correzione del cliente stesso: locale, giusta |
 | `ai_service.py:4765/4794` (`salva_correzione_in_memoria_globale`) | master | unico chiamante guardato (400, 1.5) |
 | `upload_handler.py:903` (memoria AI post-upload) | utente | categoria da `classifica_via_worker`, gated (1.4) |
-| `fastapi_worker.py:360/383/432` (agente notturno) | master | account retail esclusi prima della query (seconda lettura) |
+| agente notturno (rimosso il 13/10/2026) | master | account retail esclusi prima della query (seconda lettura) |
 | `admin.py:1084` (`admin_qualita_classifica`) | master | solo se almeno una riga ristorazione (seconda lettura) |
-| `admin.py:1257` (`prepara_suggerimenti_ai`) | master, solo `categoria_suggerita` | chiamanti: agente notturno (retail esclusi) e **`admin_qualita_suggerisci_ai` (ora esclude i retail)** |
+| `admin.py:1257` (`prepara_suggerimenti_ai`) | master, solo `categoria_suggerita` | chiamanti: **`admin_qualita_suggerisci_ai` (esclude i retail)**; l'agente notturno, l'altro chiamante, è stato rimosso il 13/10/2026 |
 | **`admin.py:1379/1406` (`admin_qualita_auto_review`)** | master, `verified=True` | **era SCOPERTO**: per gli sconti/omaggi promuoveva la categoria già presente sulla riga — per un negozio ARTICOLO DI VENDITA — e da lì ai ristoranti come bypass. Ora le righe si classificano (una dicitura a importo zero è tale anche per un negozio, lo sconto conferma la categoria che la riga ha già) ma la promozione avviene solo se la descrizione ha almeno una riga ristorazione, come in `classifica` |
 | `admin.py:1549/1581` (update/delete di una voce globale per id) | master | azioni dell'admin su voci già globali: neutre |
 | `admin.py:1695` (marca «eccezione locale accettata») | utente | neutro |

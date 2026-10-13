@@ -325,10 +325,6 @@ class TestNessunaScritturaSenzaProvenienza:
         assert '"categoria_fonte": None' in src
         assert '"categoria_fiducia": None' in src
 
-    def test_l_agent_notturno_non_butta_via_la_fonte_che_ha(self):
-        src = Path("services/fastapi_worker.py").read_text(encoding="utf-8")
-        assert '"L7_regola_forte" if _motivo else "L7_dizionario"' in src
-
 
 class TestIlCommentDelDbNonMente:
     """Il comment di `fatture.categoria_fonte` elencava `L3_globale_non_verificata`
