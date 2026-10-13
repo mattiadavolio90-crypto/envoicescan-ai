@@ -2272,6 +2272,14 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   PRIMA del push (poi `has_function_privilege` per anon/authenticated); riquadro non aperto nel
 >   browser (Next locale scrive sul DB vero); un'email Passbi di soli giorni senza IVA su sede
 >   esclusa spegnerebbe l'override del mese senza scrivere niente (0 casi oggi).
+>   **Secondo giro del revisore (🔴 a `42910123`):** il prompt della chat diceva ancora «chiedi
+>   quanto senza IVA», quindi la domanda partiva prima dello strumento. Ora `_chat_noiva_escluso`
+>   passa il flag al prompt, che sulla sede esclusa chiede 10% e 22%; test end-to-end su
+>   `/api/chat` e sul testo del prompt, mutazione 3/3. La risposta di `elimina` riporta gli euro
+>   come il riquadro (1.800 nel test), non i soli giornalieri della RPC. Suite
+>   `python -m pytest tests/ -q -p no:randomly`: 20.138 verdi + 59 skip + 4 rossi in
+>   `test_chat_vista_sede.py` (atteso esatto dei parametri del prompt, senza il nuovo
+>   `noiva_escluso`), corretti e rilanciati: 15/15.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

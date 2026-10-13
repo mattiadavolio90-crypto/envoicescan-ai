@@ -674,6 +674,35 @@ def _invalida_dopo_ricavi(sb, user_id: str, ristorante_ids: list[str]) -> None:
         logger.warning("ricavi-noiva: invalidazione segnali catena: %s", exc)
 
 
+def _euro_noiva_per_sede(sb, ristorante_ids: list[str]) -> Dict[str, float]:
+    """Il no IVA di ogni sede come lo vedono i Margini: nei mesi in modalita'
+    'mensile' vale il totale di ricavi_modalita_mensile, non l'aggregato dei
+    giornalieri in margini_mensili."""
+    euro: Dict[str, float] = {rid: 0.0 for rid in ristorante_ids}
+    if not ristorante_ids:
+        return euro
+    per_mese: Dict[tuple, float] = {}
+    for r in fetch_all(
+        sb.table("margini_mensili")
+        .select("id,ristorante_id,anno,mese,altri_ricavi_noiva")
+        .in_("ristorante_id", ristorante_ids)
+        .neq("altri_ricavi_noiva", 0)
+        .order("id")
+    ):
+        per_mese[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = float(r.get("altri_ricavi_noiva") or 0)
+    for r in fetch_all(
+        sb.table("ricavi_modalita_mensile")
+        .select("id,ristorante_id,anno,mese,altri_ricavi_noiva")
+        .in_("ristorante_id", ristorante_ids)
+        .eq("modalita", "mensile")
+        .order("id")
+    ):
+        per_mese[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = float(r.get("altri_ricavi_noiva") or 0)
+    for (rid, _anno, _mese), valore in per_mese.items():
+        euro[rid] = euro.get(rid, 0.0) + valore
+    return euro
+
+
 @router.get("/api/account/ricavi-noiva", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
 def account_ricavi_noiva(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Per ogni sede del titolare: se e' esclusa e quanto no IVA ha oggi nei margini."""
@@ -681,29 +710,7 @@ def account_ricavi_noiva(authorization: Optional[str] = Header(None)) -> Dict[st
     user_id = str(user["id"])
     sb = _get_supabase_client()
     proprie = _sedi_proprie(sb, user_id)
-    euro: Dict[str, float] = {rid: 0.0 for rid in proprie}
-    if proprie:
-        # Per mese, come lo vedono i Margini: nei mesi in modalita' 'mensile' vale
-        # il totale di ricavi_modalita_mensile, non l'aggregato dei giornalieri.
-        per_mese: Dict[tuple, float] = {}
-        for r in fetch_all(
-            sb.table("margini_mensili")
-            .select("id,ristorante_id,anno,mese,altri_ricavi_noiva")
-            .in_("ristorante_id", list(proprie))
-            .neq("altri_ricavi_noiva", 0)
-            .order("id")
-        ):
-            per_mese[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = float(r.get("altri_ricavi_noiva") or 0)
-        for r in fetch_all(
-            sb.table("ricavi_modalita_mensile")
-            .select("id,ristorante_id,anno,mese,altri_ricavi_noiva")
-            .in_("ristorante_id", list(proprie))
-            .eq("modalita", "mensile")
-            .order("id")
-        ):
-            per_mese[(str(r["ristorante_id"]), int(r["anno"]), int(r["mese"]))] = float(r.get("altri_ricavi_noiva") or 0)
-        for (rid, _anno, _mese), valore in per_mese.items():
-            euro[rid] = euro.get(rid, 0.0) + valore
+    euro = _euro_noiva_per_sede(sb, list(proprie))
     return {
         "sedi": [
             {
@@ -730,6 +737,9 @@ def account_ricavi_noiva_elimina(
     user_id = str(user["id"])
     sb = _get_supabase_client()
     ids = _ids_richiesti(body.ristorante_ids, _sedi_proprie(sb, user_id))
+    # Gli euro si leggono prima, come li mostra il riquadro: quelli della RPC
+    # contano solo i giornalieri e non i totali mensili.
+    euro = _euro_noiva_per_sede(sb, ids)
 
     resp = sb.rpc("elimina_ricavi_noiva", {"p_user_id": user_id, "p_ristorante_ids": ids}).execute()
     _invalida_dopo_ricavi(sb, user_id, ids)
@@ -739,7 +749,7 @@ def account_ricavi_noiva_elimina(
             "id": str(r["ristorante_id"]),
             "giorni": int(r.get("giorni") or 0),
             "mesi": int(r.get("mesi") or 0),
-            "euro": round(float(r.get("euro") or 0), 2),
+            "euro": round(euro.get(str(r["ristorante_id"]), 0.0), 2),
         }
         for r in (resp.data or [])
     ]

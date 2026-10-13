@@ -264,8 +264,9 @@ le colonne a ogni import. Su una sede esclusa il trigger:
 - su `margini_mensili` ricalcola netto, primo margine e MOL;
 - su `ricavi_giornalieri` non crea un giorno che sarebbe solo no IVA.
 
-Sopra il trigger, i canali che parlano col cliente dicono perché: l'assistente
-non chiede il senza IVA e rifiuta una card che lo contiene, e
+Sopra il trigger, i canali che parlano col cliente dicono perché: il prompt della
+chat sulla sede esclusa chiede solo 10% e 22% (`_chat_noiva_escluso`), lo
+strumento non propone il senza IVA e la Conferma rifiuta una card che lo contiene, e
 `POST /api/ricavi/giornalieri` risponde 400 invece di 500 su un giorno di solo
 no IVA. I moduli di caricamento, web e `/m`, nascondono il campo: la GET dei
 giornalieri restituisce `noiva_escluso`.

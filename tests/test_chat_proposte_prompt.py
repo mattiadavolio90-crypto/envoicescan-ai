@@ -232,3 +232,17 @@ def test_la_catena_nomina_anche_la_spesa(monkeypatch):
     """Rilievo (b) del revisore sulla D1."""
     p = _prompt_catena(monkeypatch, SETTORE_RISTORAZIONE)
     assert "una cifra da registrare (incasso, spesa, personale, fatturato)" in p
+
+
+def test_sede_che_ha_escluso_il_senza_iva_non_lo_fa_chiedere(monkeypatch):
+    """Il ramo di sempre resta identico; sulla sede esclusa il modello chiede 10% e 22%
+    e passa senza_iva = 0 (la Conferma rifiuterebbe comunque una parte senza IVA)."""
+    monkeypatch.setattr(fw, "home_kpi", lambda *a, **k: _kpi_mock())
+    monkeypatch.setattr(fw, "_chat_top_cat_forn", lambda *a, **k: ([], []))
+    escluso = fw._build_chat_system_prompt(USER, _sb(), None, "r-1", SETTORE_RISTORAZIONE,
+                                           cifre_dettate=True, noiva_escluso=True)
+    assert "quanto senza IVA" not in escluso
+    assert "CHIEDIGLI quanto e' al 10% e quanto al 22%" in escluso
+    assert "senza_iva = 0" in escluso
+    sempre = fw._build_chat_system_prompt(USER, _sb(), None, "r-1", SETTORE_RISTORAZIONE, cifre_dettate=True)
+    assert "CHIEDIGLI quanto e' al 10% e quanto senza IVA" in sempre

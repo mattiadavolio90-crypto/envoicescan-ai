@@ -3824,11 +3824,25 @@ def _rimando_score(domanda: str, reply: str, pagine, dove: str = "") -> str:
             f"con i tuoi acquisti, in Osservatorio → Score Fornitori{dove}.")
 
 
+def _chat_noiva_escluso(ristorante_id: Optional[str], supabase_client) -> bool:
+    """La sede ha escluso i ricavi senza IVA? Lettura fallita = no: la Conferma
+    li rifiuta comunque (assistente.registra), il prompt chiede solo una cosa in piu'."""
+    if not ristorante_id:
+        return False
+    try:
+        from services.routers.assistente import noiva_escluso
+        return noiva_escluso(supabase_client, str(ristorante_id))
+    except Exception as exc:
+        logger.warning("chat: flag ricavi senza IVA non letto per %s: %s", ristorante_id, exc)
+        return False
+
+
 def _build_chat_system_prompt(
     user: Dict[str, Any], supabase_client, authorization: Optional[str],
     ristorante_id: Optional[str] = None, settore: Optional[str] = None,
     sede_nome: Optional[str] = None, multi_sede: bool = False,
     cifre_dettate: bool = False, mobile: bool = False,
+    noiva_escluso: bool = False,
 ) -> str:
     """Costruisce il system prompt con i dati freschi del ristorante.
 
@@ -3905,6 +3919,16 @@ def _build_chat_system_prompt(
         "di preparare la card: non dividerlo mai tu. Il 22% indicalo solo se lo nomina il "
         "cliente."
     )
+    # Sede che ha escluso i ricavi senza IVA (Impostazioni): il DB li scrive a 0 e
+    # la Conferma li rifiuta. Senza questa riga il modello li chiederebbe lo stesso.
+    if noiva_escluso:
+        _divisione_iva = (
+            "Per questa sede i ricavi senza IVA sono esclusi (scelta del cliente nelle "
+            "Impostazioni): incasso e fatturato si dividono solo fra 10% e 22%. Se il cliente "
+            "ti da' solo il totale, CHIEDIGLI quanto e' al 10% e quanto al 22%, e passa "
+            "senza_iva = 0: non dividerlo mai tu e non chiedere la parte senza IVA. Se te la "
+            "detta, digli che per questa sede non si registra e che si riattiva da Impostazioni."
+        )
     _riga_coperti = "" if _retail else (
         "- Per coperti e scontrino medio (\"quanti coperti\", \"scontrino medio\", "
         "\"quante persone servo\", \"giorno più pieno\") usa query_coperti. Il coperto è "
@@ -6572,6 +6596,7 @@ def chat_ai(
             sede_nome=_chat_nome_sede(ristorante_id, supabase_client) if _piu_sedi_visibili else None,
             multi_sede=_piu_sedi_visibili,
             cifre_dettate=body.card_conferma, mobile=body.mobile,
+            noiva_escluso=_chat_noiva_escluso(ristorante_id, supabase_client) if body.card_conferma else False,
         )
     )
 

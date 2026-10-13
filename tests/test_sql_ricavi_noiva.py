@@ -265,7 +265,9 @@ def test_elimina_dall_endpoint_scrive_e_svuota_le_cache(dati, monkeypatch):
     resp = sc.chiama(a, "POST", URL_ELIMINA, json_={"ristorante_ids": [a.ids["sede1"]], "conferma": "elimina"})
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["sedi"] == [{"id": a.ids["sede1"], "giorni": 2, "mesi": 3, "euro": 500.0}]
+    # 1.800 come nel riquadro (giornalieri, luglio a mano, settembre a totale), non i
+    # soli 500 dei giornalieri che conta la RPC.
+    assert resp.json()["sedi"] == [{"id": a.ids["sede1"], "giorni": 2, "mesi": 3, "euro": 1800.0}]
     assert _giorno(sc, a.ids["sede1"], "2026-08-01")[2] == 0.0
     assert briefing == [a.ids["sede1"]] and kpi == [a.ids["sede1"]]
     assert a.ids["sede1"] not in fw._LIVE_SEGNALI_CACHE
@@ -430,3 +432,25 @@ def test_giorno_di_solo_senza_iva_a_mano_su_sede_esclusa_spiega_perche(dati):
     assert resp.status_code == 400
     assert "esclusi" in resp.json()["detail"]
     assert _giorno(sc, a.ids["sede1"], "2026-08-20") is None
+
+
+def test_la_chat_dice_al_prompt_che_la_sede_ha_escluso_il_senza_iva(dati, monkeypatch):
+    """Il cablaggio: senza, il prompt chiede «quanto senza IVA» anche sulla sede esclusa."""
+    sc, a = dati, dati.a
+    import services.fastapi_worker as fw
+
+    visti = []
+    monkeypatch.setattr(fw, "_build_chat_system_prompt", lambda *x, **k: visti.append(k.get("noiva_escluso")) or "p")
+    monkeypatch.setattr(fw, "_chat_loop_openai", lambda *x, **k: ("ok", 1, 1))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    def _chat():
+        corpo = {"messages": [{"role": "user", "content": "ieri 2.340"}], "contesto": "sede", "card_conferma": True}
+        resp = sc.client.post("/api/chat", json=corpo,
+                              headers={"Authorization": f"Bearer {a.token}", "X-Worker-Key": CHIAVE_WORKER})
+        assert resp.status_code == 200, resp.text
+
+    _chat()
+    _escludi(sc, a)
+    _chat()
+    assert visti == [False, True]
