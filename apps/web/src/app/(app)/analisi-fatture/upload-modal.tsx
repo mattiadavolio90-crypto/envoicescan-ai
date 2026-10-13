@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LINK_CODA_GRUPPO } from "@/lib/catena-schede";
+import { classificaEsitoUpload, type MotivoScarto } from "@/lib/esito-upload";
 
 type FileStatus = "waiting" | "uploading" | "success" | "error" | "skipped" | "queued";
 
@@ -38,7 +39,7 @@ type FileEntry = {
   data_documento?: string;
   needs_review?: number;
   error?: string;
-  skip_motivo?: string;
+  skip_motivo?: MotivoScarto;
   sede_assegnata?: string;
   cross_sede?: boolean;
   queue_created?: boolean;
@@ -138,51 +139,16 @@ export function UploadModal({ codaAccesa = true }: { codaAccesa?: boolean }) {
           body: form,
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === entry.id
-                ? { ...f, status: "error", error: data.detail ?? data.error ?? `HTTP ${res.status}` }
-                : f,
-            ),
-          );
-        } else {
-          const errStr = String(data.error ?? "");
-          const isAlreadyLoaded = errStr.startsWith("ALREADY_LOADED:");
-          // Multi-sede AMBIGUO: la P.IVA e' del cliente ma l'indirizzo non distingue
-          // la sede. NON piu' scartata: il worker l'ha messa in coda 'da_assegnare'
-          // (data.success=true, routing_status='ambiguo', queue_id valorizzato). Il
-          // cliente la assegnera' a una sede o la ripartira' sul gruppo dalla coda.
-          //
-          // queue_created distingue NUOVA (true, appena entrata in coda) da GIA'
-          // PRESENTE (false, la RPC l'ha riconosciuta via hash e non ha creato nulla
-          // — stesso event_id). Prima entrambe finivano su "queued" col contatore
-          // "N da assegnare", indistinguibili a schermo dalle nuove: un ricaricamento
-          // dell'intera cartella sembrava aggiungere N fatture quando in realta' non
-          // aggiungeva nulla. Ora una duplicata-in-coda e' "skipped", come qualsiasi
-          // altro doppione (stesso trattamento di ALREADY_LOADED).
-          const isQueuedAmbiguo = data.success === true && data.routing_status === "ambiguo" && data.queue_created !== false;
-          const isGiaInCoda = data.success === true && data.routing_status === "ambiguo" && data.queue_created === false;
-          // P.IVA non di nessuna sede del cliente: ancora scartata (guardia intatta).
-          const isPivaEstranea = errStr === "PIVA_NESSUNA_SEDE";
-          const isSkip = isAlreadyLoaded || isPivaEstranea || isGiaInCoda;
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === entry.id
+        const esito = classificaEsitoUpload(res.ok, res.status, data);
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === entry.id
+              ? res.ok
                 ? {
                     ...f,
-                    // isSkip PRIMA di data.success: il worker ritorna sempre
-                    // success=true sul ramo ambiguo (anche quando la fattura era
-                    // già in coda, queue_created=false) — controllare data.success
-                    // per primo faceva vincere "success" su isGiaInCoda, mostrando
-                    // "0 righe" con icona verde invece di "scartata".
-                    status: isQueuedAmbiguo
-                      ? "queued"
-                      : isSkip
-                        ? "skipped"
-                        : data.success
-                          ? "success"
-                          : "error",
+                    status: esito.status,
+                    error: esito.error,
+                    skip_motivo: esito.skip_motivo,
                     righe: data.righe_salvate,
                     righe_preesistenti: data.righe_preesistenti ?? 0,
                     fornitore: data.fornitore,
@@ -191,19 +157,11 @@ export function UploadModal({ codaAccesa = true }: { codaAccesa?: boolean }) {
                     sede_assegnata: data.sede_assegnata,
                     cross_sede: data.cross_sede ?? false,
                     queue_created: data.queue_created ?? undefined,
-                    error: data.success || isSkip ? undefined : data.error,
-                    skip_motivo: isAlreadyLoaded
-                      ? errStr.slice("ALREADY_LOADED:".length) || "fattura già presente"
-                      : isPivaEstranea
-                        ? "PIVA_NESSUNA_SEDE"
-                        : isGiaInCoda
-                          ? "GIA_IN_CODA"
-                          : undefined,
                   }
-                : f,
-            ),
-          );
-        }
+                : { ...f, status: esito.status, error: esito.error, skip_motivo: undefined }
+              : f,
+          ),
+        );
       } catch {
         setFiles((prev) =>
           prev.map((f) =>

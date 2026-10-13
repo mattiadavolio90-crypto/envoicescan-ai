@@ -2280,6 +2280,22 @@ async def upload_invoice(
 
     elapsed_ms = int((_time.monotonic() - t0) * 1000)
 
+    if result.get("error") == "duplicate_document":
+        # Stesso fornitore+numero+data gia' a DB sotto un altro nome (`X (1).xml`
+        # contro `X.xml`, SDI contro upload): per il cliente e' lo stesso doppione
+        # della guardia per nome sopra, e va detto allo stesso modo. Come errore
+        # usciva in rosso, contato «non caricata» e ritentato a ogni click.
+        return UploadInvoiceResponse(
+            success=False,
+            filename=filename,
+            righe_salvate=0,
+            error=f"ALREADY_LOADED:{result.get('duplicate_of') or ''}",
+            routing_status=routing_status,
+            sede_assegnata=sede_assegnata,
+            cross_sede=cross_sede,
+            elapsed_ms=elapsed_ms,
+        )
+
     if not result.get("success"):
         # righe_salvate NON e' 0 per definizione: se un chunk era gia' passato la
         # fattura e' a DB a meta'. Dire 0 su una scrittura parziale fa credere al

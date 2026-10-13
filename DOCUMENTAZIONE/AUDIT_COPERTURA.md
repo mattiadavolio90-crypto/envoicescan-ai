@@ -2519,6 +2519,27 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   presidi frontend/rotte 4.099 verdi. Per far partire `-m sql` chiusi 58 Postgres di test
 >   orfani (/dev/shm al 100%). `tsc` pulito sui miei file; gli errori in
 >   `analisi-e-tag-client.tsx` sono della rinomina in corso della sessione dei tag.
+>
+> - **13/10/2026 — Caricamento fatture: il doppione per identita' e' «scartato», non un errore
+>   (Opus), NON pushato, nessuna migration.** Da screenshot di Mattia (CASATI 14): `X (1).xml`
+>   caricato, `X.xml` in rosso col codice grezzo `duplicate_document`, e alla chiusura
+>   «1 file non e' stato caricato»: il cliente legge un guasto dove c'e' un download doppio.
+>   **Causa:** le guardie anti-doppione sono due. Quella per NOME risponde `ALREADY_LOADED:` e la
+>   finestra la scarta; quella per IDENTITA' (fornitore+numero+data+tipo, dentro
+>   `salva_fattura_processata`) tornava `duplicate_document`, che la finestra non conosceva:
+>   errore rosso, contato «non caricata», ritentato a ogni «Carica N file», avviso di chiusura.
+>   Il worker buttava anche `duplicate_of`. **Fatto:** `/api/upload/invoice` traduce
+>   `duplicate_document` in `ALREADY_LOADED:<duplicate_of>` con la sede («Gia' caricata in
+>   precedenza su CASATI 14»); la mappa degli esiti esce da `upload-modal.tsx` in
+>   `lib/esito-upload.ts` (`classificaEsitoUpload`), che riconosce anche il codice vecchio per
+>   un worker non ridispiegato. L'avviso di chiusura resta per gli errori veri. **Prove:**
+>   `test_upload_doppione_identita.py` (endpoint vero, 5) e `test_esito_upload_frontend.py`
+>   (lib con node + chiamata dalla finestra, 13); mutazione 4/4 (ramo worker, doppione e
+>   gia'-in-coda nella lib, mappa reinserita nella finestra); 725 test di caricamento verdi;
+>   suite `python -m pytest tests/ -q -p no:randomly` **20.635 verdi + 61 skip, 1 rosso non
+>   mio**: `test_oscurate_choke_point` su `gruppo_prezzi_fattura` (commit `a5e9e0f9` della
+>   sessione dell'anteprima in catena, che deve dichiarare la query). `tsc` pulito sui due
+>   file. **Non fatto:** prova a mano nel browser (il Next locale scrive sul DB vero).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
