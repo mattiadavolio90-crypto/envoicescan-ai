@@ -2423,6 +2423,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   non aperta nel browser (nessuna sessione cliente; il Next locale punta al DB vero): va
 >   guardata da Mattia in locale, tema chiaro e scuro. «Score fornitori» resta in inglese: e'
 >   il nome di una scheda, decisione di Mattia.
+>   **Poi (screenshot di Mattia):** erano della versione VECCHIA. Il frontend locale (Turbopack,
+>   partito alle 9:13) non aveva preso i file cambiati nonostante il polling, e il worker
+>   locale gira senza ricaricamento: riavviati con `ferma-locale.sh`/`avvia-locale.sh` e
+>   `.next` svuotata; il log mostra subito le richieste nuove. Su sua richiesta: anteprima
+>   della fattura anche in catena (`GET /api/gruppo/prezzi/fattura`, sede verificata nel
+>   gruppo, 404 fuori, `filter_active`; proxy, `permessi_rotte`, ricetta d'isolamento, OpenAPI
+>   223) e il nome del punto vendita sopra la lista acquisti e nella finestra della fattura;
+>   «Qtà»/«UM» per esteso anche nell'anteprima. Mutazione 4/4 (controllo di sede, cancellate,
+>   filtro di sede nella query, isolamento); 367 isolamento + 18 `-m sql` catena verdi;
+>   presidi frontend/rotte 4.099 verdi. Per far partire `-m sql` chiusi 58 Postgres di test
+>   orfani (/dev/shm al 100%). `tsc` pulito sui miei file; gli errori in
+>   `analisi-e-tag-client.tsx` sono della rinomina in corso della sessione dei tag.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

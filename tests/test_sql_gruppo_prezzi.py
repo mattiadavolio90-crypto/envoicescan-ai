@@ -457,3 +457,27 @@ def test_la_stella_di_una_sede_fuori_dalla_finestra_non_accende_il_divario(sql):
     assert d["preferito"] is False
     [d] = _calcola_divari_catena(coppie, nomi, 5.0, preferiti_per_sede={SEDE2: {"LIMONE|MEFON"}})
     assert d["preferito"] is True
+
+
+def test_l_anteprima_della_fattura_di_una_sede_del_gruppo(db_sql, sql, monkeypatch):
+    """In catena la fattura e' di un'altra sede (l'anteprima del PV legge solo la
+    sede della sessione). Righe in ordine, senza le cancellate; una sede fuori
+    dal gruppo e' 404 anche se il file esiste."""
+    from fastapi import HTTPException
+    from services.routers import gruppo as G
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    sb = ClientSQL(db_sql)
+    _riga(sql, SEDE1, "2026-07-20", "LIMONE", "MEFON", Decimal("17.00"), file="f-limone.xml")
+    _riga(sql, SEDE1, "2026-07-20", "AGLIO", "MEFON", Decimal("4.50"), file="f-limone.xml")
+    _riga(sql, SEDE1, "2026-07-20", "CANCELLATA", "MEFON", Decimal("1.00"), file="f-limone.xml", cancellata=True)
+    _riga(sql, SEDE2, "2026-07-20", "SEGRETO", "MEFON", Decimal("9.00"), file="f-limone.xml")
+    monkeypatch.setattr(G, "_resolve_gruppo", lambda auth: (sb, UTENTE, [], "G", {SEDE1: "Centro"}, [SEDE1]))
+
+    esito = G.gruppo_prezzi_fattura(SEDE1, " f-limone.xml ", authorization="x")
+    assert [r["descrizione"] for r in esito["righe"]] == ["LIMONE", "AGLIO"]
+    assert esito["count"] == 2
+    with pytest.raises(HTTPException) as e:
+        G.gruppo_prezzi_fattura(SEDE2, "f-limone.xml", authorization="x")
+    assert e.value.status_code == 404

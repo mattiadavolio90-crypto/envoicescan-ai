@@ -8,7 +8,8 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
 import { intervalloPeriodo } from "@/lib/periodo";
-import type { StoricoPrezzoResponse } from "@/lib/prezzi";
+import type { StoricoPrezzoPoint, StoricoPrezzoResponse } from "@/lib/prezzi";
+import { AnteprimaFatturaDialog } from "../../prezzi/anteprima-fattura-dialog";
 import {
   chiaveDivario,
   chiaveStellaCatena,
@@ -88,6 +89,10 @@ export function SchedaPrezziCatena() {
   const [aperta, setAperta] = useState<string | null>(null);
   const [storico, setStorico] = useState<StoricoPrezzoResponse | null>(null);
   const [storicoLoading, setStoricoLoading] = useState(false);
+  // Anteprima di una fattura dalla lista acquisti, come nell'Osservatorio: la
+  // fattura e' della sede della riga (Mattia, 13/10/2026).
+  const [anteprima, setAnteprima] = useState<{ punto: StoricoPrezzoPoint; v: VariazionePrezzoCatena } | null>(null);
+  const apriFattura = useCallback((v: VariazionePrezzoCatena, p: StoricoPrezzoPoint) => setAnteprima({ punto: p, v }), []);
   const reqRef = useRef(0);
   // Una stella cambiata nelle variazioni sposta anche i «Preferiti» dei divari,
   // che il worker calcola: passando a quella lista si ricarica.
@@ -551,7 +556,9 @@ export function SchedaPrezziCatena() {
                   storicoLoading={aperta === chiave && storicoLoading}
                   onToggle={apriVariazione}
                   onToggleStar={toggleStella}
+                  onApriFattura={apriFattura}
                   puntoVendita={<PuntoVenditaRiga v={v} />}
+                  nomePuntoVendita={v.nome_pv}
                 />
               );
             })}
@@ -576,6 +583,16 @@ export function SchedaPrezziCatena() {
           <Paginazione pagina={pagina} pagine={pagine} totale={righe} nome="prodotti" onPagina={setPage} />
         </>
       )}
+
+      <AnteprimaFatturaDialog
+        open={anteprima !== null}
+        fileOrigine={anteprima?.punto.fattura ?? null}
+        numeroDocumento={anteprima?.punto.numero_documento}
+        prodotto={anteprima ? nomeProdotto(anteprima.v.prodotto).nome : ""}
+        ristoranteId={anteprima?.v.ristorante_id}
+        puntoVendita={anteprima?.v.nome_pv}
+        onClose={() => setAnteprima(null)}
+      />
     </div>
   );
 }

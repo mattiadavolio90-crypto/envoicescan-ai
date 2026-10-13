@@ -18925,6 +18925,92 @@
         }
       }
     },
+    "/api/gruppo/prezzi/fattura": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Righe di una fattura di una sede del gruppo (anteprima dalla lista acquisti della scheda Prezzi)",
+        "description": "L'anteprima del PV (`/api/scadenziario/anteprima`) legge la sede della\nsessione; in catena la fattura e' di un'altra sede (Mattia, 13/10/2026: «le\nfatture voglio che si possano vedere in anteprima come sul punto vendita»).\nStessa forma di risposta, sede verificata nel gruppo.",
+        "operationId": "gruppo_prezzi_fattura_api_gruppo_prezzi_fattura_get",
+        "parameters": [
+          {
+            "name": "ristorante_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ristorante Id"
+            }
+          },
+          {
+            "name": "file_origine",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Origine"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Gruppo Prezzi Fattura Api Gruppo Prezzi Fattura Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/chat-config": {
       "get": {
         "tags": [

@@ -3581,6 +3581,44 @@ def gruppo_prezzi_storico(
     return _storico_prodotto_sede(sb, ristorante_id, prodotto, fornitore, data_da, data_a)
 
 
+@router.get(
+    "/api/gruppo/prezzi/fattura",
+    tags=["Catena"],
+    summary="Righe di una fattura di una sede del gruppo (anteprima dalla lista acquisti della scheda Prezzi)",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_prezzi_fattura(
+    ristorante_id: str,
+    file_origine: str,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """L'anteprima del PV (`/api/scadenziario/anteprima`) legge la sede della
+    sessione; in catena la fattura e' di un'altra sede (Mattia, 13/10/2026: «le
+    fatture voglio che si possano vedere in anteprima come sul punto vendita»).
+    Stessa forma di risposta, sede verificata nel gruppo."""
+    from services.db_service import filter_active
+
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    if ristorante_id not in rid_to_nome:
+        raise HTTPException(status_code=404, detail="Punto vendita non trovato")
+    file_origine = str(file_origine or "").strip()
+    if not file_origine:
+        raise HTTPException(status_code=400, detail="file_origine obbligatorio")
+    righe = (
+        filter_active(
+            sb.table("fatture")
+            .select("numero_riga,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria")
+            .eq("ristorante_id", ristorante_id)
+            .eq("file_origine", file_origine)
+        )
+        .order("numero_riga", desc=False)
+        .execute()
+        .data
+        or []
+    )
+    return {"righe": righe, "file_origine": file_origine, "count": len(righe)}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CHAT CATENA — crediti AI dell'account (tetti, spesi, ricarica)
 # ═══════════════════════════════════════════════════════════════════════════

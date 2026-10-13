@@ -36,12 +36,17 @@ export function AnteprimaFatturaDialog({
   prodotto,
   open,
   onClose,
+  ristoranteId,
+  puntoVendita,
 }: {
   fileOrigine: string | null;
   numeroDocumento?: string;
   prodotto: string;
   open: boolean;
   onClose: () => void;
+  /** Catena: la fattura e' di questa sede del gruppo, non di quella della sessione. */
+  ristoranteId?: string;
+  puntoVendita?: string;
 }) {
   const [righe, setRighe] = useState<RigaFattura[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,7 +59,9 @@ export function AnteprimaFatturaDialog({
     (async () => {
       try {
         const res = await fetch(
-          `/api/scadenziario/anteprima?file_origine=${encodeURIComponent(fileOrigine)}`,
+          ristoranteId
+            ? `/api/gruppo/prezzi/fattura?${new URLSearchParams({ ristorante_id: ristoranteId, file_origine: fileOrigine })}`
+            : `/api/scadenziario/anteprima?file_origine=${encodeURIComponent(fileOrigine)}`,
         );
         if (!res.ok) throw new Error();
         const json = await res.json();
@@ -68,7 +75,7 @@ export function AnteprimaFatturaDialog({
     return () => {
       attivo = false;
     };
-  }, [open, fileOrigine]);
+  }, [open, fileOrigine, ristoranteId]);
 
   const totale = righe.reduce((s, r) => s + (r.totale_riga || 0), 0);
 
@@ -80,6 +87,11 @@ export function AnteprimaFatturaDialog({
             Fattura {numeroDocumento ? `n° ${numeroDocumento}` : ""}
           </DialogTitle>
           <DialogDescription>
+            {puntoVendita && (
+              <>
+                <span className="font-medium text-foreground">{puntoVendita}</span> ·{" "}
+              </>
+            )}
             La riga di <span className="font-medium text-foreground">{prodotto}</span> è evidenziata.
           </DialogDescription>
         </DialogHeader>
@@ -95,8 +107,8 @@ export function AnteprimaFatturaDialog({
                 <thead className="bg-muted/50">
                   <tr>
                     <th className="text-left px-3 py-2 text-muted-foreground font-medium">Descrizione</th>
-                    <th className="text-right px-3 py-2 text-muted-foreground font-medium">Qtà</th>
-                    <th className="text-left px-3 py-2 text-muted-foreground font-medium">UM</th>
+                    <th className="text-right px-3 py-2 text-muted-foreground font-medium">Quantità</th>
+                    <th className="text-left px-3 py-2 text-muted-foreground font-medium">Unità</th>
                     <th className="text-right px-3 py-2 text-muted-foreground font-medium">Prezzo</th>
                     <th className="text-right px-3 py-2 text-muted-foreground font-medium">IVA%</th>
                     <th className="text-right px-3 py-2 text-muted-foreground font-medium">Totale</th>

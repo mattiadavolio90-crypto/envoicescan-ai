@@ -218,11 +218,14 @@ export function ListaAcquisti({
   punti,
   media,
   onApriFattura,
+  puntoVendita,
 }: {
   punti: StoricoPrezzoPoint[];
   media: number;
-  /** Assente: righe non cliccabili (nella catena la fattura e' di un'altra sede). */
+  /** Assente: righe non cliccabili. */
   onApriFattura?: (p: StoricoPrezzoPoint) => void;
+  /** Catena: di quale punto vendita sono gli acquisti. */
+  puntoVendita?: string;
 }) {
   const conFattura = onApriFattura ? punti.filter((p) => p.fattura) : punti;
   if (conFattura.length === 0) return null;
@@ -233,7 +236,7 @@ export function ListaAcquisti({
   return (
     <div className="mt-4">
       <p className="text-xs font-medium text-muted-foreground mb-2">
-        Acquisti nel periodo ({ordinati.length}){onApriFattura ? " — clicca per aprire la fattura" : ""}
+        Acquisti{puntoVendita ? ` di ${puntoVendita}` : ""} nel periodo ({ordinati.length}){onApriFattura ? " — clicca per aprire la fattura" : ""}
       </p>
       <div className="rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
@@ -314,6 +317,7 @@ function VariazioneCardBase<R extends RigaVariazione>({
   onToggleStar,
   onApriFattura,
   puntoVendita,
+  nomePuntoVendita,
 }: {
   r: R;
   expanded: boolean;
@@ -324,6 +328,8 @@ function VariazioneCardBase<R extends RigaVariazione>({
   onToggleStar: (r: R) => void;
   onApriFattura?: (r: R, p: StoricoPrezzoPoint) => void;
   puntoVendita?: ReactNode;
+  /** Il nome del punto vendita sopra la lista acquisti (catena). */
+  nomePuntoVendita?: string;
 }) {
   const g = gravita(r);
   const style = GRAVITA_STYLE[g];
@@ -412,6 +418,7 @@ function VariazioneCardBase<R extends RigaVariazione>({
                   punti={storico.punti}
                   media={storico.prezzo_medio || r.media}
                   onApriFattura={onApriFattura ? (p) => onApriFattura(r, p) : undefined}
+                  puntoVendita={nomePuntoVendita}
                 />
               )}
             </>
