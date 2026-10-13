@@ -2180,21 +2180,36 @@ def get_custom_tags(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
         return []
 
 
+_PAGINA_TAG_PRODOTTI = 1000
+
+
 @_make_cache(ttl=300, show_spinner=False)
 def get_custom_tag_prodotti(tag_id: int, user_id: str) -> List[Dict[str, Any]]:
     """Carica le associazioni descrizione per un singolo tag."""
     try:
         from services import get_supabase_client
         supabase_client = get_supabase_client()
-        response = (
-            supabase_client.table("custom_tag_prodotti")
-            .select("id,tag_id,descrizione,descrizione_key,fattore_kg,created_at")
-            .eq("tag_id", tag_id)
-            .eq("user_id", user_id)
-            .order("descrizione")
-            .execute()
-        )
-        return response.data or []
+        # A pagine: PostgREST tronca a max_rows (1000) e il riquadro «Modifica
+        # tag» permette di metterne di piu' («Seleziona tutti»). Ordine con l'id
+        # come spareggio, o le pagine si sovrappongono sulle descrizioni uguali.
+        righe: List[Dict[str, Any]] = []
+        inizio = 0
+        while True:
+            response = (
+                supabase_client.table("custom_tag_prodotti")
+                .select("id,tag_id,descrizione,descrizione_key,fattore_kg,created_at")
+                .eq("tag_id", tag_id)
+                .eq("user_id", user_id)
+                .order("descrizione")
+                .order("id")
+                .range(inizio, inizio + _PAGINA_TAG_PRODOTTI - 1)
+                .execute()
+            )
+            pagina = response.data or []
+            righe.extend(pagina)
+            if len(pagina) < _PAGINA_TAG_PRODOTTI:
+                return righe
+            inizio += _PAGINA_TAG_PRODOTTI
     except Exception as e:
         logger.error(f"Errore get_custom_tag_prodotti tag_id={tag_id}: {e}")
         return []
@@ -2215,17 +2230,24 @@ def get_custom_tag_prodotti_bulk(tag_ids: List[int], user_id: str) -> Dict[int, 
     try:
         from services import get_supabase_client
         supabase_client = get_supabase_client()
-        response = (
-            supabase_client.table("custom_tag_prodotti")
-            .select("id,tag_id,descrizione,descrizione_key,fattore_kg,created_at")
-            .in_("tag_id", ids)
-            .eq("user_id", user_id)
-            .order("descrizione")
-            .execute()
-        )
-        for row in (response.data or []):
-            out.setdefault(int(row["tag_id"]), []).append(row)
-        return out
+        inizio = 0
+        while True:
+            response = (
+                supabase_client.table("custom_tag_prodotti")
+                .select("id,tag_id,descrizione,descrizione_key,fattore_kg,created_at")
+                .in_("tag_id", ids)
+                .eq("user_id", user_id)
+                .order("descrizione")
+                .order("id")
+                .range(inizio, inizio + _PAGINA_TAG_PRODOTTI - 1)
+                .execute()
+            )
+            pagina = response.data or []
+            for row in pagina:
+                out.setdefault(int(row["tag_id"]), []).append(row)
+            if len(pagina) < _PAGINA_TAG_PRODOTTI:
+                return out
+            inizio += _PAGINA_TAG_PRODOTTI
     except Exception as e:
         logger.error(f"Errore get_custom_tag_prodotti_bulk tag_ids={ids}: {e}")
         return out

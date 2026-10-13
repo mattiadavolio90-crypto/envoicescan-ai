@@ -108,6 +108,7 @@ PAGINE_PER_ROTTA: Dict[Rotta, FrozenSet[str]] = {
     ("GET", "/api/tag/descrizioni"): _p(T),
     ("GET", "/api/tag/{tag_id}/prodotti"): _p(T),
     ("POST", "/api/tag/{tag_id}/prodotti"): _p(T),
+    ("PATCH", "/api/tag/{tag_id}/prodotti"): _p(T),
     ("DELETE", "/api/tag/prodotti/{assoc_id}"): _p(T),
     ("GET", "/api/tag/{tag_id}/analisi"): _p(T),
     ("GET", "/api/tag/{tag_id}/orfani"): _p(T),

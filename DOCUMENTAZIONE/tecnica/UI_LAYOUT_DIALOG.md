@@ -25,8 +25,8 @@ Peggiora se l'area scrollabile ha un'altezza calcolata a mano tipo
 l'header è `flex-wrap` con select e bottoni, su viewport stretti va a capo,
 supera i 5rem, e il fondo della lista viene tagliato **senza scrollbar**.
 
-**Pattern corretto** (riferimento: `AggiungiProdottiDialog` in
-`apps/web/src/app/(app)/analisi-e-tag/analisi-e-tag-client.tsx`):
+**Pattern corretto** (riferimento: `ModificaTagDialog` in
+`apps/web/src/app/(app)/analisi-e-tag/modifica-tag-dialog.tsx`):
 
 ```
 DialogContent  →  flex flex-col gap-0 p-0 max-h-[…vh]

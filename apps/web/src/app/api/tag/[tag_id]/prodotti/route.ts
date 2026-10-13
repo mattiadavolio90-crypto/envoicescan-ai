@@ -19,13 +19,13 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   }
 }
 
-export async function POST(req: NextRequest, ctx: Ctx) {
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   const token = await getToken();
   if (!token) return unauthorized();
   const { tag_id } = await ctx.params;
   const body = await req.json();
   try {
-    const res = await workerFetch("POST", `/api/tag/${tag_id}/prodotti`, token, {
+    const res = await workerFetch("PATCH", `/api/tag/${tag_id}/prodotti`, token, {
       body: JSON.stringify(body),
     });
     return NextResponse.json(await res.json(), { status: res.status });

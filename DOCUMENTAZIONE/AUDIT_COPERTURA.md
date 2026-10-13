@@ -2280,6 +2280,34 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `python -m pytest tests/ -q -p no:randomly`: 20.138 verdi + 59 skip + 4 rossi in
 >   `test_chat_vista_sede.py` (atteso esatto dei parametri del prompt, senza il nuovo
 >   `noiva_escluso`), corretti e rilanciati: 15/15.
+
+> - **13/10/2026 — Analisi e Tag, Fase 1: «Modifica tag» unificato + Seleziona/Deseleziona tutti
+>   (Opus), NON pushato, nessuna migration.** Richiesta di Mattia (screen 9-11): seleziona/
+>   deseleziona tutti nel riquadro prodotti; «Modifica» → «Modifica tag» accanto al nome, che
+>   gestisce anche i prodotti; via la lista disordinata in fondo alla pagina. **Scelta di Mattia
+>   su bozza:** lista unica a spunte (spuntato = nel tag), Salva applica aggiunte e rimozioni
+>   insieme e le dichiara prima. **Fatto:** `PATCH /api/tag/{tag_id}/prodotti`
+>   (`services/tag_organizza_service.py`), proxy Next, `permessi_rotte`, OpenAPI; riquadro
+>   `modifica-tag-dialog.tsx` per «Nuovo tag» e «Modifica tag» (sparisce il wizard a due passi),
+>   logica in `lib/tag-selezione.ts`. Tolti i proxy rimasti senza chiamanti (POST prodotti, DELETE
+>   `/api/tag/prodotti/{assoc_id}`): le rotte del worker restano. **Revisione:** 4 revisori
+>   avversari + `code-reviewer` (🔴). Difetti veri chiusi:
+>   - le chiavi con `"` e `,:()` non si toglievano: postgrest-py non fa l'escape dentro `in.(...)`.
+>     Ora si legge il tag e si cancella per **id**, a lotti da 100;
+>   - la GET dei prodotti troncava a 1000 righe (`max_rows`), cosi' come la versione bulk degli
+>     alert: ora sono paginate con l'id come spareggio;
+>   - «Seleziona tutti» oltre i 2000 elementi del worker: le PATCH partono a blocchi da 1000;
+>   - doppio Invio creava due tag; chiusura durante il salvataggio; la lista alta 1 px su un
+>     telefono in orizzontale (ora un'area sola, con la ricerca agganciata in cima);
+>   - Annulla rifaceva l'analisi e il «Personalizzato» tornava all'anno.
+>   **Presidio nuovo:** `tests/test_proxy_metodo_inoltrato_frontend.py` (un proxy inoltra col
+>   proprio metodo), nato da un mutante sopravvissuto. **Mutazione:** 33 mutanti al primo giro
+>   (tutti i 10 richiesti uccisi), poi 6/6 e 7/7 sulle correzioni; ridondante per scelta il doppio
+>   filtro di sede su lettura e delete. **Prove:** 28 test worker, 16 lib, 2 proxy, 63 `-m sql`
+>   isolamento tag; 1.938 presidi mirati; `tsc` pulito sul sorgente (2 errori solo in `.next/`
+>   generato, rotta eliminata); eslint pulito. **Non fatto:** pagina non aperta nel browser
+>   (nessuna sede di prova; il Next locale scrive sul DB vero); al deploy, finestra di pochi
+>   minuti in cui un Vercel arrivato prima di Railway risponde 405 al Salva.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

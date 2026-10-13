@@ -3,6 +3,7 @@
 Estratto da fastapi_worker.py. Path, gate (_verify_worker_key) e response
 identici all'originale. Gli helper condivisi sono importati dal worker.
 """
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -15,6 +16,9 @@ from pydantic import BaseModel
 # __getattr__ NON basta, perche' PEP 562 risolve solo gli accessi-attributo
 # ESTERNI e mai i lookup di nome globale bare dentro le funzioni -> NameError ->
 # HTTP 500 su ogni endpoint.
+logger = logging.getLogger("fastapi_worker")
+
+
 def _fw():
     import services.fastapi_worker as fw
     return fw
@@ -70,6 +74,11 @@ class AssociazioneItem(BaseModel):
 
 class AggiungiAssociazioniRequest(BaseModel):
     descrizioni: list[AssociazioneItem]
+
+
+class ModificaProdottiRequest(BaseModel):
+    aggiungi: list[AssociazioneItem] = []
+    togli: list[str] = []
 
 
 class AcceptSuggestionRequest(BaseModel):
@@ -217,6 +226,41 @@ def add_tag_prodotti(
     except PermissionError:
         raise HTTPException(status_code=404, detail="Tag non trovato")
     return {"associazioni": created, "aggiunte": len(created)}
+
+
+@router.patch("/api/tag/{tag_id}/prodotti", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
+def modifica_tag_prodotti(
+    tag_id: int, body: ModificaProdottiRequest, authorization: Optional[str] = Header(None)
+):
+    from services.tag_organizza_service import RimozioniNonRiuscite, applica_modifiche_prodotti
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    _assert_tag_ownership(sb, tag_id, str(user["id"]), ristorante_id)
+    aggiungi = [
+        {
+            "descrizione": i.descrizione,
+            "descrizione_key": i.descrizione_key,
+            "fattore_kg": i.fattore_kg,
+        }
+        for i in body.aggiungi
+    ]
+    try:
+        return applica_modifiche_prodotti(
+            int(tag_id), str(user["id"]), ristorante_id, aggiungi, body.togli
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except PermissionError:
+        raise HTTPException(status_code=404, detail="Tag non trovato")
+    except RimozioniNonRiuscite as e:
+        logger.error(f"modifica_tag_prodotti tag_id={tag_id}: rimozioni non riuscite ({e})")
+        raise HTTPException(
+            status_code=502,
+            detail="I prodotti aggiunti sono salvati, ma non e' stato possibile toglierne alcuni: riprova",
+        )
 
 
 @router.delete("/api/tag/prodotti/{assoc_id}", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])

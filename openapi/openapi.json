@@ -1887,6 +1887,86 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Modifica Tag Prodotti",
+        "operationId": "modifica_tag_prodotti_api_tag__tag_id__prodotti_patch",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModificaProdottiRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/tag/prodotti/{assoc_id}": {
@@ -25587,6 +25667,28 @@
           "mol"
         ],
         "title": "MesiPivot"
+      },
+      "ModificaProdottiRequest": {
+        "properties": {
+          "aggiungi": {
+            "items": {
+              "$ref": "#/components/schemas/AssociazioneItem"
+            },
+            "type": "array",
+            "title": "Aggiungi",
+            "default": []
+          },
+          "togli": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Togli",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "ModificaProdottiRequest"
       },
       "ModificaSedeBody": {
         "properties": {

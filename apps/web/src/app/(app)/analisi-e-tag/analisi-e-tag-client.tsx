@@ -1,17 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus, X, RefreshCw, Download, ChevronDown, ChevronUp,
-  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2,
+  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer,
 } from "recharts";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -19,19 +16,13 @@ import { mostraGuasto } from "@/lib/esito-caricamento";
 import { formatEuro } from "@/lib/format";
 import { intervalloPeriodo } from "@/lib/periodo";
 import type {
-  CustomTag, TagSuggestion, TagAnalisiResponse,
-  TagProdotto, DescrizioneDistinta,
+  CustomTag, TagSuggestion, TagAnalisiResponse, TagProdotto,
 } from "@/lib/tag";
 import { EMOJI_TAG } from "@/lib/tag";
-
-/** Tetto di righe renderizzate nei selettori prodotti. Non e' un filtro di
- *  dominio: serve solo a non montare 1800 nodi in un dialog. Quando taglia,
- *  la UI lo dice esplicitamente. */
-const MAX_DESC_VISIBILI = 80;
-const PRODOTTI_VISIBILI = 12;
+import { etichettaProdotti } from "@/lib/tag-selezione";
+import { ModificaTagDialog } from "./modifica-tag-dialog";
 
 const ANNO_CORRENTE = new Date().getFullYear();
-const MESI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
 const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 
 type PeriodoPreset = "anno_corrente" | "mese_specifico" | "personalizzato";
@@ -219,396 +210,6 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
         </LineChart>
       </ResponsiveContainer>
     </div>
-  );
-}
-
-/* ── Dialog Nuovo/Modifica Tag (wizard 2-step per i nuovi) ── */
-function TagDialog({
-  open, onOpenChange, tag, onSaved,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  tag: CustomTag | null;
-  onSaved: (saved: CustomTag, isNew: boolean) => void;
-}) {
-  const [step, setStep] = useState<1 | 2>(1);
-  const [savedTag, setSavedTag] = useState<CustomTag | null>(null);
-  const [nome, setNome] = useState("");
-  const [emoji, setEmoji] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  // Stato step 2 (prodotti)
-  const [search, setSearch] = useState("");
-  const [descrizioni, setDescrizioni] = useState<DescrizioneDistinta[]>([]);
-  const [loadingDesc, setLoadingDesc] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [savingProdotti, setSavingProdotti] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setStep(1);
-      setSavedTag(null);
-      setNome(tag?.nome ?? "");
-      setEmoji(tag?.emoji ?? "");
-      setSearch("");
-      setSelected(new Set());
-    }
-  }, [open, tag]);
-
-  // Carica descrizioni quando si entra in step 2
-  useEffect(() => {
-    if (step !== 2) return;
-    setLoadingDesc(true);
-    fetch("/api/tag/descrizioni")
-      .then(r => r.json())
-      .then(d => setDescrizioni(d.descrizioni ?? []))
-      .catch(() => toast.error("Errore nel caricamento prodotti"))
-      .finally(() => setLoadingDesc(false));
-  }, [step]);
-
-  async function saveTag() {
-    const n = nome.trim();
-    if (!n) { toast.error("Inserisci un nome per il tag"); return; }
-    setSaving(true);
-    try {
-      const body = { nome: n, emoji: emoji.trim() || null, colore: tag?.colore ?? null };
-      const res = tag
-        ? await fetch(`/api/tag/${tag.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        : await fetch("/api/tag", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) {
-        const msg = res.status === 401 ? "Sessione scaduta, ricarica la pagina" : "Errore nel salvataggio";
-        throw new Error(msg);
-      }
-      const data = await res.json();
-      const saved: CustomTag | null = data?.tag ?? null;
-      if (!saved) throw new Error("Errore nel salvataggio");
-      toast.success(tag ? "Tag aggiornato" : "Tag creato");
-      if (tag) {
-        // modifica: chiude subito
-        onSaved(saved, false);
-        onOpenChange(false);
-      } else {
-        // nuovo: passa allo step 2
-        setSavedTag(saved);
-        onSaved(saved, true);
-        setStep(2);
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Errore nel salvataggio");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveProdotti() {
-    if (!savedTag) return;
-    if (selected.size === 0) {
-      // salta senza aggiungere prodotti
-      onOpenChange(false);
-      return;
-    }
-    setSavingProdotti(true);
-    try {
-      const items = [...selected].map(k => {
-        const d = descrizioni.find(x => x.descrizione_key === k);
-        return { descrizione: d?.descrizione ?? k, descrizione_key: k, fattore_kg: null };
-      });
-      const res = await fetch(`/api/tag/${savedTag.id}/prodotti`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ descrizioni: items }),
-      });
-      if (!res.ok) throw new Error();
-      toast.success(`${selected.size} prodott${selected.size === 1 ? "o aggiunto" : "i aggiunti"}`);
-      onOpenChange(false);
-    } catch {
-      toast.error("Errore nel salvataggio prodotti");
-    } finally {
-      setSavingProdotti(false);
-    }
-  }
-
-  // Il tetto a 80 protegge il rendering (i clienti reali hanno 268-1828 descrizioni),
-  // ma va DICHIARATO: senza, chi scorre crede di vedere tutto il catalogo e non ha
-  // modo di accorgersi che ne vede il 4%. La ricerca lavora prima dello slice, quindi
-  // il prodotto cercato per nome si trova comunque.
-  const matchingDesc = descrizioni
-    .filter(d => !search || d.descrizione.toLowerCase().includes(search.toLowerCase()));
-  const filteredDesc = matchingDesc.slice(0, MAX_DESC_VISIBILI);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border shrink-0">
-          <DialogTitle>
-            {tag ? "Modifica tag" : step === 1 ? "Nuovo tag" : `Aggiungi prodotti a "${savedTag?.nome}"`}
-          </DialogTitle>
-          {!tag && step === 2 && (
-            <p className="text-xs text-muted-foreground">Step 2 di 2 — puoi anche saltare e aggiungere prodotti dopo.</p>
-          )}
-        </DialogHeader>
-
-        {/* ── Step 1: nome + emoji ── */}
-        {step === 1 && (
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Nome</label>
-              <input
-                className="w-full rounded-md border border-border px-3 py-2 text-sm bg-background"
-                placeholder="Es. Salmone, Pollo, Farina…"
-                value={nome}
-                maxLength={100}
-                onChange={e => setNome(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && saveTag()}
-                autoFocus
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Emoji <span className="text-muted-foreground font-normal">(opzionale)</span></label>
-              <div className="flex flex-wrap gap-1.5">
-                {EMOJI_TAG.map(em => (
-                  <button
-                    key={em}
-                    type="button"
-                    onClick={() => setEmoji(prev => prev === em ? "" : em)}
-                    className={`w-9 h-9 text-xl rounded-md border transition-colors flex items-center justify-center ${
-                      emoji === em ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
-                    }`}
-                  >
-                    {em}
-                  </button>
-                ))}
-              </div>
-              {emoji && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>Selezionata: <span className="text-lg">{emoji}</span></span>
-                  <button type="button" onClick={() => setEmoji("")} className="text-xs hover:text-foreground underline">Rimuovi</button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {step === 1 && (
-          <div className="flex gap-2 justify-end px-5 py-3 border-t border-border shrink-0 bg-popover">
-            <button onClick={() => onOpenChange(false)}
-              className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
-              Annulla
-            </button>
-            <button onClick={saveTag} disabled={saving || !nome.trim()}
-              className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              {saving ? "Salvataggio…" : tag ? "Salva" : "Avanti →"}
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 2: selezione prodotti ── */}
-        {step === 2 && (
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
-            <div className="relative">
-              <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                className="w-full rounded-md border border-border pl-9 pr-3 py-2 text-sm bg-background"
-                placeholder="Cerca prodotto…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="rounded-lg border border-border overflow-hidden">
-              <div>
-                {loadingDesc ? (
-                  <div className="space-y-2 p-3">
-                    {[1,2,3,4].map(i => <div key={i} className="h-9 rounded-md bg-muted animate-pulse" />)}
-                  </div>
-                ) : filteredDesc.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-6 text-center">Nessun prodotto trovato</p>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {filteredDesc.map(d => {
-                      const sel = selected.has(d.descrizione_key);
-                      return (
-                        <button key={d.descrizione_key}
-                          onClick={() => {
-                            const s = new Set(selected);
-                            if (sel) s.delete(d.descrizione_key); else s.add(d.descrizione_key);
-                            setSelected(s);
-                          }}
-                          className={`w-full text-left flex items-center gap-3 px-3 py-2 text-sm transition-colors ${sel ? "bg-primary/10" : "hover:bg-muted"}`}
-                        >
-                          <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
-                            {sel && <Check className="size-3 text-primary-foreground" />}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-medium" title={d.descrizione}>{d.descrizione}</span>
-                          <span className="text-xs text-muted-foreground shrink-0">{d.occorrenze} occ.</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {/* border-t: senza stacco dalla lista scrollabile sopra, l'ultima riga
-            tagliata a meta' sembrava parte di questo testo di aiuto. */}
-        {step === 2 && matchingDesc.length > filteredDesc.length && (
-          <p className="border-t border-border px-5 pt-2 pb-2 text-xs text-muted-foreground shrink-0">
-            Mostrati {filteredDesc.length} di {matchingDesc.length} prodotti — usa la ricerca per trovare gli altri.
-          </p>
-        )}
-        {step === 2 && (
-          <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border shrink-0 bg-popover">
-            <p className="text-sm text-muted-foreground">
-              {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Nessuno selezionato"}
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => onOpenChange(false)}
-                className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
-                Salta
-              </button>
-              <button onClick={saveProdotti} disabled={savingProdotti || selected.size === 0}
-                className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                {savingProdotti ? "Salvataggio…" : "Aggiungi e chiudi"}
-              </button>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ── Dialog Aggiungi Prodotti ── */
-function AggiungiProdottiDialog({
-  open, onOpenChange, tagId, prodottiEsistenti, onAdded,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  tagId: number;
-  prodottiEsistenti: string[];
-  onAdded: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [descrizioni, setDescrizioni] = useState<DescrizioneDistinta[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setSearch("");
-    setSelected(new Set());
-    setLoading(true);
-    fetch("/api/tag/descrizioni")
-      .then(r => r.json())
-      .then(d => setDescrizioni(d.descrizioni ?? []))
-      .catch(() => toast.error("Errore nel caricamento prodotti"))
-      .finally(() => setLoading(false));
-  }, [open]);
-
-  const matching = descrizioni
-    .filter(d => !prodottiEsistenti.includes(d.descrizione_key))
-    .filter(d => !search || d.descrizione.toLowerCase().includes(search.toLowerCase()));
-  const filtered = matching.slice(0, MAX_DESC_VISIBILI);
-
-  async function salva() {
-    if (selected.size === 0) return;
-    setSaving(true);
-    try {
-      const items = [...selected].map(k => {
-        const d = descrizioni.find(x => x.descrizione_key === k);
-        return { descrizione: d?.descrizione ?? k, descrizione_key: k, fattore_kg: null };
-      });
-      const res = await fetch(`/api/tag/${tagId}/prodotti`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ descrizioni: items }),
-      });
-      if (!res.ok) throw new Error();
-      toast.success(`${selected.size} prodott${selected.size === 1 ? "o aggiunto" : "i aggiunti"}`);
-      onAdded();
-      onOpenChange(false);
-    } catch {
-      toast.error("Errore nel salvataggio");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border shrink-0">
-          <DialogTitle>Aggiungi prodotti al tag</DialogTitle>
-        </DialogHeader>
-        <div className="min-w-0 px-5 py-3 border-b border-border shrink-0">
-          <div className="relative">
-            <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              className="w-full rounded-md border border-border pl-9 pr-3 py-2 text-sm bg-background"
-              placeholder="Cerca prodotto…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              autoFocus
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-2">
-          {loading ? (
-            <div className="space-y-2 py-2">
-              {[1,2,3,4].map(i => <div key={i} className="h-10 rounded-md bg-muted animate-pulse" />)}
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">Nessun prodotto trovato</p>
-          ) : (
-            <div className="space-y-0.5">
-              {filtered.map(d => {
-                const sel = selected.has(d.descrizione_key);
-                return (
-                  <button key={d.descrizione_key}
-                    onClick={() => {
-                      const s = new Set(selected);
-                      if (sel) s.delete(d.descrizione_key);
-                      else s.add(d.descrizione_key);
-                      setSelected(s);
-                    }}
-                    className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${sel ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
-                  >
-                    <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
-                      {sel && <Check className="size-3 text-primary-foreground" />}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-medium" title={d.descrizione}>{d.descrizione}</span>
-                    <span className="text-xs text-muted-foreground shrink-0">{d.occorrenze} occ.</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        {/* border-t: senza stacco dalla lista scrollabile sopra, l'ultima riga
-            tagliata a meta' sembrava parte di questo testo di aiuto. */}
-        {matching.length > filtered.length && (
-          <p className="border-t border-border px-5 pt-2 pb-2 text-xs text-muted-foreground shrink-0">
-            Mostrati {filtered.length} di {matching.length} prodotti — usa la ricerca per trovare gli altri.
-          </p>
-        )}
-        <div className="min-w-0 px-5 py-3 border-t border-border shrink-0 flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Seleziona prodotti"}
-          </p>
-          <div className="flex gap-2">
-            <button onClick={() => onOpenChange(false)}
-              className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
-              Annulla
-            </button>
-            <button onClick={salva} disabled={saving || selected.size === 0}
-              className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              {saving ? "Salvataggio…" : "Aggiungi"}
-            </button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -941,12 +542,17 @@ export function AnalisiETagClient({
 
   const [prodotti, setProdotti] = useState<TagProdotto[]>([]);
   const [loadingProdotti, setLoadingProdotti] = useState(false);
-  const [removingId, setRemovingId] = useState<number | null>(null);
-  const [prodottiTuttiVisibili, setProdottiTuttiVisibili] = useState(false);
   const [suggerimentiAperti, setSuggerimentiAperti] = useState(false);
 
   const [dialogTag, setDialogTag] = useState<{ open: boolean; tag: CustomTag | null }>({ open: false, tag: null });
-  const [dialogAggiungi, setDialogAggiungi] = useState(false);
+  // Il riquadro si chiude dall'interno di un salvataggio asincrono, con in mano
+  // il selectedTagId del render in cui e' partito: per un tag appena creato
+  // sarebbe ancora quello vecchio. Il ricaricamento si fa quindi in un effetto,
+  // che legge lo stato gia' aggiornato.
+  const [chiusureDialog, setChiusureDialog] = useState(0);
+  // Si ricarica solo se il riquadro ha cambiato qualcosa: chiuderlo con Annulla
+  // non deve rifare analisi e prodotti.
+  const dialogHaModificato = useRef(false);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -974,6 +580,15 @@ export function AnalisiETagClient({
     const { da, a: dataA } = isoRange(a, m);
     return loadAnalisiRange(tagId, da, dataA);
   }, [loadAnalisiRange]);
+
+  // Il periodo mostrato dai chip, compreso il «Personalizzato»: ricaricare con
+  // anno/mese riportava l'analisi all'anno mentre i chip dicevano altro.
+  function loadAnalisiPeriodoCorrente(tagId: number) {
+    if (periodoPreset === "personalizzato" && dataDaCustom && dataACustom) {
+      return loadAnalisiRange(tagId, dataDaCustom, dataACustom);
+    }
+    return loadAnalisi(tagId, anno, mese);
+  }
 
   // ── Load prodotti ──
   const loadProdotti = useCallback(async (tagId: number) => {
@@ -1022,7 +637,7 @@ export function AnalisiETagClient({
   function selectTag(id: number) {
     setSelectedTagId(id);
     setDeleteConfirm(null);
-    loadAnalisi(id, anno, mese);
+    loadAnalisiPeriodoCorrente(id);
     loadProdotti(id);
   }
 
@@ -1034,20 +649,12 @@ export function AnalisiETagClient({
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Rimuovi prodotto ──
-  async function removeProdotto(assocId: number) {
-    setRemovingId(assocId);
-    try {
-      const res = await fetch(`/api/tag/prodotti/${assocId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      setProdotti(p => p.filter(x => x.id !== assocId));
-      toast.success("Prodotto rimosso");
-    } catch {
-      toast.error("Errore nella rimozione");
-    } finally {
-      setRemovingId(null);
+  useEffect(() => {
+    if (chiusureDialog > 0 && selectedTagId) {
+      loadProdotti(selectedTagId);
+      loadAnalisiPeriodoCorrente(selectedTagId);
     }
-  }
+  }, [chiusureDialog]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Elimina tag ──
   async function deleteTag(tagId: number) {
@@ -1064,7 +671,7 @@ export function AnalisiETagClient({
         setSelectedTagId(next?.id ?? null);
         setAnalisi(null);
         setProdotti([]);
-        if (next) { loadAnalisi(next.id, anno, mese); loadProdotti(next.id); }
+        if (next) { loadAnalisiPeriodoCorrente(next.id); loadProdotti(next.id); }
       }
     } catch {
       toast.error("Errore nell'eliminazione");
@@ -1141,7 +748,7 @@ export function AnalisiETagClient({
             I tag sono <strong className="text-foreground">etichette tue</strong> per raggruppare prodotti che l&apos;app non distingue da sola (es. &ldquo;Bio&rdquo;, &ldquo;Fornitore X&rdquo;, &ldquo;Vegano&rdquo;), e analizzarne spesa e andamento insieme.
           </p>
           <div className="space-y-1.5 text-muted-foreground">
-            <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em>, poi aggiungi i prodotti che vuoi raggrupparvi.</p>
+            <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em> e spunta i prodotti che vuoi raggrupparvi. Per cambiarlo più tardi (nome, emoji, prodotti da aggiungere o togliere) usa <em>Modifica tag</em> accanto al suo nome.</p>
             <p><strong className="text-foreground">Suggerimenti</strong>: l&apos;app propone tag pronti in base a quello che compri spesso — accettali con un clic.</p>
             <p>Seleziona un tag per vedere <strong className="text-foreground">quanto spendi</strong>, il trend nel tempo e i fornitori coinvolti, nel periodo scelto.</p>
           </div>
@@ -1218,14 +825,24 @@ export function AnalisiETagClient({
         <div className="space-y-5">
           {/* Header tag + azioni */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               {selectedTag.emoji && <span className="text-2xl">{selectedTag.emoji}</span>}
               <h2 className="text-lg font-semibold">{selectedTag.nome}</h2>
+              <Button variant="outline" size="sm" onClick={() => setDialogTag({ open: true, tag: selectedTag })}>
+                <Pencil />
+                Modifica tag
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground underline underline-offset-4"
+                onClick={() => setDialogTag({ open: true, tag: selectedTag })}
+                disabled={loadingProdotti}
+              >
+                {loadingProdotti ? "…" : etichettaProdotti(prodotti.length)}
+              </Button>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setDialogTag({ open: true, tag: selectedTag })}>
-                Modifica
-              </Button>
               {deleteConfirm === selectedTag.id ? (
                 <div className="flex gap-1">
                   <Button
@@ -1407,111 +1024,34 @@ export function AnalisiETagClient({
               </div>
             </div>
           )}
-
-          {/* ── Prodotti associati ── */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">
-                Prodotti associati{prodotti.length > 0 && <span className="ml-2 text-muted-foreground font-normal">({prodotti.length})</span>}
-              </h3>
-              <button
-                onClick={() => setDialogAggiungi(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted transition-colors"
-              >
-                <Plus className="size-3.5" />
-                Aggiungi prodotti
-              </button>
-            </div>
-
-            {loadingProdotti && (
-              <div className="space-y-1">
-                {[1,2,3].map(i => <div key={i} className="h-10 rounded-md bg-muted animate-pulse" />)}
-              </div>
-            )}
-
-            {!loadingProdotti && prodotti.length === 0 && (
-              <div className="rounded-lg border border-dashed border-border py-8 text-center">
-                <p className="text-sm text-muted-foreground">Nessun prodotto associato.</p>
-                <button
-                  onClick={() => setDialogAggiungi(true)}
-                  className="mt-2 text-xs text-primary hover:underline"
-                >
-                  Aggiungi il primo prodotto
-                </button>
-              </div>
-            )}
-
-            {!loadingProdotti && prodotti.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-1.5">
-                  {(prodottiTuttiVisibili ? prodotti : prodotti.slice(0, PRODOTTI_VISIBILI)).map(p => (
-                    <span
-                      key={p.id}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/30 py-1 pl-3 pr-1.5 text-xs font-medium"
-                    >
-                      <span className="truncate" title={p.descrizione}>{p.descrizione}</span>
-                      <button
-                        onClick={() => removeProdotto(p.id)}
-                        disabled={removingId === p.id}
-                        className="shrink-0 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-negativo disabled:opacity-50 transition-colors"
-                        title="Rimuovi"
-                      >
-                        {removingId === p.id ? <RefreshCw className="size-3 animate-spin" /> : <X className="size-3" />}
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                {prodotti.length > PRODOTTI_VISIBILI && (
-                  <button
-                    onClick={() => setProdottiTuttiVisibili(v => !v)}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    {prodottiTuttiVisibili
-                      ? "Mostra meno"
-                      : `Mostra tutti (${prodotti.length})`}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
       {/* ── Dialogs ── */}
-      <TagDialog
+      <ModificaTagDialog
         open={dialogTag.open}
         onOpenChange={v => {
           setDialogTag(d => ({ ...d, open: v }));
-          // Alla chiusura del dialog (dopo step 1+2 per nuovi, dopo step 1 per modifica)
-          // ricarica prodotti e analisi del tag corrente
-          if (!v && selectedTagId) {
-            loadProdotti(selectedTagId);
-            loadAnalisi(selectedTagId, anno, mese);
+          if (v) dialogHaModificato.current = false;
+          else if (dialogHaModificato.current) {
+            dialogHaModificato.current = false;
+            setChiusureDialog(n => n + 1);
           }
         }}
+        onProdottiCambiati={() => { dialogHaModificato.current = true; }}
         tag={dialogTag.tag}
         onSaved={(saved, isNew) => {
+          dialogHaModificato.current = true;
           if (isNew) {
             setTags(prev => [...prev, saved].sort((a, b) => a.nome.localeCompare(b.nome)));
             setSelectedTagId(saved.id);
             setAnalisi(null);
             setProdotti([]);
-            loadAnalisi(saved.id, anno, mese);
           } else {
             setTags(prev => prev.map(t => (t.id === saved.id ? saved : t)));
           }
         }}
       />
-
-      {selectedTagId && (
-        <AggiungiProdottiDialog
-          open={dialogAggiungi}
-          onOpenChange={setDialogAggiungi}
-          tagId={selectedTagId}
-          prodottiEsistenti={prodotti.map(p => p.descrizione_key)}
-          onAdded={() => { if (selectedTagId) { loadProdotti(selectedTagId); loadAnalisi(selectedTagId, anno, mese); } }}
-        />
-      )}
     </div>
   );
 }
