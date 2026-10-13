@@ -18,6 +18,8 @@ export type Voce = {
   da: string | null;
   cliente_id: string | null;
   cliente: string | null;
+  // La sede, quando la voce e' di una sede sola: la Mappa dei clienti colora quel nodo.
+  ristorante_id?: string | null;
   link: string | null;
   azione: AzioneVoce | null;
 };

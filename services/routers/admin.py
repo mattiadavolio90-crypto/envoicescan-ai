@@ -206,6 +206,54 @@ def _arricchisci_salute_sedi(sb, sedi_per_utente: Dict[str, List[Dict[str, Any]]
             s.update(salute_sede(s, piano_account.get(uid), del_mese.get(sid), ultimi.get(sid)))
     return errors
 
+def _arricchisci_canali(sb, sedi_per_utente: Dict[str, List[Dict[str, Any]]],
+                        user_ids: List[str]) -> Optional[Dict[str, int]]:
+    """I canali di ogni sede per la vista Mappa della lista clienti: ricavi dalla
+    cassa (mittente email attivo), invio al commercialista (configurazione attiva
+    sulla P.IVA della sede). Ritorna i sotto-utenti attivi per titolare.
+
+    Una lettura che fallisce lascia il campo a None, non a False: la mappa deve
+    dire «non so», non «spento»."""
+    sedi = [s for lista in sedi_per_utente.values() for s in lista]
+    ids = [str(s["id"]) for s in sedi]
+    try:
+        collegate = set()
+        for i in range(0, len(ids), 200):
+            rows = (sb.table("ricavi_email_sender_map").select("ristorante_id")
+                    .eq("attivo", True).in_("ristorante_id", ids[i:i + 200]).execute().data or [])
+            collegate.update(str(r["ristorante_id"]) for r in rows)
+        for s in sedi:
+            s["ricavi_collegati"] = str(s["id"]) in collegate
+    except Exception:
+        logger.warning("admin clienti: mittenti ricavi non letti", exc_info=True)
+        for s in sedi:
+            s["ricavi_collegati"] = None
+    try:
+        attive = set()
+        for i in range(0, len(user_ids), 100):
+            rows = (sb.table("invio_commercialista_config").select("user_id,piva")
+                    .eq("attivo", True).in_("user_id", user_ids[i:i + 100]).execute().data or [])
+            attive.update((str(r["user_id"]), (r.get("piva") or "").strip()) for r in rows)
+        for uid, lista in sedi_per_utente.items():
+            for s in lista:
+                s["commercialista_attivo"] = (str(uid), (s.get("partita_iva") or "").strip()) in attive
+    except Exception:
+        logger.warning("admin clienti: invio commercialista non letto", exc_info=True)
+        for s in sedi:
+            s["commercialista_attivo"] = None
+    try:
+        conta: Dict[str, int] = {}
+        for i in range(0, len(user_ids), 100):
+            rows = (sb.table("sotto_utenti").select("titolare_id")
+                    .eq("attivo", True).in_("titolare_id", user_ids[i:i + 100]).execute().data or [])
+            for r in rows:
+                conta[str(r["titolare_id"])] = conta.get(str(r["titolare_id"]), 0) + 1
+        return {str(u): conta.get(str(u), 0) for u in user_ids}
+    except Exception:
+        logger.warning("admin clienti: sotto-utenti non letti", exc_info=True)
+        return None
+
+
 @router.get("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 def admin_lista_clienti():
     """Lista tutti i clienti non-admin con stats aggregate (fatture, ultimo accesso, piano, trial)."""
@@ -237,7 +285,7 @@ def admin_lista_clienti():
     try:
         for i in range(0, len(user_ids), 100):
             chunk = user_ids[i : i + 100]
-            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo").eq("sede_tecnica", False).in_("user_id", chunk).execute()
+            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,sdi_attivo,tipo_attivita").eq("sede_tecnica", False).in_("user_id", chunk).execute()
             for r in (resp.data or []):
                 sedi_map.setdefault(r["user_id"], []).append(r)
     except Exception:
@@ -246,6 +294,7 @@ def admin_lista_clienti():
     # Se l'arricchimento fallisce i clienti risulterebbero «mai caricato» e
     # finirebbero fra i fermi: lo si dice, invece di tacere.
     salute_incompleta = bool(_arricchisci_salute_sedi(sb, sedi_map, {u["id"]: u.get("piano") for u in clienti_raw}))
+    sotto_utenti = _arricchisci_canali(sb, sedi_map, user_ids)
 
     result = []
     for u in clienti_raw:
@@ -285,6 +334,7 @@ def admin_lista_clienti():
             "sedi": sedi,
             **riepilogo_cliente(sedi),
             "salute_incompleta": salute_incompleta,
+            "n_sotto_utenti": sotto_utenti.get(uid) if sotto_utenti is not None else None,
         })
 
     return result

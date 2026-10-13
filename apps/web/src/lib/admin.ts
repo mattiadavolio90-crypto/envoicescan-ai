@@ -32,6 +32,9 @@ export type Sede = {
   // Opzionale: una risposta del worker precedente alla colonna non lo porta, e
   // l'assenza vale 'ristorazione'.
   tipo_attivita?: Settore;
+  // Canali per la vista Mappa: null = il worker non li ha potuti leggere.
+  ricavi_collegati?: boolean | null;
+  commercialista_attivo?: boolean | null;
 } & Partial<SaluteMese>;
 
 // Il mese in corso di una sede o di un cliente (somma delle sedi). Opzionale
@@ -75,6 +78,8 @@ export type Cliente = {
   n_problemi?: number;
   // Ultimo caricamento e mese non letti dal worker: le colonne mostrano «—».
   salute_incompleta?: boolean;
+  // Sotto-utenti attivi; null = non letti.
+  n_sotto_utenti?: number | null;
 } & Partial<SaluteMese>;
 
 export type ClienteDettaglio = Cliente & {

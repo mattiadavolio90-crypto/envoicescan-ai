@@ -13,6 +13,8 @@ Una voce:
     dettaglio  il contesto (numero, importo, da quanto), o None
     da         ISO del momento in cui e' iniziato, o None
     cliente_id / cliente   a chi si riferisce, o None
+    ristorante_id          la sede, quando la voce e' di una sede sola (la Mappa
+                           dei clienti colora quel nodo), o None
     link       dove si risolve nell'admin, o None
     azione     il pulsante da mostrare sulla voce, o None
 """
@@ -25,6 +27,7 @@ from zoneinfo import ZoneInfo
 ROMA = ZoneInfo("Europe/Rome")
 
 GIORNI_ATTIVAZIONE = 3
+GIORNI_SDI_MUTO = 14
 GIORNI_FINE_PROVA = 2
 ORA_RIEPILOGO = 8
 MAX_RIGHE_RIEPILOGO = 8
@@ -33,10 +36,11 @@ _ORDINE = {"critico": 0, "oggi": 1}
 
 
 def _voce(chiave, gravita, titolo, *, dettaglio=None, da=None, cliente_id=None,
-          cliente=None, link=None, azione=None) -> Dict[str, Any]:
+          cliente=None, link=None, azione=None, ristorante_id=None) -> Dict[str, Any]:
     return {
         "chiave": chiave, "gravita": gravita, "titolo": titolo, "dettaglio": dettaglio,
         "da": da, "cliente_id": cliente_id, "cliente": cliente, "link": link, "azione": azione,
+        "ristorante_id": ristorante_id,
     }
 
 
@@ -106,7 +110,8 @@ def _voci_ricavi(it: Dict[str, Any], sede_cliente: Dict[str, Dict[str, str]]) ->
         dettaglio = f"{dettaglio} · ultimo dato {it['ultima_data']}" if dettaglio else f"ultimo dato {it['ultima_data']}"
     return _voce(f"ricavi:{rid}", "critico" if stato == "critico" else "oggi", titolo,
                  dettaglio=dettaglio, cliente_id=chi.get("user_id"), cliente=chi.get("cliente"),
-                 link=f"/admin/clienti/{chi['user_id']}?tab=sedi" if chi.get("user_id") else None)
+                 link=f"/admin/clienti/{chi['user_id']}?tab=sedi" if chi.get("user_id") else None,
+                 ristorante_id=rid or None)
 
 
 _IMPORT = {
@@ -196,6 +201,7 @@ def componi_voci(
                 dettaglio=f"{r.get('sede') or '—'} · {r.get('totale')} su {r.get('limite')} a {r.get('mese')}",
                 cliente_id=chi.get("user_id"), cliente=chi.get("cliente"),
                 link=f"/admin/clienti/{chi['user_id']}" if chi.get("user_id") else None,
+                ristorante_id=rid,
             ))
 
     if n_categorie > 0:
@@ -205,6 +211,22 @@ def componi_voci(
 
     for c in clienti:
         cid = str(c["id"])
+        # SDI acceso ma nessuna fattura: la ricezione di quella sede si e'
+        # interrotta (o non e' mai partita), e la coda fatture resta pulita
+        # perche' non le arriva niente. Senza l'ultimo caricamento letto non si
+        # dice niente: un dato assente non e' un «mai».
+        if c.get("attivo") and not c.get("salute_incompleta"):
+            for s in c.get("sedi") or []:
+                if not s.get("sdi_attivo"):
+                    continue
+                g = _giorni(s.get("ultimo_caricamento_at"), adesso)
+                if g is not None and g < GIORNI_SDI_MUTO:
+                    continue
+                titolo = ("SDI attivo ma nessuna fattura mai arrivata" if g is None
+                          else f"SDI attivo ma nessuna fattura da {g} giorni")
+                voci.append(_voce(f"sdi:{s['id']}", "oggi", titolo, dettaglio=s.get("nome_ristorante"),
+                                  da=s.get("ultimo_caricamento_at"), cliente_id=cid, cliente=nome[cid],
+                                  link=f"/admin/clienti/{cid}?tab=sedi", ristorante_id=str(s["id"])))
         if not c.get("attivo") and c.get("last_seen_at") is None:
             g = _giorni(c.get("created_at"), adesso)
             if g is not None and g >= GIORNI_ATTIVAZIONE:

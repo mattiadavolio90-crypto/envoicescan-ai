@@ -345,3 +345,27 @@ def test_oggi_dice_quando_l_ultimo_caricamento_non_si_e_letto(monkeypatch):
     dati = admin._raccogli_attenzione(_SB())
     assert any("ultimo caricamento" in e for e in dati["_errors"])
     assert not [v for v in dati["voci"] if v["chiave"].startswith("attivazione:")]
+
+
+
+def test_sdi_attivo_ma_muto_da_quattordici_giorni():
+    def con_sedi(*sedi, **kw):
+        c = {**CLIENTI[1], "sedi": list(sedi), **kw}
+        return _per_chiave(att.componi_voci(adesso=ADESSO, clienti=[c]))
+    muta = {"id": "r2", "nome_ristorante": "Bar 1", "sdi_attivo": True, "ultimo_caricamento_at": "2026-09-29T10:00:00+00:00"}
+    v = con_sedi(muta)
+    assert v["sdi:r2"]["titolo"] == "SDI attivo ma nessuna fattura da 14 giorni"
+    assert v["sdi:r2"]["ristorante_id"] == "r2" and v["sdi:r2"]["link"] == "/admin/clienti/u2?tab=sedi"
+    assert "sdi:r2" not in con_sedi({**muta, "ultimo_caricamento_at": "2026-09-30T10:00:00+00:00"})
+    assert con_sedi({**muta, "ultimo_caricamento_at": None})["sdi:r2"]["titolo"] == "SDI attivo ma nessuna fattura mai arrivata"
+    assert "sdi:r2" not in con_sedi({**muta, "sdi_attivo": False})
+    assert "sdi:r2" not in con_sedi(muta, attivo=False)
+    assert "sdi:r2" not in con_sedi(muta, salute_incompleta=True)
+
+
+def test_le_voci_di_una_sede_portano_la_sede():
+    ricavi = {"items": [{"ristorante_id": "r1", "stato": "critico", "giorni_silenzio": 4, "n_buchi": 0, "coda_problemi": 0}]}
+    assert _per_chiave(_voci(ricavi=ricavi))["ricavi:r1"]["ristorante_id"] == "r1"
+    consumi = {"mesi_avviso": ["2026-10"], "righe": [{"ristorante_id": "r1", "mese": "2026-10", "totale": 60, "limite": 50, "sopra_soglia": True}]}
+    assert _per_chiave(_voci(consumi=consumi))["soglia:r1"]["ristorante_id"] == "r1"
+    assert _per_chiave(_voci(n_categorie=2))["categorie"]["ristorante_id"] is None

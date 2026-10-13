@@ -11,6 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Search, Plus, ChevronRight, Clock, MapPin } from "lucide-react";
 import { Cliente } from "@/lib/admin";
 import { FILTRI, clientiVisibili, contaFiltri, eFermo, testoGiorni, type Filtro } from "@/lib/admin-clienti";
+import { costruisciMappa, type Vista } from "@/lib/admin-mappa";
+import type { Voce } from "@/lib/admin-oggi";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { MappaClienti } from "@/components/admin/mappa-clienti";
 
 function Giorni({ iso, adesso, allarme }: { iso: string | null | undefined; adesso: number; allarme: boolean }) {
   return (
@@ -20,11 +24,14 @@ function Giorni({ iso, adesso, allarme }: { iso: string | null | undefined; ades
   );
 }
 
-// `problemiNoti` false: la lista di Oggi non si e' potuta leggere, quindi la
-// colonna Problemi direbbe «0» senza saperlo. Si mostra il trattino.
-type Props = { clientiIniziali: Cliente[]; problemiNoti: boolean };
+// `voci` null: la lista di Oggi non si e' potuta leggere, quindi la colonna
+// Problemi direbbe «0» senza saperlo (si mostra il trattino) e la mappa non ha
+// i colori.
+type Props = { clientiIniziali: Cliente[]; voci: Voce[] | null; vistaIniziale: Vista };
 
-export function ClientiClient({ clientiIniziali, problemiNoti }: Props) {
+export function ClientiClient({ clientiIniziali, voci, vistaIniziale }: Props) {
+  const problemiNoti = voci !== null;
+  const [vista, setVista] = useState<Vista>(vistaIniziale);
   const router = useRouter();
   const [clienti, setClienti] = useState<Cliente[]>(clientiIniziali);
   const [search, setSearch] = useState("");
@@ -40,6 +47,7 @@ export function ClientiClient({ clientiIniziali, problemiNoti }: Props) {
 
   const filtered = useMemo(() => clientiVisibili(clienti, search, filtro, adesso), [clienti, search, filtro, adesso]);
   const conteggi = useMemo(() => contaFiltri(clienti, adesso), [clienti, adesso]);
+  const mappa = useMemo(() => costruisciMappa(clienti, voci ?? [], adesso), [clienti, voci, adesso]);
 
   async function handleCreaCliente() {
     if (!nEmail || !nNome) {
@@ -93,8 +101,41 @@ export function ClientiClient({ clientiIniziali, problemiNoti }: Props) {
     }
   }
 
+  // La vista sta nell'URL (?vista=mappa) cosi' un ricarico la conserva.
+  // replaceState: cambiare vista non e' una navigazione.
+  function cambiaVista(v: Vista) {
+    setVista(v);
+    const url = new URL(window.location.href);
+    if (v === "mappa") url.searchParams.set("vista", "mappa");
+    else url.searchParams.delete("vista");
+    window.history.replaceState(null, "", url.toString());
+  }
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SegmentedControl
+          aria-label="Vista dei clienti"
+          value={vista}
+          onChange={cambiaVista}
+          options={[{ value: "lista", label: "Lista" }, { value: "mappa", label: "Mappa" }]}
+        />
+        <Button onClick={() => setDialogOpen(true)}>
+          <Plus className="size-4 mr-1" /> Nuovo cliente
+        </Button>
+      </div>
+
+      {vista === "mappa" ? (
+        <>
+          {!problemiNoti && (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+              Non riesco a leggere i problemi aperti dal server: i colori della mappa mostrano solo l&apos;ultimo caricamento.
+            </p>
+          )}
+          <MappaClienti radice={mappa} />
+        </>
+      ) : (
+      <>
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -105,9 +146,6 @@ export function ClientiClient({ clientiIniziali, problemiNoti }: Props) {
             className="pl-9"
           />
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="size-4 mr-1" /> Nuovo cliente
-        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -227,6 +265,8 @@ export function ClientiClient({ clientiIniziali, problemiNoti }: Props) {
           </tbody>
         </table>
       </div>
+      </>
+      )}
 
       {/* Dialog Nuovo cliente */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
