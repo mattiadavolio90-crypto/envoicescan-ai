@@ -166,7 +166,7 @@ def applica_modifiche_prodotti(
 CAMPI_TAG = "id,nome,emoji,colore,created_at,cartella_id,preferito"
 CAMPI_CARTELLA = "id,nome,ordine,created_at"
 CAMPI_TAG_MODIFICABILI = ("nome", "emoji", "colore", "cartella_id", "preferito")
-# Stesso tetto del campo nel browser (`maxLength={60}` in barra-cartelle.tsx):
+# Stesso tetto del campo nel browser (`maxLength={60}` in pannello-tag.tsx):
 # una chiamata diretta non deve poter salvare un nome che la barra non mostra.
 MAX_NOME_CARTELLA = 60
 

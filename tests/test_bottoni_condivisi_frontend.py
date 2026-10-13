@@ -36,7 +36,8 @@ CONDIVISI = ("components/ui/",)
 BASE_BUTTON: dict[str, int] = {
     "app/(app)/agenda/agenda-overview.tsx": 4,
     "app/(app)/agenda/layer-switcher.tsx": 1,
-    "app/(app)/analisi-e-tag/analisi-e-tag-client.tsx": 13,
+    # 13/10/2026: periodo a SegmentedControl e sezione Fornitori con <Button> (Fase 3).
+    "app/(app)/analisi-e-tag/analisi-e-tag-client.tsx": 9,
     "app/(app)/analisi-fatture/articoli-tab.tsx": 3,
     "app/(app)/analisi-fatture/filtri-periodo.tsx": 3,
     "app/(app)/analisi-fatture/pivot-tab.tsx": 3,

@@ -2351,7 +2351,8 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   totali) erano constatazioni, non difetti.
 > - **13/10/2026 — Analisi e Tag, Fase 2: cartelle trascinabili + stella e vista Preferiti
 >   (Opus negli esecutori; analisi di debug e correzioni con Fable), NON pushato, migration
->   `20261013082535_tag_cartelle_preferiti.sql` DA APPLICARE al live PRIMA del push.**
+>   `20261013082535_tag_cartelle_preferiti.sql` applicata al live da Mattia il 13/10 e
+>   verificata (tabella, colonne, FK, RLS, permessi).**
 >   Richiesta di Mattia: cartelle per tenere in ordine i tag, solo per la vista e mai per
 >   l'analisi; stella su qualunque tag e vista «Preferiti». **Scelta di Mattia su bozza:** righe
 >   per cartella con maniglia ⋮⋮ e freccia ▾, in alto «★ Preferiti | Tutte». **Fatto:** tabella
@@ -2363,7 +2364,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   non lista vuota), `POST/PUT/DELETE /api/tag/cartelle…`, `PUT …/ordine` (tutto-o-niente nel
 >   controllo: 404 su id altrui, 409 su elenco non aggiornato), `PATCH /api/tag/{tag_id}` sui soli
 >   campi inviati (`model_fields_set`); tutto in `tag_organizza_service.py`, `db_service` intatto.
->   Frontend: `barra-cartelle.tsx` con @dnd-kit (MouseSensor 6 px + TouchSensor 250 ms: col dito
+>   Frontend: barra delle cartelle (dalla Fase 3 `pannello-tag.tsx`) con @dnd-kit (MouseSensor 6 px + TouchSensor 250 ms: col dito
 >   lo scorrimento non trascina), logica in `lib/tag-cartelle.ts`, stella nell'intestazione,
 >   «Cartella» nel riquadro, vista e cartelle chiuse in `localStorage` lette solo al montaggio.
 >   **Revisione:** 2 esecutori, 4 revisori avversari (7 rilievi), 52 mutanti (43 uccisi; 6 dei 9
@@ -2389,6 +2390,35 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   nel browser (nessuna sede di prova; il Next locale scrive sul DB vero): trascinamento e
 >   dialoghi vanno provati da Mattia dopo il deploy. Al deploy: migration sul live PRIMA del
 >   push, altrimenti `GET /api/tag` risponde 502 e la pagina resta senza tag.
+> - **13/10/2026 — Analisi e Tag, Fase 3: la pagina a due riquadri (Fable per bozza e codice),
+>   NON pushato, nessuna migration.** Richiesta di Mattia, provando la Fase 2 in locale: comandi
+>   tutti impilati, «non si capisce niente, non e' intuitivo». **Scelta di Mattia su bozza a
+>   schermo** (Artifact col menu dell'app disegnato accanto e tre larghezze): lista dei tag in un
+>   riquadro a sinistra, tag scelto e analisi a destra, senza effetto «doppia sidebar» e con
+>   respiro fra le sezioni; poi «Nuovo tag» e «Nuova cartella» gemelli, con icona. **Fatto:**
+>   `pannello-tag.tsx` (la barra della Fase 2 rinominata: stessa logica di trascinamento e di
+>   salvataggio, righe verticali in una scheda con titolo, piè con i due tasti gemelli e
+>   Suggerimenti); due colonne da 1280 px, sotto la lista sta sopra con un tetto d'altezza;
+>   riquadro del tag con stella, «N prodotti», «Modifica tag» e menu ⋯ «Elimina tag» con
+>   conferma (via il cestino rosso isolato e la conferma in linea); periodo nella testata con
+>   un controllo segmentato, e «Mese» apre subito il mese in corso (regola in
+>   `lib/tag-periodo.ts`); i cinque numeri a righe sempre piene secondo la larghezza del
+>   riquadro; Trend e Fornitori come sezioni. `<button>` a mano nel client da 13 a 9.
+>   **Prove:** `tests/test_tag_periodo_frontend.py` 7 verdi, 6 mutanti su 6 uccisi; foto dei
+>   componenti veri con dati finti (pagina di prova temporanea sotto `/demo`, rimossa) a 1440,
+>   1280, 1024 e 400 px, senza sforamenti orizzontali; dalle foto corretti i numeri 3+2 con un
+>   posto vuoto e le frecce «aperto» che sembravano premute. Suite `python -m pytest tests/ -q
+>   -m "not sql" -p no:randomly`: **19.239 verdi + 59 skip, 13 rossi**, tutti nel worker
+>   (agente notturno, salute, upload) e dovuti alle 569 righe tolte e non committate da un'altra
+>   sessione in `fastapi_worker.py` e `routers/admin.py`, nessuno nei file di questa fase; dopo i
+>   ritocchi del revisore test dei tag e presidi **1.970 verdi**, `check_documentazione.py` exit 0.
+>   `code-reviewer` 🟡 solo per la chiusura (non committato); corretti i suoi rilievi minori:
+>   doppio clic su «Elimina tag», cartella creata dalla vista Preferiti, elenco dei mesi a
+>   capodanno, conteggio della cartella per i lettori di schermo, «Suggerimenti» con 0 voci non
+>   piu' annunciato come interruttore. **Trappola:** il
+>   frontend locale (Turbopack) non vede le modifiche ai file nemmeno col polling dello script
+>   di avvio locale (non versionato): per il codice nuovo va riavviato. **Non fatto:** la replica in catena
+>   (Fasi C1 e C2 del piano), dopo l'ok di Mattia sulla pagina.
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e

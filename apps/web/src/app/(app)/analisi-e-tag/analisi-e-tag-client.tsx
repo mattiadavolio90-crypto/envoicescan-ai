@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus, X, RefreshCw, Download, ChevronDown, ChevronUp,
-  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2, Pencil, Star,
+  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2, Pencil, Star, MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -11,10 +11,18 @@ import {
 } from "recharts";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Button } from "@/components/ui/button";
-import { FilterChip } from "@/components/ui/filter-chip";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { NativeSelect } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { mostraGuasto } from "@/lib/esito-caricamento";
 import { formatEuro } from "@/lib/format";
 import { intervalloPeriodo } from "@/lib/periodo";
+import { type PeriodoPreset, periodoScelto } from "@/lib/tag-periodo";
 import type {
   CartellaTag, CustomTag, TagSuggestion, TagAnalisiResponse, TagProdotto,
 } from "@/lib/tag";
@@ -24,7 +32,7 @@ import {
   type VistaTag,
   leggiStatoComodo, primoTagMostrato, raggruppa, scriviStatoComodo, soloPreferiti,
 } from "@/lib/tag-cartelle";
-import { BarraCartelle } from "./barra-cartelle";
+import { PannelloTag } from "./pannello-tag";
 import { ModificaTagDialog } from "./modifica-tag-dialog";
 
 // Vista scelta e cartelle chiuse: comodita' di chi guarda, per browser. Lo stato
@@ -54,7 +62,6 @@ function primoDaMostrare(tags: CustomTag[], cartelle: CartellaTag[], vista: Vist
 const ANNO_CORRENTE = new Date().getFullYear();
 const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 
-type PeriodoPreset = "anno_corrente" | "mese_specifico" | "personalizzato";
 
 // Guscio sulla fonte unica (lib/periodo): qui le chiavi si chiamano `da`/`a`
 // e tre call site le destrutturano cosi'. Rinominarle sarebbe un cambiamento
@@ -64,12 +71,7 @@ function isoRange(anno: number, mese: number | null) {
   return { da: data_da, a: data_a };
 }
 
-function fmtItDate(iso: string) {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y.slice(2)}`;
-}
-
-/* ── Filtro periodo (stile Analisi Fatture) ── */
+/* ── Filtro periodo: nella testata del riquadro del tag ── */
 function FiltroPeriodoTag({
   anno, mese, dataDa, dataA, preset, onChange,
 }: {
@@ -80,18 +82,12 @@ function FiltroPeriodoTag({
   preset: PeriodoPreset;
   onChange: (v: { anno: number; mese: number | null; preset: PeriodoPreset; dataDa?: string; dataA?: string }) => void;
 }) {
-  const [showMese, setShowMese] = useState(preset === "mese_specifico");
-  const [showCustom, setShowCustom] = useState(preset === "personalizzato");
-
-  const chipBase = "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5";
-  const chipActive = "bg-primary text-primary-foreground border-primary";
-  const chipIdle = "bg-background border-input hover:bg-muted";
-
-  function applyAnno() {
-    setShowMese(false);
-    setShowCustom(false);
-    onChange({ anno: ANNO_CORRENTE, mese: null, preset: "anno_corrente" });
+  function scegli(v: PeriodoPreset) {
+    const nuovo = periodoScelto(v, { anno, mese, preset, dataDa, dataA }, new Date());
+    if (nuovo) onChange(nuovo);
   }
+
+  const annoOggi = new Date().getFullYear();
 
   function applyMese(yearMonth: string) {
     if (!yearMonth) return;
@@ -100,69 +96,50 @@ function FiltroPeriodoTag({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          onClick={applyAnno}
-          className={`${chipBase} ${preset === "anno_corrente" ? chipActive : chipIdle}`}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Periodo</span>
+      <SegmentedControl
+        aria-label="Periodo dell'analisi"
+        value={preset}
+        onChange={scegli}
+        options={[
+          { value: "anno_corrente", label: "Anno in corso" },
+          { value: "mese_specifico", label: <><Calendar /> Mese</> },
+          { value: "personalizzato", label: <><Settings2 /> Personalizzato</> },
+        ]}
+      />
+      {preset === "mese_specifico" && (
+        <NativeSelect
+          aria-label="Mese"
+          value={mese != null ? `${anno}-${String(mese).padStart(2, "0")}` : ""}
+          onValueChange={applyMese}
+          className="h-7 w-44 text-xs"
         >
-          Anno in corso
-        </button>
-        <button
-          onClick={() => { setShowMese(true); setShowCustom(false); }}
-          className={`${chipBase} ${preset === "mese_specifico" ? chipActive : chipIdle}`}
-        >
-          <Calendar className="size-3" />
-          Seleziona mese
-        </button>
-        <button
-          onClick={() => { setShowCustom(true); setShowMese(false); onChange({ anno, mese, preset: "personalizzato", dataDa: dataDa ?? undefined, dataA: dataA ?? undefined }); }}
-          className={`${chipBase} ${preset === "personalizzato" ? chipActive : chipIdle}`}
-        >
-          <Settings2 className="size-3" />
-          Personalizzato
-        </button>
-        {preset === "personalizzato" && dataDa && dataA && (
-          <span className="ml-2 text-xs font-medium text-primary-text">
-            {fmtItDate(dataDa)} → {fmtItDate(dataA)}
-          </span>
-        )}
-      </div>
-
-      {showMese && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Mese:</span>
-          <select
-            value={mese != null ? `${anno}-${String(mese).padStart(2, "0")}` : ""}
-            onChange={e => applyMese(e.target.value)}
-            className="h-7 text-xs rounded-md border border-input bg-background px-2"
-          >
-            <option value="" disabled>Seleziona un mese</option>
-            {Array.from({ length: 4 }, (_, i) => ANNO_CORRENTE - i).flatMap(y =>
-              MESI_FULL.map((label, mi) => {
-                const val = `${y}-${String(mi + 1).padStart(2, "0")}`;
-                return <option key={val} value={val}>{label} {y}</option>;
-              })
-            )}
-          </select>
-        </div>
+          {Array.from({ length: 4 }, (_, i) => annoOggi - i).flatMap(y =>
+            MESI_FULL.map((label, mi) => {
+              const val = `${y}-${String(mi + 1).padStart(2, "0")}`;
+              return <option key={val} value={val}>{label} {y}</option>;
+            })
+          )}
+        </NativeSelect>
       )}
-
-      {showCustom && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Dal</span>
-          <input
+      {preset === "personalizzato" && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Dal</span>
+          <Input
             type="date"
+            aria-label="Dal"
             value={dataDa ?? ""}
             onChange={e => onChange({ anno, mese, preset: "personalizzato", dataDa: e.target.value || undefined, dataA: dataA ?? undefined })}
-            className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+            className="h-7 w-36 text-xs"
           />
-          <span className="text-xs text-muted-foreground">al</span>
-          <input
+          <span>al</span>
+          <Input
             type="date"
+            aria-label="Al"
             value={dataA ?? ""}
             onChange={e => onChange({ anno, mese, preset: "personalizzato", dataDa: dataDa ?? undefined, dataA: e.target.value || undefined })}
-            className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+            className="h-7 w-36 text-xs"
           />
         </div>
       )}
@@ -191,15 +168,26 @@ const TOOLTIP_STYLE = {
 };
 
 /* ── Componenti KPI ── */
-function KpiCard({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: string }) {
+function KpiCard({ label, value, sub, tone, className }: { label: string; value: string; sub?: string; tone: string; className?: string }) {
   return (
-    <div className={`rounded-lg border ${tone} bg-card px-4 pt-3 pb-2.5 flex flex-col gap-1 min-w-0 transition-colors`}>
+    <div className={cn(`rounded-lg border ${tone} bg-card px-4 pt-3 pb-2.5 flex flex-col gap-1 min-w-0 transition-colors`, className)}>
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-tight min-h-[28px] flex items-start">{label}</p>
       <p className="text-xl font-bold tracking-tight truncate" title={value}>{value}</p>
       {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
     </div>
   );
 }
+
+// Dove sta ciascuno dei cinque numeri, perche' nessuna riga resti a meta'. Stretto
+// (2 colonne): il totale da solo, poi 2+2. Medio (6): 3+2, gli ultimi due piu'
+// larghi. Largo (5): tutti in fila. Le larghezze sono del riquadro, non dello schermo.
+const KPI_POSTI = [
+  "col-span-2 @lg:col-span-2 @3xl:col-span-1",
+  "@lg:col-span-2 @3xl:col-span-1",
+  "@lg:col-span-2 @3xl:col-span-1",
+  "@lg:col-span-3 @3xl:col-span-1",
+  "@lg:col-span-3 @3xl:col-span-1",
+] as const;
 
 /* ── Grafico trend ── */
 function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; var_perc: number }[]; media: number }) {
@@ -592,8 +580,10 @@ export function AnalisiETagClient({
   // Si ricarica solo se il riquadro ha cambiato qualcosa: chiuderlo con Annulla
   // non deve rifare analisi e prodotti.
   const dialogHaModificato = useRef(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confermaElimina, setConfermaElimina] = useState(false);
+  // Guardia sincrona: un doppio clic sul «Elimina tag» del dialog mandava due
+  // DELETE, e il secondo mostrava un errore dopo «Tag eliminato».
+  const eliminando = useRef(false);
 
   const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
   const [showTrend, setShowTrend] = useState(true);
@@ -676,7 +666,6 @@ export function AnalisiETagClient({
   // Seleziona tag → carica analisi e prodotti
   function selectTag(id: number) {
     setSelectedTagId(id);
-    setDeleteConfirm(null);
     loadAnalisiPeriodoCorrente(id);
     loadProdotti(id);
   }
@@ -726,14 +715,14 @@ export function AnalisiETagClient({
 
   // ── Elimina tag ──
   async function deleteTag(tagId: number) {
-    setDeletingId(tagId);
+    if (eliminando.current) return;
+    eliminando.current = true;
     try {
       const res = await fetch(`/api/tag/${tagId}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       toast.success("Tag eliminato");
       const newTags = tags.filter(t => t.id !== tagId);
       setTags(newTags);
-      setDeleteConfirm(null);
       if (selectedTagId === tagId) {
         const next = primoDaMostrare(newTags, cartelle, vista, chiuse);
         setSelectedTagId(next);
@@ -744,7 +733,7 @@ export function AnalisiETagClient({
     } catch {
       toast.error("Errore nell'eliminazione");
     } finally {
-      setDeletingId(null);
+      eliminando.current = false;
     }
   }
 
@@ -798,19 +787,13 @@ export function AnalisiETagClient({
   const { kpi, trend, fornitori } = analisi ?? { kpi: null, trend: { punti: [], prezzo_medio_periodo: 0 }, fornitori: { fornitori: [], aggregati: null } };
 
   /* ══════════════════════════════════════════════════════════ RENDER */
+  // Due riquadri (Fase 3, 13/10/2026): a sinistra la lista dei tag, a destra il
+  // tag scelto con periodo e analisi. Le colonne partono da 1280 px: sotto, la
+  // lista sta sopra e l'analisi sotto. Accanto c'e' gia' il menu dell'app, per
+  // questo la lista e' una scheda con bordo e titolo e non una fascia.
   return (
-    <div className="space-y-4">
-      {/* ── Suggerimenti ── */}
-      <SuggerimentiBanner
-        suggestions={suggestions}
-        onRefresh={async () => { await refreshSuggestions(); await reloadTags(); }}
-        refreshing={refreshingSuggestions}
-        aperto={suggerimentiAperti}
-        onChiudi={() => setSuggerimentiAperti(false)}
-      />
-
-      {/* ── Cartelle e tag + azioni ── */}
-      <BarraCartelle
+    <div className="grid items-start gap-6 xl:grid-cols-[17rem_minmax(0,1fr)]">
+      <PannelloTag
         tags={tags}
         cartelle={cartelle}
         setTags={setTags}
@@ -823,22 +806,25 @@ export function AnalisiETagClient({
         onSelezionaTag={selectTag}
         onNuovoTag={() => setDialogTag({ open: true, tag: null })}
         onRicarica={reloadTags}
-        prima={
+        info={
           <InfoPopover title="Come funzionano i Tag">
             <p className="text-muted-foreground">
               I tag sono <strong className="text-foreground">etichette tue</strong> per raggruppare prodotti che l&apos;app non distingue da sola (es. &ldquo;Bio&rdquo;, &ldquo;Fornitore X&rdquo;, &ldquo;Vegano&rdquo;), e analizzarne spesa e andamento insieme.
             </p>
             <div className="space-y-1.5 text-muted-foreground">
-              <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em> e spunta i prodotti che vuoi raggrupparvi. Per cambiarlo più tardi (nome, emoji, prodotti da aggiungere o togliere) usa <em>Modifica tag</em> accanto al suo nome.</p>
-              <p><strong className="text-foreground">Cartelle e preferiti</strong> servono solo a tenere in ordine la barra: raccogli i tag in cartelle (trascinale per riordinarle, trascina un tag per spostarlo) e segna con la ☆ quelli che usi di più. Non cambiano nessuna analisi.</p>
+              <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em> e spunta i prodotti che vuoi raggrupparvi. Per cambiarlo più tardi (nome, emoji, cartella, prodotti da aggiungere o togliere) usa <em>Modifica tag</em> accanto al suo nome.</p>
+              <p><strong className="text-foreground">Cartelle e preferiti</strong> servono solo a tenere in ordine la lista: raccogli i tag in cartelle (trascinale dalla maniglia per riordinarle, trascina un tag per spostarlo) e segna con la ☆ quelli che usi di più. Non cambiano nessuna analisi.</p>
               <p><strong className="text-foreground">Suggerimenti</strong>: l&apos;app propone tag pronti in base a quello che compri spesso — accettali con un clic.</p>
-              <p>Seleziona un tag per vedere <strong className="text-foreground">quanto spendi</strong>, il trend nel tempo e i fornitori coinvolti, nel periodo scelto.</p>
+              <p>Scegli un tag dalla lista per vedere <strong className="text-foreground">quanto spendi</strong>, il trend nel tempo e i fornitori coinvolti, nel periodo scelto.</p>
             </div>
           </InfoPopover>
         }
-        dopo={
-          <FilterChip
-            active={suggerimentiAperti && suggestions.length > 0}
+        suggerimenti={
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-pressed={suggestions.length > 0 ? suggerimentiAperti : undefined}
+            className={cn("w-full justify-start gap-2", suggerimentiAperti && suggestions.length > 0 && "bg-muted text-foreground")}
             onClick={async () => {
               if (suggestions.length > 0) { setSuggerimentiAperti(v => !v); return; }
               await refreshSuggestions();
@@ -846,271 +832,281 @@ export function AnalisiETagClient({
               setSuggerimentiAperti(true);
             }}
             disabled={refreshingSuggestions}
-            className={`ml-auto ${
-              suggestions.length === 0
-                ? "bg-muted"
-                : suggerimentiAperti
-                  ? "bg-incerto/10 border-incerto text-incerto ring-2 ring-incerto/40 hover:bg-incerto/10 hover:text-incerto"
-                  : "bg-incerto/10 border-incerto/50 text-incerto hover:bg-incerto/10 hover:text-incerto"
-            }`}
             title={suggestions.length > 0 ? "Mostra o nascondi i suggerimenti" : "Analizza prodotti non taggati e trova suggerimenti"}
           >
             {refreshingSuggestions
-              ? <RefreshCw className="animate-spin" />
-              : <Lightbulb />
-            }
-            {refreshingSuggestions
-              ? "Analisi in corso…"
-              : suggestions.length > 0
-                ? <><span className="inline-flex items-center justify-center size-5 rounded-full bg-incerto text-white text-[10px] font-bold">{suggestions.length}</span> Suggerimenti</>
-                : "Suggerimenti"
-            }
-          </FilterChip>
+              ? <RefreshCw className="animate-spin text-incerto" />
+              : <Lightbulb className="text-incerto" />}
+            <span className="flex-1 text-left">{refreshingSuggestions ? "Analisi in corso…" : "Suggerimenti"}</span>
+            {!refreshingSuggestions && suggestions.length > 0 && (
+              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-incerto px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums">
+                {suggestions.length}
+              </span>
+            )}
+          </Button>
         }
       />
 
-      {/* ── Empty state ── */}
-      {tags.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border py-16 text-center">
-          <Tags className="size-10 text-muted-foreground mx-auto mb-3" />
-          {mostraGuasto(caricamentoFallito, tags.length) ? (
-            <>
-              <p className="text-sm font-medium">Tag non disponibili in questo momento</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Non è stato possibile caricarli. Ricarica la pagina fra un momento: i tuoi tag non sono stati persi.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-medium">Nessun tag ancora</p>
-              <p className="text-xs text-muted-foreground mt-1 mb-4">Crea il primo tag per raggruppare i tuoi prodotti e analizzare la spesa</p>
-              <Button onClick={() => setDialogTag({ open: true, tag: null })}>
-                <Plus />
-                Crea primo tag
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+      <div className="min-w-0 space-y-5">
+        {/* ── Suggerimenti: in cima alla colonna del tag ── */}
+        <SuggerimentiBanner
+          suggestions={suggestions}
+          onRefresh={async () => { await refreshSuggestions(); await reloadTags(); }}
+          refreshing={refreshingSuggestions}
+          aperto={suggerimentiAperti}
+          onChiudi={() => setSuggerimentiAperti(false)}
+        />
 
-      {/* ── Dettaglio tag selezionato ── */}
-      {selectedTag && (
-        <div className="space-y-5">
-          {/* Header tag + azioni */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              {selectedTag.emoji && <span className="text-2xl">{selectedTag.emoji}</span>}
-              <h2 className="text-lg font-semibold">{selectedTag.nome}</h2>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-pressed={!!selectedTag.preferito}
-                aria-label={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
-                title={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
-                onClick={() => alternaPreferito(selectedTag)}
-              >
-                <Star className={selectedTag.preferito ? "fill-incerto text-incerto" : "text-muted-foreground"} />
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setDialogTag({ open: true, tag: selectedTag })}>
-                <Pencil />
-                Modifica tag
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground underline underline-offset-4"
-                onClick={() => setDialogTag({ open: true, tag: selectedTag })}
-                disabled={loadingProdotti}
-              >
-                {loadingProdotti ? "…" : etichettaProdotti(prodotti.length)}
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              {deleteConfirm === selectedTag.id ? (
-                <div className="flex gap-1">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => deleteTag(selectedTag.id)}
-                    disabled={deletingId === selectedTag.id}
-                  >
-                    {deletingId === selectedTag.id ? "…" : "Conferma eliminazione"}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setDeleteConfirm(null)}>
-                    Annulla
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="destructive"
-                  size="icon-sm"
-                  onClick={() => setDeleteConfirm(selectedTag.id)}
-                  title="Elimina tag"
-                  aria-label="Elimina tag"
-                >
-                  <Trash2 />
+        {/* ── Empty state ── */}
+        {tags.length === 0 && (
+          <div className="rounded-xl border border-dashed border-border bg-card py-16 text-center">
+            <Tags className="size-10 text-muted-foreground mx-auto mb-3" />
+            {mostraGuasto(caricamentoFallito, tags.length) ? (
+              <>
+                <p className="text-sm font-medium">Tag non disponibili in questo momento</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Non è stato possibile caricarli. Ricarica la pagina fra un momento: i tuoi tag non sono stati persi.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium">Nessun tag ancora</p>
+                <p className="text-xs text-muted-foreground mt-1 mb-4">Crea il primo tag per raggruppare i tuoi prodotti e analizzare la spesa</p>
+                <Button onClick={() => setDialogTag({ open: true, tag: null })}>
+                  <Plus />
+                  Crea primo tag
                 </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Ci sono tag ma nessuno e' scelto (tutte le cartelle chiuse, nessun preferito). */}
+        {tags.length > 0 && !selectedTag && (
+          <div className="rounded-xl border border-dashed border-border bg-card py-16 text-center">
+            <Tags className="size-10 text-muted-foreground mx-auto mb-3" />
+            <p className="text-sm font-medium">Scegli un tag dalla lista</p>
+            <p className="text-xs text-muted-foreground mt-1">Vedrai quanto spendi, il trend dei prezzi e i fornitori nel periodo scelto.</p>
+          </div>
+        )}
+
+        {/* ── Riquadro del tag scelto ── */}
+        {selectedTag && (
+          <section aria-label={`Tag ${selectedTag.nome}`} className="@container overflow-hidden rounded-xl border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 pb-3 pt-4">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                {selectedTag.emoji && <span className="text-2xl leading-none" aria-hidden>{selectedTag.emoji}</span>}
+                <h2 className="min-w-0 truncate text-xl font-semibold tracking-tight" title={selectedTag.nome}>{selectedTag.nome}</h2>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-pressed={!!selectedTag.preferito}
+                  aria-label={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+                  title={selectedTag.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}
+                  onClick={() => alternaPreferito(selectedTag)}
+                >
+                  <Star className={selectedTag.preferito ? "fill-incerto text-incerto" : "text-muted-foreground"} />
+                </Button>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="px-1 text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
+                  onClick={() => setDialogTag({ open: true, tag: selectedTag })}
+                  disabled={loadingProdotti}
+                >
+                  {loadingProdotti ? "…" : etichettaProdotti(prodotti.length)}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setDialogTag({ open: true, tag: selectedTag })}>
+                  <Pencil />
+                  Modifica tag
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="outline" size="icon" aria-label="Altre azioni sul tag" title="Altre azioni sul tag">
+                        <MoreHorizontal />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem variant="destructive" onClick={() => setConfermaElimina(true)}>
+                      <Trash2 />
+                      Elimina tag
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            <div className="border-b px-5 pb-4">
+              <FiltroPeriodoTag
+                anno={anno}
+                mese={mese}
+                dataDa={dataDaCustom}
+                dataA={dataACustom}
+                preset={periodoPreset}
+                onChange={({ anno: a, mese: m, preset, dataDa: dd, dataA: da }) => {
+                  setAnno(a);
+                  setMese(m);
+                  setPeriodoPreset(preset);
+                  setDataDaCustom(dd ?? null);
+                  setDataACustom(da ?? null);
+                  if (selectedTagId) {
+                    const range = preset === "personalizzato" && dd && da
+                      ? { da: dd, a: da }
+                      : isoRange(a, m);
+                    loadAnalisiRange(selectedTagId, range.da, range.a);
+                  }
+                }}
+              />
+            </div>
+
+            <div className="space-y-6 p-5">
+              {/* KPI: le colonne seguono la larghezza del riquadro, non dello
+                  schermo (col menu aperto o chiuso cambia di 13rem). */}
+              {loadingAnalisi && (
+                <div className="grid grid-cols-2 gap-3 @lg:grid-cols-6 @3xl:grid-cols-5">
+                  {KPI_POSTI.map((posto, i) => <div key={i} className={cn("h-20 rounded-lg border bg-card animate-pulse", posto)} />)}
+                </div>
+              )}
+              {!loadingAnalisi && analisi?.vuoto === false && kpi && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3 @lg:grid-cols-6 @3xl:grid-cols-5">
+                    <KpiCard className={KPI_POSTI[0]} label="Totale spesa" value={fmtEuro(kpi.spesa_totale)} tone="border-primary/40 hover:border-primary/70" />
+                    <KpiCard className={KPI_POSTI[1]} label={kpi.quantita_label} value={kpi.quantita_norm_totale.toLocaleString("it-IT", { maximumFractionDigits: 1 })} tone="border-border hover:border-muted-foreground/40" />
+                    <KpiCard className={KPI_POSTI[2]} label={kpi.prezzo_label} value={kpi.prezzo_medio_ponderato != null ? fmtEuro(kpi.prezzo_medio_ponderato) : "—"} tone="border-border hover:border-muted-foreground/40" />
+                    <KpiCard className={KPI_POSTI[3]} label="Fornitori" value={String(kpi.num_fornitori)} tone="border-border hover:border-muted-foreground/40" />
+                    <KpiCard className={KPI_POSTI[4]} label="Fatture" value={String(kpi.num_fatture)} tone="border-border hover:border-muted-foreground/40" />
+                  </div>
+                  {kpi.unita_dominante && (kpi.spesa_esclusa_mix ?? 0) !== 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Questo tag contiene unità di misura diverse: quantità e prezzo medio
+                      si riferiscono alla sola parte in <strong>{kpi.unita_dominante}</strong>.
+                      Restano fuori dal calcolo {fmtEuro(kpi.spesa_esclusa_mix ?? 0)} di spesa,
+                      comunque inclusi nel totale.
+                    </p>
+                  )}
+                </div>
+              )}
+              {!loadingAnalisi && analisi?.vuoto && (
+                <div className="rounded-lg border border-dashed border-border py-10 text-center">
+                  <p className="text-sm text-muted-foreground">Nessun dato nel periodo selezionato per questo tag.</p>
+                </div>
+              )}
+
+              {!loadingAnalisi && analisi?.vuoto === false && (
+                <>
+                  {/* Trend */}
+                  <section className="space-y-3 border-t pt-5" aria-label="Trend prezzi nel periodo">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold">Trend prezzi nel periodo</h3>
+                      <div className="flex items-center gap-1">
+                        <Button variant="outline" size="icon-sm" onClick={exportXls} title="Esporta XLS" aria-label="Esporta XLS">
+                          <Download />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-expanded={showTrend}
+                          className="text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground hover:aria-expanded:bg-muted"
+                          aria-label={showTrend ? "Nascondi il trend" : "Mostra il trend"}
+                          onClick={() => setShowTrend(v => !v)}
+                        >
+                          {showTrend ? <ChevronUp /> : <ChevronDown />}
+                        </Button>
+                      </div>
+                    </div>
+                    {showTrend && <TrendChart punti={trend.punti} media={trend.prezzo_medio_periodo} />}
+                  </section>
+
+                  {/* Fornitori */}
+                  <section className="space-y-3 border-t pt-5" aria-label="Fornitori">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold">Fornitori</h3>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-expanded={showFornitori}
+                        className="text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground hover:aria-expanded:bg-muted"
+                        aria-label={showFornitori ? "Nascondi i fornitori" : "Mostra i fornitori"}
+                        onClick={() => setShowFornitori(v => !v)}
+                      >
+                        {showFornitori ? <ChevronUp /> : <ChevronDown />}
+                      </Button>
+                    </div>
+                    {showFornitori && fornitori.fornitori.length > 0 && (
+                      <div className="overflow-x-auto rounded-lg border">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-border bg-muted/30">
+                              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Fornitore</th>
+                              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Spesa</th>
+                              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Acquisti</th>
+                              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Prezzo medio</th>
+                              {/* La media di riferimento e' prezzo_medio_tag, che il worker
+                                  manda in fornitori.aggregati (tag_analytics_service.py:386) e
+                                  che il client scartava: la colonna mostrava scostamenti da un
+                                  numero mai visibile. E' anche il campo corretto il 24/8 da
+                                  media semplice a ponderata. */}
+                              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
+                                Rispetto alla media
+                                {fornitori.aggregati?.prezzo_medio_tag != null && (
+                                  <span className="block font-normal text-[10px] text-muted-foreground/70">
+                                    {/* Solo il valore: quantita_label e' un'intestazione di
+                                        colonna ("⚖️ Quantità Totale KG"), non un'unita'. */}
+                                    {fmtEuro(fornitori.aggregati.prezzo_medio_tag)}
+                                  </span>
+                                )}
+                              </th>
+                              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">% sul tag</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {fornitori.fornitori.map((f, i) => (
+                              <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                                <td className="px-4 py-2.5 font-medium">{f.fornitore}</td>
+                                <td className="px-4 py-2.5 text-right tabular-nums">{fmtEuro(f.spesa_totale)}</td>
+                                <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{f.num_acquisti}</td>
+                                <td className="px-4 py-2.5 text-right tabular-nums">{f.prezzo_medio != null ? fmtEuro(f.prezzo_medio) : "—"}</td>
+                                <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${f.delta_pct > 5 ? "text-negativo" : f.delta_pct < -5 ? "text-positivo" : "text-muted-foreground"}`}>
+                                  {fmtPct(f.delta_pct, true)}
+                                </td>
+                                <td className="px-4 py-2.5 text-right">
+                                  <div className="flex items-center gap-2 justify-end">
+                                    <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                                      <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, f.incidenza_spesa)}%` }} />
+                                    </div>
+                                    <span className="tabular-nums text-xs w-10">{f.incidenza_spesa.toFixed(1)}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {showFornitori && fornitori.fornitori.length === 0 && (
+                      <p className="text-sm text-muted-foreground">Nessun dato fornitori.</p>
+                    )}
+                  </section>
+                </>
               )}
             </div>
-          </div>
-
-          {/* Filtro periodo */}
-          <FiltroPeriodoTag
-            anno={anno}
-            mese={mese}
-            dataDa={dataDaCustom}
-            dataA={dataACustom}
-            preset={periodoPreset}
-            onChange={({ anno: a, mese: m, preset, dataDa: dd, dataA: da }) => {
-              setAnno(a);
-              setMese(m);
-              setPeriodoPreset(preset);
-              setDataDaCustom(dd ?? null);
-              setDataACustom(da ?? null);
-              if (selectedTagId) {
-                const range = preset === "personalizzato" && dd && da
-                  ? { da: dd, a: da }
-                  : isoRange(a, m);
-                loadAnalisiRange(selectedTagId, range.da, range.a);
-              }
-            }}
-          />
-
-          {/* KPI bar */}
-          {loadingAnalisi && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {[1,2,3,4,5].map(i => <div key={i} className="h-20 rounded-lg border bg-card animate-pulse" />)}
-            </div>
-          )}
-          {!loadingAnalisi && analisi?.vuoto === false && kpi && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <KpiCard label="Totale spesa" value={fmtEuro(kpi.spesa_totale)} tone="border-primary/40 hover:border-primary/70" />
-              <KpiCard label={kpi.quantita_label} value={kpi.quantita_norm_totale.toLocaleString("it-IT", { maximumFractionDigits: 1 })} tone="border-border hover:border-muted-foreground/40" />
-              <KpiCard label={kpi.prezzo_label} value={kpi.prezzo_medio_ponderato != null ? fmtEuro(kpi.prezzo_medio_ponderato) : "—"} tone="border-border hover:border-muted-foreground/40" />
-              <KpiCard label="Fornitori" value={String(kpi.num_fornitori)} tone="border-border hover:border-muted-foreground/40" />
-              <KpiCard label="Fatture" value={String(kpi.num_fatture)} tone="border-border hover:border-muted-foreground/40" />
-            </div>
-          )}
-          {!loadingAnalisi && analisi?.vuoto === false && kpi?.unita_dominante && (kpi.spesa_esclusa_mix ?? 0) !== 0 && (
-            <p className="text-xs text-muted-foreground">
-              Questo tag contiene unità di misura diverse: quantità e prezzo medio
-              si riferiscono alla sola parte in <strong>{kpi.unita_dominante}</strong>.
-              Restano fuori dal calcolo {fmtEuro(kpi.spesa_esclusa_mix ?? 0)} di spesa,
-              comunque inclusi nel totale.
-            </p>
-          )}
-          {!loadingAnalisi && analisi?.vuoto && (
-            <div className="rounded-lg border border-border bg-card py-8 text-center">
-              <p className="text-sm text-muted-foreground">Nessun dato nel periodo selezionato per questo tag.</p>
-            </div>
-          )}
-
-          {/* Trend + Fornitori */}
-          {!loadingAnalisi && analisi?.vuoto === false && (
-            <div className="space-y-3">
-              {/* Trend */}
-              <div className="rounded-lg border border-border bg-card overflow-hidden">
-                {/* Header cliccabile: <div role=button> e non <button> perché
-                    contiene il bottone "Esporta XLS" (un button non può annidare
-                    un altro button → hydration error). */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setShowTrend(v => !v)}
-                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowTrend(v => !v); } }}
-                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/40 transition-colors cursor-pointer select-none"
-                >
-                  <span>Trend prezzi nel periodo</span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon-xs"
-                      onClick={e => { e.stopPropagation(); exportXls(); }}
-                      title="Esporta XLS"
-                      aria-label="Esporta XLS"
-                    >
-                      <Download />
-                    </Button>
-                    {showTrend ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
-                  </div>
-                </div>
-                {showTrend && (
-                  <div className="px-4 pb-4 border-t border-border">
-                    <TrendChart punti={trend.punti} media={trend.prezzo_medio_periodo} />
-                  </div>
-                )}
-              </div>
-
-              {/* Fornitori */}
-              <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <button
-                  onClick={() => setShowFornitori(v => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/40 transition-colors"
-                >
-                  <span>Analisi fornitori</span>
-                  {showFornitori ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
-                </button>
-                {showFornitori && fornitori.fornitori.length > 0 && (
-                  <div className="border-t border-border overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border bg-muted/30">
-                          <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Fornitore</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Spesa</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Acquisti</th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Prezzo medio</th>
-                          {/* La media di riferimento e' prezzo_medio_tag, che il worker
-                              manda in fornitori.aggregati (tag_analytics_service.py:386) e
-                              che il client scartava: la colonna mostrava scostamenti da un
-                              numero mai visibile. E' anche il campo corretto il 24/8 da
-                              media semplice a ponderata. */}
-                          <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
-                            Rispetto alla media
-                            {fornitori.aggregati?.prezzo_medio_tag != null && (
-                              <span className="block font-normal text-[10px] text-muted-foreground/70">
-                                {/* Solo il valore: quantita_label e' un'intestazione di
-                                    colonna ("⚖️ Quantità Totale KG"), non un'unita'. */}
-                                {fmtEuro(fornitori.aggregati.prezzo_medio_tag)}
-                              </span>
-                            )}
-                          </th>
-                          <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">% sul tag</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {fornitori.fornitori.map((f, i) => (
-                          <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                            <td className="px-4 py-2.5 font-medium">{f.fornitore}</td>
-                            <td className="px-4 py-2.5 text-right tabular-nums">{fmtEuro(f.spesa_totale)}</td>
-                            <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{f.num_acquisti}</td>
-                            <td className="px-4 py-2.5 text-right tabular-nums">{f.prezzo_medio != null ? fmtEuro(f.prezzo_medio) : "—"}</td>
-                            <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${f.delta_pct > 5 ? "text-negativo" : f.delta_pct < -5 ? "text-positivo" : "text-muted-foreground"}`}>
-                              {fmtPct(f.delta_pct, true)}
-                            </td>
-                            <td className="px-4 py-2.5 text-right">
-                              <div className="flex items-center gap-2 justify-end">
-                                <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                                  <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, f.incidenza_spesa)}%` }} />
-                                </div>
-                                <span className="tabular-nums text-xs w-10">{f.incidenza_spesa.toFixed(1)}%</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {showFornitori && fornitori.fornitori.length === 0 && (
-                  <p className="px-4 pb-4 text-sm text-muted-foreground border-t border-border pt-4">Nessun dato fornitori.</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+          </section>
+        )}
+      </div>
 
       {/* ── Dialogs ── */}
+      <ConfirmDialog
+        open={confermaElimina && selectedTag !== null}
+        titolo={`Eliminare il tag «${selectedTag?.nome ?? ""}»?`}
+        messaggio="Si cancellano il tag e la sua lista di prodotti. Le fatture e le altre analisi non cambiano."
+        confermaLabel="Elimina tag"
+        onConferma={() => { if (selectedTag) deleteTag(selectedTag.id); }}
+        onClose={() => setConfermaElimina(false)}
+      />
       <ModificaTagDialog
         open={dialogTag.open}
         onOpenChange={v => {
