@@ -139,6 +139,8 @@ def _giorni(iso: Optional[str], adesso: datetime) -> Optional[int]:
         t = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
     except ValueError:
         return None
+    if t.tzinfo is None:  # una data senza ora (sdi_attivo_dal): mezzanotte UTC
+        t = t.replace(tzinfo=adesso.tzinfo)
     return max(0, (adesso - t).days)
 
 
@@ -211,21 +213,27 @@ def componi_voci(
 
     for c in clienti:
         cid = str(c["id"])
-        # SDI acceso ma nessuna fattura: la ricezione di quella sede si e'
-        # interrotta (o non e' mai partita), e la coda fatture resta pulita
-        # perche' non le arriva niente. Senza l'ultimo caricamento letto non si
-        # dice niente: un dato assente non e' un «mai».
-        if c.get("attivo") and not c.get("salute_incompleta"):
+        # SDI acceso ma nessuna fattura dallo SDI: la ricezione di quella sede si
+        # e' interrotta (o non e' mai partita), e la coda fatture resta pulita
+        # perche' non le arriva niente. Si misura sugli arrivi dallo SDI
+        # (`ultimo_sdi_at`), non sui caricamenti: un upload a mano non dice che
+        # lo SDI funziona. Niente voce se gli arrivi non si sono letti (un dato
+        # assente non e' un «mai»), per una sede spenta, o nei primi 14 giorni
+        # dall'accensione (`sdi_attivo_dal`).
+        if c.get("attivo"):
             for s in c.get("sedi") or []:
-                if not s.get("sdi_attivo"):
+                if not s.get("sdi_attivo") or s.get("attivo") is False or not s.get("sdi_letto"):
                     continue
-                g = _giorni(s.get("ultimo_caricamento_at"), adesso)
+                acceso = _giorni(s.get("sdi_attivo_dal"), adesso)
+                if acceso is not None and acceso < GIORNI_SDI_MUTO:
+                    continue
+                g = _giorni(s.get("ultimo_sdi_at"), adesso)
                 if g is not None and g < GIORNI_SDI_MUTO:
                     continue
-                titolo = ("SDI attivo ma nessuna fattura mai arrivata" if g is None
-                          else f"SDI attivo ma nessuna fattura da {g} giorni")
+                titolo = ("SDI attivo ma non e' mai arrivata una fattura" if g is None
+                          else f"Nessuna fattura dallo SDI da {g} giorni")
                 voci.append(_voce(f"sdi:{s['id']}", "oggi", titolo, dettaglio=s.get("nome_ristorante"),
-                                  da=s.get("ultimo_caricamento_at"), cliente_id=cid, cliente=nome[cid],
+                                  da=s.get("ultimo_sdi_at"), cliente_id=cid, cliente=nome[cid],
                                   link=f"/admin/clienti/{cid}?tab=sedi", ristorante_id=str(s["id"])))
         if not c.get("attivo") and c.get("last_seen_at") is None:
             g = _giorni(c.get("created_at"), adesso)

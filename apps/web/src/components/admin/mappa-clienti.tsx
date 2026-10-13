@@ -112,8 +112,9 @@ export function MappaClienti({ radice }: { radice: NodoMappa }) {
             >
               {aperto ? "−" : n.figli.length}
             </button>
+            {aperto && <span className="w-4 shrink-0 border-t-[1.5px] border-border" />}
             {aperto && (
-              <div className="relative flex flex-col gap-2.5 pl-[34px]">
+              <div className="relative flex flex-col gap-2.5 pl-[18px]">
                 {n.figli.map((f) => <div key={f.id} className={FIGLIO}>{ramo(f)}</div>)}
               </div>
             )}

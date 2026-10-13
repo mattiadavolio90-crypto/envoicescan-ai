@@ -136,11 +136,12 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # era l'unico punto di quel file a scrivere la fonte della categoria.
 # `tipo_attivita` 19 dal 13/10/2026: la scheda cliente admin e' divisa in tab e
 # il settore delle sedi lo leggono sia l'intestazione sia la tab Sedi
-# (`app/(app)/admin/clienti/[id]/tabs/sedi.tsx`).
+# (`app/(app)/admin/clienti/[id]/tabs/sedi.tsx`). 20 lo stesso giorno: la vista
+# Mappa dei clienti la legge per l'icona negozio/locale (`lib/admin-mappa.ts`).
 TARATURA_FILE_CODICE = {
     "correzioni_count": 0, "ultimo_correttore": 0,           # morte, confermate da L4
     "consecutive_correct_classifications": 4, "categoria_fonte": 12,
-    "tipo_attivita": 19, "deleted_at": 34,                   # vive
+    "tipo_attivita": 20, "deleted_at": 34,                   # vive
 }
 
 

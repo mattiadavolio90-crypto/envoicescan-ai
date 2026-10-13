@@ -208,14 +208,30 @@ def _arricchisci_salute_sedi(sb, sedi_per_utente: Dict[str, List[Dict[str, Any]]
 
 def _arricchisci_canali(sb, sedi_per_utente: Dict[str, List[Dict[str, Any]]],
                         user_ids: List[str]) -> Optional[Dict[str, int]]:
-    """I canali di ogni sede per la vista Mappa della lista clienti: ricavi dalla
-    cassa (mittente email attivo), invio al commercialista (configurazione attiva
-    sulla P.IVA della sede). Ritorna i sotto-utenti attivi per titolare.
+    """I canali di ogni sede per la vista Mappa della lista clienti: ultimo arrivo
+    dallo SDI, ricavi dalla cassa (mittente email attivo), invio al commercialista
+    (configurazione attiva sulla P.IVA della sede). Ritorna i sotto-utenti attivi
+    per titolare.
 
     Una lettura che fallisce lascia il campo a None, non a False: la mappa deve
     dire «non so», non «spento»."""
     sedi = [s for lista in sedi_per_utente.values() for s in lista]
     ids = [str(s["id"]) for s in sedi]
+    # L'ultima fattura arrivata DALLO SDI (fatture_queue), non l'ultimo
+    # caricamento: un upload a mano azzererebbe il conto anche con lo SDI rotto.
+    # Una query per sede con lo SDI acceso (poche), sull'indice per sede.
+    for s in sedi:
+        if not s.get("sdi_attivo"):
+            continue
+        try:
+            rows = (sb.table("fatture_queue").select("created_at").eq("ristorante_id", str(s["id"]))
+                    .order("created_at", desc=True).limit(1).execute().data or [])
+            s["ultimo_sdi_at"] = rows[0]["created_at"] if rows else None
+            s["sdi_letto"] = True
+        except Exception:
+            logger.warning("admin clienti: arrivi SDI non letti per la sede %s", s.get("id"), exc_info=True)
+            s["ultimo_sdi_at"] = None
+            s["sdi_letto"] = False
     try:
         collegate = set()
         for i in range(0, len(ids), 200):
@@ -285,7 +301,7 @@ def admin_lista_clienti():
     try:
         for i in range(0, len(user_ids), 100):
             chunk = user_ids[i : i + 100]
-            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,sdi_attivo,tipo_attivita").eq("sede_tecnica", False).in_("user_id", chunk).execute()
+            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,sdi_attivo,sdi_attivo_dal,tipo_attivita").eq("sede_tecnica", False).in_("user_id", chunk).execute()
             for r in (resp.data or []):
                 sedi_map.setdefault(r["user_id"], []).append(r)
     except Exception:

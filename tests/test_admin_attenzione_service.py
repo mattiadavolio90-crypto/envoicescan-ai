@@ -352,15 +352,29 @@ def test_sdi_attivo_ma_muto_da_quattordici_giorni():
     def con_sedi(*sedi, **kw):
         c = {**CLIENTI[1], "sedi": list(sedi), **kw}
         return _per_chiave(att.componi_voci(adesso=ADESSO, clienti=[c]))
-    muta = {"id": "r2", "nome_ristorante": "Bar 1", "sdi_attivo": True, "ultimo_caricamento_at": "2026-09-29T10:00:00+00:00"}
+    muta = {"id": "r2", "nome_ristorante": "Bar 1", "sdi_attivo": True, "sdi_letto": True, "attivo": True,
+            "sdi_attivo_dal": "2026-06-23", "ultimo_sdi_at": "2026-09-29T10:00:00+00:00",
+            # un caricamento a mano recente non dice che lo SDI funziona
+            "ultimo_caricamento_at": "2026-10-12T10:00:00+00:00"}
     v = con_sedi(muta)
-    assert v["sdi:r2"]["titolo"] == "SDI attivo ma nessuna fattura da 14 giorni"
+    assert v["sdi:r2"]["titolo"] == "Nessuna fattura dallo SDI da 14 giorni"
     assert v["sdi:r2"]["ristorante_id"] == "r2" and v["sdi:r2"]["link"] == "/admin/clienti/u2?tab=sedi"
-    assert "sdi:r2" not in con_sedi({**muta, "ultimo_caricamento_at": "2026-09-30T10:00:00+00:00"})
-    assert con_sedi({**muta, "ultimo_caricamento_at": None})["sdi:r2"]["titolo"] == "SDI attivo ma nessuna fattura mai arrivata"
+    assert "sdi:r2" not in con_sedi({**muta, "ultimo_sdi_at": "2026-09-30T10:00:00+00:00"})
+    assert con_sedi({**muta, "ultimo_sdi_at": None})["sdi:r2"]["titolo"] == "SDI attivo ma non e' mai arrivata una fattura"
     assert "sdi:r2" not in con_sedi({**muta, "sdi_attivo": False})
     assert "sdi:r2" not in con_sedi(muta, attivo=False)
-    assert "sdi:r2" not in con_sedi(muta, salute_incompleta=True)
+    assert "sdi:r2" not in con_sedi({**muta, "attivo": False}), "sede spenta"
+    assert "sdi:r2" not in con_sedi({**muta, "sdi_letto": False}), "arrivi non letti: non e' un «mai»"
+
+
+def test_sdi_appena_acceso_ha_quattordici_giorni_di_grazia():
+    def con(dal):
+        sede = {"id": "r2", "nome_ristorante": "Bar 1", "sdi_attivo": True, "sdi_letto": True,
+                "sdi_attivo_dal": dal, "ultimo_sdi_at": None}
+        return _per_chiave(att.componi_voci(adesso=ADESSO, clienti=[{**CLIENTI[1], "sedi": [sede]}]))
+    assert "sdi:r2" not in con("2026-10-01")
+    assert "sdi:r2" in con("2026-09-29")
+    assert "sdi:r2" in con(None)
 
 
 def test_le_voci_di_una_sede_portano_la_sede():
