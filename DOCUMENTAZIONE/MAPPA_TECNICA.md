@@ -183,8 +183,11 @@ la stessa sede non dia numeri diversi nelle due pagine
 (`tests/test_sql_gruppo_prezzi.py` lo prova sulle stesse righe). Le due pagine
 escludono le cauzioni e marcano «da controllare» un prezzo saltato di 10 volte
 o più: resta consultabile in una vista sua, fuori dai totali e dallo score
-fornitori. La definizione è una sola, `utils/voci_prezzo.py`, e vale anche per
-gli avvisi prezzi (`calcola_alert`: Home, chat, notifiche, briefing).
+fornitori. Il numero d'ordine che un fornitore scrive nel nome («… ORDER 2025916
+(1014546)», LA GE' GE') non fa un prodotto diverso: la chiave del prodotto lo
+toglie (`chiave_prodotto`, e la gemella SQL nella RPC), il nome a video pure. La
+definizione è una sola, `utils/voci_prezzo.py`, e vale anche per gli avvisi
+prezzi (`calcola_alert`: Home, chat, notifiche, briefing).
 
 **Le migration del repo non ricostruiscono il database** — applicarle su un
 Postgres vuoto dà 18 tabelle su 59. Il DB dei test si monta invece da

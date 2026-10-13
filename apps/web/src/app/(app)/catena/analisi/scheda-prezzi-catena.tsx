@@ -9,7 +9,7 @@ import { NativeSelect } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { AREA_TABELLA, PannelloScheda } from "@/components/ui/pannello-scheda";
 import { cn } from "@/lib/utils";
-import { formatEuro, parseDecimaleIt } from "@/lib/format";
+import { formatEuro } from "@/lib/format";
 import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { intervalloMese } from "@/lib/periodo";
 import type { StoricoPrezzoResponse } from "@/lib/prezzi";
@@ -19,7 +19,9 @@ import {
   filtraDivari,
   filtraVariazioni,
   pvDeiPrezzi,
+  sogliaDaApplicare,
   stelleIniziali,
+  testoSoglia,
   totaliPrezzi,
   type GruppoPrezzi,
   type VariazionePrezzoCatena,
@@ -141,7 +143,7 @@ export function SchedaPrezziCatena() {
         if (my !== reqRef.current) return;
         setData(j);
         setStelle(stelleIniziali(j.variazioni));
-        if (soglia == null) setSogliaInput(String(j.soglia).replace(".", ","));
+        if (soglia == null) setSogliaInput(testoSoglia(j.soglia));
       })
       .catch(() => {
         if (my === reqRef.current) {
@@ -159,8 +161,9 @@ export function SchedaPrezziCatena() {
   }, [carica]);
 
   function applicaSoglia() {
-    const val = parseDecimaleIt(sogliaInput);
-    if (!isNaN(val) && val >= 0 && val !== soglia) setSoglia(val);
+    const esito = sogliaDaApplicare(sogliaInput, soglia ?? data?.soglia ?? null);
+    setSogliaInput(esito.testo);
+    if (esito.nuova != null) setSoglia(esito.nuova);
   }
 
   const elencoPv = useMemo(() => pvDeiPrezzi(data), [data]);

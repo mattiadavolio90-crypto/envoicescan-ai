@@ -2137,7 +2137,7 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   per richiesta), proposta e Conferma validano col settore della sede; 6 test, mutazione
 >   6/6 sui file interi (la lezione del `-k`). Migration del DROP applicata da Mattia
 >   nell'SQL Editor alle 12:30 circa e verificata (la funzione non c'e' piu').
->   **DEPLOYATO l'11/10/2026 ~16:00 Roma** (push `6d8cfeae..3a7789cb`, 16 commit: 14 miei
+>   **In produzione dall'11/10/2026 ~16:00 Roma** (push `6d8cfeae..3a7789cb`, 16 commit: 14 miei
 >   e 2 dell'altra sessione, OK esplicito di Mattia «poi fai deploy»; rollback tag locale
 >   `pre-deploy-20261011`): CI Tests, OpenAPI, Requirements e Vercel verdi; worker Railway
 >   su `3a7789cb`; `app.oneflux.it` 200. Nessuna migration al deploy (tutte gia' sul live).
@@ -2315,6 +2315,40 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   generato, rotta eliminata); eslint pulito. **Non fatto:** pagina non aperta nel browser
 >   (nessuna sede di prova; il Next locale scrive sul DB vero); al deploy, finestra di pochi
 >   minuti in cui un Vercel arrivato prima di Railway risponde 405 al Salva.
+> - **13/10/2026 — Prezzi: il numero d'ordine nel nome non spezza piu' la serie; soglia di
+>   catena (Fable), NON pushato, migration `20261013075528` applicata via MCP.** Mattia: «sistema
+>   tutto quello che hai trovato» dopo l'analisi di debug (sola lettura) della fase prezzi.
+>   **Misurato prima:** LA GE' GE' (pesce) scrive «ORDER 2025916 (1014546)» in ogni consegna:
+>   1.140 righe su 2.520, 70 nomi per 19 prodotti veri; e' l'unico fornitore del DB che lo fa
+>   («RPA - CANCELLED ORDER COMMISSION» e' l'unica altra riga con ORDER, senza numero: resta).
+>   Le 4 stelle su quel pesce non potevano dare ne' una variazione ne' un avviso. **Fatto:**
+>   regola 3 in `utils/voci_prezzo.py` (`NUMERO_ORDINE_REGEX`, `togli_numero_ordine`,
+>   `chiave_prodotto`, `chiavi_prodotto`) e la gemella SQL nella RPC `gruppo_prezzi_catena`
+>   (firma invariata, CREATE OR REPLACE, verificata su `pg_proc` e sui grant). La usano la
+>   chiave dei preferiti, il raggruppamento dell'Osservatorio, il nome a video delle variazioni
+>   e dei divari, lo storico (prima «AGLIO» si tirava dietro «AGLIO NERO» col fallback per
+>   prefisso), il conteggio prodotti dello score fornitori, `calcola_alert` (Home, chat,
+>   notifiche, briefing: v38) e `_pareto_key`/`_pref_match_key` in Home. In catena la casella
+>   «Mostra da … %» non ricarica piu' al primo clic fuori se il valore non cambia e riporta a
+>   video un valore oltre 100 (`sogliaDaApplicare` in `lib/catena-prezzi.ts`). **Dati veri
+>   dopo (sola lettura, 4 sedi che comprano da LA GE' GE'):** le famiglie stellate sono
+>   confrontabili (18-27 serie per sede), le variazioni sopra il 5% di quel fornitore sono 10
+>   (prima 11, su serie spezzate): fra queste SALMONI H111 +11%, SALMAR +6%, DENTICE +9%,
+>   ASTICI +10/+30%. **Prove:** mutazione 11/11 (regex Python, regex SQL, `calcola_alert`,
+>   divario, storico, `_pareto_key`, nome a video, chiave Osservatorio, 3 sulla soglia); il
+>   revisore (🟢 sul codice) ha aggiunto 2 righe scoperte (`n_prodotti` dello score, nome grezzo
+>   allo storico) ora con test, e una regex che mangiava lo spazio senza parentesi
+>   («ORDER 123 BRAVO», 0 righe sul live), corretta in Python e SQL e riapplicata via MCP;
+>   equivalenza SQL↔pandas con due forme «ORDER n (m)» nella seed; presidi statici e permessi
+>   1.806 verdi; `tsc` pulito sul sorgente (2 errori solo in `.next/` generato, rotta tag
+>   eliminata); OpenAPI senza drift (219). Suite completa `python -m pytest tests/ -q -p
+>   no:randomly`: **20.183 verdi + 59 skip, 0 rossi** (19'26"), misurata prima delle 3 righe del
+>   revisore, i cui file sono stati rilanciati dopo (58 verdi); `check_documentazione.py` exit 0
+>   dopo la riformulazione di un «DEPLOYATO» dell'11/10 in «In produzione». **Non fatto:** la
+>   casella della soglia dell'Osservatorio del PV (`type=number`, max 50) ha la stessa ricarica
+>   al primo clic fuori: non era fra i rilievi, resta com'e'. Il «solo preferiti» di default su
+>   tutte le sedi e lo spostamento delle cifre di Sushiland (righe «da controllare» fuori dai
+>   totali) erano constatazioni, non difetti.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

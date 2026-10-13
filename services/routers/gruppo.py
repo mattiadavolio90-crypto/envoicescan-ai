@@ -26,7 +26,7 @@ from config.logger_setup import get_logger
 from utils.supabase_paging import fetch_all
 from services import sotto_utenti_service as _su
 from services.permessi_rotte import notifica_visibile
-from utils.voci_prezzo import salto_da_controllare
+from utils.voci_prezzo import salto_da_controllare, togli_numero_ordine
 from services.routers.prezzi import (
     _CATEGORIE_SPESE_PREZZI,
     _PRICE_ALERT_DEFAULT,
@@ -3418,7 +3418,7 @@ def _calcola_divari_catena(
         # variare di una maiuscola fra le sedi, e una va scelta.
         rif = max(vicine, key=lambda c: (int(c.get("n_acquisti") or 0), str(c.get("ultima_data"))))
         divari.append({
-            "prodotto": str(rif.get("descrizione") or "")[:60],
+            "prodotto": togli_numero_ordine(rif.get("descrizione") or "")[:60],
             "categoria": str(rif.get("categoria") or "")[:25],
             "fornitore": str(rif.get("fornitore") or "")[:30],
             "prezzo_min": round(p_min, 4),

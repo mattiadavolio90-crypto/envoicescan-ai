@@ -8,7 +8,31 @@
 // Mescolare le due cose e' l'errore che la scheda esiste per evitare: il PV
 // che paga 15,80 e quello che paga 17,58 non sono un rincaro dell'11%.
 
+import { parseDecimaleIt } from "@/lib/format";
 import { chiavePreferito, inVista, type VistaPrezzi } from "@/lib/prezzi-viste";
+
+// Il worker riporta la soglia in [0, 100]: a video deve succedere lo stesso.
+export const SOGLIA_CATENA_MAX = 100;
+
+export function testoSoglia(soglia: number | null | undefined): string {
+  return soglia == null ? "" : String(soglia).replace(".", ",");
+}
+
+/** La casella «Mostra da … % in su» quando l'utente conferma (Invio o clic fuori).
+ *  `attuale` e' la soglia che la scheda sta gia' mostrando: quella degli avvisi
+ *  finche' l'utente non ne scrive una. `nuova` e' null quando non c'e' niente da
+ *  ricaricare: testo non numerico o negativo (si ripristina `attuale`) o uguale
+ *  ad `attuale` — al primo clic fuori dalla casella la scheda ricaricava sempre. */
+export function sogliaDaApplicare(
+  testo: string,
+  attuale: number | null,
+  massimo: number = SOGLIA_CATENA_MAX,
+): { testo: string; nuova: number | null } {
+  const val = parseDecimaleIt(testo);
+  if (Number.isNaN(val) || val < 0) return { testo: testoSoglia(attuale), nuova: null };
+  const limitata = Math.min(massimo, val);
+  return { testo: testoSoglia(limitata), nuova: limitata === attuale ? null : limitata };
+}
 
 export type VariazionePrezzoCatena = {
   ristorante_id: string;

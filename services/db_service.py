@@ -23,7 +23,7 @@ except ImportError:
 from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
 from utils.validation import SPECIAL_ROW_SCONTO_OMAGGIO, classify_special_row, classify_special_row_vectorized
 from utils.streamlit_compat import make_cache as _make_cache
-from utils.voci_prezzo import maschera_voce_non_prezzo, salto_da_controllare
+from utils.voci_prezzo import chiavi_prodotto, maschera_voce_non_prezzo, salto_da_controllare, togli_numero_ordine
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -696,12 +696,13 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
 
     # Normalizza chiavi groupby (case-insensitive, strip spazi)
     df = df.copy()
-    df['_desc_key'] = df['Descrizione'].astype(str).str.strip().str.upper()
+    df['_desc_key'] = chiavi_prodotto(df['Descrizione'])
     df['_forn_key'] = df['Fornitore'].astype(str).str.strip().str.upper()
 
-    # Raggruppa per Descrizione + Fornitore (case-insensitive)
+    # Raggruppa per Descrizione + Fornitore (case-insensitive, senza il numero
+    # d'ordine che un fornitore scrive nel nome: una consegna non e' un prodotto)
     for (_dk, _fk), group in df.groupby(['_desc_key', '_forn_key']):
-        prodotto = group['Descrizione'].mode()[0]
+        prodotto = togli_numero_ordine(group['Descrizione'].mode()[0])
         fornitore = group['Fornitore'].mode()[0]
         group = group.sort_values('DataDocumento')
 

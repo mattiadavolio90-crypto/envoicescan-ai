@@ -182,7 +182,10 @@ logger = get_logger('daily_briefing')
 #               prezzi saltati di 10 volte o piu' (cambio di confezione), come
 #               l'Osservatorio: uno snapshot di oggi direbbe ancora «ADDEBITO
 #               CAUZIONI -99%» fra i ribassi fino al TTL.
-_BRIEFING_CODE_VERSION = 37
+#   38 (13/10): il numero d'ordine nel nome del prodotto («... ORDER 2025916»)
+#               non spezza piu' la serie dei prezzi: le consegne di LA GE' GE'
+#               diventano confrontabili e possono dare avvisi nuovi.
+_BRIEFING_CODE_VERSION = 38
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

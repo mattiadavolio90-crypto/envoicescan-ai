@@ -93,3 +93,21 @@ def test_una_cauzione_nel_tag_non_fa_un_rincaro(monkeypatch):
 def test_un_cambio_di_confezione_nel_tag_non_e_un_avviso(monkeypatch):
     righe = [("FUSTO BIRRA", 70, 10.0), ("FUSTO BIRRA", 10, 100.0)]
     assert _avvisi_tag(monkeypatch, righe, ["FUSTO BIRRA"]) == []
+
+
+def test_due_consegne_con_numero_d_ordine_sono_lo_stesso_prodotto():
+    """Il nome con «ORDER n (m)» spezzava la serie anche in Home: due consegne,
+    due gruppi da un acquisto, nessun avviso. Il prodotto diverso resta diverso."""
+    righe = (_righe("SALMONI 5/6 SALMAR ORDER 2012258 (1007082)", [10.0]) +
+             _righe("SALMONI 5/6 SALMAR ORDER 2012995 (1007786)", [12.0]) +
+             _righe("SALMONI 5/6 MOWI ORDER 1 (1)", [10.0]) + _righe("SALMONI 5/6 MOWI ORDER 2 (2)", [10.0]))
+    for i, r in enumerate(righe):
+        r["DataDocumento"] = f"2026-0{3 + i % 2}-10"
+    assert _prodotti(righe) == ["SALMONI 5/6 SALMAR"]
+
+
+def test_la_stella_sulla_famiglia_combacia_con_l_avviso_senza_numero_d_ordine():
+    from services.price_impact_service import _pref_match_key
+
+    forn = "LA GE' GE' PESCA DI GAVAZZI SANTO & C. S.R.L"
+    assert _pref_match_key("SALMONI 5/6 SALMAR ORDER 2012258 (1007082)", forn) == _pref_match_key("SALMONI 5/6 SALMAR", forn)

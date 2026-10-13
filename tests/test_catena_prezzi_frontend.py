@@ -13,7 +13,7 @@ MODULO = "lib/catena-prezzi"
 
 
 FUNZIONI = ("etichettaDiffusione", "filtraVariazioni", "filtraDivari", "totaliPrezzi", "pvDeiPrezzi",
-            "chiaveStellaCatena", "stelleIniziali")
+            "chiaveStellaCatena", "stelleIniziali", "sogliaDaApplicare", "testoSoglia")
 
 
 def _ts(codice, argomento=None):
@@ -129,3 +129,18 @@ def test_divari_da_controllare_e_preferiti_che_vale_tutti():
     assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: ""}).map(d => d.prodotto))', divari) == ["COCA"]
     assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: "", vista: "da_controllare"}).map(d => d.prodotto))', divari) == ["AGLIO"]
     assert _ts('emit(m.filtraDivari(input, {pv: "", ricerca: "", vista: "preferiti"}).map(d => d.prodotto))', divari) == ["COCA"]
+
+
+@pytest.mark.parametrize("testo, attuale, atteso", [
+    ("7,5", 5, {"testo": "7,5", "nuova": 7.5}),
+    ("5", 5, {"testo": "5", "nuova": None}),         # uguale: al primo clic fuori ricaricava sempre
+    ("150", 5, {"testo": "100", "nuova": 100}),      # il worker riporta a 100, a video restava 150
+    ("100", 100, {"testo": "100", "nuova": None}),
+    ("abc", 5, {"testo": "5", "nuova": None}),
+    ("", 5, {"testo": "5", "nuova": None}),
+    ("-3", 5, {"testo": "5", "nuova": None}),
+    ("0", 5, {"testo": "0", "nuova": 0}),            # zero scritto apposta: tutte le variazioni
+    ("3", None, {"testo": "3", "nuova": 3}),
+])
+def test_la_soglia_scritta_si_applica_solo_se_cambia_e_resta_entro_cento(testo, attuale, atteso):
+    assert _ts("emit(m.sogliaDaApplicare(input.testo, input.attuale))", {"testo": testo, "attuale": attuale}) == atteso

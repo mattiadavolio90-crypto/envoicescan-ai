@@ -13,7 +13,13 @@ from config.constants import CATEGORIE_SPESE_GENERALI
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
 from utils.ttl_cache import TTLCache
-from utils.voci_prezzo import maschera_voce_non_prezzo, salto_da_controllare
+from utils.voci_prezzo import (
+    chiave_prodotto,
+    chiavi_prodotto,
+    maschera_voce_non_prezzo,
+    salto_da_controllare,
+    togli_numero_ordine,
+)
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -94,13 +100,14 @@ _SUFFISSI_UI_PRODOTTO = (" ⚠️ >6M", " ⚠ >6M")
 
 
 def _pulisci_desc_key(descrizione: str) -> str:
-    """Chiave normalizzata della descrizione: UPPER+TRIM senza suffissi UI.
+    """Chiave normalizzata della descrizione: UPPER+TRIM senza suffissi UI ne'
+    numero d'ordine del fornitore (`chiave_prodotto`).
 
     Allineata al raggruppamento delle variazioni (_calcola_variazioni_prezzi_sync
-    usa str.strip().str.upper() su 'descrizione') e alla pulizia gia' fatta in
+    usa `chiavi_prodotto` su 'descrizione') e alla pulizia gia' fatta in
     get_storico_prodotto. Unica fonte di verita' per la chiave preferiti.
     """
-    s = str(descrizione).strip().upper()
+    s = chiave_prodotto(descrizione)
     for suffix in _SUFFISSI_UI_PRODOTTO:
         if s.endswith(suffix):
             s = s[: -len(suffix)].strip()
@@ -336,7 +343,7 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
     if df.empty:
         return []
 
-    df['_desc_key'] = df['descrizione'].astype(str).str.strip().str.upper()
+    df['_desc_key'] = chiavi_prodotto(df['descrizione'])
     df['_forn_key'] = df['fornitore'].astype(str).str.strip().str.upper()
 
     alert_list = []
@@ -418,6 +425,7 @@ def _deriva_variazione(
     """
     import pandas as pd
 
+    descrizione = togli_numero_ordine(descrizione)
     prezzo_ult = float(ultimi_prezzi[-1])
     prezzo_pen = float(ultimi_prezzi[-2])
     delta = prezzo_ult - prezzo_pen
@@ -920,8 +928,9 @@ def _storico_prodotto_sede(
     catena (`/api/gruppo/prezzi/storico`)."""
     import pandas as pd
 
-    # Pulisce il nome prodotto dai suffissi UI prima di usarlo nei filtri DB
-    prod_upper = prodotto.strip().upper()
+    # Pulisce il nome prodotto dai suffissi UI (e dal numero d'ordine, che la
+    # riga non porta piu' ma una vecchia richiesta potrebbe) prima dei filtri DB
+    prod_upper = chiave_prodotto(prodotto)
     for suffix in [" ⚠️ >6M", " ⚠ >6M"]:
         if prod_upper.endswith(suffix):
             prod_upper = prod_upper[:-len(suffix)].strip()
@@ -973,7 +982,7 @@ def _storico_prodotto_sede(
     df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
     df['quantita'] = pd.to_numeric(df.get('quantita', pd.Series(dtype=float)), errors='coerce')
     df['totale_riga'] = pd.to_numeric(df.get('totale_riga', pd.Series(dtype=float)), errors='coerce')
-    df['_desc'] = df['descrizione'].astype(str).str.strip().str.upper()
+    df['_desc'] = chiavi_prodotto(df['descrizione'])
     df['_forn'] = df['fornitore'].astype(str).str.strip().str.upper()
 
     # Corrispondenza esatta prima, fallback su startswith
@@ -1194,7 +1203,7 @@ def _calcola_score_fornitori(
         n_fatture = int(g["file_origine"].nunique()) if "file_origine" in g else len(g)
         # Spesa reale del fornitore nel periodo (solo righe positive)
         spesa = float(g.loc[g["totale_riga"] > 0, "totale_riga"].sum())
-        n_prodotti = int(g["descrizione"].astype(str).str.strip().str.upper().nunique())
+        n_prodotti = int(chiavi_prodotto(g["descrizione"]).nunique())
 
         mesi_coperti = 0
         date_min = date_max = None

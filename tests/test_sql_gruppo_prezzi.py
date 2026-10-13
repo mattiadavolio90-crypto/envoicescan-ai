@@ -118,7 +118,10 @@ def test_la_catena_da_per_ogni_sede_le_variazioni_dell_osservatorio(sql):
 
     _semina_sedi(sql)
     rnd = random.Random(20261011)
-    prodotti = ["Mozzarella", "MOZZARELLA ", " mozzarella", "Limone", "Salmone 5-6", "Coca BIB 33cl"]
+    # Le due forme con «ORDER n (m)» devono finire nella serie di «Salmone 5-6»
+    # in entrambe le strade (SQL e pandas): e' la regola 3 di utils/voci_prezzo.py.
+    prodotti = ["Mozzarella", "MOZZARELLA ", " mozzarella", "Limone", "Salmone 5-6", "Coca BIB 33cl",
+                "Salmone 5-6 ORDER 2012258 (1007082)", "SALMONE 5-6 order 2012995(1007786)"]
     fornitori = ["Partesa", "PARTESA ", "Mefon", "ADC"]
     for sede in (SEDE1, SEDE2):
         giorni = rnd.sample(range(0, 360), 220)
@@ -367,3 +370,47 @@ def test_le_stelle_lette_per_la_home_combaciano_con_gli_avvisi(db_sql, sql):
              for d, p in (("2026-03-01", 10.0), ("2026-04-01", 12.0))]
     r = calcola_alert(pd.DataFrame(righe), 5.0).iloc[0]
     assert stelle == {_pref_match_key(r["Prodotto"], r["Fornitore"])}
+
+
+def test_il_numero_d_ordine_nel_nome_non_spezza_la_serie(sql):
+    """LA GE' GE' scrive «ORDER 2025916 (1014546)» in ogni consegna: fino al
+    13/10/2026 erano 70 nomi per 19 prodotti, mai una variazione. Due direzioni:
+    stesse consegne si uniscono, il prodotto diverso (MOWI) resta a parte."""
+    from services.routers.gruppo import _variazioni_catena
+
+    _semina_sedi(sql)
+    forn = "LA GE' GE' PESCA DI GAVAZZI SANTO & C. S.R.L"
+    _riga(sql, SEDE1, "2026-09-01", "SALMONI 5/6 SALMAR ORDER 2012258 (1007082)", forn, Decimal("10.00"), categoria="PESCE")
+    _riga(sql, SEDE1, "2026-10-01", "SALMONI 5/6 SALMAR ORDER 2012995 (1007786)", forn, Decimal("12.00"), categoria="PESCE")
+    _riga(sql, SEDE1, "2026-09-01", "SALMONI 5/6 MOWI ORDER 20131407 (100638660)", forn, Decimal("10.00"), categoria="PESCE")
+    _riga(sql, SEDE1, "2026-10-01", "SALMONI 5/6 MOWI ORDER 20148324 (100703803)", forn, Decimal("10.00"), categoria="PESCE")
+
+    coppie = _coppie(sql, sedi=(SEDE1,))
+    assert sorted((c["desc_key"], c["n_acquisti"]) for c in coppie) == [("SALMONI 5/6 MOWI", 2), ("SALMONI 5/6 SALMAR", 2)]
+    variazioni = _variazioni_catena(coppie, NOMI, 5.0)
+    assert [(v["prodotto"], v["aumento_perc"]) for v in variazioni] == [("SALMONI 5/6 SALMAR", 20.0)]
+
+
+def test_il_divario_e_lo_storico_mostrano_il_nome_senza_numero_d_ordine(db_sql, sql):
+    """Il nome a video del divario viene dalla RPC (descrizione grezza) e va
+    ripulito nel worker; lo storico deve prendere TUTTE le consegne del prodotto
+    e nessun prodotto che inizia allo stesso modo («AGLIO NERO» non e' «AGLIO»)."""
+    from services.routers.gruppo import _calcola_divari_catena
+    from services.routers.prezzi import _storico_prodotto_sede
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    forn = "LA GE' GE' PESCA"
+    _riga(sql, SEDE1, "2026-09-01", "AGLIO ORDER 1 (1)", forn, Decimal("1.00"), categoria="VERDURA")
+    _riga(sql, SEDE1, "2026-10-01", "AGLIO ORDER 2 (2)", forn, Decimal("2.00"), categoria="VERDURA")
+    _riga(sql, SEDE1, "2026-10-01", "AGLIO NERO", forn, Decimal("9.00"), categoria="VERDURA")
+    _riga(sql, SEDE2, "2026-10-02", "AGLIO ORDER 3 (3)", forn, Decimal("3.00"), categoria="VERDURA")
+
+    divari = _calcola_divari_catena(_coppie(sql), NOMI, 5.0)
+    assert [(d["prodotto"], d["prezzo_min"], d["prezzo_max"]) for d in divari] == [("AGLIO", 2.0, 3.0)]
+
+    storico = _storico_prodotto_sede(ClientSQL(db_sql), SEDE1, "AGLIO", forn)
+    assert [p.prezzo_unitario for p in storico.punti] == [1.00, 2.00]
+    # Una richiesta vecchia col nome grezzo (ORDER dentro) apre lo stesso storico.
+    grezzo = _storico_prodotto_sede(ClientSQL(db_sql), SEDE1, "AGLIO ORDER 9 (9)", forn)
+    assert [p.prezzo_unitario for p in grezzo.punti] == [1.00, 2.00]

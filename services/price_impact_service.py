@@ -24,7 +24,7 @@ import pandas as pd
 from config.logger_setup import get_logger
 from config.constants import CATEGORIE_SPESE_GENERALI
 from services.db_service import FORNITORE_ALERT_MAX, carica_e_prepara_dataframe, calcola_alert, get_custom_tags
-from utils.voci_prezzo import maschera_voce_non_prezzo, salto_da_controllare
+from utils.voci_prezzo import chiave_prodotto, maschera_voce_non_prezzo, salto_da_controllare
 
 logger = get_logger("price_impact")
 
@@ -74,7 +74,7 @@ def _pareto_key(nome: str) -> str:
     rimosso, troncata agli stessi 50 char. Cosi' il filtro peso non fallisce in
     modo silenzioso su nomi lunghi o stagionali.
     """
-    s = str(nome).strip().upper()
+    s = chiave_prodotto(nome)
     if s.endswith("⚠️ >6M"):
         s = s[: -len("⚠️ >6M")].strip()
     return s[:50]

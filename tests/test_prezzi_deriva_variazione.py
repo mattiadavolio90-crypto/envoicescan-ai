@@ -157,3 +157,59 @@ def test_la_stella_di_una_famiglia_di_consegne_si_accende():
     assert _v([10.0, 12.0], descrizione=desc, fornitore=forn, preferiti_keys={famiglia})["preferito"] is True
     altro = "SALMONI 5/6 FRESCHI NORVEGIAN ACQUACUL SALMO SALAR ALLEVATO NORVEGIA ORDER 1 (1)"
     assert _v([10.0, 12.0], descrizione=altro, fornitore=forn, preferiti_keys={famiglia})["preferito"] is False
+
+
+# ─── Il numero d'ordine nel nome (utils/voci_prezzo.py, regola 3) ───────────
+
+@pytest.mark.parametrize("descrizione, atteso", [
+    ("SALMONI 5/6 FRESCHI SALMAR ACQUACULTUA SALMO SALAR ALLEVATO NORVEGIA ORDER 2025916 (1014546)",
+     "SALMONI 5/6 FRESCHI SALMAR ACQUACULTUA SALMO SALAR ALLEVATO NORVEGIA"),
+    ("SALMONI 5/6 H111 FRESCHI ACQUACU SALMO SALAR ALLEVATO NORVEGIA ORDER 41484 (122741) BRAVO",
+     "SALMONI 5/6 H111 FRESCHI ACQUACU SALMO SALAR ALLEVATO NORVEGIA BRAVO"),
+    ("Salmone order 2009323(1005322)", "Salmone"),            # senza spazio prima della parentesi, minuscolo
+    ("SALMONE ORDER 123 BRAVO", "SALMONE BRAVO"),              # senza parentesi: lo spazio dopo il numero resta
+    ("RPA - CANCELLED ORDER COMMISSION", "RPA - CANCELLED ORDER COMMISSION"),  # ORDER senza numero: resta
+    ("DISORDER 12", "DISORDER 12"),                            # parola intera, non suffisso
+    ("  Limone bio ", "Limone bio"),
+])
+def test_togli_numero_ordine(descrizione, atteso):
+    from utils.voci_prezzo import chiave_prodotto, togli_numero_ordine
+
+    assert togli_numero_ordine(descrizione) == atteso
+    assert chiave_prodotto(descrizione) == atteso.upper()
+
+
+def test_il_numero_d_ordine_non_e_nel_nome_a_video_ne_nella_chiave():
+    desc = "DENTICE GIBBOSO 1/2 PESCATO DENTEX GIBBOSUS ORDER 2025916 (1014546)"
+    v = _v([10.0, 12.0], descrizione=desc)
+    assert v["prodotto"] == "DENTICE GIBBOSO 1/2 PESCATO DENTEX GIBBOSUS"
+    assert v["desc_key"] == "DENTICE GIBBOSO 1/2 PESCATO DENTEX GIBBOSUS"
+
+
+def test_due_consegne_con_numeri_d_ordine_diversi_sono_una_serie():
+    """Prima del 13/10/2026 ogni consegna di LA GE' GE' era una serie da un
+    acquisto: 1.140 righe su 2.520 senza mai una variazione. Qui il controllo e'
+    nelle due direzioni: stesso prodotto si unisce, prodotto diverso no."""
+    from services.routers.prezzi import _calcola_variazioni_prezzi_sync
+
+    def riga(desc, prezzo, data):
+        return {"descrizione": desc, "categoria": "PESCE", "fornitore": "LA GE' GE' PESCA",
+                "prezzo_unitario": prezzo, "quantita": 1, "totale_riga": prezzo,
+                "data_documento": data, "file_origine": f"{data}.xml", "tipo_documento": "TD24"}
+
+    righe = [riga("SALMONI 5/6 SALMAR ORDER 2012258 (1007082)", 10.0, "2026-09-25"),
+             riga("SALMONI 5/6 SALMAR ORDER 2012995 (1007786)", 12.0, "2026-10-05"),
+             riga("SALMONI 5/6 MOWI ORDER 20131407 (100638660)", 10.0, "2026-09-25"),
+             riga("SALMONI 5/6 MOWI ORDER 20148324 (100703803)", 10.0, "2026-10-05")]
+    variazioni = _calcola_variazioni_prezzi_sync(righe, 5.0)
+    assert [(v["prodotto"], v["aumento_perc"]) for v in variazioni] == [("SALMONI 5/6 SALMAR", 20.0)]
+
+
+def test_lo_score_conta_i_prodotti_senza_il_numero_d_ordine():
+    from tests.test_prezzi_score_fornitori import OGGI, _serie
+    from services.routers.prezzi import _calcola_score_fornitori
+
+    rows = (_serie("AGLIO ORDER 1 (1)", "LA GE' GE' PESCA", [("2026-04-01", 1.0), ("2026-05-01", 1.0)]) +
+            _serie("AGLIO ORDER 2 (2)", "LA GE' GE' PESCA", [("2026-06-01", 1.0)]) +
+            _serie("AGLIO NERO", "LA GE' GE' PESCA", [("2026-06-01", 9.0)]))
+    assert [f.n_prodotti for f in _calcola_score_fornitori(rows, [], {}, oggi=OGGI)] == [2]
