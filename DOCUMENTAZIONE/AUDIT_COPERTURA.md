@@ -2279,7 +2279,14 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   come il riquadro (1.800 nel test), non i soli giornalieri della RPC. Suite
 >   `python -m pytest tests/ -q -p no:randomly`: 20.138 verdi + 59 skip + 4 rossi in
 >   `test_chat_vista_sede.py` (atteso esatto dei parametri del prompt, senza il nuovo
->   `noiva_escluso`), corretti e rilanciati: 15/15.
+>   `noiva_escluso`), corretti e rilanciati: 15/15. **Terzo giro: chiusa** (marker a `34384e5c`).
+>   **Migration sul live il 13/10/2026**: via MCP «declined» per i `DROP TRIGGER IF EXISTS`,
+>   lanciata da Mattia nell'SQL Editor (versione senza commenti). Verificato: colonna, 3
+>   trigger, 2 funzioni coi corpi identici al file (commenti e spazi esclusi), 0 sedi escluse,
+>   `elimina_ricavi_noiva` non eseguibile da anon/authenticated, si' da service_role; advisor
+>   di sicurezza senza rilievi nuovi. Resta: descrizioni statiche di `proponi_incasso`/
+>   `proponi_fatturato_mese` che dicono ancora «servono 10% e senza IVA» (il prompt della sede
+>   le contraddice, la Conferma rifiuta comunque); riquadro da aprire nel browser dopo il deploy.
 
 > - **13/10/2026 — Analisi e Tag, Fase 1: «Modifica tag» unificato + Seleziona/Deseleziona tutti
 >   (Opus), NON pushato, nessuna migration.** Richiesta di Mattia (screen 9-11): seleziona/
