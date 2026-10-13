@@ -20,9 +20,11 @@ function Giorni({ iso, adesso, allarme }: { iso: string | null | undefined; ades
   );
 }
 
-type Props = { clientiIniziali: Cliente[] };
+// `problemiNoti` false: la lista di Oggi non si e' potuta leggere, quindi la
+// colonna Problemi direbbe «0» senza saperlo. Si mostra il trattino.
+type Props = { clientiIniziali: Cliente[]; problemiNoti: boolean };
 
-export function ClientiClient({ clientiIniziali }: Props) {
+export function ClientiClient({ clientiIniziali, problemiNoti }: Props) {
   const router = useRouter();
   const [clienti, setClienti] = useState<Cliente[]>(clientiIniziali);
   const [search, setSearch] = useState("");
@@ -74,7 +76,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
       // ricaricava l'intera pagina server inutilmente.
       const refresh = await fetch("/api/admin/clienti");
       if (refresh.ok) {
-        setClienti(await refresh.json());
+        const problemi = Object.fromEntries(clienti.map((c) => [c.id, c.n_problemi ?? 0]));
+        setClienti(((await refresh.json()) as Cliente[]).map((c) => ({ ...c, n_problemi: problemi[c.id] ?? 0 })));
       } else {
         // L'account E' stato creato (toast sopra confermato da res.ok): un
         // refresh fallito qui non deve far pensare che la creazione sia fallita,
@@ -127,6 +130,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
           <thead>
             <tr className="border-b bg-muted/50 text-left">
               <th className="px-4 py-3 font-medium">Cliente</th>
+              <th className="px-4 py-3 font-medium">Problemi</th>
               <th className="px-4 py-3 font-medium">Ultimo caricamento</th>
               <th className="px-4 py-3 font-medium hidden sm:table-cell">Fatture del mese</th>
               <th className="px-4 py-3 font-medium hidden md:table-cell">Ultimo accesso</th>
@@ -136,7 +140,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
           <tbody className="divide-y">
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   Nessun cliente trovato
                 </td>
               </tr>
@@ -172,6 +176,21 @@ export function ClientiClient({ clientiIniziali }: Props) {
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground truncate max-w-[240px]">{c.email}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {!problemiNoti ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (c.n_problemi ?? 0) > 0 ? (
+                      <Link
+                        href="/admin"
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-600 hover:bg-red-500/20"
+                      >
+                        {c.n_problemi} da fare
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Nessuno</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <Giorni iso={c.ultimo_caricamento_at} adesso={adesso} allarme={fermo} />

@@ -103,26 +103,8 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
 
 
-# I modelli Marketplace sono del dominio admin e usati a IMPORT-TIME nei decorator
-# (response_model / annotazioni body): non possono essere lazy. Erano rimasti in
-# fastapi_worker dopo lo split god-file; spostati qui (non usati altrove).
-class MarketplaceLeadItem(BaseModel):
-    id: str
-    servizio_key: str
-    servizio_label: str
-    messaggio: str
-    contatto_email: Optional[str] = None
-    contatto_nome: Optional[str] = None
-    ristorante_nome: Optional[str] = None
-    stato: str
-    created_at: Optional[str] = None
-
-
-class MarketplaceLeadList(BaseModel):
-    leads: List[MarketplaceLeadItem]
-    nuovi: int
-
-
+# Il body del PATCH lead e' usato a IMPORT-TIME nel decorator: non puo' essere
+# lazy. L'elenco delle richieste lo legge la pagina Oggi (_raccogli_attenzione).
 class MarketplaceLeadStatoBody(BaseModel):
     stato: str = Field(..., pattern="^(nuovo|gestito|archiviato)$")
 
@@ -168,54 +150,6 @@ def _verify_admin(
 # Definiti qui (e non nella sezione Notifiche dove sta crea_marketplace_lead)
 # perche' dipendono da _verify_admin, risolto a import-time del decorator.
 
-@router.get(
-    "/api/admin/marketplace/leads",
-    response_model=MarketplaceLeadList,
-    summary="Coda richieste servizi (admin)",
-    tags=["Admin"],
-)
-def admin_marketplace_leads(
-    stato: Optional[str] = None,
-    admin_user: dict = Depends(_verify_admin),
-) -> MarketplaceLeadList:
-    sb = get_supabase_client()
-
-    query = (
-        sb.table("marketplace_leads")
-        .select("id,servizio_key,servizio_label,messaggio,contatto_email,contatto_nome,stato,created_at,ristorante_id")
-        .order("created_at", desc=True)
-        .limit(200)
-    )
-    if stato in ("nuovo", "gestito", "archiviato"):
-        query = query.eq("stato", stato)
-
-    rows = query.execute().data or []
-
-    # Risolve il nome ristorante per le righe che hanno un ristorante_id.
-    rist_ids = list({r["ristorante_id"] for r in rows if r.get("ristorante_id")})
-    nomi: Dict[str, str] = {}
-    if rist_ids:
-        rr = sb.table("ristoranti").select("id,nome").in_("id", rist_ids).execute()
-        nomi = {str(x["id"]): x.get("nome") or "" for x in (rr.data or [])}
-
-    leads = [
-        MarketplaceLeadItem(
-            id=str(r["id"]),
-            servizio_key=r.get("servizio_key") or "",
-            servizio_label=r.get("servizio_label") or "",
-            messaggio=r.get("messaggio") or "",
-            contatto_email=r.get("contatto_email"),
-            contatto_nome=r.get("contatto_nome"),
-            ristorante_nome=nomi.get(str(r.get("ristorante_id"))) if r.get("ristorante_id") else None,
-            stato=r.get("stato") or "nuovo",
-            created_at=str(r["created_at"]) if r.get("created_at") else None,
-        )
-        for r in rows
-    ]
-    nuovi = sum(1 for l in leads if l.stato == "nuovo")
-    return MarketplaceLeadList(leads=leads, nuovi=nuovi)
-
-
 @router.patch(
     "/api/admin/marketplace/leads/{lead_id}",
     summary="Aggiorna stato di una richiesta servizio (admin)",
@@ -229,86 +163,6 @@ def admin_marketplace_lead_stato(
     sb = get_supabase_client()
     sb.table("marketplace_leads").update({"stato": body.stato}).eq("id", lead_id).execute()
     return {"ok": True}
-
-
-# ── Overview ────────────────────────────────────────────────────────────────
-
-@router.get("/api/admin/overview", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-def admin_overview():
-    """KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese.
-
-    Difensivo: ogni sezione è isolata. Non solleva mai 500 — ritorna i dati
-    calcolabili e accumula gli errori in `_errors` per diagnosi.
-
-    Cache 45s: sono KPI di monitoraggio, non realtime. Toglie le query aggregate
-    dal percorso caldo cosi' i refresh admin non pesano sul threadpool condiviso.
-    """
-    return _ADMIN_CACHE.get_or_set("overview", _compute_admin_overview)
-
-
-def _compute_admin_overview():
-    sb = get_supabase_client()
-    errors: list = []
-
-    n_clienti = 0
-    n_attivi = 0
-    try:
-        admin_emails = _admin_emails_set()
-        all_users = sb.table("users").select("id,email,attivo").execute().data or []
-        clienti = [u for u in all_users if u.get("email", "").lower() not in admin_emails]
-        n_clienti = len(clienti)
-        n_attivi = sum(1 for u in clienti if u.get("attivo"))
-    except Exception as e:
-        logger.exception("admin_overview: users query failed")
-        errors.append(f"users: {type(e).__name__}: {e}")
-
-    mese_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-
-    # Conteggio esatto fatture del mese (count, non len cappato a 1000)
-    fatture_mese = 0
-    try:
-        resp = sb.table("fatture_documenti").select("id", count="exact").gte("created_at", mese_start).limit(1).execute()
-        fatture_mese = resp.count or 0
-    except Exception as e1:
-        try:
-            resp = sb.table("fatture").select("id", count="exact").gte("created_at", mese_start).is_("deleted_at", "null").limit(1).execute()
-            fatture_mese = resp.count or 0
-        except Exception as e2:
-            logger.exception("admin_overview: fatture count failed")
-            errors.append(f"fatture_mese: {type(e2).__name__}: {e2}")
-
-    # Breakdown mensile ultimi 12 mesi. Il GROUP BY per mese lo fa il DB (RPC
-    # admin_fatture_per_mese): torna ~12 righe invece di scaricare fino a 50.000
-    # righe e contarle in Python, che teneva occupato un thread del worker per
-    # secondi (fonte di saturazione del threadpool sotto carico).
-    fatture_per_mese: list = []
-    try:
-        twelve_ago = (datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=365)).isoformat()
-        resp = sb.rpc("admin_fatture_per_mese", {"p_dal": twelve_ago}).execute()
-        fatture_per_mese = [
-            {"mese": r["mese"], "count": int(r["n"])}
-            for r in (resp.data or [])
-        ]
-    except Exception as e:
-        logger.exception("admin_overview: breakdown mensile failed")
-        errors.append(f"fatture_per_mese: {type(e).__name__}: {e}")
-
-    costi_mese = 0.0
-    try:
-        costs_resp = sb.rpc("get_ai_costs_summary", {"p_days": 30}).execute()
-        costi_mese = sum(float(r.get("ai_cost_total", 0)) for r in (costs_resp.data or []))
-    except Exception as e:
-        logger.exception("admin_overview: costi AI failed")
-        errors.append(f"costi_ai: {type(e).__name__}: {e}")
-
-    return {
-        "n_clienti": n_clienti,
-        "n_attivi": n_attivi,
-        "fatture_mese": fatture_mese,
-        "costi_ai_mese": round(costi_mese, 4),
-        "fatture_per_mese": fatture_per_mese,
-        "_errors": errors,
-    }
 
 
 # ── Lista clienti ────────────────────────────────────────────────────────────
@@ -1652,52 +1506,6 @@ def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depends(_v
     return {"ok": True, "righe_ripristinate": len(ids)}
 
 
-# ── Sistema/Salute — Costi AI ─────────────────────────────────────────────────
-
-@router.get("/api/admin/sistema/costi-ai", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-def admin_sistema_costi_ai(days: int = 30):
-    from datetime import datetime, timezone
-    sb = get_supabase_client()
-
-    summary_args = {"p_days": days} if days else {}
-    timeseries_args = {"p_days": days or 30}
-    recent_args = {"p_days": days or 30, "p_limit": 50}
-
-    try:
-        summary = sb.rpc("get_ai_costs_summary", summary_args).execute().data or []
-    except Exception:
-        summary = []
-    try:
-        timeseries = sb.rpc("get_ai_costs_timeseries", timeseries_args).execute().data or []
-    except Exception:
-        timeseries = []
-    try:
-        recent = sb.rpc("get_ai_recent_operations", recent_args).execute().data or []
-    except Exception:
-        recent = []
-
-    today_start = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00+00:00")
-    try:
-        vision_resp = (sb.table("ai_usage_events")
-                       .select("ristorante_id,operation_type")
-                       .gte("created_at", today_start)
-                       .in_("operation_type", ["pdf", "vision"])
-                       .execute())
-        vision_oggi_by_rist: dict = {}
-        for r in (vision_resp.data or []):
-            rid = r.get("ristorante_id") or ""
-            vision_oggi_by_rist[rid] = vision_oggi_by_rist.get(rid, 0) + 1
-    except Exception:
-        vision_oggi_by_rist = {}
-
-    return {
-        "summary": summary,
-        "timeseries": timeseries,
-        "recent": recent,
-        "vision_oggi_by_ristorante": vision_oggi_by_rist,
-    }
-
-
 # ── Sistema — Consumi & Piani (conteggio mensile vs soglia del piano) ────────
 
 def _sedi_ammesse(sb) -> List[Dict[str, Any]]:
@@ -1785,38 +1593,17 @@ def _compute_admin_consumi(mesi: int = 12) -> Dict[str, Any]:
     }
 
 
-@router.get("/api/admin/sistema/consumi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-def admin_sistema_consumi(mesi: int = 12):
-    """Fatture caricate e richieste AI per sede/mese, con stato rispetto al piano.
-
-    Il conteggio e' sul mese di CARICAMENTO (fatture_documenti.created_at): misura
-    il consumo del servizio. Non coincide con il contatore che il cliente vede in
-    Impostazioni, che usa data_documento — a luglio 2026 sono entrati 1.097
-    documenti di cui solo 55 erano fatture di quel mese.
-
-    Cache 45s come gli altri KPI admin.
-    """
-    mesi = max(1, min(int(mesi or 12), 24))
-    return _ADMIN_CACHE.get_or_set(f"consumi:{mesi}", lambda: _compute_admin_consumi(mesi))
-
-
-# ── Sistema/Salute — Integrità DB ─────────────────────────────────────────────
-
-# ── Sistema/Salute — Retention ───────────────────────────────────────────────
-
-@router.get("/api/admin/sistema/retention", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-def admin_sistema_retention():
-    from services.db_service import get_retention_last_status
-    status = get_retention_last_status(get_supabase_client())
-    return status
-
-
 # ── Sistema/Salute — Latenza worker (spia saturazione) ───────────────────────
 
-@router.get("/api/admin/sistema/salute-worker", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+@router.get("/api/admin/sistema/salute-worker", tags=["Admin"], dependencies=[Depends(_verify_worker_key)])
 def admin_sistema_salute_worker():
     """Metriche di latenza del worker per rotta (p50/p95/max, richieste lente,
     errori 5xx), ordinate per p95 discendente.
+
+    Solo chiave del worker dal 13/10/2026: la tab admin che la mostrava e'
+    stata tolta col riordino, e in un incidente la si legge con un curl
+    (DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md). Contiene solo tempi per rotta,
+    nessun dato di un cliente.
 
     Serve a vedere QUANDO il worker inizia a soffrire: se p95 di /api/auth/me o
     della Home si avvicina alla soglia lenti (4s) / al timeout SSR (12s), è il
@@ -2044,94 +1831,33 @@ def admin_sistema_ricavi_salute(silenzio_giorni: int = 2):
 _QUEUE_STATI_PROBLEMA = ["unknown_tenant", "da_assegnare", "failed", "dead"]
 
 
-# ── Badge home admin — conteggi LEGGERI per i contatori sulle card ────────────
-@router.get("/api/admin/badges", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-def admin_badges():
-    """Conteggi rapidi per i badge "da controllare" sulle card del pannello admin.
+# ── Categorie da classificare (il numero della voce in Oggi) ──────────────────
 
-    Solo COUNT veloci (mai full-load): pensato per girare a ogni apertura della
-    home senza rallentarla. Ogni conteggio è isolato in try/except così un errore
-    su una tabella non azzera gli altri badge.
-
-      - flusso_dati: record fatture_queue in stato problematico (fatture che non
-        entrano nell'app: P.IVA sconosciuta, multi-sede da smistare, errori);
-      - categorie: righe fatture con needs_review (proposte AI da approvare a mano);
-      - richieste: lead marketplace ancora in stato 'nuovo'.
-
-    Cache 45s: i badge girano a ogni apertura home admin e il conteggio categorie
-    scandisce prodotti_utente/prodotti_master (paginati). Cacharli li toglie dal
-    percorso caldo senza farli divergere in modo percettibile dai contatori pagina.
-    """
-    return _ADMIN_CACHE.get_or_set("badges", _compute_admin_badges)
-
-
-def _compute_admin_badges():
-    sb = get_supabase_client()
-
-    def _count(build) -> int:
-        try:
-            return build().execute().count or 0
-        except Exception as exc:
-            logger.error("admin badges: conteggio fallito: %s", exc)
-            return 0
-
-    flusso = _count(lambda: sb.table("fatture_queue")
-                    .select("id", count="exact")
-                    .in_("status", _QUEUE_STATI_PROBLEMA)
-                    .limit(1))
-
-    # categorie: deve combaciare con quanto l'admin vede entrando nella pagina
-    # ("Da controllare"): NON le righe grezze needs_review, ma le DESCRIZIONI uniche
-    # da decidere, escluse le scelte cliente a impronta umana (già sacre). Stessa
-    # logica di admin_qualita_coda, così badge e contatore pagina non divergono.
-    def _categorie_da_controllare() -> int:
-        try:
-            admin_emails = _admin_emails_set()
-            allowed_ids = [
-                u["id"] for u in (sb.table("users").select("id,email").execute().data or [])
-                if u.get("email", "").lower() not in admin_emails
-            ]
-            if not allowed_ids:
-                return 0
-            # Query CROSS-TENANT (tutti i clienti insieme): e' il caso piu'
-            # esposto al cap di 1000 righe di PostgREST.
-            rows = fetch_all(sb.table("fatture")
-                    .select("descrizione")
-                    .eq("needs_review", True)
-                    .is_("deleted_at", "null")
-                    .in_("user_id", allowed_ids))
-            umane = _descrizioni_impronta_umana(sb, allowed_ids)
-            descrizioni = {
-                (r.get("descrizione") or "").strip().upper()
-                for r in rows
-                if (r.get("descrizione") or "").strip()
-            }
-            return len(descrizioni - umane)
-        except Exception as exc:
-            logger.error("admin badges: conteggio categorie fallito: %s", exc)
-            return 0
-
-    categorie = _categorie_da_controllare()
-    richieste = _count(lambda: sb.table("marketplace_leads")
-                       .select("id", count="exact")
-                       .eq("stato", "nuovo")
-                       .limit(1))
-
-    # consumi: sedi sopra la soglia del piano NEL MESE CORRENTE. Riusa la stessa
-    # funzione che alimenta la pagina (non un conteggio parallelo), cosi' il badge
-    # e le righe rosse della tabella non possono divergere.
-    def _consumi_sopra_soglia() -> int:
-        try:
-            dati = _compute_admin_consumi(2)
-            return int(dati.get("n_sopra_soglia") or 0)
-        except Exception as exc:
-            logger.error("admin badges: conteggio consumi fallito: %s", exc)
-            return 0
-
-    consumi = _consumi_sopra_soglia()
-
-    return {"flusso_dati": flusso, "categorie": categorie, "richieste": richieste,
-            "consumi": consumi}
+def _conta_categorie_da_controllare(sb) -> int:
+    """Le DESCRIZIONI uniche da decidere, non le righe grezze needs_review,
+    escluse le scelte cliente a impronta umana (gia' sacre): e' quello che
+    l'admin trova entrando in Categorie → Da controllare (admin_qualita_coda)."""
+    admin_emails = _admin_emails_set()
+    allowed_ids = [
+        u["id"] for u in (sb.table("users").select("id,email").execute().data or [])
+        if u.get("email", "").lower() not in admin_emails
+    ]
+    if not allowed_ids:
+        return 0
+    # Query CROSS-TENANT (tutti i clienti insieme): e' il caso piu' esposto al
+    # cap di 1000 righe di PostgREST, per questo fetch_all.
+    rows = fetch_all(sb.table("fatture")
+            .select("descrizione")
+            .eq("needs_review", True)
+            .is_("deleted_at", "null")
+            .in_("user_id", allowed_ids))
+    umane = _descrizioni_impronta_umana(sb, allowed_ids)
+    descrizioni = {
+        (r.get("descrizione") or "").strip().upper()
+        for r in rows
+        if (r.get("descrizione") or "").strip()
+    }
+    return len(descrizioni - umane)
 
 
 def _classifica_salute_invoicetronic(n_unknown: int, n_dead: int, n_failed: int,
@@ -3358,3 +3084,126 @@ def admin_email_settimanale_prova(user_id: str, admin_user: dict = Depends(_veri
     if not destinatario:
         raise HTTPException(status_code=400, detail="Email admin sconosciuta")
     return svc.invia_prova(get_supabase_client(), user_id, destinatario, adesso=svc.adesso_roma())
+
+
+# ── Oggi: cosa deve fare l'admin (pagina Admin → Oggi e riepilogo Telegram) ───
+# Riordino del 13/10/2026. Raccoglie gli stessi dati delle sonde di salute qui
+# sopra e li passa ad admin_attenzione_service, che decide le voci: pagina e
+# messaggio del mattino leggono la stessa lista.
+
+def _raccogli_attenzione(sb) -> Dict[str, Any]:
+    from services import admin_attenzione_service as att
+
+    errors: List[str] = []
+
+    def _prova(nome, fn, vuoto):
+        try:
+            return fn()
+        except Exception as e:
+            logger.exception("admin attenzione: %s fallito", nome)
+            errors.append(f"{nome}: {type(e).__name__}: {e}")
+            return vuoto
+
+    adesso = datetime.now(timezone.utc)
+    clienti = _prova("clienti", admin_lista_clienti, [])
+    fatture = _prova("fatture", lambda: admin_sistema_invoicetronic_salute(giorni=30), None)
+    ricavi = _prova("ricavi", lambda: admin_sistema_ricavi_salute(silenzio_giorni=2), None)
+    ricavi_import = _prova("ricavi_import", admin_sistema_ricavi_import, None)
+    consumi = _prova("consumi", lambda: _ADMIN_CACHE.get_or_set("consumi:2", lambda: _compute_admin_consumi(2)), None)
+    if consumi:
+        errors.extend(consumi.get("_errors") or [])
+    n_categorie = _prova("categorie", lambda: _ADMIN_CACHE.get_or_set(
+        "categorie_da_controllare", lambda: _conta_categorie_da_controllare(sb)), 0)
+    richieste = _prova("richieste", lambda: _richieste_nuove(sb), [])
+    allarmi = _prova("allarmi", lambda: (
+        sb.table("admin_allarmi").select("chiave,gravita,testo,link,aperto_at")
+        .not_.is_("aperto_at", "null").not_.like("chiave", "riepilogo:%")
+        .execute().data or []), [])
+
+    voci = att.componi_voci(
+        adesso=adesso, fatture=fatture, ricavi=ricavi, ricavi_import=ricavi_import,
+        consumi=consumi, n_categorie=n_categorie, clienti=clienti,
+        richieste=richieste, allarmi=allarmi,
+    )
+    numeri = {
+        "fatture_ieri": _prova("fatture_ieri", lambda: _conta_documenti(sb, *att.finestra_ieri(adesso)), None),
+        "fatture_mese": _prova("fatture_mese", lambda: _conta_documenti(sb, att.inizio_mese(adesso), None), None),
+        "costo_ai_mese": round(sum(
+            float(r.get("ai_costo") or 0) for r in (consumi or {}).get("righe") or []
+            if r.get("mese") == (consumi or {}).get("mese_corrente")), 2) if consumi else None,
+        "clienti_attivi": sum(1 for c in clienti if c.get("attivo")),
+        "clienti": len(clienti),
+    }
+    # Le sedi servono ai pulsanti «Scegli sede» / «Assegna a…» della pagina.
+    sedi = [
+        {"id": str(s["id"]), "nome": s.get("nome_ristorante") or "—", "partita_iva": s.get("partita_iva"),
+         "user_id": str(c["id"]), "cliente": c.get("nome_gruppo") or c.get("nome_ristorante") or c.get("email")}
+        for c in clienti for s in c.get("sedi") or []
+    ]
+    return {
+        "voci": voci,
+        "numeri": numeri,
+        "problemi_per_cliente": att.problemi_per_cliente(voci),
+        "sedi": sedi,
+        "_errors": errors,
+    }
+
+
+def _richieste_nuove(sb) -> List[Dict[str, Any]]:
+    rows = (sb.table("marketplace_leads")
+            .select("id,servizio_key,servizio_label,messaggio,contatto_email,contatto_nome,stato,created_at,ristorante_id")
+            .eq("stato", "nuovo").order("created_at", desc=True).limit(50).execute().data or [])
+    rist_ids = list({r["ristorante_id"] for r in rows if r.get("ristorante_id")})
+    nomi: Dict[str, str] = {}
+    if rist_ids:
+        rr = sb.table("ristoranti").select("id,nome_ristorante").in_("id", rist_ids).execute()
+        nomi = {str(x["id"]): x.get("nome_ristorante") or "" for x in (rr.data or [])}
+    for r in rows:
+        r["ristorante_nome"] = nomi.get(str(r.get("ristorante_id"))) or None
+    return rows
+
+
+def _conta_documenti(sb, dal: str, al: Optional[str]) -> int:
+    """Fatture (documenti) entrate in ONEFLUX nel periodo, per data di caricamento."""
+    q = sb.table("fatture_documenti").select("id", count="exact").is_("deleted_at", "null").gte("created_at", dal)
+    if al:
+        q = q.lt("created_at", al)
+    return q.limit(1).execute().count or 0
+
+
+@router.get("/api/admin/attenzione", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+def admin_attenzione():
+    """La lista «Da fare» della pagina Oggi, con i numeri della riga in fondo e
+    il conteggio delle voci per cliente (colonna Problemi della lista clienti).
+    Mai 500: una sonda che fallisce finisce in `_errors` e il resto si mostra."""
+    return _raccogli_attenzione(get_supabase_client())
+
+
+@router.post("/api/admin/sistema/riepilogo-telegram", tags=["Admin"],
+             dependencies=[Depends(_verify_worker_key)])
+def admin_riepilogo_telegram(forza: bool = False) -> Dict[str, Any]:
+    """Il riepilogo del mattino su Telegram, chiamato dal cron di GitHub
+    (.github/workflows/riepilogo_admin.yml) alle 06 e alle 07 UTC.
+
+    Senza `forza` lavora solo fra le 8 e le 9:59 a Roma, e una volta al giorno:
+    la memoria degli allarmi (admin_allarme_segnala, chiave «riepilogo:<giorno>»)
+    risponde 'invia' solo alla prima chiamata della giornata."""
+    from services import admin_attenzione_service as att
+    from services.telegram_service import invia_messaggio
+
+    adesso = att.adesso_roma()
+    if not forza and not att.e_ora_del_riepilogo(adesso):
+        return {"inviato": False, "motivo": "fuori orario", "adesso_roma": adesso.isoformat()}
+    sb = get_supabase_client()
+    dati = _raccogli_attenzione(sb)
+    if not forza:
+        azione = sb.rpc("admin_allarme_segnala", {
+            "p_chiave": att.chiave_riepilogo(adesso), "p_gravita": "oggi", "p_problema": True,
+        }).execute().data
+        if azione != "invia":
+            return {"inviato": False, "motivo": "gia' inviato oggi"}
+    testo = att.testo_riepilogo(dati["voci"], dati["numeri"], "https://app.oneflux.it/admin")
+    inviato = invia_messaggio(testo, silenzioso=True)
+    if not inviato:
+        raise HTTPException(status_code=502, detail="Telegram non ha accettato il riepilogo")
+    return {"inviato": True, "voci": len(dati["voci"]), "_errors": dati["_errors"]}

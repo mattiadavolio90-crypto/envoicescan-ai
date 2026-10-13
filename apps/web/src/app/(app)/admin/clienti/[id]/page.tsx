@@ -4,6 +4,7 @@ import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
 import { ClienteDettaglioClient } from "./cliente-dettaglio-client";
 import type { ClienteDettaglio } from "@/lib/admin";
 import { tabDaUrl } from "@/lib/admin-clienti";
+import { datiOggi } from "../../oggi-dati";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchCliente(token: string, id: string): Promise<ClienteDettaglio | null> {
@@ -31,9 +32,15 @@ export default async function ClienteDettaglioPage({ params, searchParams }: Ctx
   const { id } = await params;
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value ?? "";
-  const cliente = await fetchCliente(token, id);
+  const [cliente, oggi] = await Promise.all([fetchCliente(token, id), datiOggi(token)]);
   if (!cliente) notFound();
 
   const { tab } = await searchParams;
-  return <ClienteDettaglioClient cliente={cliente} tabIniziale={tabDaUrl(Array.isArray(tab) ? tab[0] : tab)} />;
+  return (
+    <ClienteDettaglioClient
+      cliente={cliente}
+      tabIniziale={tabDaUrl(Array.isArray(tab) ? tab[0] : tab)}
+      problemi={oggi ? oggi.voci.filter((v) => v.cliente_id === cliente.id) : null}
+    />
+  );
 }

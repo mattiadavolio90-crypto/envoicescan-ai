@@ -17,8 +17,9 @@ def _iso(giorni_fa: float) -> str:
     return datetime.fromtimestamp((ADESSO - giorni_fa * GIORNO) / 1000, tz=timezone.utc).isoformat()
 
 
-def _c(nome, *, attivo=True, giorni=1.0, trial=False, piva=None, gruppo=None):
+def _c(nome, *, attivo=True, giorni=1.0, trial=False, piva=None, gruppo=None, problemi=0):
     return {
+        "n_problemi": problemi,
         "email": f"{nome.lower()}@x.it", "nome_ristorante": nome, "nome_gruppo": gruppo,
         "partita_iva": None, "attivo": attivo, "trial": {"active": True} if trial else None,
         "ultimo_caricamento_at": None if giorni is None else _iso(giorni),
@@ -64,12 +65,21 @@ def test_ordine_fermi_in_cima_dal_piu_vecchio_poi_attivi_per_nome_poi_disattivi(
     assert _nomi(clienti) == ["Mai", "Fermo10", "Fermo8", "Alfa", "Zeta", "Spento"]
 
 
+def test_chi_ha_problemi_aperti_sta_in_cima_i_piu_numerosi_prima():
+    clienti = [
+        _c("Fermo", giorni=20), _c("Uno", problemi=1), _c("Tre", problemi=3, giorni=30),
+        _c("Sano"), _c("SpentoConProblemi", attivo=False, problemi=5),
+    ]
+    assert _nomi(clienti) == ["Tre", "Uno", "Fermo", "Sano", "SpentoConProblemi"]
+    assert _nomi(clienti, filtro="problemi") == ["Tre", "Uno", "SpentoConProblemi"]
+
+
 def test_filtri_e_conteggi():
     clienti = [_c("A", giorni=1), _c("B", giorni=9), _c("C", attivo=False), _c("D", giorni=1, trial=True)]
     assert _nomi(clienti, filtro="fermi") == ["B"]
     assert _nomi(clienti, filtro="trial") == ["D"]
     assert _nomi(clienti, filtro="disattivi") == ["C"]
-    assert _f(f"m.contaFiltri(input, {ADESSO})", clienti) == {"tutti": 4, "fermi": 1, "trial": 1, "disattivi": 1}
+    assert _f(f"m.contaFiltri(input, {ADESSO})", clienti) == {"tutti": 4, "problemi": 0, "fermi": 1, "trial": 1, "disattivi": 1}
 
 
 def test_ricerca_su_nome_gruppo_email_e_piva_delle_sedi():

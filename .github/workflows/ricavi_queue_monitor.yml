@@ -1,32 +1,31 @@
-name: Ricavi Queue Monitor - ONEFLUX
+name: Code ferme (fatture e ricavi) - ONEFLUX
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Sorveglia la coda ricavi_email_queue e allarma se NON viene consumata.
+# Sorveglia le due code che il queue-worker di Railway deve svuotare, e avvisa
+# su Telegram se una si ferma.
 #
-# Causa che questo monitor previene (incidente 9-11 giu 2026):
-#   il queue-worker su Railway era fermo (killswitch WORKER_ENABLED=0 lasciato
-#   attivo dopo un deploy). Le email Passbi arrivavano e finivano in coda, ma
-#   nessuno le processava. Gli incassi del cliente sparivano dall'app per giorni
-#   e l'unico segnale era l'assenza di dati — notata solo dal cliente.
+# - ricavi_email_queue (dal 9-11 giu 2026): il queue-worker era fermo
+#   (killswitch WORKER_ENABLED=0 lasciato attivo dopo un deploy). Le email
+#   Passbi finivano in coda e nessuno le processava: gli incassi sparivano
+#   dall'app per giorni, e l'unico segnale era l'assenza di dati.
+# - fatture_queue (dal 13/10/2026): stessa cosa per le fatture SDI. Prima non la
+#   guardava nessuno: una coda ferma voleva dire fatture che non arrivano al
+#   cliente senza che nessuno lo sapesse.
 #
-# Logica: una email in stato 'pending' o 'processing' più vecchia di
-#   STALE_MINUTES significa che il worker non sta drenando la coda (fermo,
-#   in crashloop, o bloccato). In condizioni normali una email viene processata
-#   entro pochi minuti dall'arrivo.
+# Gira QUI e non dentro il worker: un worker fermo non puo' avvisare di essere
+# fermo. Gli allarmi passano da scripts/allarme_admin.py: un messaggio
+# all'inizio, uno ogni 6 ore se dura, «✅ Risolto» quando la coda riparte.
 #
-# GITHUB SECRETS richiesti (già presenti, usati anche da uptime_check/queue-worker):
-#   SUPABASE_URL                URL del progetto Supabase
-#   SUPABASE_SERVICE_ROLE_KEY   service_role key (bypassa RLS)
-#   BREVO_API_KEY               per inviare l'email di allerta
+# GITHUB SECRETS: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN,
+# TELEGRAM_CHAT_ID, BREVO_API_KEY (copia via email del primo avviso).
 #
-# COSTO: 1 run/ora, < 10s ciascuno. GitHub Actions free tier ampiamente coperto.
+# COSTO: 1 run/ora, < 15s ciascuno.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 on:
   schedule:
-    # Ogni ora. Le email Passbi arrivano 1/giorno (~13:05 UTC); un controllo
-    # orario rileva una coda bloccata con al massimo ~1h di ritardo, senza
-    # generare rumore.
+    # Ogni ora: una coda ferma si vede con al massimo ~1h di ritardo oltre la
+    # soglia, senza rumore.
     - cron: '17 * * * *'
   workflow_dispatch: # avvio manuale per test
 
@@ -34,95 +33,112 @@ permissions:
   contents: read
 
 env:
-  # Soglia di staleness: una email pending/processing più vecchia di così
-  # indica che il worker non sta consumando la coda.
-  STALE_MINUTES: '90'
+  # Oltre queste soglie una riga pending/processing vuol dire che il worker non
+  # sta svuotando la coda. Le fatture si elaborano in secondi, i ricavi in pochi
+  # minuti.
+  STALE_MINUTES_RICAVI: '90'
+  STALE_MINUTES_FATTURE: '60'
 
 jobs:
   check-queue:
     runs-on: ubuntu-latest
     steps:
-      - name: Conta le email bloccate in coda
+      - name: Conta le righe ferme nelle due code
         id: check
-        run: |
-          THRESHOLD=$(date -u -d "-${STALE_MINUTES} minutes" +%Y-%m-%dT%H:%M:%S)
-          echo "Soglia staleness: tutto ciò che è pending/processing e creato prima di $THRESHOLD UTC"
-
-          # PostgREST: righe pending|processing create prima della soglia.
-          # Prefer: count=exact mette il totale nell'header Content-Range.
-          RESP=$(curl -s -D /tmp/headers.txt \
-            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            -H "Prefer: count=exact" \
-            -H "Range-Unit: items" \
-            -H "Range: 0-4" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/ricavi_email_queue?select=id,email_subject,status,created_at,attempt_count,last_error&status=in.(pending,processing)&created_at=lt.${THRESHOLD}&order=created_at.asc" \
-            || echo "[]")
-
-          # Prima di leggere il conteggio: la chiamata e' andata a buon fine?
-          # Senza questo controllo un 401 (chiave scaduta), un 5xx o una rete
-          # assente lasciavano l'header vuoto, STUCK diventava 0 e il monitor
-          # dichiarava "coda sana" proprio quando non aveva potuto guardarla.
-          # Trovato il 14/09/2026 (mappa dei silenzi): stuck=-1 fa scattare
-          # l'alert come per le altre sonde, con un testo che dice "controllo
-          # fallito", non "coda bloccata".
-          HTTP_CODE=$(grep -iE '^HTTP/' /tmp/headers.txt 2>/dev/null | tail -n1 | awk '{print $2}' | tr -d '\r')
-          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "206" ]; then
-            echo "::error::Controllo coda ricavi NON eseguito (HTTP ${HTTP_CODE:-000}): il monitor non sa se la coda e' sana"
-            STUCK=-1
-          else
-            # Content-Range: items 0-N/TOTAL  →  estrai TOTAL
-            STUCK=$(grep -i "content-range" /tmp/headers.txt | sed -E 's/.*\/([0-9]+).*/\1/' | tr -d '\r')
-            if [ -z "$STUCK" ]; then STUCK=0; fi
-          fi
-
-          echo "Email bloccate: $STUCK"
-          echo "stuck=$STUCK" >> $GITHUB_OUTPUT
-          # Passa un estratto leggibile delle prime righe all'eventuale alert
-          echo "sample<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESP" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          if [ "$STUCK" -lt 0 ]; then
-            echo "❌ Controllo fallito: nessun verdetto sulla coda ricavi"
-          elif [ "$STUCK" -gt 0 ]; then
-            echo "❌ Coda ricavi NON drenata: $STUCK email vecchie oltre ${STALE_MINUTES} min"
-          else
-            echo "✅ Coda ricavi sana (nessuna email bloccata oltre ${STALE_MINUTES} min)"
-          fi
-
-      - name: Invia email di allerta via Brevo
-        if: steps.check.outputs.stuck != '0' && steps.check.outputs.stuck != ''
         env:
-          # Passa i valori via env, NON via interpolazione ${{ }} dentro lo script:
-          # il sample contiene dati cliente (ragioni sociali con apici, es. "L'Osteria")
-          # che, interpolati inline, romperebbero il quoting shell → command injection.
-          STUCK: ${{ steps.check.outputs.stuck }}
-          SAMPLE_RAW: ${{ steps.check.outputs.sample }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          # Il body Brevo si costruisce con jq -n --arg: ogni valore (subject,
-          # html, sample con ragioni sociali e apici) viene escapato da jq, non
-          # dal quoting shell. Prima: SAMPLE=$(... | jq -Rs .) era GIA' quotato e
-          # finiva dentro \"$HTML\" -> JSON rotto -> Brevo 400 -> nessuna email,
-          # con il run verde (trovato dal code-reviewer il 14/09/2026: il ramo
-          # "coda bloccata" non aveva mai potuto avvisare).
-          if [ "$STUCK" -lt 0 ]; then
-            SUBJECT="🚨 Monitor coda ricavi ONEFLUX: controllo FALLITO"
-            HTML="<h2>⚠️ Il monitor non ha potuto leggere la coda ricavi</h2><p>La chiamata a Supabase non ha risposto 200: chiave scaduta, PostgREST giu' o rete assente. <strong>Non sappiamo se la coda e' sana.</strong></p><p>Verifica <code>SUPABASE_SERVICE_ROLE_KEY</code> nei GitHub Secrets e lo stato del progetto Supabase.</p>"
-          else
-            SUBJECT="🚨 Coda ricavi ONEFLUX bloccata ($STUCK email)"
-            HTML="<h2>⚠️ Il worker ricavi non sta consumando la coda</h2><p>Ci sono <strong>$STUCK</strong> email in <code>ricavi_email_queue</code> ferme da oltre ${STALE_MINUTES} minuti (stato pending/processing).</p><p>Gli incassi dei clienti NON stanno entrando in app.</p><p><strong>Causa più probabile:</strong> il servizio <code>queue-worker</code> su Railway è fermo. Verifica che <code>WORKER_ENABLED=1</code> e che il deploy sia attivo.</p><p>Righe bloccate (prime 5):</p><pre>${SAMPLE_RAW}</pre>"
+          # conta TABELLA SOGLIA_MINUTI -> stampa il numero di righe ferme, o -1
+          # se la chiamata non e' andata a buon fine. Un 401 (chiave scaduta), un
+          # 5xx o la rete assente non devono diventare «0 righe ferme»: il
+          # monitor direbbe «coda sana» proprio quando non ha potuto guardarla
+          # (trovato il 14/09/2026, mappa dei silenzi).
+          conta() {
+            local SOGLIA
+            SOGLIA=$(date -u -d "-$2 minutes" +%Y-%m-%dT%H:%M:%S)
+            curl -s -o /dev/null -D /tmp/h_$1.txt \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "Prefer: count=exact" -H "Range-Unit: items" -H "Range: 0-0" \
+              "$SUPABASE_URL/rest/v1/$1?select=id&status=in.(pending,processing)&created_at=lt.${SOGLIA}" || true
+            local CODE
+            CODE=$(grep -iE '^HTTP/' /tmp/h_$1.txt 2>/dev/null | tail -n1 | awk '{print $2}' | tr -d '\r')
+            if [ "$CODE" != "200" ] && [ "$CODE" != "206" ]; then
+              echo "::error::Controllo $1 NON eseguito (HTTP ${CODE:-000})" >&2
+              echo -1
+              return
+            fi
+            local N
+            N=$(grep -i "content-range" /tmp/h_$1.txt | sed -E 's/.*\/([0-9]+).*/\1/' | tr -d '\r')
+            echo "${N:-0}"
+          }
+          RICAVI=$(conta ricavi_email_queue "$STALE_MINUTES_RICAVI")
+          FATTURE=$(conta fatture_queue "$STALE_MINUTES_FATTURE")
+          echo "Ricavi fermi: $RICAVI · Fatture ferme: $FATTURE"
+          echo "ricavi=$RICAVI" >> $GITHUB_OUTPUT
+          echo "fatture=$FATTURE" >> $GITHUB_OUTPUT
+          if [ "$RICAVI" -lt 0 ] || [ "$FATTURE" -lt 0 ]; then echo "cieco=1" >> $GITHUB_OUTPUT; else echo "cieco=0" >> $GITHUB_OUTPUT; fi
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/allarme_admin.py
+          sparse-checkout-cone-mode: false
+
+      - name: Allarmi Telegram
+        id: allarmi
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RICAVI: ${{ steps.check.outputs.ricavi }}
+          FATTURE: ${{ steps.check.outputs.fatture }}
+          CIECO: ${{ steps.check.outputs.cieco }}
+        run: |
+          ESITO=0
+          # Un conteggio a -1 non dice niente sulla coda: quella chiave non si
+          # tocca (ne' apre ne' chiude), e parla l'allarme «monitor cieco».
+          if [ "$FATTURE" -ge 0 ]; then
+            python3 scripts/allarme_admin.py --chiave coda_fatture_ferma --gravita critico \
+              --problema "$([ "$FATTURE" -gt 0 ] && echo 1 || echo 0)" \
+              --testo "Coda fatture ferma: $FATTURE fatture SDI aspettano da oltre ${STALE_MINUTES_FATTURE} minuti. Le fatture non arrivano ai clienti: probabilmente il queue-worker su Railway e' fermo." \
+              --link "https://railway.app/dashboard" \
+              --risolto "la coda fatture e' ripartita." || ESITO=1
           fi
-          BODY=$(jq -n --arg subject "$SUBJECT" --arg html "$HTML" '{
+          if [ "$RICAVI" -ge 0 ]; then
+            python3 scripts/allarme_admin.py --chiave coda_ricavi_ferma --gravita critico \
+              --problema "$([ "$RICAVI" -gt 0 ] && echo 1 || echo 0)" \
+              --testo "Coda ricavi ferma: $RICAVI email dei gestionali aspettano da oltre ${STALE_MINUTES_RICAVI} minuti. Gli incassi non entrano in app: probabilmente il queue-worker su Railway e' fermo." \
+              --link "https://railway.app/dashboard" \
+              --risolto "la coda ricavi e' ripartita." > /tmp/ricavi.txt || ESITO=1
+            cat /tmp/ricavi.txt
+            grep -o 'azione=[a-z]*' /tmp/ricavi.txt | tail -n1 | sed 's/^/ricavi_/' >> $GITHUB_OUTPUT
+          fi
+          python3 scripts/allarme_admin.py --chiave monitor_code_cieco --gravita critico \
+            --problema "$([ "$CIECO" = "1" ] && echo 1 || echo 0)" \
+            --testo "Il controllo delle code non riesce a leggere Supabase: non sappiamo se fatture e ricavi stanno entrando. Verifica SUPABASE_SERVICE_ROLE_KEY nei GitHub Secrets." \
+            --risolto "il controllo delle code legge di nuovo Supabase." || ESITO=1
+          exit $ESITO
+
+      - name: Copia via email del primo avviso sulla coda ricavi
+        # Solo quando l'allarme ricavi e' dovuto (nuovo o da ripetere): prima
+        # partiva un'email a ogni giro finche' la coda restava ferma.
+        if: always() && (steps.allarmi.outputs.ricavi_azione == 'invia' || steps.allarmi.outputs.ricavi_azione == 'ripeti')
+        env:
+          RICAVI: ${{ steps.check.outputs.ricavi }}
+        run: |
+          BODY=$(jq -n --arg n "$RICAVI" --arg m "$STALE_MINUTES_RICAVI" '{
             sender: {name: "ONEFLUX Monitor", email: "agent@oneflux.it"},
             to: [{email: "md@oneflux.it", name: "Mattia"}],
-            subject: $subject, htmlContent: $html }')
+            subject: ("🚨 Coda ricavi ONEFLUX bloccata (" + $n + " email)"),
+            htmlContent: ("<h2>Il worker ricavi non sta consumando la coda</h2><p><strong>" + $n + "</strong> email in <code>ricavi_email_queue</code> ferme da oltre " + $m + " minuti.</p><p>Gli incassi dei clienti NON stanno entrando in app. Causa piu probabile: il servizio <code>queue-worker</code> su Railway e fermo (verifica <code>WORKER_ENABLED=1</code>).</p>") }')
           BREVO_CODE=$(curl -s -o /tmp/brevo.txt -w "%{http_code}" -X POST https://api.brevo.com/v3/smtp/email \
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d "$BODY")
           if [ "$BREVO_CODE" != "201" ] && [ "$BREVO_CODE" != "200" ] && [ "$BREVO_CODE" != "202" ]; then
-            echo "::error::Alert email NON inviato (Brevo HTTP $BREVO_CODE): $(head -c 300 /tmp/brevo.txt)"
+            echo "::error::Email NON inviata (Brevo HTTP $BREVO_CODE): $(head -c 300 /tmp/brevo.txt)"
             exit 1
           fi
-          echo "📧 Alert inviato a md@oneflux.it (Brevo HTTP $BREVO_CODE)"
+          echo "📧 Email inviata (Brevo HTTP $BREVO_CODE)"

@@ -10,12 +10,17 @@
 
 | Alert | Sorgente | Significa |
 |---|---|---|
-| 🚨 "ONEFLUX è offline" | `uptime_check.yml` (ogni 15 min) | Vercel/frontend non risponde HTTP 200 |
-| ⚠️ "worker LENTO" | `worker_latency_check.yml` (ogni 10 min) | Il worker Railway risponde ma sopra soglia (3s su `/health`, che non tocca nemmeno il DB) — i clienti probabilmente vedono già "Servizio non raggiungibile" |
-| 🚨 "Coda ricavi bloccata" | `ricavi_queue_monitor.yml` (ogni ora) | Il queue-worker non sta consumando `ricavi_email_queue` — gli incassi non entrano in app |
+| 🔴 "L'app ONEFLUX e' offline" | `uptime_check.yml` (ogni 15 min) | Vercel/frontend non risponde HTTP 200 |
+| 🔴 "Il server di ONEFLUX (Railway) non risponde" | `worker_latency_check.yml` (ogni 10 min, con un secondo tentativo dopo 20s) | Il worker Railway e' giu': l'app si apre ma niente funziona |
+| 🔴 "Il server di ONEFLUX e' lento" | `worker_latency_check.yml` (ogni 10 min) | Il worker risponde ma sopra soglia (3s su `/health`, che non tocca nemmeno il DB) — i clienti probabilmente vedono già "Servizio non raggiungibile" |
+| 🔴 "Coda fatture ferma" / "Coda ricavi ferma" | `ricavi_queue_monitor.yml` (ogni ora) | Il queue-worker non sta svuotando `fatture_queue` (oltre 60') o `ricavi_email_queue` (oltre 90'): fatture o incassi non entrano in app |
+| 🔴 "Il controllo delle code non riesce a leggere Supabase" | `ricavi_queue_monitor.yml` | Il monitor e' cieco (chiave scaduta, Supabase giu'): non sappiamo se le code sono sane |
+| ☀️ "Buongiorno. Oggi N cose da fare" | `riepilogo_admin.yml` (alle 8, silenzioso) | La lista di Admin → Oggi. Se non arriva, la catena worker + Telegram e' rotta |
 | ⚠️/🚨 "Saldo Invoicetronic basso / ESAURITO" | queue-worker (ogni 6 ore) e webhook (al primo 403) — **solo Telegram** | Crediti in esaurimento o finiti: a zero le fatture in arrivo non si scaricano — vedi §4bis |
 
-**Canali**: email (`md@oneflux.it`, via Brevo) + Telegram (bot `@Oneflux_alert_bot`). Ridondanti: se uno dei due è giù, l'altro arriva comunque.
+**Canali**: Telegram (bot `@Oneflux_alert_bot`), piu' una copia via email (`md@oneflux.it`, Brevo) per app offline, server lento e coda ricavi.
+
+**Memoria degli allarmi** (dal 13/10/2026): i 🔴 qui sopra passano da `scripts/allarme_admin.py` e dalla tabella `admin_allarmi`. Arrivano **una volta** quando il problema compare, di nuovo **ogni 6 ore** se dura, e con «✅ Risolto» quando rientra: un silenzio dopo il primo messaggio vuol dire «ancora in corso», non «passato». Se la memoria non risponde il messaggio parte lo stesso, con una nota.
 
 ---
 
@@ -44,7 +49,8 @@ Cerca: `OOM`, `killed`, `SIGTERM`, `Traceback`, righe che si fermano di colpo.
 - Se **sì** → `railway redeploy --service=worker --yes` (riavvio pulito), poi torna al punto 1 per confermare.
 
 ### 2b. Il worker è sano ma sovraccarico? (caso più probabile)
-Controlla la spia integrata: **Admin → Clienti → scheda "Salute worker"** (`/api/admin/sistema/salute-worker`).
+Controlla la spia integrata (tempi per rotta, per processo, azzerati a ogni riavvio):
+`curl -s -H "X-Worker-Key: $WORKER_SECRET_KEY" https://worker-production-a552.up.railway.app/api/admin/sistema/salute-worker`
 - Guarda il **p95** delle rotte in cima alla lista (ordinate dalla più lenta).
 - Se `/api/auth/me` o le rotte `/api/home/*` hanno p95 vicino a 4s (giallo) o oltre (rosso) → il threadpool è sotto pressione.
 
@@ -167,8 +173,9 @@ in arrivo è `dead`, per tutti i clienti. Non è persa: Invoicetronic la conserv
    non è stato riavviato dopo l'avviso (lo stato degli avvisi vive nel processo).
 2. **Le fatture ferme.** Quelle ancora `failed` ripartono da sole al tentativo
    successivo del worker. Quelle già `dead` si rimettono in coda con **Riprova**
-   (Admin → Flusso dati): nella scheda del cliente se il cliente è noto, fra le
-   «P.IVA non riconosciute» se il webhook non ha fatto in tempo a leggerlo. Il worker
+   (Admin → Oggi): la voce «Fattura bloccata dopo i tentativi» ha il suo
+   pulsante, col cliente se è noto e senza se il webhook non ha fatto in tempo
+   a leggerlo. Il worker
    riscarica l'XML e, se la riga è senza cliente, lo decide dalla fattura come il
    webhook (`services/routing_coda.py`):
    - una sede, o più sedi e un indirizzo che decide → la fattura entra;
@@ -196,7 +203,7 @@ in arrivo è `dead`, per tutti i clienti. Non è persa: Invoicetronic la conserv
 
 1. Verifica che l'alert non si ripresenti (aspetta il prossimo ciclo del monitor, 10-15 min).
 2. Se hai deployato un fix: **svuota `daily_briefing_state`** della sede di test se il fix tocca il briefing (regola esistente, vedi memoria `feedback_svuota_cache_briefing_dopo_deploy`).
-3. Se la causa era saturazione ricorrente → considera se è il momento di potenziare Railway: i dati storici del p95 nella tab "Salute worker" sono l'evidenza su cui decidere, non l'intuito.
+3. Se la causa era saturazione ricorrente → considera se è il momento di potenziare Railway: i p95 della spia di latenza (§2b) sono l'evidenza su cui decidere, non l'intuito.
 4. Annota nel changelog/memoria se l'incidente ha rivelato qualcosa di nuovo (nuova causa, nuova soglia da tarare).
 
 ---
@@ -209,6 +216,6 @@ in arrivo è `dead`, per tutti i clienti. Non è persa: Invoicetronic la conserv
 | Log queue-worker | `railway logs --service queue-worker` |
 | Riavvio worker | `railway redeploy --service=worker --yes` |
 | Variabili worker | `railway variables --service worker` |
-| Spia latenza | Admin → Clienti → "Salute worker" (o `GET /api/admin/sistema/salute-worker`) |
+| Spia latenza | `curl -s -H "X-Worker-Key: $WORKER_SECRET_KEY" https://worker-production-a552.up.railway.app/api/admin/sistema/salute-worker` |
 | Vercel deployments | https://vercel.com dashboard progetto |
 | DB / query live | Supabase MCP `execute_sql`, o dashboard Supabase → SQL Editor |

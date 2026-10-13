@@ -192,9 +192,9 @@ def test_admin_negato_anche_se_il_titolare_e_admin(scenario, monkeypatch):
     r = _login(sc, "resp1@isolamento.test")
     assert r.json()["user"]["is_admin"] is False
     token = r.json()["token"]
-    assert _chiama(sc, token, "GET", "/api/admin/overview").status_code == 403
+    assert _chiama(sc, token, "GET", "/api/admin/attenzione").status_code == 403
     # Controllo: la stessa rotta col titolare admin passa il gate.
-    assert _chiama(sc, sc.a.token, "GET", "/api/admin/overview").status_code != 403
+    assert _chiama(sc, sc.a.token, "GET", "/api/admin/attenzione").status_code != 403
 
 
 # ─── Catena effettiva ────────────────────────────────────────────────────────
@@ -610,7 +610,7 @@ def test_sotto_utente_con_tutte_le_pagine_non_e_fermato_dal_controllo(scenario, 
     richieste = _richieste(sc, worker)
     fermate = [k for k in sorted(consentite) if _rifiuto_di_pagina(_esegui(sc, token, richieste[k]))]
     assert not fermate, fermate
-    vietate = sorted(pr.ROTTE_VIETATE) + [("GET", "/api/admin/overview")]
+    vietate = sorted(pr.ROTTE_VIETATE) + [("GET", "/api/admin/attenzione")]
     for chiave in vietate:
         assert _esegui(sc, token, richieste[chiave]).status_code == 403, chiave
 

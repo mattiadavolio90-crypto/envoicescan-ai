@@ -94,7 +94,7 @@ TITOLARE = {"id": "u1", "email": "t@x.it", "pagine_abilitate": {"margini": False
 
 
 @pytest.mark.parametrize("rotta", [
-    None, ("POST", "/api/account/elimina"), ("GET", "/api/admin/overview"), ("GET", "/rotta/che/non/esiste"),
+    None, ("POST", "/api/account/elimina"), ("GET", "/api/admin/attenzione"), ("GET", "/rotta/che/non/esiste"),
 ])
 def test_titolare_passa_sempre(rotta):
     assert pr.rotta_consentita(TITOLARE, rotta) is True
@@ -132,7 +132,7 @@ TUTTE = {p: True for p in su.PAGINE_SOTTO_UTENTE}
 
 
 @pytest.mark.parametrize("rotta", sorted(pr.ROTTE_VIETATE | pr.ROTTE_SENZA_SESSIONE)
-                         + [("GET", "/api/admin/overview"), ("GET", "/rotta/che/non/esiste")])
+                         + [("GET", "/api/admin/attenzione"), ("GET", "/rotta/che/non/esiste")])
 def test_vietate_anche_con_tutte_le_pagine(rotta):
     assert pr.rotta_consentita(_sotto_utente(TUTTE, sedi=("s1", "s2")), rotta) is False
 

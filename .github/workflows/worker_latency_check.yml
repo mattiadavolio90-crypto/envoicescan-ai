@@ -13,11 +13,15 @@ name: Worker Latency Check - ONEFLUX
 #
 # Soglia: /health non fa query DB, deve rispondere in poche centinaia di ms.
 # Se supera LATENCY_THRESHOLD_MS anche solo su un ping, è un segnale che il
-# threadpool del worker è sotto pressione — vedi anche la tab Admin
-# "Salute worker" (/api/admin/sistema/salute-worker) per il dettaglio per rotta.
+# threadpool del worker è sotto pressione.
 #
-# GITHUB SECRETS richiesti: BREVO_API_KEY (già presente), TELEGRAM_BOT_TOKEN,
-# TELEGRAM_CHAT_ID (opzionali: se assenti l'alert Telegram viene solo saltato).
+# Dal 13/10/2026 avvisa anche quando il worker e' GIU' (prima no: si contava su
+# uptime_check, che pero' guarda solo il frontend Vercel). I due allarmi passano
+# da scripts/allarme_admin.py: un messaggio all'inizio, uno ogni 6 ore se dura,
+# «✅ Risolto» al rientro — non piu' uno ogni 10 minuti.
+#
+# GITHUB SECRETS richiesti: BREVO_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+# SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (memoria degli allarmi).
 #
 # COSTO: 1 run/10 min, < 5s ciascuno. GitHub Actions free tier ampiamente coperto.
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -50,13 +54,23 @@ jobs:
             "${WORKER_URL}/health" || echo "000")
           END_MS=$(date +%s%3N)
           ELAPSED_MS=$((END_MS - START_MS))
+          # Un errore isolato (riavvio, rete) non e' un worker giu': si riprova
+          # una volta, altrimenti ogni blip darebbe un allarme e un «risolto».
+          if [ "$HTTP_CODE" != "200" ]; then
+            sleep 20
+            START_MS=$(date +%s%3N)
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 15 --connect-timeout 10 \
+              "${WORKER_URL}/health" || echo "000")
+            ELAPSED_MS=$(( $(date +%s%3N) - START_MS ))
+          fi
 
           echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
           echo "elapsed_ms=$ELAPSED_MS" >> $GITHUB_OUTPUT
 
           if [ "$HTTP_CODE" != "200" ]; then
             echo "problema=down" >> $GITHUB_OUTPUT
-            echo "❌ Worker non risponde correttamente (HTTP $HTTP_CODE) — lo intercetta anche uptime_check"
+            echo "❌ Worker non risponde (HTTP $HTTP_CODE) anche al secondo tentativo"
           elif [ "$ELAPSED_MS" -gt "$LATENCY_THRESHOLD_MS" ]; then
             echo "problema=lento" >> $GITHUB_OUTPUT
             echo "⚠️ Worker lento: ${ELAPSED_MS}ms > soglia ${LATENCY_THRESHOLD_MS}ms"
@@ -65,24 +79,47 @@ jobs:
             echo "✅ Worker sano: ${ELAPSED_MS}ms"
           fi
 
-      - name: Invia alert Telegram (worker lento)
-        if: steps.check.outputs.problema == 'lento'
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/allarme_admin.py
+          sparse-checkout-cone-mode: false
+
+      - name: Allarme Telegram (worker giu')
+        id: giu
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROBLEMA: ${{ steps.check.outputs.problema }}
+          HTTP_CODE: ${{ steps.check.outputs.http_code }}
+        run: |
+          python3 scripts/allarme_admin.py --chiave server_giu --gravita critico \
+            --problema "$([ "$PROBLEMA" = "down" ] && echo 1 || echo 0)" \
+            --testo "Il server di ONEFLUX (Railway) non risponde (HTTP $HTTP_CODE): l'app si apre ma caricamenti, analisi e dati non funzionano." \
+            --link "https://railway.app/dashboard" \
+            --risolto "il server di ONEFLUX risponde di nuovo."
+
+      - name: Allarme Telegram (worker lento)
+        id: lento
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROBLEMA: ${{ steps.check.outputs.problema }}
           ELAPSED: ${{ steps.check.outputs.elapsed_ms }}
         run: |
-          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
-            echo "Telegram non configurato, salto."
-            exit 0
-          fi
-          MSG=$(printf "⚠️ ONEFLUX worker LENTO\n/health ha impiegato %sms (soglia %sms)\nI clienti potrebbero vedere 'Servizio non raggiungibile'.\nControlla Admin > Clienti > Salute worker per il dettaglio per rotta.\nRunbook: DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md" "$ELAPSED" "$LATENCY_THRESHOLD_MS")
-          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-            -d "chat_id=${TG_CHAT_ID}" \
-            --data-urlencode "text=${MSG}"
+          python3 scripts/allarme_admin.py --chiave server_lento --gravita critico \
+            --problema "$([ "$PROBLEMA" = "lento" ] && echo 1 || echo 0)" \
+            --testo "Il server di ONEFLUX e' lento: ${ELAPSED}ms per rispondere (soglia ${LATENCY_THRESHOLD_MS}ms). I clienti potrebbero vedere 'Servizio non raggiungibile'." \
+            --link "https://railway.app/dashboard" \
+            --risolto "il server di ONEFLUX risponde di nuovo in tempi normali."
 
       - name: Invia email di allerta via Brevo (worker lento)
-        if: steps.check.outputs.problema == 'lento'
+        # Solo quando l'allarme e' dovuto (nuovo o da ripetere), non a ogni giro.
+        if: always() && (steps.lento.outputs.azione == 'invia' || steps.lento.outputs.azione == 'ripeti')
         env:
           ELAPSED: ${{ steps.check.outputs.elapsed_ms }}
         run: |
@@ -95,7 +132,7 @@ jobs:
               \"sender\": {\"name\": \"ONEFLUX Monitor\", \"email\": \"agent@oneflux.it\"},
               \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
               \"subject\": \"⚠️ ONEFLUX worker lento (${ELAPSED}ms)\",
-              \"htmlContent\": \"<h2>⚠️ Worker Railway sotto pressione</h2><p><code>/health</code> ha impiegato <strong>${ELAPSED}ms</strong> (soglia ${{ env.LATENCY_THRESHOLD_MS }}ms).</p><p>I clienti potrebbero vedere la schermata 'Servizio momentaneamente non raggiungibile'.</p><p>Controlla <a href='https://app.oneflux.it/admin/clienti'>Admin &gt; Clienti &gt; Salute worker</a> per il dettaglio per rotta (p50/p95).</p>\"
+              \"htmlContent\": \"<h2>⚠️ Worker Railway sotto pressione</h2><p><code>/health</code> ha impiegato <strong>${ELAPSED}ms</strong> (soglia ${{ env.LATENCY_THRESHOLD_MS }}ms).</p><p>I clienti potrebbero vedere la schermata 'Servizio momentaneamente non raggiungibile'.</p><p>Controlla lo stato del servizio su Railway.</p>\"
             }")
           BREVO_CODE=$(echo "$RESP" | tail -n1)
           if [ "$BREVO_CODE" != "201" ] && [ "$BREVO_CODE" != "202" ]; then

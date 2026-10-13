@@ -349,9 +349,9 @@ def test_modulo_admin_importa_helper_flusso_dati():
     assert hasattr(admin, "_classifica_salute_invoicetronic")
 
 
-# ─── A5: badges home admin (conteggi leggeri) ─────────────────────────────────
+# ─── A5: categorie da classificare (la voce di Admin → Oggi) ─────────────────
 
-def test_badges_conta_solo_problematici(monkeypatch):
+def test_categorie_da_classificare_conta_le_descrizioni_non_le_righe(monkeypatch):
     monkeypatch.setattr(admin, "_verify_admin", lambda **k: {"email": "md@oneflux.it"})
     sb = FakeClient({
         "fatture_queue": [
@@ -383,13 +383,11 @@ def test_badges_conta_solo_problematici(monkeypatch):
     })
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
 
-    res = admin.admin_badges()
     # categorie = {GELATO X, TORTA Y} = 2 (COUPON Z escluso perché scelta umana)
-    # consumi = 0: il FakeClient non ha sedi/consumi, nessuna sede sopra soglia
-    assert res == {"flusso_dati": 2, "categorie": 2, "richieste": 1, "consumi": 0}
+    assert admin._conta_categorie_da_controllare(sb) == 2
 
 
-def test_badges_tutto_pulito_a_zero(monkeypatch):
+def test_categorie_da_classificare_a_zero(monkeypatch):
     monkeypatch.setattr(admin, "_verify_admin", lambda **k: {"email": "md@oneflux.it"})
     sb = FakeClient({
         "fatture_queue": [], "fatture": [], "marketplace_leads": [],
@@ -397,7 +395,7 @@ def test_badges_tutto_pulito_a_zero(monkeypatch):
         "prodotti_utente": [], "prodotti_master": [],
     })
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
-    assert admin.admin_badges() == {"flusso_dati": 0, "categorie": 0, "richieste": 0, "consumi": 0}
+    assert admin._conta_categorie_da_controllare(sb) == 0
 
 
 # ─── A6: eventi-sconosciuti (Voce 7, Strato 2 — ronda giornaliera) ────────────

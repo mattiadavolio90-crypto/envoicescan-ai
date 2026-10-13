@@ -314,6 +314,8 @@ ROTTE_SENZA_SESSIONE: Set[Rotta] = {
     ("POST", "/api/admin/riparto/auto-pulisci"),
     ("GET", "/api/admin/sistema/invoicetronic-eventi-sconosciuti"),
     ("GET", "/api/admin/retail/categorie-incoerenti"),
+    ("POST", "/api/admin/sistema/riepilogo-telegram"),
+    ("GET", "/api/admin/sistema/salute-worker"),
 }
 
 PREFISSO_ADMIN = "/api/admin/"

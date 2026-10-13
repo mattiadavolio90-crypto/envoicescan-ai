@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertTriangle, Pencil, Send } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ChevronRight, Pencil, Send } from "lucide-react";
 import { fmtDate } from "@/lib/admin";
 import { eFermo, giorniDa, testoGiorni } from "@/lib/admin-clienti";
+import type { Voce } from "@/lib/admin-oggi";
 import { chiamaAdmin, messaggioErrore, type TabProps } from "./comune";
 
 function Dato({ label, children }: { label: string; children: React.ReactNode }) {
@@ -21,7 +23,7 @@ function Dato({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-export function PanoramicaTab({ c, setC, onVaiA }: TabProps & { onVaiA: (tab: "account") => void }) {
+export function PanoramicaTab({ c, setC, onVaiA, problemi }: TabProps & { onVaiA: (tab: "account") => void; problemi: Voce[] | null }) {
   const [adesso] = useState(() => Date.now());
   const [modifica, setModifica] = useState(false);
   const [nome, setNome] = useState("");
@@ -66,6 +68,27 @@ export function PanoramicaTab({ c, setC, onVaiA }: TabProps & { onVaiA: (tab: "a
 
   return (
     <div className="space-y-4">
+      {problemi && problemi.length > 0 && (
+        <Card className="border-red-500/40">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Da fare per questo cliente ({problemi.length})</CardTitle>
+            <Link href="/admin" className="inline-flex items-center text-xs text-primary-text hover:underline">
+              Risolvi in Oggi <ChevronRight className="size-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 text-sm">
+              {problemi.map((v) => (
+                <li key={v.chiave}>
+                  <span className={v.gravita === "critico" ? "font-medium text-red-700 dark:text-red-400" : "font-medium"}>{v.titolo}</span>
+                  {v.dettaglio && <span className="text-muted-foreground"> · {v.dettaglio}</span>}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {(mai || fermo || sopra.length > 0) && (
         <div className="space-y-2">
           {mai && (

@@ -505,7 +505,7 @@ track_ai_usage(
 - Base: 1.000 crediti/mese | Plus: 1.500 | Pro: 2.000 (giorno = 10% del mese)
 - Ricarica Boost AI: 300 crediti, non scadono — dettaglio in `CHAT_ASSISTENTE.md` §3
 
-**Admin Panel** (`/admin/sistema` → Costi AI): aggregazione per cliente/ristorante, periodi 7/30/90 giorni, quota vision giornaliera per ristorante.
+**Admin Panel**: dal riordino del 13/10/2026 il costo AI del mese sta nella riga in fondo ad Admin → Oggi e, per sede, nella Panoramica della scheda cliente (`admin_ai_mensile` via `_compute_admin_consumi`). La tab «Costi AI» con la quota Vision non c'e' piu'; `get_ai_costs_summary` resta nel DB.
 
 ---
 

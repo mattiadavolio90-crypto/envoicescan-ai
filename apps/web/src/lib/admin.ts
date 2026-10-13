@@ -71,6 +71,8 @@ export type Cliente = {
   pagine_abilitate: Record<string, boolean>;
   n_sedi: number;
   sedi: Sede[];
+  // Voci aperte in Admin → Oggi: lo aggiunge la pagina, non il worker.
+  n_problemi?: number;
 } & Partial<SaluteMese>;
 
 export type ClienteDettaglio = Cliente & {

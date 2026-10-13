@@ -95,6 +95,14 @@ SENZA_IDENTITA_MOTIVATI = {
     ("GET", "/api/admin/sistema/invoicetronic-eventi-sconosciuti"): (
         "Diagnostica consumata da automazione, gate X-Worker-Key (admin.py:2291)."
     ),
+    ("POST", "/api/admin/sistema/riepilogo-telegram"): (
+        "Chiamato dal cron riepilogo_admin.yml con X-Worker-Key: manda all'admin il "
+        "riepilogo del mattino, non legge ne' scrive dati per conto di un utente."
+    ),
+    ("GET", "/api/admin/sistema/salute-worker"): (
+        "Spia di latenza letta col curl del runbook incidenti (X-Worker-Key) dal "
+        "13/10/2026, quando la tab admin e' stata tolta: solo tempi per rotta."
+    ),
 }
 
 # Validano il bearer inline invece di passare da _resolve_user_from_token.

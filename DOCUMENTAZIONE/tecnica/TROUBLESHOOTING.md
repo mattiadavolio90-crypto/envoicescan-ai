@@ -54,7 +54,7 @@ esplicito se `WORKER_URL` è sbagliata — non serve diagnosticare a mano.
    - `unknown_tenant` → P.IVA destinatario non registrata su ONEFLUX
    - `da_assegnare` → **normale, non è un errore**: P.IVA condivisa fra più sedi
      e indirizzo ambiguo. La fattura aspetta in coda che tu scelga la sede
-     (Admin → Flusso dati). Vale per i clienti catena tipo OFFSIDE.
+     (Admin → Oggi, pulsante «Scegli sede»). Vale per i clienti catena tipo OFFSIDE.
 
 2. Se `unknown_tenant`: aggiungere il ristorante con P.IVA corretta, poi:
    ```sql

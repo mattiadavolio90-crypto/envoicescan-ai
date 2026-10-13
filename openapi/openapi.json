@@ -13031,87 +13031,6 @@
         }
       }
     },
-    "/api/admin/marketplace/leads": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Coda richieste servizi (admin)",
-        "operationId": "admin_marketplace_leads_api_admin_marketplace_leads_get",
-        "parameters": [
-          {
-            "name": "stato",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Stato"
-            }
-          },
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MarketplaceLeadList"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/admin/marketplace/leads/{lead_id}": {
       "patch": {
         "tags": [
@@ -13182,70 +13101,6 @@
                   "additionalProperties": true,
                   "title": "Response Admin Marketplace Lead Stato Api Admin Marketplace Leads  Lead Id  Patch"
                 }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/overview": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Admin Overview",
-        "description": "KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese.\n\nDifensivo: ogni sezione è isolata. Non solleva mai 500 — ritorna i dati\ncalcolabili e accumula gli errori in `_errors` per diagnosi.\n\nCache 45s: sono KPI di monitoraggio, non realtime. Toglie le query aggregate\ndal percorso caldo cosi' i refresh admin non pesano sul threadpool condiviso.",
-        "operationId": "admin_overview_api_admin_overview_get",
-        "parameters": [
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           },
@@ -14533,223 +14388,13 @@
         }
       }
     },
-    "/api/admin/sistema/costi-ai": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Admin Sistema Costi Ai",
-        "operationId": "admin_sistema_costi_ai_api_admin_sistema_costi_ai_get",
-        "parameters": [
-          {
-            "name": "days",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 30,
-              "title": "Days"
-            }
-          },
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/sistema/consumi": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Admin Sistema Consumi",
-        "description": "Fatture caricate e richieste AI per sede/mese, con stato rispetto al piano.\n\nIl conteggio e' sul mese di CARICAMENTO (fatture_documenti.created_at): misura\nil consumo del servizio. Non coincide con il contatore che il cliente vede in\nImpostazioni, che usa data_documento — a luglio 2026 sono entrati 1.097\ndocumenti di cui solo 55 erano fatture di quel mese.\n\nCache 45s come gli altri KPI admin.",
-        "operationId": "admin_sistema_consumi_api_admin_sistema_consumi_get",
-        "parameters": [
-          {
-            "name": "mesi",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 12,
-              "title": "Mesi"
-            }
-          },
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/sistema/retention": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Admin Sistema Retention",
-        "operationId": "admin_sistema_retention_api_admin_sistema_retention_get",
-        "parameters": [
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/admin/sistema/salute-worker": {
       "get": {
         "tags": [
           "Admin"
         ],
         "summary": "Admin Sistema Salute Worker",
-        "description": "Metriche di latenza del worker per rotta (p50/p95/max, richieste lente,\nerrori 5xx), ordinate per p95 discendente.\n\nServe a vedere QUANDO il worker inizia a soffrire: se p95 di /api/auth/me o\ndella Home si avvicina alla soglia lenti (4s) / al timeout SSR (12s), è il\nmomento di potenziare Railway. Dati per-processo, finestra scorrevole in-memory\n(nessun costo, nessun servizio esterno). Si azzerano al riavvio del worker.",
+        "description": "Metriche di latenza del worker per rotta (p50/p95/max, richieste lente,\nerrori 5xx), ordinate per p95 discendente.\n\nSolo chiave del worker dal 13/10/2026: la tab admin che la mostrava e'\nstata tolta col riordino, e in un incidente la si legge con un curl\n(DOCUMENTAZIONE/RUNBOOK_INCIDENTI.md). Contiene solo tempi per rotta,\nnessun dato di un cliente.\n\nServe a vedere QUANDO il worker inizia a soffrire: se p95 di /api/auth/me o\ndella Home si avvicina alla soglia lenti (4s) / al timeout SSR (12s), è il\nmomento di potenziare Railway. Dati per-processo, finestra scorrevole in-memory\n(nessun costo, nessun servizio esterno). Si azzerano al riavvio del worker.",
         "operationId": "admin_sistema_salute_worker_api_admin_sistema_salute_worker_get",
         "parameters": [
           {
@@ -14766,22 +14411,6 @@
                 }
               ],
               "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -14890,70 +14519,6 @@
               "title": "Silenzio Giorni"
             }
           },
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/badges": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Admin Badges",
-        "description": "Conteggi rapidi per i badge \"da controllare\" sulle card del pannello admin.\n\nSolo COUNT veloci (mai full-load): pensato per girare a ogni apertura della\nhome senza rallentarla. Ogni conteggio è isolato in try/except così un errore\nsu una tabella non azzera gli altri badge.\n\n  - flusso_dati: record fatture_queue in stato problematico (fatture che non\n    entrano nell'app: P.IVA sconosciuta, multi-sede da smistare, errori);\n  - categorie: righe fatture con needs_review (proposte AI da approvare a mano);\n  - richieste: lead marketplace ancora in stato 'nuovo'.\n\nCache 45s: i badge girano a ogni apertura home admin e il conteggio categorie\nscandisce prodotti_utente/prodotti_master (paginati). Cacharli li toglie dal\npercorso caldo senza farli divergere in modo percettibile dai contatori pagina.",
-        "operationId": "admin_badges_api_admin_badges_get",
-        "parameters": [
           {
             "name": "x-worker-key",
             "in": "header",
@@ -16808,6 +16373,132 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Admin Email Settimanale Prova Api Admin Email Settimanale Prova Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/attenzione": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Attenzione",
+        "description": "La lista «Da fare» della pagina Oggi, con i numeri della riga in fondo e\nil conteggio delle voci per cliente (colonna Problemi della lista clienti).\nMai 500: una sonda che fallisce finisce in `_errors` e il resto si mostra.",
+        "operationId": "admin_attenzione_api_admin_attenzione_get",
+        "parameters": [
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/sistema/riepilogo-telegram": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Riepilogo Telegram",
+        "description": "Il riepilogo del mattino su Telegram, chiamato dal cron di GitHub\n(.github/workflows/riepilogo_admin.yml) alle 06 e alle 07 UTC.\n\nSenza `forza` lavora solo fra le 8 e le 9:59 a Roma, e una volta al giorno:\nla memoria degli allarmi (admin_allarme_segnala, chiave «riepilogo:<giorno>»)\nrisponde 'invia' solo alla prima chiamata della giornata.",
+        "operationId": "admin_riepilogo_telegram_api_admin_sistema_riepilogo_telegram_post",
+        "parameters": [
+          {
+            "name": "forza",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Forza"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Admin Riepilogo Telegram Api Admin Sistema Riepilogo Telegram Post"
                 }
               }
             }
@@ -26061,104 +25752,6 @@
           "servizio_label"
         ],
         "title": "MarketplaceLeadBody"
-      },
-      "MarketplaceLeadItem": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "servizio_key": {
-            "type": "string",
-            "title": "Servizio Key"
-          },
-          "servizio_label": {
-            "type": "string",
-            "title": "Servizio Label"
-          },
-          "messaggio": {
-            "type": "string",
-            "title": "Messaggio"
-          },
-          "contatto_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contatto Email"
-          },
-          "contatto_nome": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contatto Nome"
-          },
-          "ristorante_nome": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ristorante Nome"
-          },
-          "stato": {
-            "type": "string",
-            "title": "Stato"
-          },
-          "created_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "servizio_key",
-          "servizio_label",
-          "messaggio",
-          "stato"
-        ],
-        "title": "MarketplaceLeadItem"
-      },
-      "MarketplaceLeadList": {
-        "properties": {
-          "leads": {
-            "items": {
-              "$ref": "#/components/schemas/MarketplaceLeadItem"
-            },
-            "type": "array",
-            "title": "Leads"
-          },
-          "nuovi": {
-            "type": "integer",
-            "title": "Nuovi"
-          }
-        },
-        "type": "object",
-        "required": [
-          "leads",
-          "nuovi"
-        ],
-        "title": "MarketplaceLeadList"
       },
       "MarketplaceLeadStatoBody": {
         "properties": {

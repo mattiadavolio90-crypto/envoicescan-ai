@@ -4,6 +4,7 @@ import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
 import { ClientiClient } from "./clienti-client";
 import type { Cliente } from "@/lib/admin";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
+import { datiOggi } from "../oggi-dati";
 
 async function fetchClienti(token: string): Promise<Cliente[]> {
   try {
@@ -23,7 +24,13 @@ export default async function AdminClientiPage() {
 
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value ?? "";
-  const clienti = await fetchClienti(token);
+  const [clienti, oggi] = await Promise.all([fetchClienti(token), datiOggi(token)]);
+  const problemi = oggi?.problemi_per_cliente ?? {};
 
-  return <ClientiClient clientiIniziali={clienti} />;
+  return (
+    <ClientiClient
+      clientiIniziali={clienti.map((c) => ({ ...c, n_problemi: problemi[c.id] ?? 0 }))}
+      problemiNoti={oggi !== null}
+    />
+  );
 }

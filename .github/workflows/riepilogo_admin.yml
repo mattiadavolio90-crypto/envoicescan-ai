@@ -1,0 +1,51 @@
+name: Riepilogo admin del mattino - ONEFLUX
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Alle 8 (ora di Roma) un messaggio Telegram silenzioso con le cose da fare
+# nell'admin: la stessa lista della pagina Admin → Oggi, piu' i numeri di ieri.
+# Se non c'e' niente da fare lo dice: il messaggio che arriva ogni mattina e'
+# anche la prova che la catena (worker + Telegram) e' viva.
+#
+# Il cron gira alle 06 e alle 07 UTC: l'endpoint lavora solo fra le 8 e le 9:59
+# a Roma (con l'ora legale cadono dentro entrambi, con la solare solo il
+# secondo) e una volta al giorno, grazie alla memoria degli allarmi.
+#
+# GITHUB SECRETS: WORKER_SECRET_KEY, WORKER_HEALTH_URL (opzionale).
+# COSTO: 2 run/giorno, pochi secondi.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      forza:
+        description: "Manda adesso, anche fuori orario e anche se gia' mandato oggi"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  riepilogo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chiede al worker di mandare il riepilogo
+        env:
+          WORKER_URL: ${{ secrets.WORKER_HEALTH_URL || 'https://worker-production-a552.up.railway.app' }}
+          FORZA: ${{ inputs.forza && 'true' || 'false' }}
+        run: |
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Worker-Key: ${{ secrets.WORKER_SECRET_KEY }}" \
+            --max-time 120 \
+            "${WORKER_URL}/api/admin/sistema/riepilogo-telegram?forza=${FORZA}" || echo -e "\n000")
+          HTTP_CODE=$(echo "$RESP" | tail -n1)
+          echo "$RESP" | sed '$d'
+          if [ "$HTTP_CODE" != "200" ]; then
+            # Rosso: GitHub manda la sua email. Se il worker e' giu', l'allarme
+            # «server giu'» di worker_latency_check e' gia' partito.
+            echo "::error::Riepilogo non inviato (HTTP $HTTP_CODE)"
+            exit 1
+          fi

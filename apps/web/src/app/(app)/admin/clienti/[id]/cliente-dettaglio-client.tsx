@@ -15,6 +15,7 @@ import {
 import { AlertTriangle, CheckCircle, ChevronLeft, Clock, LogIn, MoreHorizontal, Trash2, XCircle } from "lucide-react";
 import { type ClienteDettaglio, PIANO_COLOR, PIANO_LABEL, SETTORE_LABEL } from "@/lib/admin";
 import { TAB_CLIENTE, eliminazioneConfermata, type TabCliente } from "@/lib/admin-clienti";
+import type { Voce } from "@/lib/admin-oggi";
 import { chiamaAdmin, messaggioErrore } from "./tabs/comune";
 import { PanoramicaTab } from "./tabs/panoramica";
 import { SediTab } from "./tabs/sedi";
@@ -22,13 +23,14 @@ import { FunzioniTab } from "./tabs/funzioni";
 import { InviiTab } from "./tabs/invii";
 import { AccountTab } from "./tabs/account";
 
-type Props = { cliente: ClienteDettaglio; tabIniziale: TabCliente };
+// `problemi` null: la lista di Oggi non si e' potuta leggere.
+type Props = { cliente: ClienteDettaglio; tabIniziale: TabCliente; problemi: Voce[] | null };
 
 function Etichetta({ className, children }: { className: string; children: React.ReactNode }) {
   return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>{children}</span>;
 }
 
-export function ClienteDettaglioClient({ cliente: iniziale, tabIniziale }: Props) {
+export function ClienteDettaglioClient({ cliente: iniziale, tabIniziale, problemi }: Props) {
   const router = useRouter();
   const [c, setC] = useState<ClienteDettaglio>(iniziale);
   const [tab, setTab] = useState<TabCliente>(tabIniziale);
@@ -164,7 +166,7 @@ export function ClienteDettaglioClient({ cliente: iniziale, tabIniziale }: Props
         className="overflow-x-auto"
       />
 
-      {tab === "panoramica" && <PanoramicaTab c={c} setC={setC} onVaiA={cambiaTab} />}
+      {tab === "panoramica" && <PanoramicaTab c={c} setC={setC} onVaiA={cambiaTab} problemi={problemi} />}
       {tab === "sedi" && <SediTab c={c} setC={setC} />}
       {tab === "funzioni" && <FunzioniTab c={c} setC={setC} />}
       {tab === "invii" && <InviiTab c={c} setC={setC} />}

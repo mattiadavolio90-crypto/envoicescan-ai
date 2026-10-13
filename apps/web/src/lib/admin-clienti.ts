@@ -18,10 +18,11 @@ export function voceAttiva(pathname: string, href: string): boolean {
   return p === href || p.startsWith(href + "/");
 }
 
-export type Filtro = "tutti" | "fermi" | "trial" | "disattivi";
+export type Filtro = "tutti" | "problemi" | "fermi" | "trial" | "disattivi";
 
 export const FILTRI: { key: Filtro; label: string }[] = [
   { key: "tutti", label: "Tutti" },
+  { key: "problemi", label: "Con problemi" },
   { key: "fermi", label: "Fermi da 7 giorni" },
   { key: "trial", label: "In prova" },
   { key: "disattivi", label: "Disattivi" },
@@ -40,6 +41,8 @@ export type ClienteLista = {
   attivo: boolean;
   trial: { active?: boolean } | null;
   ultimo_caricamento_at?: string | null;
+  // Voci aperte nella pagina Oggi per questo cliente (problemi_per_cliente).
+  n_problemi?: number;
   sedi: { partita_iva: string | null }[];
 };
 
@@ -81,6 +84,7 @@ function corrisponde(c: ClienteLista, cerca: string): boolean {
 }
 
 function nelFiltro(c: ClienteLista, filtro: Filtro, adesso: number): boolean {
+  if (filtro === "problemi") return (c.n_problemi ?? 0) > 0;
   if (filtro === "fermi") return eFermo(c, adesso);
   if (filtro === "trial") return c.trial?.active === true;
   if (filtro === "disattivi") return !c.attivo;
@@ -89,15 +93,16 @@ function nelFiltro(c: ClienteLista, filtro: Filtro, adesso: number): boolean {
 
 /** Quanti clienti per ogni filtro, per i numeri accanto alle etichette. */
 export function contaFiltri(clienti: ClienteLista[], adesso: number): Record<Filtro, number> {
-  const conta = { tutti: 0, fermi: 0, trial: 0, disattivi: 0 };
+  const conta = { tutti: 0, problemi: 0, fermi: 0, trial: 0, disattivi: 0 };
   for (const c of clienti) {
     for (const f of FILTRI) if (nelFiltro(c, f.key, adesso)) conta[f.key] += 1;
   }
   return conta;
 }
 
-/** Filtra e ordina: prima i fermi (da piu' tempo in cima), poi gli attivi per
- *  nome, in fondo i disattivi. Chi deve fare qualcosa lo trova in alto. */
+/** Filtra e ordina: prima chi ha problemi aperti (i piu' numerosi in cima), poi
+ *  i fermi (da piu' tempo in cima), poi gli attivi per nome, in fondo i
+ *  disattivi. Chi deve fare qualcosa lo trova in alto. */
 export function clientiVisibili<T extends ClienteLista>(
   clienti: T[],
   cerca: string,
@@ -105,13 +110,16 @@ export function clientiVisibili<T extends ClienteLista>(
   adesso: number,
 ): T[] {
   const nome = (c: ClienteLista) => (c.nome_gruppo || c.nome_ristorante || c.email).toLowerCase();
-  const gruppo = (c: ClienteLista) => (!c.attivo ? 2 : eFermo(c, adesso) ? 0 : 1);
+  const problemi = (c: ClienteLista) => c.n_problemi ?? 0;
+  const gruppo = (c: ClienteLista) =>
+    !c.attivo ? 3 : problemi(c) > 0 ? 0 : eFermo(c, adesso) ? 1 : 2;
   const giorni = (c: ClienteLista) => giorniDa(c.ultimo_caricamento_at, adesso) ?? Number.MAX_SAFE_INTEGER;
   return clienti
     .filter((c) => corrisponde(c, cerca) && nelFiltro(c, filtro, adesso))
     .sort((a, b) =>
       gruppo(a) - gruppo(b) ||
-      (gruppo(a) === 0 ? giorni(b) - giorni(a) : 0) ||
+      (gruppo(a) === 0 ? problemi(b) - problemi(a) : 0) ||
+      (gruppo(a) === 1 ? giorni(b) - giorni(a) : 0) ||
       nome(a).localeCompare(nome(b), "it"),
     );
 }
