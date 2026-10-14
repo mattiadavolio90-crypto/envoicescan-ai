@@ -2822,6 +2822,17 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   ordine file/unita' — quest'ultimo sopravvissuto al primo giro, ucciso col caso ORDINE;
 >   Python: fattura pagata, ordine, i due chiamanti); 519 test di foodcost, inventario, SQL e
 >   isolamento verdi. Suite completa a fine Fase 5.
+>
+> - **14/10/2026 — Un acquisto = una fattura, Fase 5c: lo strumento della chat «confronto_prezzi»
+>   (Opus), NON pushato, nessuna migration.** L'ultimo prezzo di ogni fornitore era la prima
+>   riga dell'ultima data (a caso fra le righe della stessa fattura). Ora l'ultima fattura
+>   pagata, a prezzo ponderato, con `ultimo_acquisto_per_descrizione`; la fusione resta per
+>   prodotto (la ricerca trova anche 125 g e 1 kg dello stesso fornitore) e del fornitore
+>   conta il prodotto comprato piu' di recente. **Prove:** `test_chat_confronto_prezzi_per_fattura.py`
+>   (lo strumento non aveva test); mutazione 2/2 (prezzo della riga, scelta per data — la
+>   seconda sopravvissuta al primo giro perche' nel test l'ordine dei file coincideva con
+>   quello delle date). **Fine Fase 5:** suite `python -m pytest tests/ -q -p no:randomly`
+>   **20.781 verdi + 62 skip, 0 rossi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

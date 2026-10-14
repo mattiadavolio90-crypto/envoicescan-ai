@@ -5415,7 +5415,7 @@ def _chat_confronto_prezzi(
     da = (_oggi_rome() - _td(days=180)).isoformat()
     q = (
         supabase_client.table("fatture")
-        .select("descrizione,fornitore,prezzo_unitario,data_documento")
+        .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,unita_misura")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
         .eq("oscurata", False)
@@ -5430,17 +5430,34 @@ def _chat_confronto_prezzi(
     # (quelle che contano per il prezzo attuale) invece di un taglio arbitrario.
     righe = q.order("data_documento", desc=True).limit(2000).execute().data or []
 
-    # Miglior (ultimo) prezzo per fornitore
-    per_forn: Dict[str, Dict[str, Any]] = {}
+    # L'ultimo prezzo per fornitore: l'ultima fattura pagata, a prezzo ponderato
+    # (un acquisto e' una fattura, `ultimo_acquisto_per_descrizione`). Prima era
+    # la prima riga dell'ultima data, a caso fra le righe della stessa fattura.
+    # La fusione resta per prodotto (la ricerca puo' trovare mozzarella 125 g e
+    # 1 kg dello stesso fornitore); del fornitore conta il prodotto piu' recente.
+    from utils.voci_prezzo import ultimo_acquisto_per_descrizione
+
+    righe_per_forn: Dict[str, List[Dict[str, Any]]] = {}
     for r in righe:
-        forn = (r.get("fornitore") or "?").strip()
-        prezzo = float(r.get("prezzo_unitario") or 0)
-        if prezzo <= 0:
-            continue
-        data = r.get("data_documento") or ""
-        cur = per_forn.get(forn)
-        if cur is None or data > cur["data"]:
-            per_forn[forn] = {"prezzo": round(prezzo, 4), "data": data, "descrizione": r.get("descrizione")}
+        if float(r.get("prezzo_unitario") or 0) > 0:
+            righe_per_forn.setdefault((r.get("fornitore") or "?").strip(), []).append(r)
+    per_forn: Dict[str, Dict[str, Any]] = {}
+    for forn, righe_f in righe_per_forn.items():
+        ultimi = ultimo_acquisto_per_descrizione(righe_f).values()
+        scelto = max(
+            ultimi,
+            key=lambda u: (
+                str(u["riga"].get("data_documento") or ""),
+                str(u["riga"].get("file_origine") or ""),
+                str(u["riga"].get("unita_misura") or "").strip().upper(),
+            ),
+        )
+        riga = scelto["riga"]
+        per_forn[forn] = {
+            "prezzo": round(scelto["prezzo"], 4),
+            "data": riga.get("data_documento") or "",
+            "descrizione": riga.get("descrizione"),
+        }
 
     confronto = sorted(
         [{"fornitore": f, **v} for f, v in per_forn.items()],
