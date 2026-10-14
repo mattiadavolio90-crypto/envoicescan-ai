@@ -89,6 +89,7 @@ ELENCO_SENZA_FILTRO = {
     ("tag_suggestion_service.py", "_latest_invoice_date"): "data ultimo caricamento",
     ("tag_suggestion_service.py", "_fetch_recent_rows"): "candidati tag, non spesa",
     ("routers/scadenziario.py", "get_anteprima_fattura"): "righe del documento in lista",
+    ("routers/gruppo.py", "gruppo_prezzi_fattura"): "anteprima del documento, gemella di quella del PV",
     ("routers/scadenziario.py", "get_fornitori_scadenziario"): "filtro fornitore della lista",
 
     # ── Riparto: e' l'endpoint a rifiutare (409), non la query a filtrare.
