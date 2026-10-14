@@ -101,3 +101,46 @@ class TestStoricoPrezzoPoint:
         assert p.numero_documento == "FT/123"
         assert p.quantita == 2.5
         assert p.totale_riga == 25.0
+
+
+class TestTogliPreferito:
+    """La richiesta si costruisce col vero client postgrest-py e si intercetta
+    prima dell'HTTP: e' la serializzazione dei filtri a decidere se PostgREST
+    capisce la richiesta, e un mock non la riproduce."""
+
+    def _richieste(self, monkeypatch, prodotto, fornitore):
+        from postgrest import SyncPostgrestClient
+        from postgrest._sync.request_builder import SyncFilterRequestBuilder
+        from services.routers.prezzi import _togli_preferito
+
+        mandate = []
+        monkeypatch.setattr(
+            SyncFilterRequestBuilder, "execute",
+            lambda self: mandate.append(dict(self.request.params.multi_items())),
+        )
+        _togli_preferito(SyncPostgrestClient("http://x"), "r1", prodotto, fornitore)
+        return mandate
+
+    def test_virgolette_e_parentesi_arrivano_intatte(self, monkeypatch):
+        mandate = self._richieste(monkeypatch, 'TUBO 1/2" (10PZ)', "IDRAULICA, SRL")
+        assert mandate == [{
+            "ristorante_id": "eq.r1",
+            "descrizione_key": 'eq.TUBO 1/2" (10PZ)',
+            "fornitore_key": "eq.IDRAULICA, SRL",
+        }]
+
+    def test_toglie_anche_le_forme_troncate(self, monkeypatch):
+        prodotto, fornitore = "A" * 70, "F" * 40
+        mandate = self._richieste(monkeypatch, prodotto, fornitore)
+        coppie = {(m["descrizione_key"], m["fornitore_key"]) for m in mandate}
+        assert coppie == {
+            (f"eq.{d}", f"eq.{f}")
+            for d in ("A" * 70, "A" * 60)
+            for f in ("F" * 40, "F" * 30)
+        }
+        assert all(m["ristorante_id"] == "eq.r1" for m in mandate)
+
+    def test_fornitore_vuoto_si_toglie(self, monkeypatch):
+        # Con .in_ diventava `in.()`, una lista vuota: la stella restava accesa.
+        mandate = self._richieste(monkeypatch, "OLIO", "")
+        assert [m["fornitore_key"] for m in mandate] == ["eq."]

@@ -739,14 +739,18 @@ def _togli_preferito(sb, ristorante_id: str, prodotto: str, fornitore: str) -> N
     senza, una stella vecchia restava accesa dopo il clic."""
     desc_key = _pulisci_desc_key(prodotto)
     forn_key = _pulisci_forn_key(fornitore)
-    (
-        sb.table("prezzi_preferiti")
-        .delete()
-        .eq("ristorante_id", ristorante_id)
-        .in_("descrizione_key", sorted({desc_key, _pulisci_desc_key(desc_key[:60])}))
-        .in_("fornitore_key", sorted({forn_key, _pulisci_forn_key(forn_key[:_FORNITORE_MAX])}))
-        .execute()
-    )
+    # Un .eq per forma, non .in_: postgrest-py non fa l'escape delle virgolette
+    # dentro in.(...) e `TUBO 1/2" (10PZ)` diventa un filtro illeggibile (500).
+    for d in sorted({desc_key, _pulisci_desc_key(desc_key[:60])}):
+        for f in sorted({forn_key, _pulisci_forn_key(forn_key[:_FORNITORE_MAX])}):
+            (
+                sb.table("prezzi_preferiti")
+                .delete()
+                .eq("ristorante_id", ristorante_id)
+                .eq("descrizione_key", d)
+                .eq("fornitore_key", f)
+                .execute()
+            )
 
 
 @router.delete("/api/prezzi/preferiti", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
