@@ -2473,6 +2473,31 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   server (11 righe, «Seleziona tutti» = +11). 361 test dei tag e 1.817 presidi frontend verdi,
 >   `tsc` ed eslint puliti. **Non provato:** il trascinamento in catena (e' lo stesso componente
 >   della sede) e la pagina sul DB vero, che aspetta la migration C1 sul live.
+>   **Poi (13-14/10):** migration C1 applicata al live da Mattia e verificata (tabella, colonne, FK,
+>   RLS forzata, permessi; 3 tag intatti). `code-reviewer` 🟢 su C1+C2 (485 + 2.776 test, 414 `-m sql`,
+>   tre mutanti suoi contro il fake: 11, 9 e 2 rossi); tolto `_norm_key` senza chiamanti.
+>   **Analisi delle inerenze chiesta da Mattia:** nessun altro consumatore dei tag di catena (ne'
+>   chat, ne' briefing, ne' `/m`); i servizi della sede leggono `custom_tags` per colonne nominate;
+>   le 8 rotte nuove rispondono sul worker locale; frontend e worker reggono anche se al deploy uno
+>   arriva prima dell'altro. **Difetto trovato, ereditato:** `gruppo_tags.user_id` e
+>   `gruppo_tag_prodotti.user_id` erano senza FK verso `users` (dal 17/6): cancellando un account,
+>   dal cliente o dall'admin, i nomi dei tag di catena e le descrizioni dei prodotti restavano nel DB
+>   (art. 17); sul live 0 righe orfane, 1 account con tag di catena. Chiuso con
+>   `20261014054557_gruppo_tags_fk_users.sql` (FK CASCADE sulle due tabelle, indice su
+>   `gruppo_tag_prodotti.user_id`), 4 test `-m sql` (FK in INSERT, cascata diretta, cascata via
+>   `POST /api/account/elimina`, rilancio idempotente), 2 mutanti su 2 uccisi. **Trovati scrivendo
+>   quei test, FUORI da questa fase e non miei:** oggi un account INTERO non si cancella sul Postgres
+>   di prova (schema del live): (1) `riparto_costi_catena_quote.ristorante_id` e' l'unica FK verso
+>   `ristoranti` senza `ON DELETE CASCADE` su 66 (`20260714130000_riparto_costi_catena.sql`): un
+>   account di catena col riparto blocca la DELETE; (2) la cascata `users -> ristoranti ->
+>   ricavi_giornalieri` fa scattare `trg_ricavi_giornalieri_sync_margini`
+>   (`sync_margini_mensili_from_ricavi`, rivista il 12/10 in `20261012194928_ricavi_noiva_esclusi.sql`),
+>   che reinserisce `margini_mensili` per un ristorante gia' cancellato. Quindi `POST
+>   /api/account/elimina` e la cancellazione dall'admin rispondono 500 per qualunque cliente con
+>   ricavi o col riparto; i test esistenti che la chiamano usano account senza ricavi. Pinnato con un
+>   test **xfail strict** in `test_sql_gruppo_tag_cartelle.py`: quando i due difetti saranno chiusi
+>   diventa rosso e va tolto. Da chiudere da chi ha in mano riparto e margini, con una migration
+>   (CASCADE sulla FK e guardia nel trigger).
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e

@@ -691,7 +691,7 @@ Scollegati dai tag di sede: vivono a livello account (`user_id`, niente `ristora
 | Colonna | Tipo | Note |
 |---------|------|------|
 | id | BIGINT IDENTITY (PK) | |
-| user_id | UUID NOT NULL | Senza FK verso `users` |
+| user_id | UUID NOT NULL | FK → `users` ON DELETE CASCADE dal 14/10/2026 (`20261014054557_gruppo_tags_fk_users.sql`; prima senza FK: i tag restavano dopo la cancellazione dell'account). Stessa FK su `gruppo_tag_prodotti.user_id` |
 | nome | TEXT NOT NULL | |
 | emoji, colore | TEXT (nullable) | |
 | created_at | TIMESTAMPTZ | |

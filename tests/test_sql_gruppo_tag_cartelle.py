@@ -237,3 +237,99 @@ def test_rls_attiva_e_forzata_e_service_role_scrive(scenario):
         assert _uno(
             sc, "SELECT has_table_privilege('service_role', 'public.gruppo_tag_cartelle', %s)", permesso
         )[0] is True, permesso
+
+
+# ─── I tag di catena seguono l'account (migration 20261014054557) ────────────
+MIGRATION_FK = (
+    Path(__file__).resolve().parent.parent
+    / "supabase" / "migrations" / "20261014054557_gruppo_tags_fk_users.sql"
+)
+
+
+def _righe_di_catena(sc, chi):
+    user = chi.ids["user_id"]
+    return tuple(
+        _uno(sc, f"SELECT count(*) FROM public.{t} WHERE user_id = %s", user)[0]
+        for t in ("gruppo_tags", "gruppo_tag_prodotti", "gruppo_tag_cartelle")
+    )
+
+
+@pytest.mark.parametrize("tabella, colonne, valori", [
+    ("gruppo_tags", "(id, user_id, nome)", "(950003, %s, 'ORFANO')"),
+    ("gruppo_tag_prodotti", "(id, tag_id, user_id, descrizione, descrizione_key)", "(950004, %s, %s, 'X', 'X')"),
+], ids=["tag", "prodotto"])
+def test_un_account_inesistente_e_rifiutato(scenario, psycopg, tabella, colonne, valori):
+    sc = scenario
+    fantasma = "00000000-0000-4000-8000-00000000dead"
+    params = (fantasma,) if tabella == "gruppo_tags" else (sc.a.ids["gtag_id"], fantasma)
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+        with sc.conn.transaction():
+            sc.conn.execute(f"INSERT INTO public.{tabella} {colonne} VALUES {valori}", params)
+
+
+def _senza_i_blocchi_della_cascata(sc, chi):
+    """Toglie PRIMA i dati che oggi impediscono di cancellare un account intero
+    (vedi il test xfail sotto): qui si prova la FK dei tag di catena, non quei
+    due difetti."""
+    sedi = (chi.ids["sede1"], chi.ids["sede2"])
+    sc.conn.execute("DELETE FROM public.riparto_costi_catena_quote WHERE ristorante_id IN (%s, %s)", sedi)
+    sc.conn.execute("DELETE FROM public.ricavi_giornalieri WHERE ristorante_id IN (%s, %s)", sedi)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="due difetti PRE-ESISTENTI, trovati il 14/10/2026 e fuori da questa fase: (1) "
+           "riparto_costi_catena_quote.ristorante_id e' l'unica FK verso ristoranti senza ON DELETE "
+           "CASCADE (su 66), quindi un account di catena col riparto non si cancella; (2) la cascata "
+           "users -> ristoranti -> ricavi_giornalieri fa scattare trg_ricavi_giornalieri_sync_margini, "
+           "che reinserisce margini_mensili per un ristorante gia' cancellato. Quando entrambi saranno "
+           "chiusi questo test passera': togli l'xfail.",
+)
+def test_cancellare_un_account_intero_oggi_fallisce_per_riparto_e_trigger_dei_margini(scenario):
+    sc = scenario
+    a = sc.a
+    assert _uno(sc, "SELECT count(*) FROM public.ricavi_giornalieri WHERE user_id = %s", a.ids["user_id"])[0] > 0
+    assert _uno(sc, "SELECT count(*) FROM public.riparto_costi_catena_quote WHERE ristorante_id = %s", a.ids["sede1"])[0] > 0
+    with sc.conn.transaction():
+        sc.conn.execute("DELETE FROM public.users WHERE id = %s", (a.ids["user_id"],))
+    assert _uno(sc, "SELECT count(*) FROM public.users WHERE id = %s", a.ids["user_id"])[0] == 0
+
+
+def test_cancellare_l_account_porta_via_tag_prodotti_e_cartelle_di_catena(scenario):
+    """Prima della FK restavano tag e prodotti (dati scritti dal cliente): le
+    cartelle sparivano e i tag perdevano solo la cartella."""
+    sc = scenario
+    a, b = sc.a, sc.b
+    assert _righe_di_catena(sc, a) == (1, 1, 1)
+    _senza_i_blocchi_della_cascata(sc, a)
+
+    sc.conn.execute("DELETE FROM public.users WHERE id = %s", (a.ids["user_id"],))
+
+    assert _righe_di_catena(sc, a) == (0, 0, 0)
+    assert _righe_di_catena(sc, b) == (1, 1, 1)
+    assert _tag(sc, b.ids["gtag_id"])[2] == b.ids["gcartella_id"]
+
+
+def test_elimina_account_dal_cliente_non_lascia_tag_di_catena(scenario):
+    """La strada vera: POST /api/account/elimina conta sul CASCADE da users."""
+    sc = scenario
+    a, b = sc.a, sc.b
+    _senza_i_blocchi_della_cascata(sc, a)
+
+    resp = sc.chiama(a, "POST", "/api/account/elimina", json_={"conferma": "ELIMINA"})
+
+    assert resp.status_code == 200, resp.text
+    assert _uno(sc, "SELECT count(*) FROM public.users WHERE id = %s", a.ids["user_id"])[0] == 0
+    assert _righe_di_catena(sc, a) == (0, 0, 0)
+    assert _righe_di_catena(sc, b) == (1, 1, 1)
+
+
+def test_la_migration_della_fk_si_riapplica_senza_errori(scenario):
+    sc = scenario
+    sc.conn.execute(MIGRATION_FK.read_text(encoding="utf-8"))
+    for tabella, nome in (("gruppo_tags", "gruppo_tags_user_id_fkey"), ("gruppo_tag_prodotti", "gruppo_tag_prodotti_user_id_fkey")):
+        assert _uno(
+            sc,
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = %s AND conrelid = %s::regclass",
+            nome, f"public.{tabella}",
+        )[0] == "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
