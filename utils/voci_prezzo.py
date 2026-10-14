@@ -207,3 +207,36 @@ def prezzo_documento(righe, *, prezzo="prezzo_unitario", quantita="quantita"):
     if positivi:
         return round(sum(p * q for p, q in positivi) / sum(q for _, q in positivi), 6)
     return round(sum(p for p, _ in validi) / len(validi), 6)
+
+
+def ultimo_acquisto_per_descrizione(righe, *, descrizione="descrizione", prezzo="prezzo_unitario", quantita="quantita"):
+    """Per ogni descrizione, l'ultimo acquisto (fattura) con un prezzo pagato,
+    a prezzo ponderato: l'«ultimo prezzo» del foodcost e dell'inventario.
+
+    Prima era la prima RIGA della data piu' recente: con lo stesso articolo su
+    piu' righe dell'ultima fattura dipendeva dall'ordine del database, e un
+    omaggio a prezzo 0 accanto alla riga pagata proponeva 0 € (76 articoli sul
+    live, 14/10/2026). Ora: l'ultima fattura per data, poi file e unita' (lo
+    spareggio della RPC `articoli_da_fatture`), fra quelle con un prezzo
+    positivo; prezzo 0 solo per un articolo di soli omaggi.
+
+    Ritorna {descrizione (strip): {"riga": prima riga dell'acquisto scelto,
+    "prezzo": float}}.
+    """
+    per_descrizione = {}
+    for i, r in enumerate(righe):
+        d = (r.get(descrizione) or "").strip()
+        if d:
+            per_descrizione.setdefault(d, {}).setdefault(chiave_documento(r, indice=i), []).append(r)
+    esito = {}
+    for d, documenti in per_descrizione.items():
+        pagati, tutti = [], []
+        for chiave, doc in documenti.items():
+            ordine = (chiave[1], chiave[0], chiave[2])
+            p = prezzo_documento(doc, prezzo=prezzo, quantita=quantita)
+            tutti.append((ordine, doc, p))
+            if p is not None:
+                pagati.append((ordine, doc, p))
+        _, doc, p = max(pagati or tutti, key=lambda t: t[0])
+        esito[d] = {"riga": doc[0], "prezzo": float(p or 0.0)}
+    return esito

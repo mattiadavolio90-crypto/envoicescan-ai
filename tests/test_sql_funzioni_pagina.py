@@ -136,7 +136,7 @@ def _riga(db_sql, *, sede=SEDE, descrizione="SALMONE 5-6", fornitore="ADC SRL",
           categoria="PESCE", totale=Decimal("100.00"), prezzo=None,
           data_documento="2026-03-10", data_competenza=None, deleted=False,
           needs_review=False, fiducia=None, unita_misura="KG",
-          numero_riga=None, file="prova.xml", utente=UTENTE, created_at=None):
+          numero_riga=None, file="prova.xml", utente=UTENTE, created_at=None, quantita=1):
     """Una riga di `fatture`. I default descrivono il caso normale: riga viva,
     classificata, dentro il periodo. Ogni test cambia solo cio' che prova."""
     _riga.contatore = getattr(_riga, "contatore", 0) + 1
@@ -146,12 +146,12 @@ def _riga(db_sql, *, sede=SEDE, descrizione="SALMONE 5-6", fornitore="ADC SRL",
             "numero_riga, data_documento, data_competenza, fornitore, descrizione, "
             "categoria, quantita, prezzo_unitario, totale_riga, unita_misura, "
             "needs_review, categoria_fiducia, deleted_at, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s, %s, %s, %s, %s, "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
             "COALESCE(%s, now())) RETURNING id",
             (utente, sede, file,
              numero_riga if numero_riga is not None else _riga.contatore,
              data_documento, data_competenza, fornitore, descrizione, categoria,
-             totale if prezzo is None else prezzo, totale, unita_misura,
+             quantita, totale if prezzo is None else prezzo, totale, unita_misura,
              needs_review, fiducia,
              "2026-01-01" if deleted else None, created_at),
         )
@@ -840,3 +840,54 @@ def test_salute_non_conta_le_fatture_di_un_altro_mese_di_margini(db_sql, sql):
     assert per_sede[SEDE_B] == Decimal("250"), "i margini delle due sedi si sono mescolati"
 
 
+
+
+def test_articoli_l_ultimo_prezzo_e_l_ultima_fattura_pagata_uguale_in_python(db_sql, sql):
+    """Un acquisto e' una fattura (14/10/2026). L'«ultimo prezzo» del foodcost e'
+    l'ultima fattura con un prezzo pagato, a prezzo ponderato; prima era la
+    prima RIGA dell'ultima data, e un omaggio a 0 € accanto alla riga pagata
+    poteva proporre 0 € (76 articoli sul live). La RPC e la gemella Python
+    (`ultimo_acquisto_per_descrizione`, ripiego del foodcost e inventario)
+    devono dare lo stesso prezzo."""
+    from utils.voci_prezzo import ultimo_acquisto_per_descrizione
+
+    _semina_utente_e_sedi(db_sql)
+    D = Decimal
+    casi = [
+        # omaggio accanto alla riga pagata nell'ultima fattura: (2x1 + 4x3) / 4
+        ("LATTE", "a.xml", "2026-04-01", D("1.00"), 1, "PZ"),
+        ("LATTE", "b.xml", "2026-05-01", D("2.00"), 1, "PZ"),
+        ("LATTE", "b.xml", "2026-05-01", D("0.00"), 1, "PZ"),
+        ("LATTE", "b.xml", "2026-05-01", D("4.00"), 3, "PZ"),
+        # un omaggio arrivato dopo non sostituisce l'ultimo prezzo pagato
+        ("CARTONE", "c.xml", "2026-06-01", D("1.00"), 1, "PZ"),
+        ("CARTONE", "d.xml", "2026-07-01", D("0.00"), 1, "PZ"),
+        # soli omaggi: resta, a 0
+        ("OMAGGIO", "e.xml", "2026-05-01", D("0.00"), 1, "PZ"),
+        # due fatture nello stesso giorno: «B» < «a» (codepoint), vince a.xml
+        ("PARI", "B.xml", "2026-05-01", D("5.00"), 1, "PZ"),
+        ("PARI", "a.xml", "2026-05-01", D("7.00"), 1, "PZ"),
+        # unita' diverse nella stessa fattura: non si fondono, vince PZ (> CT)
+        ("MISTO", "m.xml", "2026-05-01", D("30.00"), 1, "CT"),
+        ("MISTO", "m.xml", "2026-05-01", D("2.00"), 1, "PZ"),
+        # stesso giorno, file e unita' diversi: prima il file (b.xml), poi l'unita'
+        ("ORDINE", "a.xml", "2026-05-01", D("3.00"), 1, "PZ"),
+        ("ORDINE", "b.xml", "2026-05-01", D("9.00"), 1, "CT"),
+    ]
+    for desc, file, data, prezzo, q, um in casi:
+        _riga(db_sql, descrizione=desc, file=file, data_documento=data, prezzo=prezzo,
+              totale=prezzo * q, quantita=q, unita_misura=um)
+
+    attesi = {"LATTE": 3.5, "CARTONE": 1.0, "OMAGGIO": 0.0, "PARI": 7.0, "MISTO": 2.0, "ORDINE": 9.0}
+    sql_rpc = {r[0]: float(r[1]) for r in _articoli(sql)}
+    assert sql_rpc == attesi
+
+    righe = [
+        dict(zip(("descrizione", "file_origine", "data_documento", "prezzo_unitario", "quantita", "unita_misura"), r))
+        for r in sql(
+            "SELECT descrizione, file_origine, data_documento::text, prezzo_unitario::float, "
+            "quantita::float, unita_misura FROM public.fatture WHERE ristorante_id = %s ORDER BY id", SEDE,
+        )
+    ]
+    python = {d: v["prezzo"] for d, v in ultimo_acquisto_per_descrizione(righe).items()}
+    assert python == attesi

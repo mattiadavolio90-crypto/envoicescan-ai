@@ -10,6 +10,7 @@ from typing import Optional
 
 from config.constants import CATEGORIE_SPESE_GENERALI, CATEGORIA_NON_CLASSIFICATA
 from utils.supabase_paging import fetch_all
+from utils.voci_prezzo import ultimo_acquisto_per_descrizione
 
 logger = logging.getLogger("foodcost_service")
 
@@ -212,7 +213,7 @@ def _articoli_rows_full_load(supabase, user_id: str, ristorante_id: str, categor
     """Fallback storico: scarica le righe e deduplica in Python."""
     return fetch_all(
         supabase.table("fatture")
-        .select("descrizione,prezzo_unitario,unita_misura,data_documento")
+        .select("descrizione,prezzo_unitario,unita_misura,data_documento,file_origine,quantita")
         .eq("user_id", user_id)
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
@@ -249,14 +250,15 @@ def get_articoli_da_fatture(supabase, user_id: str, ristorante_id: str) -> list[
         all_rows = _articoli_rows_full_load(supabase, user_id, ristorante_id, categorie_escluse)
 
     articoli_map: dict[str, dict] = {}
-    for row in all_rows:
-        desc = (row.get("descrizione") or "").strip()
-        if not desc or desc in articoli_map:
-            continue
+    # L'ultimo acquisto con un prezzo pagato, a prezzo ponderato (la stessa regola
+    # nella RPC): la prima riga della data piu' recente dipendeva dall'ordine del
+    # DB e un omaggio a 0 € accanto alla riga pagata proponeva 0 €.
+    for desc, ultimo in ultimo_acquisto_per_descrizione(all_rows).items():
+        row = ultimo["riga"]
         gram = _estrai_grammatura(desc)
         articoli_map[desc] = {
             "nome": desc,
-            "prezzo_unitario": float(row.get("prezzo_unitario") or 0),
+            "prezzo_unitario": ultimo["prezzo"],
             "um": (row.get("unita_misura") or "PZ").upper(),
             "grammatura_confezione": gram["valore"] if gram else None,
             "grammatura_um": gram["um"] if gram else None,

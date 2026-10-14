@@ -2806,6 +2806,22 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   rami; mutazione 2/2 (il ramo senza quantita' e' sopravvissuto al primo giro: il caso in PZ
 >   passava comunque dalle quantita' normalizzate, ucciso con quantita' mancanti); 538 test di
 >   tag e chat verdi. Suite completa a fine Fase 5.
+>
+> - **14/10/2026 — Un acquisto = una fattura, Fase 5b: l'«ultimo prezzo» di foodcost e
+>   inventario (Opus), NON pushato, MIGRATION DA APPLICARE AL PUSH.** Era la prima RIGA
+>   dell'ultima data: dipendeva dall'ordine del DB e un omaggio a 0 € accanto alla riga pagata
+>   proponeva 0 € (76 articoli sul live, misura del critico della mappatura). Ora l'ultima
+>   fattura con un prezzo pagato, a prezzo ponderato; 0 solo per un articolo di soli omaggi.
+>   `ultimo_acquisto_per_descrizione` in `utils/voci_prezzo.py` (ripiego del foodcost e
+>   `ws_inventario_articoli`, che leggono anche `file_origine` e `quantita`) e la gemella SQL
+>   `20261014180102_articoli_da_fatture_ultima_fattura.sql` (dalla versione live, che esclude
+>   le oscurate; firma e colonne invariate, REVOKE/GRANT ripetuti). **Prove:** un test su
+>   Postgres vero che confronta RPC e Python su 6 casi (omaggio accanto, omaggio dopo, soli
+>   omaggi, due fatture nello stesso giorno, unita' diverse, ordine file/unita') e 2 test sui
+>   chiamanti Python; mutazione 9/9 (SQL: fattura pagata, ponderazione, spareggio, unita',
+>   ordine file/unita' — quest'ultimo sopravvissuto al primo giro, ucciso col caso ORDINE;
+>   Python: fattura pagata, ordine, i due chiamanti); 519 test di foodcost, inventario, SQL e
+>   isolamento verdi. Suite completa a fine Fase 5.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

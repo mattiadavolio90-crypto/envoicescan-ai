@@ -520,22 +520,24 @@ def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
     all_rows = fetch_all(
         escludi_oscurate(filter_active(
             sb.table("fatture")
-            .select("descrizione,prezzo_unitario,unita_misura,categoria,data_documento")
+            .select("descrizione,prezzo_unitario,unita_misura,categoria,data_documento,file_origine,quantita")
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
         ))
         .not_.in_("categoria", CATEGORIE_SPESE_GENERALI)
         .order("data_documento", desc=True)
     )
+    from utils.voci_prezzo import ultimo_acquisto_per_descrizione
+
+    # Stessa regola del foodcost: l'ultima fattura con un prezzo pagato, a prezzo
+    # ponderato (prima la prima riga dell'ultimo giorno, anche un omaggio a 0 €).
     articoli_map: dict[str, dict] = {}
-    for row in all_rows:
-        desc = (row.get("descrizione") or "").strip()
-        if not desc or desc in articoli_map:
-            continue
+    for desc, ultimo in ultimo_acquisto_per_descrizione(all_rows).items():
+        row = ultimo["riga"]
         articoli_map[desc] = {
             "nome": desc,
             "categoria": row.get("categoria") or "",
-            "prezzo_unitario": float(row.get("prezzo_unitario") or 0),
+            "prezzo_unitario": ultimo["prezzo"],
             "um": (row.get("unita_misura") or "PZ").upper(),
         }
     return {"articoli": list(articoli_map.values())}
