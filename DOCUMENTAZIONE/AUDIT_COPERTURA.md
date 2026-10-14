@@ -2783,6 +2783,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   prezzi a zero — sopravvissuto al primo giro, ucciso col test dell'omaggio —, unita');
 >   661 test esistenti sugli avvisi e il briefing verdi; suite `python -m pytest tests/ -q -p
 >   no:randomly` **20.767 verdi + 62 skip, 0 rossi**.
+>
+> - **14/10/2026 — Un acquisto = una fattura, Fase 4: Analisi Fatture -> Articoli (Opus), NON
+>   pushato, nessuna migration.** Il GINSENG della TORREFAZIONE SEMPIONE contava 5 acquisti su
+>   4 fatture. `get_articoli_aggregati`: «N°», prezzo medio (media per fattura), trend sul
+>   periodo precedente (stessa media) e fornitore principale contano i documenti; quantita',
+>   totale, `righe_ids`, badge e `solo_gruppo` invariati. `get_righe_articolo`: una riga per
+>   fattura (quantita' e totale sommati, prezzo ponderato, id e file della prima riga: una
+>   quota di gruppo resta negativa e non si apre). Il tab lavora su dizionari: gemelle in
+>   Python puro della regola, `chiave_documento` e `prezzo_documento` in `utils/voci_prezzo.py`,
+>   con un test che le confronta con `una_riga_per_documento` su 300 fatture casuali.
+>   L'export «Dettaglio righe» resta per riga (il suo scopo). **Prove:**
+>   `test_articoli_un_acquisto_per_fattura.py` (8); mutazione 7/7 («N°», media, fornitore,
+>   sotto-tabella, unita', pesi positivi della gemella, trend); 462 test esistenti di
+>   Articoli/export/isolamento verdi; suite `python -m pytest tests/ -q -p no:randomly`
+>   **20.775 verdi + 62 skip, 0 rossi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

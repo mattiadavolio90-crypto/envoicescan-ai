@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from config.constants import SETTORE_RETAIL, TUTTE_LE_CATEGORIE
 # utils/ non importa services/: import diretto, nessun rischio di ciclo.
 from utils.supabase_paging import fetch_all
+from utils.voci_prezzo import chiave_documento, prezzo_documento
 # db_service non importa i router: nessun ciclo, quindi import diretto e non wrapper.
 from services.db_service import aggiorna_categoria_fatture
 from services import sotto_utenti_service as _su
@@ -515,6 +516,26 @@ def _cutoff_nuovo(supabase_client, ristorante_id: str) -> str:
     return (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
 
+def _acquisti_per_documento(righe: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """Le righe di UN articolo raggruppate per acquisto: una fattura (stesso
+    fornitore, file, data, unita' di misura), la regola dell'Osservatorio dei
+    prezzi (`utils/voci_prezzo.py`). Il GINSENG della TORREFAZIONE SEMPIONE
+    contava 5 acquisti su 4 fatture (screenshot di Mattia del 14/10/2026)."""
+    from collections import OrderedDict
+
+    gruppi: "OrderedDict[tuple, List[Dict[str, Any]]]" = OrderedDict()
+    for i, r in enumerate(righe):
+        chiave = (str(r.get("fornitore") or "").strip().upper(),) + chiave_documento(r, indice=i)
+        gruppi.setdefault(chiave, []).append(r)
+    return list(gruppi.values())
+
+
+def _media_prezzi_per_documento(documenti: List[List[Dict[str, Any]]]) -> Optional[float]:
+    """La media del periodo: ogni fattura pesa uguale (decisione di Mattia)."""
+    prezzi = [p for p in (prezzo_documento(d) for d in documenti) if p is not None]
+    return sum(prezzi) / len(prezzi) if prezzi else None
+
+
 # ─── Endpoint: articoli aggregati (vista default tab Articoli) ─────────────
 
 @router.get("/api/fatture/articoli-aggregati", response_model=ArticoliResponse, dependencies=[Depends(_verify_worker_key)])
@@ -572,22 +593,26 @@ def get_articoli_aggregati(
         prev_rows = _fetch_fatture_rows(
             supabase_client, ristorante_id, prev_da, prev_a, tipo_prodotti
         )
-        prev_groups: Dict[str, List[float]] = defaultdict(list)
+        prev_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for pr in prev_rows:
             desc = (pr.get("descrizione") or "").strip()
-            pu = pr.get("prezzo_unitario")
-            if desc and pu is not None and float(pu) > 0:
-                prev_groups[desc].append(float(pu))
-        for desc, prices in prev_groups.items():
-            if prices:
-                prev_prices[desc] = sum(prices) / len(prices)
+            if desc:
+                prev_groups[desc].append(pr)
+        for desc, righe_prev in prev_groups.items():
+            media_prev = _media_prezzi_per_documento(_acquisti_per_documento(righe_prev))
+            if media_prev is not None:
+                prev_prices[desc] = media_prev
 
     articoli: List[ArticoloAggregato] = []
     for desc, items in groups.items():
+        # Un acquisto e' una fattura: «N°», prezzo medio e fornitore principale
+        # contano i documenti, non le righe. Quantita' e totale restano somme.
+        documenti = _acquisti_per_documento(items)
+
         # fornitori
         forn_counts: Dict[str, int] = defaultdict(int)
-        for it in items:
-            f = (it.get("fornitore") or "").strip()
+        for doc in documenti:
+            f = (doc[0].get("fornitore") or "").strip()
             if f:
                 forn_counts[f] += 1
         forn_sorted = sorted(forn_counts.items(), key=lambda x: -x[1])
@@ -596,8 +621,8 @@ def get_articoli_aggregati(
 
         # categoria piu frequente
         cat_counts: Dict[str, int] = defaultdict(int)
-        for it in items:
-            c = it.get("categoria")
+        for doc in documenti:
+            c = next((it.get("categoria") for it in doc if it.get("categoria")), None)
             if c:
                 cat_counts[c] += 1
         categoria_principale = max(cat_counts.items(), key=lambda x: x[1])[0] if cat_counts else None
@@ -607,10 +632,9 @@ def get_articoli_aggregati(
         ultimo_acq = max(date_list) if date_list else None
         qta_totale = sum(float(it.get("quantita") or 0) for it in items)
         um = next((it.get("unita_misura") for it in items if it.get("unita_misura")), None)
-        prezzi = [float(it["prezzo_unitario"]) for it in items if it.get("prezzo_unitario") and float(it["prezzo_unitario"]) > 0]
-        prezzo_medio = sum(prezzi) / len(prezzi) if prezzi else None
+        prezzo_medio = _media_prezzi_per_documento(documenti)
         totale_speso = sum(float(it.get("totale_riga") or 0) for it in items)
-        num_acq = len(items)
+        num_acq = len(documenti)
 
         # trend prezzo vs periodo precedente
         trend_pct = None
@@ -707,13 +731,26 @@ def get_righe_articolo(
         )
         if (r.get("descrizione") or "") == descrizione
     ]
-    rows.sort(key=lambda r: (r.get("data_documento") or ""), reverse=True)
     num_map = _load_num_documento_map(supabase_client, ristorante_id)
+    # Una riga per acquisto (fattura), come «N°» della riga padre: quantita' e
+    # totale sommati, prezzo ponderato. Id, file e numero della prima riga: una
+    # quota di gruppo resta negativa e `ripartita_su_gruppo`, quindi non si apre.
     result = []
-    for r in rows:
-        fields = {k: v for k, v in r.items() if k in RigaFattura.model_fields}
-        fields["numero_documento"] = num_map.get(r.get("file_origine", ""), "") or None
+    for doc in _acquisti_per_documento(rows):
+        prima = doc[0]
+        fields = {k: v for k, v in prima.items() if k in RigaFattura.model_fields}
+        quantita = [float(r["quantita"]) for r in doc if r.get("quantita") is not None]
+        totali = [float(r["totale_riga"]) for r in doc if r.get("totale_riga") is not None]
+        prezzo = prezzo_documento(doc)
+        fields["quantita"] = round(sum(quantita), 3) if quantita else None
+        fields["totale_riga"] = round(sum(totali), 2) if totali else None
+        fields["prezzo_unitario"] = prezzo if prezzo is not None else prima.get("prezzo_unitario")
+        fields["created_at"] = max((r.get("created_at") or "" for r in doc), default="") or None
+        fields["needs_review"] = any(r.get("needs_review") for r in doc)
+        fields["ripartita_su_gruppo"] = any(r.get("ripartita_su_gruppo") for r in doc)
+        fields["numero_documento"] = num_map.get(prima.get("file_origine", ""), "") or None
         result.append(RigaFattura(**fields))
+    result.sort(key=lambda r: (r.data_documento or "", r.file_origine or ""), reverse=True)
     return result
 
 

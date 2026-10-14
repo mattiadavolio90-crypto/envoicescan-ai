@@ -167,3 +167,43 @@ def una_riga_per_documento(
     out[file] = out["__f"].where(out["__solo"] < 0, None)
     out = out.sort_values(chiavi + ["__d", "__f", "__u", "__solo"], kind="mergesort")
     return out.drop(columns=["__q", "__qp", "__p", "__pq", "__u", "__f", "__d", "__solo"], errors="ignore").reset_index(drop=True)
+
+
+def chiave_documento(riga, *, file="file_origine", data="data_documento", unita="unita_misura", indice=None):
+    """La chiave di «un acquisto» per righe in forma di dizionario, gemella di
+    `una_riga_per_documento`: file + data + unita' (UPPER/TRIM). Una riga senza
+    file e' un acquisto a se' (serve `indice`, unico per riga)."""
+    f = str(riga.get(file) or "")
+    u = str(riga.get(unita) or "").strip().upper()
+    d = str(riga.get(data) or "")
+    if not f.strip():
+        return ("", d, u, indice)
+    return (f, d, u, None)
+
+
+def prezzo_documento(righe, *, prezzo="prezzo_unitario", quantita="quantita"):
+    """Il prezzo di un acquisto (righe dello stesso prodotto nella stessa
+    fattura), gemello di `una_riga_per_documento` per chi lavora su dizionari:
+    media ponderata sulle quantita' positive delle righe a prezzo positivo
+    (quantita' mancante = 1), media semplice se nessuna e' positiva, 6 decimali.
+    None se nessuna riga ha un prezzo positivo (solo omaggi)."""
+    validi = []
+    for r in righe:
+        try:
+            p = float(r.get(prezzo))
+        except (TypeError, ValueError):
+            continue
+        if not p > 0:
+            continue
+        q = r.get(quantita)
+        try:
+            q = 1.0 if q is None else float(q)
+        except (TypeError, ValueError):
+            q = 1.0
+        validi.append((p, q))
+    if not validi:
+        return None
+    positivi = [(p, q) for p, q in validi if q > 0]
+    if positivi:
+        return round(sum(p * q for p, q in positivi) / sum(q for _, q in positivi), 6)
+    return round(sum(p for p, _ in validi) / len(validi), 6)
