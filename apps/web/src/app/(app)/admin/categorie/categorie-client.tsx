@@ -65,13 +65,17 @@ function DaSistemare() {
   const confermabili = sceltiVisibili.filter(puoConfermare);
   const totali = riepilogo(visibili);
 
+  // Una voce per categoria di partenza: se una fallisce le altre si annullano lo stesso.
   async function annulla(logIds: number[]) {
-    try {
-      for (const id of logIds) await chiama("/api/admin/qualita-ai/audit/annulla", "POST", { log_id: id });
-      toast.success("Annullato");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Errore");
+    let errore = "";
+    for (const id of logIds) {
+      try {
+        await chiama("/api/admin/qualita-ai/audit/annulla", "POST", { log_id: id });
+      } catch (e) {
+        errore = e instanceof Error ? e.message : "Errore";
+      }
     }
+    if (errore) toast.error(`Annullato in parte: ${errore}`); else toast.success("Annullato");
     carica();
   }
 

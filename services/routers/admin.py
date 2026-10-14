@@ -900,8 +900,11 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
     # un gruppo misto (COMMISSION sul live: 9 righe SERVIZI + 5 Da Classificare)
     # una voce sola rimetteva a tutte la categoria della prima riga letta.
     per_partenza: Dict[str, List[int]] = {}
+    # Un id che non si e' potuto leggere (riga sparita nel frattempo) non ha una
+    # categoria di partenza: niente voce, o «Annulla» la rifiuterebbe per prima.
     for i in target_ids:
-        per_partenza.setdefault(prima_per_id.get(i, ""), []).append(i)
+        if i in prima_per_id:
+            per_partenza.setdefault(prima_per_id[i], []).append(i)
     log_ids: List[int] = []
     for categoria_da, ids in sorted(per_partenza.items()):
         log_id = _log_review_action(

@@ -257,7 +257,9 @@ def test_un_gruppo_misto_ha_una_voce_di_registro_per_categoria_di_partenza(monke
         _log_review_action=lambda *a, **k: voci.append((k["categoria_da"], sorted(k["ids_fatture"]))) or len(voci),
         _invalidate_fatture_rows_cache=lambda *a, **k: None,
     ):
-        out = admin.admin_qualita_classifica(admin.ClassificaBody(ids=[3, 2, 1], categoria="MANUTENZIONE E ATTREZZATURE"), admin_user=_ADMIN)
+        out = admin.admin_qualita_classifica(admin.ClassificaBody(ids=[3, 2, 1, 99], categoria="MANUTENZIONE E ATTREZZATURE"), admin_user=_ADMIN)
+    # 99 non esiste piu': nessuna voce senza categoria di partenza, che «Annulla»
+    # rifiuterebbe (400) fermando anche le altre.
     assert sorted(voci) == [("Da Classificare", [2]), ("SERVIZI E CONSULENZE", [1, 3])]
     assert sorted(out["log_ids"]) == [1, 2]
 
