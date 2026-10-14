@@ -25,6 +25,7 @@ import {
   righeExportPv,
   soloUnPvConSpesa,
 } from "@/lib/catena-tag";
+import { TitoloApribile } from "@/components/tag/titolo-apribile";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InfoPopover } from "@/components/ui/info-popover";
@@ -365,6 +366,9 @@ function AnalisiPerPuntoVendita({
   const [data, setData] = useState<GruppoTagAnalisi | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // Il grafico parte chiuso a ogni tag (Mattia, 14/10/2026): il componente si
+  // rimonta per tag, quindi basta lo stato iniziale.
+  const [showTrend, setShowTrend] = useState(false);
   const reqRef = useRef(0);
 
   const annoCorrente = new Date().getFullYear();
@@ -522,8 +526,8 @@ function AnalisiPerPuntoVendita({
             {/* Andamento mensile (solo se più di un mese nel periodo) */}
             {data!.trend.length > 1 && (
               <section className="space-y-3 border-t pt-5" aria-label="Andamento mensile">
-                <h3 className="text-sm font-semibold">Andamento mensile</h3>
-                <div className="flex items-end gap-1.5">
+                <TitoloApribile titolo="Andamento mensile" aperto={showTrend} onCambia={setShowTrend} />
+                {showTrend && <div className="flex items-end gap-1.5">
                   {data!.trend.map((t) => (
                     <div key={`${t.anno}-${t.mese}`} className="flex flex-1 flex-col items-center gap-1">
                       <div className="flex h-24 w-full items-end">
@@ -533,7 +537,7 @@ function AnalisiPerPuntoVendita({
                       <span className="text-[10px] text-muted-foreground">{MESI_LABEL[t.mese - 1].slice(0, 3)}</span>
                     </div>
                   ))}
-                </div>
+                </div>}
               </section>
             )}
           </>

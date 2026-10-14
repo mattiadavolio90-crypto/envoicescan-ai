@@ -2561,6 +2561,14 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   sedi ma non l'utente, e col CASCADE sulle quote avrebbe lasciato i riparti senza quote (alert
 >   ogni mattina); ora toglie anche `riparto_costi_catena` e `riparto_regole_fornitore` (1 test
 >   `-m sql`, mutante ucciso).
+> - **14/10/2026 — Tag: il grafico parte chiuso, in punto vendita e in catena (Opus), NON pushato,
+>   solo frontend.** Richiesta di Mattia («espandibile e non per forza visibile», poi «sempre
+>   chiuso»). Nuovo `apps/web/src/components/tag/titolo-apribile.tsx`: il titolo della sezione e'
+>   il bottone (prima, nel punto vendita, solo una freccina a destra; in catena non si chiudeva).
+>   Chiuso a ogni tag scelto: nel punto vendita lo stato si azzera al cambio di tag, in catena il
+>   componente si rimonta per tag. «Esporta» resta fuori dal titolo. `tsc` ed eslint puliti, 4.093
+>   test `*frontend*` verdi (presidi di bottoni, colori, troncamenti compresi). **Non provato** nella
+>   pagina vera: e' stato e rendering, che i test non vedono.
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e

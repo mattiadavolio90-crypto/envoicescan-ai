@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { InfoPopover } from "@/components/ui/info-popover";
 import { Button } from "@/components/ui/button";
+import { TitoloApribile } from "@/components/tag/titolo-apribile";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -584,7 +585,9 @@ export function AnalisiETagClient({
   const eliminando = useRef(false);
 
   const [refreshingSuggestions, setRefreshingSuggestions] = useState(false);
-  const [showTrend, setShowTrend] = useState(true);
+  // Il grafico parte chiuso a ogni tag scelto (Mattia, 14/10/2026).
+  const [showTrend, setShowTrend] = useState(false);
+  useEffect(() => { setShowTrend(false); }, [selectedTagId]);
   const [showFornitori, setShowFornitori] = useState(true);
 
   // ── Load analisi (range diretto) ──
@@ -995,22 +998,10 @@ export function AnalisiETagClient({
                   {/* Trend */}
                   <section className="space-y-3 border-t pt-5" aria-label="Trend prezzi nel periodo">
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold">Trend prezzi nel periodo</h3>
-                      <div className="flex items-center gap-1">
-                        <Button variant="outline" size="icon-sm" onClick={exportXls} title="Esporta XLS" aria-label="Esporta XLS">
-                          <Download />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-expanded={showTrend}
-                          className="text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground hover:aria-expanded:bg-muted"
-                          aria-label={showTrend ? "Nascondi il trend" : "Mostra il trend"}
-                          onClick={() => setShowTrend(v => !v)}
-                        >
-                          {showTrend ? <ChevronUp /> : <ChevronDown />}
-                        </Button>
-                      </div>
+                      <TitoloApribile titolo="Trend prezzi nel periodo" aperto={showTrend} onCambia={setShowTrend} />
+                      <Button variant="outline" size="icon-sm" onClick={exportXls} title="Esporta XLS" aria-label="Esporta XLS">
+                        <Download />
+                      </Button>
                     </div>
                     {showTrend && <TrendChart punti={trend.punti} media={trend.prezzo_medio_periodo} />}
                   </section>
