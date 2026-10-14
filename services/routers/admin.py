@@ -2735,7 +2735,8 @@ def admin_modifica_sede(
     if body.sdi_attivo is not None:
         upd["sdi_attivo"] = bool(body.sdi_attivo)
         # Traccia la data di attivazione la prima volta che si accende; la azzera
-        # quando si spegne. Informativa (non usata dalla logica del canale).
+        # quando si spegne. Non decide il canale, ma da' i 14 giorni di grazia
+        # alla voce «SDI attivo ma nessuna fattura» di Admin → Oggi.
         from datetime import date as _date
         upd["sdi_attivo_dal"] = _date.today().isoformat() if body.sdi_attivo else None
 
