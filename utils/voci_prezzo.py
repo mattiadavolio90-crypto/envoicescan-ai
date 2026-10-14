@@ -67,3 +67,93 @@ def salto_da_controllare(a: float, b: float) -> bool:
     if min(a, b) <= 0:
         return max(a, b) > 0
     return max(a, b) / min(a, b) >= SALTO_DA_CONTROLLARE
+
+
+def una_riga_per_documento(
+    df,
+    *,
+    chiavi,
+    file,
+    data,
+    prezzo,
+    quantita,
+    unita=None,
+    somme=(),
+    massimo=(),
+):
+    """Un acquisto per documento: le righe dello stesso prodotto nella stessa
+    fattura diventano una.
+
+    Lo stesso prodotto su piu' righe della stessa fattura contava come piu'
+    acquisti: l'«ultimo» e il «penultimo» potevano stare nella stessa fattura
+    (ORTOFRUTTA 2,88 -> 3,83 -> 2,88 nella 39/FA, screenshot di Mattia del
+    14/10/2026) e, misurato in catena, su 2.947 prodotti in 556 lo erano.
+
+    - Gruppo: `chiavi` (sede, prodotto, fornitore) + `file` + `data` + unita'
+      di misura (UPPER/TRIM). Unita' diverse nella stessa fattura NON si fondono
+      (decisione di Mattia, 14/10/2026: un cartone mediato con un pezzo da' un
+      prezzo senza senso e spegnerebbe «Confezione diversa?»).
+    - Prezzo: media ponderata sulla quantita' (`quantita` mancante = 1), media
+      semplice se la quantita' sommata non e' positiva. Non totale/quantita':
+      sul live 803 righe se ne scostano oltre l'1% (sconti in riga).
+    - `quantita` e le colonne in `somme` si sommano, quelle in `massimo`
+      prendono il massimo (in ordine di codepoint, come `COLLATE "C"` in SQL),
+      tutte le altre il valore della prima riga.
+    - Righe senza `file` restano acquisti a se'.
+    - Il risultato e' ordinato per chiavi, data, file, unita' con un
+      ordinamento stabile: lo stesso spareggio della RPC `gruppo_prezzi_catena`.
+    """
+    import pandas as pd
+
+    chiavi = list(chiavi)
+    if df.empty:
+        return df.copy()
+    lavoro = df.copy()
+    lavoro["__q"] = pd.to_numeric(lavoro[quantita], errors="coerce").fillna(1.0)
+    lavoro["__p"] = pd.to_numeric(lavoro[prezzo], errors="coerce").fillna(0.0)
+    lavoro["__pq"] = lavoro["__p"] * lavoro["__q"]
+    lavoro["__u"] = (
+        lavoro[unita].fillna("").astype(str).str.strip().str.upper() if unita else ""
+    )
+    senza_file = lavoro[file].isna() | (lavoro[file].astype(str).str.strip() == "")
+    lavoro["__f"] = lavoro[file].where(~senza_file, "").astype(str)
+    lavoro["__solo"] = pd.Series(range(len(lavoro)), index=lavoro.index).where(senza_file, -1)
+    lavoro["__d"] = lavoro[data].astype(str)
+    lavoro["__pos"] = range(len(lavoro))
+
+    gruppo = chiavi + ["__f", "__d", "__u", "__solo"]
+    speciali = {"__q", "__p", "__pq", "__u", "__f", "__d", "__solo", "__pos", quantita, prezzo, file, data}
+    if unita:
+        speciali.add(unita)
+    altre = [c for c in lavoro.columns if c not in gruppo and c not in speciali]
+    da_sommare = [c for c in altre if c in somme]
+    da_massimo = [c for c in altre if c in massimo]
+    prime = [c for c in altre if c not in somme and c not in massimo] + [data] + ([unita] if unita else [])
+    for c in da_sommare:
+        lavoro[c] = pd.to_numeric(lavoro[c], errors="coerce")
+    # Il massimo sul testo, gruppo per gruppo, pandas lo fa in Python (4 s su
+    # 40.000 righe): passa dal rango, che si confronta in C, e torna al testo.
+    valori_massimo = {}
+    for c in da_massimo:
+        testo = lavoro[c].where(lavoro[c].isna(), lavoro[c].astype(str))
+        lavoro[c] = testo.rank(method="dense")
+        presenti = testo.notna()
+        valori_massimo[c] = dict(zip(lavoro.loc[presenti, c], testo[presenti]))
+
+    g = lavoro.groupby(gruppo, sort=False, dropna=False)
+    out = g[["__q", "__pq"]].sum()
+    out["__p"] = g["__p"].mean()
+    if da_sommare:
+        out[da_sommare] = g[da_sommare].sum(min_count=1)
+    if da_massimo:
+        out[da_massimo] = g[da_massimo].max()
+        for c in da_massimo:
+            out[c] = out[c].map(valori_massimo[c])
+    prima = g["__pos"].min()
+    out[prime] = lavoro[prime].iloc[prima.to_numpy()].to_numpy()
+    out = out.reset_index()
+    out[quantita] = out["__q"]
+    out[prezzo] = out["__p"].where(out["__q"] <= 0, out["__pq"] / out["__q"].where(out["__q"] > 0, 1.0))
+    out[file] = out["__f"].where(out["__solo"] < 0, None)
+    out = out.sort_values(chiavi + ["__d", "__f", "__u", "__solo"], kind="mergesort")
+    return out.drop(columns=["__q", "__p", "__pq", "__u", "__f", "__d", "__solo"], errors="ignore").reset_index(drop=True)

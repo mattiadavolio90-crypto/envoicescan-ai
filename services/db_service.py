@@ -389,6 +389,10 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None, solo_ultimi_gi
                 query_select = query_select.eq("ristorante_id", ristorante_id)
             if _data_floor is not None:
                 query_select = query_select.or_(_or_finestra)
+            # OFFSET/LIMIT senza ORDER BY: le pagine non sono fette dello stesso
+            # elenco (righe perse o doppie). Sul live 2 sedi su 7 superano le
+            # 1.000 righe nella finestra degli avvisi (14/10/2026).
+            query_select = query_select.order("id")
             response = query_select.range(offset, offset + page_size - 1).execute()
             
             if not response.data:

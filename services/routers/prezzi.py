@@ -551,6 +551,10 @@ def _load_fatture_for_prezzi(
             .gte("data_documento", data_da)
             .lte("data_documento", data_a)
             .order("data_documento", desc=False)
+            # Spareggio: con l'ordine sulla sola data `fetch_all` non aggiunge
+            # `id`, e a parita' di giorno le pagine da 1000 non sono fette dello
+            # stesso elenco (righe perse o doppie al confine).
+            .order("id", desc=False)
         )
 
     return _PREZZI_ROWS_CACHE.get_or_set(

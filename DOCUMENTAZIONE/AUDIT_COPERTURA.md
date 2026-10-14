@@ -2717,6 +2717,29 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   spese generali, secondo giro); 160 test prezzi + presidio oscurate (solo il rosso noto di
 >   `a5e9e0f9`). Il push resta bloccato da quel rosso, che tocca alla sessione dell'anteprima
 >   in catena.
+>
+> - **14/10/2026 — Un acquisto = una fattura, Fase 1: la regola unica e l'ordine totale nei
+>   caricamenti (Opus), NON pushato, nessuna migration.** Da screenshot di Mattia (ORTOFRUTTA
+>   2,88 -> 3,83 -> 2,88 tutto nella fattura 39/FA; GINSENG 5 «acquisti» su 4 fatture).
+>   **Misurato (workflow di mappatura, 4 aree + critico, sola lettura):** nel 2026 3.057
+>   gruppi (sede, prodotto, fornitore, fattura) ripetuti in 1.012 fatture, 8.288 righe in
+>   piu'; in catena su 2.947 prodotti in 556 ultimo e penultimo «acquisto» stanno nella stessa
+>   fattura. **Decisioni di Mattia:** media del periodo = ogni fattura pesa uguale; unita' di
+>   misura diverse nella stessa fattura non si fondono; i tre punti con lo stesso difetto
+>   (Tag, foodcost/inventario, chat) in coda al piano. **Fatto:** `una_riga_per_documento` in
+>   `utils/voci_prezzo.py` (sede+prodotto+fornitore+file+data+unita'; prezzo ponderato sulla
+>   quantita', media semplice se la quantita' sommata non e' positiva; righe senza file a se';
+>   spareggio stabile data/file/unita' in ordine di codepoint, la gemella di `COLLATE "C"`),
+>   0,47 s su 40.000 righe (prima stesura 9 s: il massimo sul testo passa dal rango);
+>   `.order("id")` come spareggio in `_load_fatture_for_prezzi` (ordinava solo per data,
+>   e `fetch_all` non aggiunge `id` se un ordine c'e') e in `_carica_fatture_da_supabase`
+>   (paginava senza nessun ordine: sommando le quantita' una riga letta due volte
+>   raddoppierebbe l'impatto). Nessun chiamante usa ancora la regola: entra nelle fasi 2-4.
+>   **Prove:** `test_una_riga_per_documento.py` (12) e `test_prezzi_caricamenti_ordine_totale.py`
+>   (2, sul costruttore postgrest vero e sull'ordine delle chiamate per pagina); mutazione 7/7
+>   (ponderazione, unita' nel gruppo, righe senza file, spareggio, quantita' mancante = 1,
+>   ordine nei due caricamenti); suite `python -m pytest tests/ -q -p no:randomly`
+>   **20.749 verdi + 62 skip, 0 rossi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
