@@ -169,6 +169,27 @@ def test_elimina_sede_senza_riparto_porta_via_la_sede_e_lascia_il_resto(sc):
     assert sc.impronta(b) == prima_b
 
 
+# ─── Svuota dati (admin): le sedi se ne vanno, l'account resta ───────────────
+def test_svuota_dati_non_lascia_riparti_senza_quote(sc):
+    """Lo svuotamento cancella le sedi, non l'utente: il CASCADE da `users` non
+    scatta, e i riparti (che stanno sull'account) vanno tolti a mano, o
+    resterebbero intestazioni senza quote."""
+    from services.routers import account
+
+    a, b = sc.a, sc.b
+    prima_b = sc.impronta(b)
+
+    esito = account.account_svuota_dati(account.SvuotaDatiBody(conferma="SVUOTA"), admin_user={"id": a.ids["user_id"]})
+
+    assert esito["ok"] is True
+    for tabella in ("riparto_costi_catena", "riparto_regole_fornitore", "riparto_costi_catena_quote", "ristoranti"):
+        colonna = "ristorante_id" if tabella == "riparto_costi_catena_quote" else "user_id"
+        valore = [a.ids["sede1"], a.ids["sede2"]] if colonna == "ristorante_id" else [a.ids["user_id"]]
+        assert _uno(sc, f"SELECT count(*) FROM public.{tabella} WHERE {colonna} = ANY(%s::uuid[])", valore)[0] == 0, tabella
+    assert _uno(sc, "SELECT count(*) FROM public.users WHERE id = %s", a.ids["user_id"])[0] == 1
+    assert sc.impronta(b) == prima_b
+
+
 # ─── Il ricalcolo dei margini resta vivo per le cancellazioni normali ────────
 def test_togliere_un_giorno_di_ricavi_ricalcola_ancora_il_mese(sc):
     """La guardia salta il ricalcolo solo se la sede non c'e' piu'."""

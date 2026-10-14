@@ -2544,7 +2544,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   guardia, guardia sempre vera, tolte dalle liste `upload_events` per l'account e per la sede,
 >   `gruppo_segnali_state`, `classificazioni_manuali`; 409 tolto, 409 solo con due riparti).
 >   `-m sql` 1.229 verdi, 556 test dell'admin verdi, OpenAPI senza drift. Le pulizie a mano
->   nelle due route restano (ridondanti ma innocue).
+>   nelle due route restano (ridondanti ma innocue). **Secondo giro del `code-reviewer` 🟢**, con
+>   un rilievo nato da questa fase e chiuso subito: lo svuotamento dati dell'admin cancella le
+>   sedi ma non l'utente, e col CASCADE sulle quote avrebbe lasciato i riparti senza quote (alert
+>   ogni mattina); ora toglie anche `riparto_costi_catena` e `riparto_regole_fornitore` (1 test
+>   `-m sql`, mutante ucciso).
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e

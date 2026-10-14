@@ -385,7 +385,10 @@ class SvuotaDatiBody(BaseModel):
 # quindi il CASCADE da `users` non aiuta). `prodotti_utente` non ha
 # ristorante_id, `upload_events` ha righe con ristorante_id NULL; le altre due
 # hanno la FK CASCADE da `ristoranti` dal 14/10/2026 (migration
-# 20261014122000) e restano qui per sicurezza.
+# 20261014122000) e restano qui per sicurezza. I riparti di catena e le loro
+# regole stanno sull'account, non sulla sede: senza di loro, cancellate le
+# sedi (e con loro le quote) resterebbero intestazioni senza quote, che
+# `v_riparto_incoerenze` manderebbe all'alert ogni mattina.
 # NB: `classificazioni_manuali` NON e' qui: nel DB ha righe globali con
 # user_id NULL e non va filtrata per user → la lasciamo intatta.
 # NB: `fatture_queue` NON e' piu' qui dal 30/7/2026 (audit Database): ha FK
@@ -396,6 +399,8 @@ _SVUOTA_TABELLE_NO_CASCADE = [
     ("upload_events", "user_id"),
     ("upload_locks", "user_id"),
     ("prodotti_utente", "user_id"),
+    ("riparto_costi_catena", "user_id"),
+    ("riparto_regole_fornitore", "user_id"),
 ]
 
 
