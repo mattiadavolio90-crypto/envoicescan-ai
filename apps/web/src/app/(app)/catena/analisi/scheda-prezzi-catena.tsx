@@ -36,16 +36,13 @@ import {
 } from "@/lib/prezzi-viste";
 import {
   ContaVariazioni,
-  GRAVITA_STYLE,
   IntestazioneVariazioni,
   KpiCard,
-  LEGENDA_GRAVITA,
   SpiegazioneDaControllare,
   VariazioneCard,
   fmtData,
   fmtEuro,
   fmtPct,
-  gravita,
 } from "@/components/prezzi/variazione-card";
 import { ANNO_CORRENTE, FiltroPeriodoPrezzi, type ModoPeriodo } from "@/components/prezzi/filtro-periodo-prezzi";
 
@@ -317,7 +314,6 @@ export function SchedaPrezziCatena() {
                   <strong className="text-foreground">Impatto/mese</strong> = aumento di prezzo × quantità abituale ×
                   acquisti al mese.
                 </p>
-                <p>{LEGENDA_GRAVITA}</p>
               </div>
               <div className="space-y-1.5 border-t border-border pt-2 text-muted-foreground">
                 <p>
@@ -540,7 +536,6 @@ export function SchedaPrezziCatena() {
           <ContaVariazioni
             n={variazioni.length}
             base={base}
-            critiche={variazioni.filter((v) => gravita(v) === "critico").length}
           />
           <IntestazioneVariazioni conPuntoVendita />
           <div className="space-y-2">
@@ -570,9 +565,7 @@ export function SchedaPrezziCatena() {
           <ContaVariazioni
             n={divari.length}
             base={base}
-            critiche={divari.filter((d) => gravita({ impatto_stimato: d.extra_stimato }) === "critico").length}
             nome="prodotti"
-            nomeCritiche="critici"
             filtrate="filtrati"
           />
           <div className="space-y-2">
@@ -628,17 +621,15 @@ function PuntoVenditaRiga({ v }: { v: VariazionePrezzoCatena }) {
  * dell'Osservatorio: nel tema chiaro e' cio' che separa la tabella dalla scheda.
  */
 function DivarioCard({ d, pv }: { d: DivarioPrezzo; pv: string }) {
-  const style = GRAVITA_STYLE[gravita({ impatto_stimato: d.extra_stimato })];
   const { nome } = nomeProdotto(d.prodotto);
   return (
-    <div className={`overflow-hidden rounded-lg border border-l-4 ${style.ring} border-border bg-card shadow-sm`}>
+    <div className={`overflow-hidden rounded-lg border border-border bg-card shadow-sm`}>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         {d.preferito ? (
           <Star className="size-4 shrink-0 fill-incerto text-incerto" aria-label="Preferito in un punto vendita del confronto" />
         ) : (
           <span className="size-4 shrink-0" />
         )}
-        <span className={`size-2.5 shrink-0 rounded-full ${style.dot}`} aria-hidden />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold" title={nome}>
             {nome}

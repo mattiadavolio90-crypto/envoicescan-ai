@@ -27,19 +27,6 @@ function fmtData(s: string): string {
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-type Gravita = "critico" | "alto" | "medio";
-function gravita(r: VariazionePrezzo): Gravita {
-  const imp = Math.abs(r.impatto_stimato);
-  if (imp >= 100) return "critico";
-  if (imp >= 30) return "alto";
-  return "medio";
-}
-const GRAVITA_STYLE: Record<Gravita, { dot: string; ring: string }> = {
-  critico: { dot: "bg-rose-500", ring: "border-l-rose-500" },
-  alto: { dot: "bg-orange-500", ring: "border-l-orange-500" },
-  medio: { dot: "bg-amber-400", ring: "border-l-amber-400" },
-};
-
 function parseStorico(s: string): number[] {
   return s
     .split("→")
@@ -74,15 +61,13 @@ function Sparkline({ values, rialzo }: { values: number[]; rialzo: boolean }) {
 }
 
 function AlertCard({ r }: { r: VariazionePrezzo }) {
-  const style = GRAVITA_STYLE[gravita(r)];
   const rialzo = r.aumento_perc > 0;
   const spark = parseStorico(r.storico);
   return (
-    <div className={`rounded-lg border border-l-4 ${style.ring} border-border bg-card overflow-hidden`}>
+    <div className={`rounded-lg border border-border bg-card overflow-hidden`}>
       <div className="w-full text-left px-4 py-3">
         <div className="flex items-center gap-3 flex-wrap">
           <Star className={`size-4 shrink-0 ${r.preferito ? "fill-amber-400 text-amber-400" : "text-muted-foreground/50"}`} />
-          <span className={`size-2.5 rounded-full ${style.dot} shrink-0`} aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-sm truncate">{r.prodotto}</p>
             <p className="text-xs text-muted-foreground truncate">
@@ -183,13 +168,8 @@ export function DemoPrezzi() {
       <div className="flex flex-wrap items-center gap-2">
         <TriangleAlert className="size-4 text-rose-500 shrink-0" />
         <p className="text-sm font-semibold">
-          {demoVariazioni.length} variazioni <span className="text-rose-600">· 1 critica</span>
+          {demoVariazioni.length} variazioni
         </p>
-        <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500 shrink-0" />Critico</span>
-          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500 shrink-0" />Alto</span>
-          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400 shrink-0" />Medio</span>
-        </div>
       </div>
 
       <div className="space-y-2">

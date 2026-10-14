@@ -74,14 +74,22 @@ def test_le_parole_della_vista_da_controllare():
     assert testi[0] == "Confezione diversa?"
 
 
-@pytest.mark.parametrize("impatto, atteso", [
-    (100, "critico"), (-100, "critico"), (99.99, "alto"), (30, "alto"), (-30, "alto"), (29.99, "medio"), (0, "medio"),
-])
-def test_gravita_e_la_sua_legenda(impatto, atteso):
-    """La legenda in (i) dice le soglie della striscia: e' scritta dalle stesse
-    costanti del calcolo, e un calo pesa quanto un aumento."""
-    assert esegui_ts(MODULO, "emit(m.gravita({impatto_stimato: input}))", argomento=impatto, richiede=("gravita",)) == atteso
-    legenda, critico, alto = esegui_ts(MODULO, "emit([m.LEGENDA_GRAVITA, m.SOGLIA_CRITICO_EURO, m.SOGLIA_ALTO_EURO])")
-    assert (critico, alto) == (100, 30)
-    assert f"({critico} € o più)" in legenda and f"(da {alto} €)" in legenda
-    assert "⚠" not in legenda
+# La scala Critico/Alto/Medio e' stata tolta il 13/10/2026 su richiesta di
+# Mattia: tre grigi (pallino + striscia a sinistra + legenda) che nessuno
+# distingueva, e che non decidevano niente (l'ordine e' per impatto in euro).
+FILE_SENZA_GRAVITA = (
+    "lib/prezzi-viste.ts",
+    "components/prezzi/variazione-card.tsx",
+    "app/(app)/prezzi/variazioni-tab.tsx",
+    "app/(app)/catena/analisi/scheda-prezzi-catena.tsx",
+    "components/demo/screens/demo-prezzi.tsx",
+)
+
+
+@pytest.mark.parametrize("relativo", FILE_SENZA_GRAVITA)
+def test_la_scala_di_gravita_non_torna(relativo):
+    from pathlib import Path
+
+    sorgente = (Path(__file__).resolve().parents[1] / "apps/web/src" / relativo).read_text(encoding="utf-8")
+    for traccia in ("gravita", "GRAVITA", "Critico", "critiche", "border-l-4"):
+        assert traccia not in sorgente, f"{relativo}: «{traccia}» e' tornato"

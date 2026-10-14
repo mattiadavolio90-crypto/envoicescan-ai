@@ -23,12 +23,10 @@ import {
   ContaVariazioni,
   IntestazioneVariazioni,
   KpiCard,
-  LEGENDA_GRAVITA,
   SpiegazioneDaControllare,
   VariazioneCard,
   fmtEuro,
   fmtPct,
-  gravita,
 } from "@/components/prezzi/variazione-card";
 import { ANNO_CORRENTE, FiltroPeriodoPrezzi, type ModoPeriodo } from "@/components/prezzi/filtro-periodo-prezzi";
 
@@ -243,7 +241,6 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   const nPreferiti = preferiti.size;
 
   // KPI calcolati sul filtered
-  const nCritici = useMemo(() => filtered.filter((r) => gravita(r) === "critico").length, [filtered]);
   const impattoFiltrato = useMemo(() => filtered.reduce((acc, r) => acc + r.impatto_stimato, 0), [filtered]);
   const scostamentoFiltrato = useMemo(
     () => (filtered.length > 0 ? filtered.reduce((acc, r) => acc + r.aumento_perc, 0) / filtered.length : 0),
@@ -285,7 +282,6 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                   </p>
                   <div className="space-y-1.5 text-muted-foreground">
                     <p><strong className="text-foreground">Media</strong> = il prezzo medio del prodotto nel periodo.</p>
-                    <p>{LEGENDA_GRAVITA}</p>
                     <p>Clicca un prodotto per vedere lo <strong className="text-foreground">storico</strong> nel tempo e la fattura di origine.</p>
                   </div>
                   <div className="border-t border-border pt-2 space-y-1.5 text-muted-foreground">
@@ -432,9 +428,9 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         </div>
       )}
 
-      {/* N. variazioni + legenda gravità — appena sopra la lista */}
+      {/* N. variazioni — appena sopra la lista */}
       {data && variazioni.length > 0 && (
-        <ContaVariazioni n={filtered.length} base={baseVista} critiche={nCritici} />
+        <ContaVariazioni n={filtered.length} base={baseVista} />
       )}
 
       {/* Stato vuoto. "Stabili" e' una RASSICURAZIONE, e vale solo se le fatture

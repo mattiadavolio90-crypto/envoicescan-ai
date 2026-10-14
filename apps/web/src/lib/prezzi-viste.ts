@@ -73,22 +73,3 @@ export function chiavePreferito(r: Parameters<typeof coppiaPreferito>[0]): strin
   const c = coppiaPreferito(r);
   return `${c.prodotto}|${c.fornitore}`;
 }
-
-// Quanto pesa una variazione in euro al mese (o il «pagato in più» di un prodotto
-// fra i PV): decide la striscia e il pallino a sinistra della riga. Misura
-// l'ENTITA', non il segno: un calo da 200 € e' critico quanto un aumento.
-export const SOGLIA_CRITICO_EURO = 100;
-export const SOGLIA_ALTO_EURO = 30;
-
-export type Gravita = "critico" | "alto" | "medio";
-
-export function gravita(r: { impatto_stimato: number }): Gravita {
-  const imp = Math.abs(r.impatto_stimato);
-  if (imp >= SOGLIA_CRITICO_EURO) return "critico";
-  if (imp >= SOGLIA_ALTO_EURO) return "alto";
-  return "medio";
-}
-
-// La legenda a parole nelle spiegazioni (i), costruita dalle stesse soglie: la
-// vecchia citava icone ⚠/✓ che nelle righe non c'erano piu'.
-export const LEGENDA_GRAVITA = `La striscia e il pallino a sinistra dicono quanto pesa il cambiamento in euro, in aumento o in calo: scuro = critico (${SOGLIA_CRITICO_EURO} € o più), grigio = alto (da ${SOGLIA_ALTO_EURO} €), chiaro = medio.`;

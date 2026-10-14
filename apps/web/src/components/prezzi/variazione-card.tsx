@@ -20,12 +20,9 @@ import type { StoricoPrezzoResponse, StoricoPrezzoPoint } from "@/lib/prezzi";
 import { parseDecimaleIt, formatEuro } from "@/lib/format";
 import { puntiSparkline } from "@/lib/sparkline-punti";
 import {
-  LEGENDA_GRAVITA,
   NOTA_OLTRE_SEI_MESI,
   SPIEGAZIONE_DA_CONTROLLARE,
-  gravita,
   nomeProdotto,
-  type Gravita,
 } from "@/lib/prezzi-viste";
 
 // Simbolo in coda come il resto del prodotto. Il «+» pero' resta e non si puo'
@@ -47,17 +44,6 @@ export function fmtData(s: string): string {
   if (isNaN(d.getTime())) return s;
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
-
-export { LEGENDA_GRAVITA, gravita, type Gravita };
-
-// La gravita' misura QUANTO e' grande la variazione, non se e' buona o cattiva:
-// un risparmio del 95% e' "critico" quanto un rincaro del 95%. Per questo e' una
-// scala di grigi; il giudizio (rosso/verde) sta sull'impatto in euro accanto.
-export const GRAVITA_STYLE: Record<Gravita, { dot: string; ring: string; label: string }> = {
-  critico: { dot: "bg-foreground", ring: "border-l-foreground", label: "Critico" },
-  alto: { dot: "bg-muted-foreground", ring: "border-l-muted-foreground", label: "Alto" },
-  medio: { dot: "bg-muted-foreground/50", ring: "border-l-muted-foreground/50", label: "Medio" },
-};
 
 /**
  * Larghezze delle tre colonne di prezzo, condivise fra l'intestazione della
@@ -331,15 +317,13 @@ function VariazioneCardBase<R extends RigaVariazione>({
   /** Il nome del punto vendita sopra la lista acquisti (catena). */
   nomePuntoVendita?: string;
 }) {
-  const g = gravita(r);
-  const style = GRAVITA_STYLE[g];
   // storico_valori arriva grezzo dal worker; parseStorico resta come fallback per
   // le response servite dalla cache prima del deploy che ha aggiunto il campo.
   const spark = r.storico_valori ?? parseStorico(r.storico ?? "");
   const { nome, oltreSeiMesi } = nomeProdotto(r.prodotto);
 
   return (
-    <div className={`rounded-lg border border-l-4 ${style.ring} border-border bg-card shadow-sm overflow-hidden`}>
+    <div className={`rounded-lg border border-border bg-card shadow-sm overflow-hidden`}>
       <button onClick={() => onToggle(r)} className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors">
         <div className="flex items-center gap-3 flex-wrap">
           <span
@@ -353,7 +337,6 @@ function VariazioneCardBase<R extends RigaVariazione>({
           >
             <Star className={`size-4 transition-colors ${preferito ? "fill-incerto text-incerto" : "text-muted-foreground/50 hover:text-incerto"}`} />
           </span>
-          <span className={`size-2.5 rounded-full ${style.dot} shrink-0`} aria-hidden />
 
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-sm truncate" title={nome}>{nome}</p>
@@ -444,7 +427,6 @@ export function IntestazioneVariazioni({ conPuntoVendita = false }: { conPuntoVe
       className="hidden sm:flex items-center gap-3 px-4 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground"
     >
       <span className="size-4 shrink-0" />
-      <span className="size-2.5 shrink-0" />
       <span className="min-w-0 flex-1" />
       {conPuntoVendita && <span className={`shrink-0 ${COL_PUNTO_VENDITA}`}>Punto vendita</span>}
       <span className={`text-right shrink-0 ${COL_MEDIA}`}>Media periodo</span>
@@ -457,20 +439,16 @@ export function IntestazioneVariazioni({ conPuntoVendita = false }: { conPuntoVe
   );
 }
 
-/** «N variazioni (filtrate da M) · K critiche» e la legenda della striscia. */
+/** «N variazioni (filtrate da M)». */
 export function ContaVariazioni({
   n,
   base,
-  critiche,
   nome = "variazioni",
-  nomeCritiche = "critiche",
   filtrate = "filtrate",
 }: {
   n: number;
   base: number;
-  critiche: number;
   nome?: string;
-  nomeCritiche?: string;
   /** Il participio concorda col nome: «prodotti (filtrati da N)». */
   filtrate?: string;
 }) {
@@ -480,13 +458,7 @@ export function ContaVariazioni({
       <p className="text-sm font-semibold">
         {n} {nome}
         {n !== base && <span className="text-muted-foreground font-normal"> ({filtrate} da {base})</span>}
-        {critiche > 0 && <span className="font-medium text-foreground"> · {critiche} {nomeCritiche}</span>}
       </p>
-      <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-foreground shrink-0" />Critico</span>
-        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-muted-foreground shrink-0" />Alto</span>
-        <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-muted-foreground/50 shrink-0" />Medio</span>
-      </div>
     </div>
   );
 }

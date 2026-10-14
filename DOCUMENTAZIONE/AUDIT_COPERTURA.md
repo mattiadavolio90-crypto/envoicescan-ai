@@ -2540,6 +2540,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   mio**: `test_oscurate_choke_point` su `gruppo_prezzi_fattura` (commit `a5e9e0f9` della
 >   sessione dell'anteprima in catena, che deve dichiarare la query). `tsc` pulito sui due
 >   file. **Non fatto:** prova a mano nel browser (il Next locale scrive sul DB vero).
+>
+> - **13/10/2026 — Prezzi: via la scala Critico/Alto/Medio (Opus), NON pushato, solo frontend.**
+>   Da screenshot di Mattia: pallino, striscia a sinistra e legenda in tre grigi che non si
+>   distinguono, e che non decidevano niente (l'ordine e' per impatto in euro, nessun filtro,
+>   worker o briefing la leggeva). **Fatto:** tolti `gravita`/`GRAVITA_STYLE`/`LEGENDA_GRAVITA` e
+>   le soglie da `lib/prezzi-viste.ts` e `components/prezzi/variazione-card.tsx`; scheda con bordo
+>   uniforme, niente pallino (anche nello spazio d'intestazione), «· N critiche» e legenda via da
+>   `ContaVariazioni`; stessa cosa sulle schede dei divari di catena e nella demo. **Prove:**
+>   `test_la_scala_di_gravita_non_torna` sui 5 file (sostituisce il test sulle soglie);
+>   mutazione 3/3 (striscia nella scheda, legenda nel contatore, `gravita` in catena); suite
+>   `-m "not sql"` sull'intera cartella `tests/` **19.433 verdi + 61 skip, 1 rosso non mio**
+>   (lo stesso `test_oscurate_choke_point`); `tsc` pulito. **Non fatto:** vista nel browser.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
