@@ -715,16 +715,17 @@ def _clienti_non_admin(sb) -> Dict[str, str]:
 def _righe_da_sistemare(sb, allowed_ids: list) -> List[Dict[str, Any]]:
     """Le righe vive che aspettano l'admin: `needs_review` oppure `Da Classificare`
     (2 righe sul live, il 14/10/2026, erano Da Classificare senza needs_review).
-    Le fatture escluse dai conti non pesano sui margini: non c'e' niente da decidere.
+    Anche le fatture escluse dai conti: tornandoci rientrerebbero non classificate
+    (la regola dell'elenco in tests/test_oscurate_choke_point.py).
     Due letture invece di un `or_`: il valore ha uno spazio e andrebbe quotato."""
-    from services.db_service import escludi_oscurate, filter_active
+    from services.db_service import filter_active
 
     if not allowed_ids:
         return []
     colonne = "id,descrizione,categoria,fornitore,totale_riga,prezzo_unitario,user_id"
     per_id: Dict[Any, Dict[str, Any]] = {}
     for filtro in (("needs_review", True), ("categoria", CATEGORIA_NON_CLASSIFICATA)):
-        q = escludi_oscurate(filter_active(sb.table("fatture").select(colonne)))
+        q = filter_active(sb.table("fatture").select(colonne))
         for r in fetch_all(q.eq(*filtro).in_("user_id", allowed_ids).order("id")):
             per_id[r["id"]] = r
     return list(per_id.values())
@@ -800,17 +801,18 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
     # invece di ripristinare quella precedente.
     #
     # Niente `.limit(1)`: la coda raggruppa per DESCRIZIONE su tutti i clienti
-    # (admin_qualita_coda mostra "N clienti" per gruppo), quindi `body.ids` e'
+    # (Categorie → Da sistemare mostra "N clienti" per gruppo), quindi `body.ids` e'
     # regolarmente cross-ristorante — misurati 47 gruppi su 264, fino a 5 sedi.
     # Servono tutti i ristorante_id distinti, o si invaliderebbe una sede sola
     # lasciando le altre col contatore stantio.
     row_resp = sb.table("fatture").select("id,descrizione,prezzo_unitario,categoria,ristorante_id,user_id").in_("id", body.ids).execute()
     prima_desc = ""
-    prima_cat_da = ""
     rid_coinvolti = set()
+    # La categoria di partenza di ogni riga, per il registro: letta qui, prima
+    # dell'update, come prima_desc.
+    prima_per_id = {r.get("id"): (r.get("categoria") or "") for r in (row_resp.data or [])}
     if row_resp.data:
         prima_desc = row_resp.data[0].get("descrizione", "")
-        prima_cat_da = row_resp.data[0].get("categoria") or ""
         rid_coinvolti = {r.get("ristorante_id") for r in row_resp.data if r.get("ristorante_id")}
 
     from services.settore_service import settore_utente
@@ -893,21 +895,30 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
                     "ultima_modifica": now,
                 }, on_conflict="descrizione").execute()
 
-    # Le righe SCRITTE, non quelle chieste: «Annulla» riporta indietro solo
-    # quello che e' cambiato (NOTE e i gate di settore ne lasciano in coda).
-    log_id = _log_review_action(
-        sb,
-        attore=f"admin:{admin_user.get('email', 'admin')}",
-        azione="classifica",
-        categoria_a=body.categoria,
-        ids_fatture=target_ids,
-        descrizione=prima_desc,
-        categoria_da=prima_cat_da,
-        nota=f"salva_memoria={body.salva_memoria}",
-    )
+    # Una voce di registro per ogni categoria di PARTENZA, con le sole righe
+    # scritte: «Annulla» riscrive `categoria_da` su tutti gli id della voce, e in
+    # un gruppo misto (COMMISSION sul live: 9 righe SERVIZI + 5 Da Classificare)
+    # una voce sola rimetteva a tutte la categoria della prima riga letta.
+    per_partenza: Dict[str, List[int]] = {}
+    for i in target_ids:
+        per_partenza.setdefault(prima_per_id.get(i, ""), []).append(i)
+    log_ids: List[int] = []
+    for categoria_da, ids in sorted(per_partenza.items()):
+        log_id = _log_review_action(
+            sb,
+            attore=f"admin:{admin_user.get('email', 'admin')}",
+            azione="classifica",
+            categoria_a=body.categoria,
+            ids_fatture=ids,
+            descrizione=prima_desc,
+            categoria_da=categoria_da,
+            nota=f"salva_memoria={body.salva_memoria}",
+        )
+        if log_id is not None:
+            log_ids.append(log_id)
 
     logger.info("admin_qualita_classifica: %d righe → %s | admin=%s | %d righe di negozi lasciate in coda", len(target_ids), body.categoria, admin_user.get("email"), righe_in_coda)
-    return {"ok": True, "righe_aggiornate": len(target_ids), "righe_in_coda": righe_in_coda, "log_id": log_id}
+    return {"ok": True, "righe_aggiornate": len(target_ids), "righe_in_coda": righe_in_coda, "log_ids": log_ids}
 
 
 # ── Qualità AI — Memoria globale ─────────────────────────────────────────────

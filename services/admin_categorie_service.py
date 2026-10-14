@@ -94,10 +94,16 @@ def componi_da_sistemare(
             "ids": [int(r["id"]) for r in membri],
             "righe": len(membri),
             "euro": round(sum(_euro(r) for r in membri), 2),
+            # Con lo stesso criterio del salvataggio: NOTE non si conferma su un
+            # gruppo con importi (regola di dominio #2).
+            "con_importo": any(_ha_importo(r) for r in membri),
             "categoria": categoria,
             "categorie": sorted(categorie),
             "fornitore": fornitori.most_common(1)[0][0] if fornitori else None,
             "cliente_ids": uids,
+            # Col filtro su un cliente si scrivono solo le sue righe: lo stesso
+            # testo comprato da un altro cliente resta com'e'.
+            "ids_per_cliente": {u: [int(r["id"]) for r in membri if str(r.get("user_id")) == u] for u in uids},
             "cliente": nomi[0] if len(nomi) == 1 else f"{len(nomi)} clienti",
             "suggerita": suggerita,
             "fonte": fonte,

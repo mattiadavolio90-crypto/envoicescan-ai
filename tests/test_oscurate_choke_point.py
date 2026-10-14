@@ -64,6 +64,7 @@ ELENCO_SENZA_FILTRO = {
     ("routers/fatture.py", "fatture_sposta_sede"): "spostamento fra sedi",
     ("routers/admin.py", "_imp"): "tooling admin qualita'",
     ("routers/admin.py", "admin_qualita_audit_annulla"): "tooling admin qualita'",
+    ("routers/admin.py", "_righe_da_sistemare"): "coda di classificazione dell'admin",
     ("routers/admin.py", "admin_qualita_classifica"): "tooling admin qualita'",
     ("db_service.py", "get_descrizioni_distinte"): "catalogo descrizioni per l'AI",
 

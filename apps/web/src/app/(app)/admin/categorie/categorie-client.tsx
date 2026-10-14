@@ -11,7 +11,8 @@ import { AlertTriangle, ArrowRightLeft, Check, CheckCircle, ChevronDown, Refresh
 import { CATEGORIE_TUTTE } from "@/lib/admin";
 import { formatEuro } from "@/lib/format";
 import {
-  DA_CLASSIFICARE, esitoClassifica, filtra, leggiDaSistemare, puoConfermare, riepilogo, rigaSotto, toglieGruppo,
+  categoriaIniziale, esitoClassifica, filtra, idsDaScrivere, leggiDaSistemare, puoConfermare, riepilogo, rigaSotto, toglieGruppo,
+  DA_CLASSIFICARE,
   type DatiDaSistemare, type GruppoDaSistemare,
 } from "@/lib/admin-categorie";
 
@@ -26,7 +27,7 @@ async function chiama(url: string, method: string, body?: object) {
   return d;
 }
 
-type Esito = { chiave: string; scritte: number; chieste: number; logId: number | null };
+type Esito = { chiave: string; scritte: number; chieste: number; logIds: number[] };
 
 // ─── Da sistemare ────────────────────────────────────────────────────────────
 function DaSistemare() {
@@ -74,34 +75,42 @@ function DaSistemare() {
     carica();
   }
 
-  // Una chiamata per gruppo: la memoria globale si salva per descrizione.
+  // Una chiamata per gruppo: la memoria globale si salva per descrizione. Col
+  // filtro su un cliente si scrivono solo le sue righe.
   async function salva(gruppi: GruppoDaSistemare[], categoria: string | null) {
     setOccupato(true);
     const esiti: Esito[] = [];
     let errori = 0;
+    let ultimoErrore = "";
     for (const g of gruppi) {
+      const ids = idsDaScrivere(g, cliente);
+      if (ids.length === 0) continue;
       try {
         const d = await chiama("/api/admin/qualita-ai/coda/classifica", "POST", {
-          ids: g.ids, categoria: categoria ?? g.categoria, salva_memoria: true,
+          ids, categoria: categoria ?? g.categoria, salva_memoria: true,
         });
-        esiti.push({ chiave: g.chiave, scritte: d.righe_aggiornate ?? 0, chieste: g.ids.length, logId: d.log_id ?? null });
+        const logIds = Array.isArray(d.log_ids) ? d.log_ids.filter((i: unknown): i is number => typeof i === "number") : [];
+        esiti.push({ chiave: g.chiave, scritte: d.righe_aggiornate ?? 0, chieste: ids.length, logIds });
       } catch (e) {
         errori++;
-        if (gruppi.length === 1) toast.error(e instanceof Error ? e.message : "Errore");
+        ultimoErrore = e instanceof Error ? e.message : "Errore";
       }
     }
     setOccupato(false);
     setScelti(new Set());
-    if (esiti.length === 0) return;
+    if (esiti.length === 0) {
+      if (errori) toast.error(errori === 1 ? ultimoErrore : `Nessun prodotto salvato: ${ultimoErrore}`);
+      return;
+    }
 
     const scritte = esiti.reduce((s, e) => s + e.scritte, 0);
     const chieste = esiti.reduce((s, e) => s + e.chieste, 0);
-    const logIds = esiti.map((e) => e.logId).filter((i): i is number => i !== null);
+    const logIds = esiti.flatMap((e) => e.logIds);
     toast.success(
-      esitoClassifica(scritte, chieste) + (errori ? ` · ${errori} non salvat${errori === 1 ? "o" : "i"}` : ""),
+      esitoClassifica(scritte, chieste) + (errori ? ` · ${errori} non salvat${errori === 1 ? "o" : "i"}: ${ultimoErrore}` : ""),
       logIds.length ? { action: { label: "Annulla", onClick: () => annulla(logIds) } } : undefined,
     );
-    if (esiti.every((e) => toglieGruppo(e.scritte, e.chieste)) && !errori) {
+    if (cliente === "tutti" && esiti.every((e) => toglieGruppo(e.scritte, e.chieste)) && !errori) {
       const via = new Set(esiti.map((e) => e.chiave));
       setDati((prima) => prima && { ...prima, gruppi: prima.gruppi.filter((g) => !via.has(g.chiave)) });
     } else {
@@ -110,8 +119,7 @@ function DaSistemare() {
   }
 
   function apriCambia(gruppi: GruppoDaSistemare[]) {
-    const unico = gruppi.length === 1 ? gruppi[0] : null;
-    setCategoriaNuova(unico ? (unico.suggerita ?? (unico.categoria !== DA_CLASSIFICARE ? unico.categoria : "")) : "");
+    setCategoriaNuova(categoriaIniziale(gruppi.length === 1 ? gruppi[0] : null, CATEGORIE_TUTTE));
     setDaCambiare(gruppi);
   }
 

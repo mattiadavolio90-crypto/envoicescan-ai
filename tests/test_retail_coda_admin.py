@@ -127,7 +127,7 @@ def _classifica_scritture(monkeypatch, righe, categoria):
 def test_gruppo_misto_una_food_va_solo_sulle_righe_del_ristorante(monkeypatch):
     out, scritte, master = _classifica_scritture(monkeypatch, [_riga_cl(1, "u-retail"), _riga_cl(2, "u-rist")], "SALUMI")
     assert scritte == [([2], "SALUMI")]
-    assert out == {"ok": True, "righe_aggiornate": 1, "righe_in_coda": 1, "log_id": None}
+    assert out == {"ok": True, "righe_aggiornate": 1, "righe_in_coda": 1, "log_ids": []}
     assert master == [("upsert", "prodotti_master")]
 
 

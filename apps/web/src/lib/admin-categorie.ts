@@ -4,6 +4,7 @@
 // cio' che serve alla pagina. Logica pura: l'unica rete sul frontend esegue lib/.
 
 export const DA_CLASSIFICARE = "Da Classificare";
+export const NOTE_E_DICITURE = "📝 NOTE E DICITURE";
 
 export type GruppoDaSistemare = {
   chiave: string;
@@ -11,10 +12,12 @@ export type GruppoDaSistemare = {
   ids: number[];
   righe: number;
   euro: number;
+  con_importo: boolean;
   categoria: string;
   categorie: string[];
   fornitore: string | null;
   cliente_ids: string[];
+  ids_per_cliente: Record<string, number[]>;
   cliente: string;
   suggerita: string | null;
   fonte: string | null;
@@ -31,9 +34,11 @@ function eGruppo(g: unknown): g is GruppoDaSistemare {
     && typeof x.descrizione === "string"
     && Array.isArray(x.ids) && x.ids.length > 0 && x.ids.every((i) => typeof i === "number")
     && typeof x.euro === "number"
+    && typeof x.con_importo === "boolean"
     && typeof x.categoria === "string"
     && Array.isArray(x.categorie)
-    && Array.isArray(x.cliente_ids);
+    && Array.isArray(x.cliente_ids)
+    && !!x.ids_per_cliente && typeof x.ids_per_cliente === "object";
 }
 
 /** La risposta del worker, o null se non ha la forma attesa: la pagina mostra
@@ -57,9 +62,26 @@ export function filtra(gruppi: GruppoDaSistemare[], clienteId: string, testo: st
 }
 
 /** «Giusta» conferma la categoria che c'e': non vale se non ce n'e' una
- *  (Da Classificare) o se il gruppo ne ha piu' d'una (quale delle due?). */
+ *  (Da Classificare), se il gruppo ne ha piu' d'una (quale delle due?) o se e'
+ *  NOTE con importi (regola di dominio #2: il salvataggio la rifiuterebbe). */
 export function puoConfermare(g: GruppoDaSistemare): boolean {
-  return g.categorie.length === 1 && g.categoria !== DA_CLASSIFICARE;
+  return g.categorie.length === 1 && g.categoria !== DA_CLASSIFICARE
+    && !(g.categoria === NOTE_E_DICITURE && g.con_importo);
+}
+
+/** Le righe da scrivere: tutte, o solo quelle del cliente filtrato. */
+export function idsDaScrivere(g: GruppoDaSistemare, clienteId: string): number[] {
+  return clienteId === "tutti" ? g.ids : (g.ids_per_cliente[clienteId] ?? []);
+}
+
+/** La categoria con cui si apre «Cambia»: la suggerita, o quella che c'e' se
+ *  e' fra le scelte del menu. Una categoria fuori menu (ARTICOLO DI VENDITA di
+ *  un negozio) non si precompila: il menu mostrerebbe il segnaposto e «Salva»
+ *  scriverebbe una scelta che non si vede. */
+export function categoriaIniziale(g: GruppoDaSistemare | null, scelte: string[]): string {
+  if (!g) return "";
+  for (const c of [g.suggerita, g.categoria]) if (c && c !== DA_CLASSIFICARE && scelte.includes(c)) return c;
+  return "";
 }
 
 /** Sotto la descrizione: chi l'ha comprata e da chi. */

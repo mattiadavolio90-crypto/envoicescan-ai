@@ -178,15 +178,17 @@ def test_entrano_needs_review_e_da_classificare_una_volta_sola(monkeypatch):
     assert sorted(i for g in out["gruppi"] for i in g["ids"]) == [1, 2, 3]
 
 
-def test_restano_fuori_cestino_oscurate_e_admin(monkeypatch):
+def test_restano_fuori_cestino_e_admin_ma_non_le_escluse_dai_conti(monkeypatch):
+    # Una fattura esclusa dai conti va classificata lo stesso: tornandoci
+    # rientrerebbe Da Classificare (la regola di test_oscurate_choke_point).
     sb = _sb([
-        _f(1, "VIVA"),
+        _f(1, "VIVA", totale=20),
         _f(2, "NEL CESTINO", deleted_at="2026-10-01"),
         _f(3, "ESCLUSA DAI CONTI", oscurata=True),
         _f(4, "DELL'ADMIN", user="adm"),
     ])
     out = _endpoint(monkeypatch, sb)
-    assert [g["descrizione"] for g in out["gruppi"]] == ["VIVA"]
+    assert [g["descrizione"] for g in out["gruppi"]] == ["VIVA", "ESCLUSA DAI CONTI"]
     assert out["clienti"] == [{"id": "u1", "nome": "Trattoria"}]
 
 
@@ -206,7 +208,7 @@ def test_i_clienti_del_filtro_sono_quelli_con_qualcosa_da_sistemare(monkeypatch)
 def test_oggi_conta_quello_che_mostra_la_pagina(monkeypatch):
     sb = _sb([
         _f(1, "A"), _f(2, "a"), _f(3, "B", needs_review=False, categoria="Da Classificare"),
-        _f(4, "C", oscurata=True), _f(5, "COUPON Z"),
+        _f(4, "C", deleted_at="2026-10-01"), _f(5, "COUPON Z"),
     ], prodotti_utente=[{"user_id": "u1", "descrizione": "COUPON Z", "classificato_da": "Manuale"}])
     out = _endpoint(monkeypatch, sb)
     assert admin._conta_categorie_da_controllare(sb) == len(out["gruppi"]) == 2
@@ -232,4 +234,40 @@ def test_classifica_registra_le_righe_scritte_e_restituisce_il_log(monkeypatch):
         out = admin.admin_qualita_classifica(admin.ClassificaBody(ids=[1, 2], categoria=NOTE_E_DICITURE), admin_user=_ADMIN)
     # NOTE va solo sulla riga a zero euro: e' l'unica che «Annulla» deve toccare.
     assert registrati == [[1]]
-    assert out["log_id"] == 77 and out["righe_aggiornate"] == 1
+    assert out["log_ids"] == [77] and out["righe_aggiornate"] == 1
+
+
+def test_un_gruppo_misto_ha_una_voce_di_registro_per_categoria_di_partenza(monkeypatch):
+    # COMMISSION sul live: righe SERVIZI e righe Da Classificare nello stesso
+    # gruppo. Con una voce sola «Annulla» rimetteva a tutte la categoria della
+    # prima riga letta: Da Classificare diventava SERVIZI (regola #1) o il
+    # contrario.
+    righe = [
+        {"id": 1, "descrizione": "COMMISSION", "prezzo_unitario": 9, "totale_riga": 9, "categoria": "SERVIZI E CONSULENZE", "ristorante_id": "r1", "user_id": "u1"},
+        {"id": 2, "descrizione": "COMMISSION", "prezzo_unitario": 9, "totale_riga": 9, "categoria": "Da Classificare", "ristorante_id": "r1", "user_id": "u1"},
+        {"id": 3, "descrizione": "COMMISSION", "prezzo_unitario": 9, "totale_riga": 9, "categoria": "SERVIZI E CONSULENZE", "ristorante_id": "r2", "user_id": "u2"},
+    ]
+    sb = _ClassificaSB({"fatture": righe, "prodotti_master": [], "ai_review_log": []})
+    voci = []
+    monkeypatch.setattr(ss, "settore_utente", lambda uid, supabase_client=None: "ristorazione")
+    with patch.multiple(
+        admin,
+        get_supabase_client=lambda *a, **k: sb,
+        aggiorna_categoria_fatture=lambda *a, **k: len(k.get("ids") or []),
+        _log_review_action=lambda *a, **k: voci.append((k["categoria_da"], sorted(k["ids_fatture"]))) or len(voci),
+        _invalidate_fatture_rows_cache=lambda *a, **k: None,
+    ):
+        out = admin.admin_qualita_classifica(admin.ClassificaBody(ids=[3, 2, 1], categoria="MANUTENZIONE E ATTREZZATURE"), admin_user=_ADMIN)
+    assert sorted(voci) == [("Da Classificare", [2]), ("SERVIZI E CONSULENZE", [1, 3])]
+    assert sorted(out["log_ids"]) == [1, 2]
+
+
+def test_ogni_gruppo_sa_quali_righe_sono_di_quale_cliente():
+    g = _componi([_r(3, "X", user="u2"), _r(1, "X", user="u1"), _r(2, "X", user="u2")])[0]
+    assert g["ids_per_cliente"] == {"u1": [1], "u2": [2, 3]}
+
+
+def test_con_importo_segue_il_criterio_del_salvataggio():
+    assert _componi([_r(1, "A", totale=0, prezzo=0)])[0]["con_importo"] is False
+    assert _componi([_r(1, "B", totale=0, prezzo=4)])[0]["con_importo"] is True
+    assert _componi([_r(1, "C", totale=-2, prezzo=0)])[0]["con_importo"] is True
