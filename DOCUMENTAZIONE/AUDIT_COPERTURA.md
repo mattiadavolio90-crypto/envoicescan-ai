@@ -2484,20 +2484,28 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   dal cliente o dall'admin, i nomi dei tag di catena e le descrizioni dei prodotti restavano nel DB
 >   (art. 17); sul live 0 righe orfane, 1 account con tag di catena. Chiuso con
 >   `20261014054557_gruppo_tags_fk_users.sql` (FK CASCADE sulle due tabelle, indice su
->   `gruppo_tag_prodotti.user_id`), 4 test `-m sql` (FK in INSERT, cascata diretta, cascata via
+>   `gruppo_tag_prodotti.user_id`), 5 test `-m sql` (FK in INSERT su tag e prodotto, cascata diretta, cascata via
 >   `POST /api/account/elimina`, rilancio idempotente), 2 mutanti su 2 uccisi. **Trovati scrivendo
 >   quei test, FUORI da questa fase e non miei:** oggi un account INTERO non si cancella sul Postgres
 >   di prova (schema del live): (1) `riparto_costi_catena_quote.ristorante_id` e' l'unica FK verso
->   `ristoranti` senza `ON DELETE CASCADE` su 66 (`20260714130000_riparto_costi_catena.sql`): un
->   account di catena col riparto blocca la DELETE; (2) la cascata `users -> ristoranti ->
+>   `ristoranti` senza `ON DELETE CASCADE` su 66 (nata NO ACTION in
+>   `20260729195932_fk_riparto_quote_ristorante.sql`): un account di catena col riparto blocca
+>   SEMPRE la DELETE; (2) la cascata `users -> ristoranti ->
 >   ricavi_giornalieri` fa scattare `trg_ricavi_giornalieri_sync_margini`
 >   (`sync_margini_mensili_from_ricavi`, rivista il 12/10 in `20261012194928_ricavi_noiva_esclusi.sql`),
 >   che reinserisce `margini_mensili` per un ristorante gia' cancellato. Quindi `POST
 >   /api/account/elimina` e la cancellazione dall'admin rispondono 500 per qualunque cliente con
 >   ricavi o col riparto; i test esistenti che la chiamano usano account senza ricavi. Pinnato con un
 >   test **xfail strict** in `test_sql_gruppo_tag_cartelle.py`: quando i due difetti saranno chiusi
->   diventa rosso e va tolto. Da chiudere da chi ha in mano riparto e margini, con una migration
->   (CASCADE sulla FK e guardia nel trigger).
+>   diventa rosso e va tolto. `code-reviewer` 🟢 sul commit, che ha riprodotto entrambi (500 anche
+>   via endpoint) e ha misurato che il solo CASCADE sulla FK delle quote NON basta: con quote e
+>   ricavi tolti la cancellazione riesce ma restano **1 riparto e 1 regola** del cliente
+>   (`riparto_costi_catena`, `riparto_regole_fornitore`, descrizione fornitore e importo). Dallo
+>   snapshot: 41 tabelle con `user_id`, **10 senza FK verso `users`**; dopo questo commit ne restano
+>   8: `classificazioni_manuali` e `upload_events` (ripulite a mano dalle due route),
+>   `fatture_documenti`, `gruppo_segnali_state` (user_id text), `prezzi_preferiti`,
+>   `riparto_costi_catena`, `riparto_regole_fornitore`, `upload_locks`. Da chiudere da chi ha in
+>   mano riparto e margini, con una migration (CASCADE sulle FK che mancano e guardia nel trigger).
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e
