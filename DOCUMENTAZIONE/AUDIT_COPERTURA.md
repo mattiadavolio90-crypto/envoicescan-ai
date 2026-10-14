@@ -2508,8 +2508,12 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   mano riparto e margini, con una migration (CASCADE sulle FK che mancano e guardia nel trigger).
 > - **14/10/2026 — «Elimina account» non fallisce piu' e non lascia dati; «Elimina sede» idem,
 >   o rifiuta se la sede ha riparti (Opus), NON pushato, migration
->   `20261014122000_elimina_account_cascata_completa.sql`, da applicare dal SQL Editor (l'MCP
->   l'ha rifiutata: contiene un DROP CONSTRAINT).**
+>   `20261014122000_elimina_account_cascata_completa.sql`, applicata al live il 14/10 via MCP su
+>   richiesta di Mattia (in auto mode il classificatore l'aveva rifiutata: contiene un DROP
+>   CONSTRAINT).** Verificata sul live: 0 FK bloccanti verso `users`/`ristoranti`, 0 tabelle con
+>   `user_id` o `ristorante_id` senza FK, guardia nel trigger, `gruppo_segnali_state.user_id`
+>   uuid, i due indici; righe intatte (572 quote, 83 margini, 70 segnali, 3.993 documenti, 7.071
+>   eventi). Advisor di sicurezza: nessun rilievo nuovo.
 >   Chiusi i tre difetti trovati scrivendo la FK dei tag di catena (voce sopra), su richiesta di
 >   Mattia («sistema tutto tu»). (1) La FK delle quote del riparto verso `ristoranti` passa a
 >   `ON DELETE CASCADE`: era nata per vietare quote verso sedi inesistenti, garanzia che resta.
