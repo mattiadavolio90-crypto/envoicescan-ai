@@ -2853,6 +2853,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   finestra (prima PV e catena darebbero numeri diversi, senza errori) e
 >   `20261014180102_articoli_da_fatture_ultima_fattura.sql` (ordine indifferente); poi
 >   `get_advisors`.
+>
+> - **14/10/2026 — Push della coda (62 commit, `ee6f8c84..c5b4b8ac`, 21:16 UTC) e le due
+>   migration sul live, verificate.** Prima del push: suite 20.784 verdi + 62 skip, `npm run
+>   build` pulita, drift OpenAPI nullo, code-reviewer sul cumulativo PUSH OK; tutte le altre
+>   migration della coda risultavano gia' sul live (schema, non solo registro). Le due nuove
+>   provate prima sul live come funzioni `pg_temp`: catena 0,7 s contro 0,5-0,9 della
+>   vecchia, sulla catena piu' grande 22.485 righe → 17.460 fatture e 3.544 → 3.390 prodotti;
+>   foodcost 1.576 articoli, 43 cambiano (38 prezzi negativi di sconti/NC diventano l'ultimo
+>   prezzo pagato, 5 di soli storni vanno a 0 invece che sotto zero). Applicate dopo che
+>   `/health` dava `c5b4b8ac` (21:19): `md5(prosrc)` uguale al corpo dei file, EXECUTE solo a
+>   `service_role`. CI del commit verde (Tests, Vercel, OpenAPI). `get_advisors`: niente di
+>   nuovo; `articoli_da_fatture` senza `search_path` fisso era gia' cosi' sul live.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
