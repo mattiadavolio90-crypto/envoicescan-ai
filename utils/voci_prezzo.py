@@ -232,7 +232,8 @@ def ultimo_acquisto_per_descrizione(righe, *, descrizione="descrizione", prezzo=
     for d, documenti in per_descrizione.items():
         pagati, tutti = [], []
         for chiave, doc in documenti.items():
-            ordine = (chiave[1], chiave[0], chiave[2])
+            # l'ultima riga senza file vince sulle precedenti (la RPC: `solo` = id)
+            ordine = (chiave[1], chiave[0], chiave[2], -1 if chiave[3] is None else chiave[3])
             p = prezzo_documento(doc, prezzo=prezzo, quantita=quantita)
             tutti.append((ordine, doc, p))
             if p is not None:

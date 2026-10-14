@@ -36,7 +36,9 @@ as $$
             f.unita_misura,
             f.data_documento,
             f.file_origine,
-            upper(btrim(coalesce(f.unita_misura, ''))) as unita_key
+            upper(btrim(coalesce(f.unita_misura, ''))) as unita_key,
+            -- una riga senza file e' un acquisto a se', come `chiave_documento`
+            case when btrim(coalesce(f.file_origine, '')) = '' then f.id else -1 end as solo
         from public.fatture f
         where f.user_id = p_user_id
           and f.ristorante_id = p_ristorante_id
@@ -52,8 +54,9 @@ as $$
             r.file_origine,
             r.data_documento,
             r.unita_key,
+            r.solo,
             min(r.unita_misura) as unita_misura,
-            bool_or(r.prezzo_unitario > 0) as pagato,
+            coalesce(bool_or(r.prezzo_unitario > 0), false) as pagato,
             coalesce(round(case
                 when sum(r.quantita) filter (where r.prezzo_unitario > 0 and r.quantita > 0) > 0
                 then sum(r.prezzo_unitario * r.quantita) filter (where r.prezzo_unitario > 0 and r.quantita > 0)
@@ -61,7 +64,7 @@ as $$
                 else avg(r.prezzo_unitario) filter (where r.prezzo_unitario > 0)
             end, 6), 0) as prezzo_unitario
         from righe r
-        group by r.descrizione, r.file_origine, r.data_documento, r.unita_key
+        group by r.descrizione, r.file_origine, r.data_documento, r.unita_key, r.solo
     )
     select distinct on (d.descrizione)
         d.descrizione,
@@ -70,7 +73,7 @@ as $$
         d.data_documento
     from documenti d
     order by d.descrizione, d.pagato desc, d.data_documento desc nulls last,
-             d.file_origine collate "C" desc, d.unita_key collate "C" desc;
+             d.file_origine collate "C" desc, d.unita_key collate "C" desc, d.solo desc;
 $$;
 
 comment on function public.articoli_da_fatture is

@@ -188,3 +188,16 @@ def test_gli_acquisti_di_un_fornitore_contano_le_fatture(quantita):
     df_tag = _prepare_tag_dataframe(pd.DataFrame(righe), _build_associazioni_map(_associazioni()))
     fornitori = _compute_fornitori(df_tag)["fornitori"]
     assert [f["num_acquisti"] for f in fornitori] == [2]
+
+
+def test_unita_diverse_nella_stessa_fattura_sono_due_acquisti():
+    """Senza quantita' (il ramo con le quantita' tiene la sola unita' dominante,
+    regola del pannello): KG e « kg» sono un acquisto, CT un altro."""
+    righe = [
+        {"FileOrigine": "f1", "DataDocumento": "2026-03-01", "Fornitore": "FORN A",
+         "Descrizione": "Pomodoro Pelato", "Quantita": None, "UnitaMisura": um,
+         "PrezzoUnitario": 2.0, "TotaleRiga": 2.0, "Categoria": "ALIMENTARI"}
+        for um in ("KG", " kg", "CT")
+    ]
+    df_tag = _prepare_tag_dataframe(pd.DataFrame(righe), _build_associazioni_map(_associazioni()))
+    assert [f["num_acquisti"] for f in _compute_fornitori(df_tag)["fornitori"]] == [2]

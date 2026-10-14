@@ -299,12 +299,18 @@ def _compute_fornitori(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
 
     # «Acquisti» conta le fatture, non le righe (un acquisto e' una fattura,
     # 14/10/2026): tre righe dello stesso fornitore nella stessa fattura erano
-    # tre acquisti.
+    # tre acquisti. Unita' diverse nella stessa fattura restano due acquisti,
+    # come in `utils/voci_prezzo.una_riga_per_documento`.
+    df_forn["ChiaveAcquisto"] = (
+        df_forn["FileOrigine"].astype(str) + "\t"
+        + df_forn.get("DataDocumento", pd.Series("", index=df_forn.index)).astype(str) + "\t"
+        + df_forn.get("UnitaMisura", pd.Series("", index=df_forn.index)).fillna("").astype(str).str.strip().str.upper()
+    )
     if usa_quantita_norm:
         df_fornitori = df_forn.groupby("Fornitore", as_index=False).agg(
             SpesaTotale=("TotaleRigaNum", "sum"),
             QuantitaTotale=("QuantitaNorm", "sum"),
-            NumAcquisti=("FileOrigine", "nunique"),
+            NumAcquisti=("ChiaveAcquisto", "nunique"),
         )
         df_fornitori["PrezzoMedio"] = df_fornitori.apply(
             lambda row: row["SpesaTotale"] / row["QuantitaTotale"]
@@ -317,7 +323,7 @@ def _compute_fornitori(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
         df_fornitori = df_forn.groupby("Fornitore", as_index=False).agg(
             SpesaTotale=("TotaleRigaNum", "sum"),
             QuantitaTotale=("Quantita", "sum"),
-            NumAcquisti=("FileOrigine", "nunique"),
+            NumAcquisti=("ChiaveAcquisto", "nunique"),
             PrezzoMedio=("PrezzoUnitario", "mean"),
         )
         quantita_label = "Q.tà"

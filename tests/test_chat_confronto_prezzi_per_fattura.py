@@ -43,3 +43,11 @@ def test_ultimo_prezzo_per_fornitore_e_l_ultima_fattura_ponderata():
         "del fornitore conta il prodotto comprato piu' di recente, senza mescolare 125 g e 1 kg"
     )
     assert [f["fornitore"] for f in esito["fornitori"]] == ["MEFON", "ADC"], "dal prezzo piu' basso"
+
+
+def test_un_fornitore_trovato_solo_per_categoria_senza_descrizione_non_rompe():
+    """La ricerca trova anche per categoria: righe senza descrizione non danno
+    un «ultimo acquisto», e `max()` su niente faceva cadere lo strumento."""
+    righe = [_riga("ADC", "", 2.0, 1, "b.xml", "2026-05-01"), _riga("MEFON", "LATTE", 1.0, 1, "m.xml", "2026-05-01")]
+    esito = fw._chat_confronto_prezzi({"id": "u1"}, _Catena(righe), "latticini")
+    assert [f["fornitore"] for f in esito["fornitori"]] == ["MEFON"]

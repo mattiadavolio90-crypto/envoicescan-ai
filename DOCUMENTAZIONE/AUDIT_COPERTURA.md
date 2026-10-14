@@ -2833,6 +2833,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   seconda sopravvissuta al primo giro perche' nel test l'ordine dei file coincideva con
 >   quello delle date). **Fine Fase 5:** suite `python -m pytest tests/ -q -p no:randomly`
 >   **20.781 verdi + 62 skip, 0 rossi**.
+>
+> - **14/10/2026 — Code-reviewer sui 7 commit di «un acquisto = una fattura» (42849a4f ->
+>   149b3538): chiusa correttamente, nessun blocco.** Confermate l'equivalenza pandas/SQL
+>   delle due migration (firma, `prosecdef`, ACL uguali al live; nessuna delle due ancora
+>   applicata), tutte le inerenze e la suite (20.781). Cinque rilievi bassi, tutti a 0 sul
+>   live, chiusi: nel foodcost una fattura coi prezzi tutti NULL batteva una pagata
+>   (`bool_or` NULL in testa in DESC: ora `coalesce(..., false)`) e le righe senza file si
+>   fondevano in SQL ma non in Python (ora `solo` = id, e lo spareggio fra due righe senza
+>   file e' l'ultima riga da entrambe le parti); nella chat un fornitore trovato solo per
+>   categoria con descrizioni vuote faceva cadere lo strumento; nei Tag «Acquisti» fondeva
+>   le unita' diverse della stessa fattura (ora file+data+unita'). Il primo giro della suite
+>   ha dato 3 rossi miei (`test_tag_audit_fix`: la chiave dei Tag leggeva una data che non
+>   tutti i chiamanti hanno), corretti. Resta, preesistente: `_chat_confronto_prezzi` legge
+>   al massimo 2.000 righe ordinate per data, e un taglio a meta' dell'ultima fattura ora
+>   sposta anche il prezzo ponderato. **Prove:** 3 test nuovi; mutazione 6/6; suite `python
+>   -m pytest tests/ -q -p no:randomly` **20.784 verdi + 62 skip, 0 rossi**. **Al push:**
+>   applicare sul live `20261014150654_gruppo_prezzi_catena_per_documento.sql` nella stessa
+>   finestra (prima PV e catena darebbero numeri diversi, senza errori) e
+>   `20261014180102_articoli_da_fatture_ultima_fattura.sql` (ordine indifferente); poi
+>   `get_advisors`.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

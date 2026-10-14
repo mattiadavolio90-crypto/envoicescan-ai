@@ -891,3 +891,30 @@ def test_articoli_l_ultimo_prezzo_e_l_ultima_fattura_pagata_uguale_in_python(db_
     ]
     python = {d: v["prezzo"] for d, v in ultimo_acquisto_per_descrizione(righe).items()}
     assert python == attesi
+
+
+def test_articoli_casi_che_sul_live_non_ci_sono_ancora(db_sql, sql):
+    """Rilievi del code-reviewer del 14/10/2026, oggi a 0 sul live: una fattura
+    con i prezzi tutti NULL non batte una pagata (`bool_or` NULL va in testa in
+    un ordine DESC), e due righe senza file sono due acquisti, uguali in SQL e in
+    Python (vince l'ultima riga)."""
+    from utils.voci_prezzo import ultimo_acquisto_per_descrizione
+
+    _semina_utente_e_sedi(db_sql)
+    _riga(db_sql, descrizione="VUOTO", file="a.xml", data_documento="2026-04-01", prezzo=Decimal("3.00"), totale=Decimal("3.00"))
+    rid = _riga(db_sql, descrizione="VUOTO", file="b.xml", data_documento="2026-05-01", prezzo=Decimal("1.00"), totale=Decimal("1.00"))
+    with db_sql.cursor() as cur:
+        cur.execute("UPDATE public.fatture SET prezzo_unitario = NULL WHERE id = %s", (rid,))
+    _riga(db_sql, descrizione="SENZA FILE", file="", data_documento="2026-05-01", prezzo=Decimal("2.00"), totale=Decimal("2.00"))
+    _riga(db_sql, descrizione="SENZA FILE", file="", data_documento="2026-05-01", prezzo=Decimal("6.00"), totale=Decimal("6.00"))
+
+    attesi = {"VUOTO": 3.0, "SENZA FILE": 6.0}
+    assert {r[0]: float(r[1]) for r in _articoli(sql)} == attesi
+    righe = [
+        dict(zip(("descrizione", "file_origine", "data_documento", "prezzo_unitario", "quantita", "unita_misura"), r))
+        for r in sql(
+            "SELECT descrizione, file_origine, data_documento::text, prezzo_unitario::float, "
+            "quantita::float, unita_misura FROM public.fatture WHERE ristorante_id = %s ORDER BY id", SEDE,
+        )
+    ]
+    assert {d: v["prezzo"] for d, v in ultimo_acquisto_per_descrizione(righe).items()} == attesi

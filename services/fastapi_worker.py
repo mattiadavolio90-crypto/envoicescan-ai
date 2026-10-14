@@ -5443,7 +5443,9 @@ def _chat_confronto_prezzi(
             righe_per_forn.setdefault((r.get("fornitore") or "?").strip(), []).append(r)
     per_forn: Dict[str, Dict[str, Any]] = {}
     for forn, righe_f in righe_per_forn.items():
-        ultimi = ultimo_acquisto_per_descrizione(righe_f).values()
+        ultimi = list(ultimo_acquisto_per_descrizione(righe_f).values())
+        if not ultimi:
+            continue
         scelto = max(
             ultimi,
             key=lambda u: (
