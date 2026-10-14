@@ -188,7 +188,12 @@ fornitori. Il numero d'ordine che un fornitore scrive nel nome («… ORDER 2025
 (1014546)», LA GE' GE') non fa un prodotto diverso: la chiave del prodotto lo
 toglie (`chiave_prodotto`, e la gemella SQL nella RPC), il nome a video pure. La
 definizione è una sola, `utils/voci_prezzo.py`, e vale anche per gli avvisi
-prezzi (`calcola_alert`: Home, chat, notifiche, briefing).
+prezzi (`calcola_alert`: Home, chat, notifiche, briefing). Dal 14/10/2026 **un
+acquisto è una fattura**: lo stesso prodotto su più righe della stessa fattura
+diventa un acquisto a prezzo ponderato sulla quantità (`una_riga_per_documento`;
+nella RPC la CTE `documenti`), unità di misura diverse non si fondono, e la
+media del periodo è la media per fattura. Lo spareggio a parità di data è il
+nome del file, poi l'unità, in ordine di codepoint (`COLLATE "C"` in SQL).
 A video le due pagine sono la stessa (13/10/2026): la scheda di una variazione,
 il grafico dello storico, la lista acquisti, i riquadri dei totali e il filtro del
 periodo stanno in `apps/web/src/components/prezzi/` e li usano sia l'Osservatorio

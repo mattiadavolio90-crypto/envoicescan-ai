@@ -2740,6 +2740,34 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   (ponderazione, unita' nel gruppo, righe senza file, spareggio, quantita' mancante = 1,
 >   ordine nei due caricamenti); suite `python -m pytest tests/ -q -p no:randomly`
 >   **20.749 verdi + 62 skip, 0 rossi**.
+>
+> - **14/10/2026 — Un acquisto = una fattura, Fase 2: Osservatorio del PV, storico e scheda
+>   Prezzi di catena insieme (Opus), NON pushato, MIGRATION DA APPLICARE AL PUSH.**
+>   `_calcola_variazioni_prezzi_sync` e `_risposta_storico` usano `una_riga_per_documento`;
+>   i nomi a video restano la `mode()` sulle righe (come la RPC); `_load_fatture_for_prezzi` e
+>   i due storici leggono `unita_misura`. Migration
+>   `20261014150654_gruppo_prezzi_catena_per_documento.sql`: CTE `documenti` fra `righe` e
+>   `ordinate`, spareggio data/file/unita'/riga con `COLLATE "C"`, firma invariata, REVOKE/GRANT
+>   ripetuti; **va applicata sul live al momento del push** (prima PV e catena darebbero
+>   numeri diversi). Misura della mappatura (catena, 2026): a soglia 5% le variazioni passano
+>   da 365 a 386 (34 nascoste che compaiono, 13 finte che spariscono). **Verifica avversaria
+>   (2 revisori in sola lettura, una sulla parita' pandas/SQL eseguita con la migration su
+>   righe costruite, una sui consumatori):** trovato un difetto vero prima del deploy — il
+>   prezzo `p*q/q` in virgola mobile (1,71x40/40 = 1,7100000000000002) portava un calo di
+>   esattamente il 5% a 4,99999% e lo faceva sparire dal PV ma non dalla catena (sul live:
+>   PASTO DI GRANO di H.D. ITALIA in LAND DEI SAPORI) e cambiava i centesimi a video
+>   (ORTOFRUTTA €5,27 contro €5,26): ora 6 decimali dalle due parti, e i test confrontano
+>   `storico_valori` al bit. Chiusi anche: pesano solo le quantita' positive (uno storno dava
+>   un prezzo negativo), categoria vuota resta vuota (non «nan»), un nome mancante non fa
+>   cadere la pagina; test nuovi per righe senza file, quantita' a zero, due fatture nello
+>   stesso giorno, decimali periodici, e presidio sul testo per `COLLATE "C"` (il Postgres dei
+>   test e' C.UTF-8: togliere la collation non farebbe fallire niente di eseguito, il live e'
+>   en_US). Gli avvisi della Home contano ancora per riga fino alla Fase 3. **Prove:**
+>   mutazione 17/17 (SQL: ponderazione, unita' fuse, spareggio sul file, nomi non `mode()`,
+>   arrotondamento, pesi positivi; pandas: lista senza fusione, storico senza fusione,
+>   arrotondamento, pesi positivi, categoria «nan», nome mancante; piu' i 5 della Fase 1
+>   rieseguiti); 25 test SQL di catena verdi su Postgres vero; suite `python -m pytest tests/
+>   -q -p no:randomly` **20.762 verdi + 62 skip, 0 rossi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

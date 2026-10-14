@@ -222,3 +222,21 @@ def test_la_nota_dei_sei_mesi_resta_anche_sui_nomi_lunghi():
     v = _v([1.0, 2.0], descrizione=lungo, data_penultimo="2025-09-01")
     assert v["prodotto"] == lungo[:60] + " ⚠️ >6m"
     assert _v([1.0, 2.0], descrizione=lungo)["prodotto"] == lungo[:60]
+
+
+def test_un_fornitore_mancante_non_fa_cadere_l_osservatorio():
+    """Il nome a video si calcola su tutte le serie, anche da un acquisto solo:
+    `mode()` di una colonna tutta vuota e' vuoto e `[0]` faceva KeyError su
+    tutta la pagina. Sul live le colonne sono NOT NULL; il calcolo non deve
+    dipenderne."""
+    from services.routers.prezzi import _calcola_variazioni_prezzi_sync
+
+    righe = [
+        {"descrizione": "PANE", "fornitore": None, "categoria": "PANE", "prezzo_unitario": 1.0,
+         "quantita": 1, "data_documento": "2026-03-01", "file_origine": "a.xml", "tipo_documento": "TD01"},
+        {"descrizione": "LATTE", "fornitore": "ADC", "categoria": "LATTICINI", "prezzo_unitario": 1.0,
+         "quantita": 1, "data_documento": "2026-03-01", "file_origine": "a.xml", "tipo_documento": "TD01"},
+        {"descrizione": "LATTE", "fornitore": "ADC", "categoria": "LATTICINI", "prezzo_unitario": 2.0,
+         "quantita": 1, "data_documento": "2026-04-01", "file_origine": "b.xml", "tipo_documento": "TD01"},
+    ]
+    assert [v["prodotto"] for v in _calcola_variazioni_prezzi_sync(righe, 5.0)] == ["LATTE"]

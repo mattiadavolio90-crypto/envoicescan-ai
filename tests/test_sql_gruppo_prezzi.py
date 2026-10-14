@@ -16,8 +16,10 @@ Come misura
    zero, righe cancellate o escluse dai conti, fuori periodo, descrizioni con
    spazi e maiuscole diverse). Per ogni sede le variazioni della catena devono
    coincidere con `_calcola_variazioni_prezzi_sync` sulle righe di quella sede.
-   Le date sono distinte dentro ogni sede: a parita' di giorno pandas non
-   garantisce quale riga sia l'ultima, la RPC si'.
+   Dal 14/10/2026 un acquisto e' una fattura: il seme ha righe ripetute nella
+   stessa fattura, due fatture nello stesso giorno, unita' di misura diverse e
+   lo stesso nome di file nelle due sedi, e le due strade devono scegliere la
+   stessa fattura come ultima (spareggio data/file/unita').
 2. Due sedi con prezzi diversi ma stabili: zero variazioni, un divario. E' il
    caso che separa «calcolo per sede» da «serie mescolata».
 """
@@ -56,14 +58,14 @@ _NUMERO_RIGA = iter(range(1, 10**6))
 
 
 def _riga(sql, sede, giorno, descrizione, fornitore, prezzo, *, categoria="LATTICINI", quantita=1,
-          tipo="TD01", file=None, cancellata=False, oscurata=False):
+          tipo="TD01", file=None, cancellata=False, oscurata=False, unita="PZ", senza_file=False):
     sql(
         "INSERT INTO public.fatture (user_id, ristorante_id, file_origine, numero_riga, data_documento, "
         "fornitore, descrizione, categoria, quantita, prezzo_unitario, totale_riga, tipo_documento, "
-        "deleted_at, oscurata) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        UTENTE, sede, file or f"f-{sede[-1]}-{giorno}.xml", next(_NUMERO_RIGA), giorno, fornitore,
+        "deleted_at, oscurata, unita_misura) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        UTENTE, sede, "" if senza_file else (file or f"f-{sede[-1]}-{giorno}.xml"), next(_NUMERO_RIGA), giorno, fornitore,
         descrizione, categoria,
-        quantita, prezzo, prezzo, tipo, "2026-06-01T00:00:00+00:00" if cancellata else None, oscurata,
+        quantita, prezzo, prezzo, tipo, "2026-06-01T00:00:00+00:00" if cancellata else None, oscurata, unita,
     )
 
 
@@ -95,17 +97,19 @@ def _coppie(sql, sedi=(SEDE1, SEDE2), escluse=None):
 
 def _righe_pv(sql, sede):
     """Le righe che `_load_fatture_for_prezzi` darebbe all'Osservatorio del PV."""
-    cols = "descrizione,categoria,fornitore,prezzo_unitario,quantita,totale_riga,data_documento,file_origine,tipo_documento"
+    cols = "descrizione,categoria,fornitore,prezzo_unitario,quantita,totale_riga,data_documento,file_origine,tipo_documento,unita_misura"
     righe = sql(
         f"SELECT {cols} FROM public.fatture WHERE ristorante_id = %s AND deleted_at IS NULL "
-        "AND NOT oscurata AND data_documento BETWEEN %s AND %s ORDER BY data_documento",
+        "AND NOT oscurata AND data_documento BETWEEN %s AND %s ORDER BY data_documento, id",
         sede, DA, A,
     )
     return _json([dict(zip(cols.split(","), r)) for r in righe])
 
 
+# `n_fattura` = il file dell'ultimo acquisto: senza, il test non si accorgerebbe
+# se le due strade scegliessero come «ultima» una fattura diversa.
 _CAMPI = ("prodotto", "categoria", "fornitore", "storico_valori", "media", "penultimo", "ultimo",
-          "aumento_perc", "data", "trend", "impatto_stimato", "delta_euro")
+          "aumento_perc", "data", "trend", "impatto_stimato", "delta_euro", "n_fattura")
 
 
 def _confrontabile(v):
@@ -123,21 +127,35 @@ def test_la_catena_da_per_ogni_sede_le_variazioni_dell_osservatorio(sql):
     prodotti = ["Mozzarella", "MOZZARELLA ", " mozzarella", "Limone", "Salmone 5-6", "Coca BIB 33cl",
                 "Salmone 5-6 ORDER 2012258 (1007082)", "SALMONE 5-6 order 2012995(1007786)"]
     fornitori = ["Partesa", "PARTESA ", "Mefon", "ADC"]
+    # Un acquisto = una fattura (`una_riga_per_documento` e la CTE `documenti`):
+    # il seme deve contenere i casi in cui le due strade possono divergere —
+    # lo stesso prodotto su piu' righe della stessa fattura a prezzi e quantita'
+    # diverse, due fatture nello stesso giorno (spareggio sul nome del file),
+    # unita' di misura diverse nella stessa fattura (non si fondono), lo stesso
+    # nome di file nelle due sedi. Un file ha una sola data, come sul live.
+    unita = ["PZ", "PZ", " pz", "KG", "CT"]
     for sede in (SEDE1, SEDE2):
-        giorni = rnd.sample(range(0, 360), 220)
+        giorni = rnd.sample(range(0, 360), 140)
         for i, g in enumerate(sorted(giorni)):
             giorno = (date(2026, 1, 1) + timedelta(days=g)).isoformat()
-            caso = rnd.random()
-            _riga(
-                sql, sede, giorno, rnd.choice(prodotti), rnd.choice(fornitori),
-                rnd.choice([Decimal("0"), Decimal(f"{rnd.uniform(1, 30):.2f}"), Decimal(f"{rnd.uniform(1, 30):.2f}")]),
-                categoria=rnd.choice(["LATTICINI", "FRUTTA", "BEVANDE", "UTENZE E LOCALI", "MATERIALE DI CONSUMO"]),
-                quantita=rnd.choice([None, 1, Decimal("2.5"), 10]),
-                tipo=rnd.choice(["TD01", "TD01", "TD01", "TD04", "nc", None]),
-                file=f"f-{sede[-1]}-{i % 40}.xml",
-                cancellata=caso < 0.05,
-                oscurata=0.05 <= caso < 0.10,
-            )
+            file_del_giorno = [f"F-{g}.xml"] if rnd.random() < 0.5 else [f"f-{sede[-1]}-{g}.xml"]
+            if rnd.random() < 0.25:
+                file_del_giorno.append(f"G-{sede[-1]}-{g}.xml")
+            for file in file_del_giorno:
+                prodotto, fornitore = rnd.choice(prodotti), rnd.choice(fornitori)
+                for _ in range(rnd.choice([1, 1, 2, 3])):
+                    caso = rnd.random()
+                    _riga(
+                        sql, sede, giorno, prodotto, fornitore,
+                        rnd.choice([Decimal("0"), Decimal(f"{rnd.uniform(1, 30):.2f}"), Decimal(f"{rnd.uniform(1, 30):.2f}")]),
+                        categoria=rnd.choice(["LATTICINI", "FRUTTA", "BEVANDE", "UTENZE E LOCALI", "MATERIALE DI CONSUMO"]),
+                        quantita=rnd.choice([None, 1, Decimal("2.5"), 10]),
+                        tipo=rnd.choice(["TD01", "TD01", "TD01", "TD04", "nc", None]),
+                        file=file,
+                        cancellata=caso < 0.05,
+                        oscurata=0.05 <= caso < 0.10,
+                        unita=rnd.choice(unita),
+                    )
         # Fuori periodo: non deve entrare in nessuna delle due strade.
         _riga(sql, sede, "2025-12-31", "Limone", "Mefon", Decimal("99.00"))
 
@@ -564,3 +582,113 @@ def test_lo_storico_si_apre_anche_col_numero_d_ordine_incollato(db_sql, sql):
 
     storico = _storico_prodotto_sede(ClientSQL(db_sql), SEDE1, chiave, "ITTICA", desc_key=chiave, forn_key="ITTICA")
     assert [p.prezzo_unitario for p in storico.punti] == [10.00, 12.00]
+
+
+def test_un_acquisto_e_una_fattura_nel_pv_in_catena_e_nello_storico(db_sql, sql):
+    """ORTOFRUTTA 2,88 -> 3,83 -> 2,88 tutto nella fattura 39/FA (screenshot di
+    Mattia del 14/10/2026): era una variazione dentro la stessa fattura. Ora la
+    39/FA e' UN acquisto a prezzo ponderato, uguale nelle tre strade; un'unita'
+    diversa nella stessa fattura resta un acquisto a se'."""
+    from services.routers.gruppo import _variazioni_catena
+    from services.routers.prezzi import _calcola_variazioni_prezzi_sync, _storico_prodotto_sede
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    forn = "GIANOLI S.A.S."
+    _riga(sql, SEDE1, "2026-03-04", "ORTOFRUTTA", forn, Decimal("2.50"), quantita=2, file="38.xml", categoria="VERDURE")
+    _riga(sql, SEDE1, "2026-04-04", "ORTOFRUTTA", forn, Decimal("2.88"), quantita=2, file="39.xml", categoria="VERDURE")
+    _riga(sql, SEDE1, "2026-04-04", "ORTOFRUTTA", forn, Decimal("3.83"), quantita=4, file="39.xml", categoria="VERDURE")
+    _riga(sql, SEDE1, "2026-04-04", "ORTOFRUTTA", forn, Decimal("2.88"), quantita=2, file="39.xml", categoria="VERDURE")
+    _riga(sql, SEDE1, "2026-04-04", "ORTOFRUTTA", forn, Decimal("40.00"), quantita=1, file="39.xml", categoria="VERDURE", unita="CT")
+    ponderato = (2.88 * 2 + 3.83 * 4 + 2.88 * 2) / 8
+
+    pv = {v["n_fattura"]: v for v in _calcola_variazioni_prezzi_sync(_righe_pv(sql, SEDE1), 0.0)}
+    catena = {v["n_fattura"]: v for v in _variazioni_catena(_coppie(sql), NOMI, 0.0)}
+    # Il CT della 39 resta un acquisto a se'. A parita' di data e file lo
+    # spareggio e' l'unita' in ordine alfabetico: CT prima di PZ, quindi
+    # l'ultimo acquisto e' la 39 in PZ e il penultimo il CT.
+    for strada in (pv, catena):
+        v = strada["39.xml"]
+        assert v["storico_valori"] == pytest.approx([2.50, 40.0, ponderato])
+        assert v["penultimo"] == pytest.approx(40.0)
+        assert v["ultimo"] == pytest.approx(round(ponderato, 4))
+    assert pv["39.xml"]["media"] == pytest.approx(catena["39.xml"]["media"])
+    assert pv["39.xml"]["media"] == pytest.approx(round((2.50 + ponderato + 40.0) / 3, 4)), "ogni fattura pesa uguale"
+
+    v = pv["39.xml"]
+    storico = _storico_prodotto_sede(
+        ClientSQL(db_sql), SEDE1, v["prodotto"], v["fornitore"], DA, A, desc_key=v["desc_key"], forn_key=v["forn_key"],
+    )
+    assert [p.prezzo_unitario for p in storico.punti] == pytest.approx([2.50, 40.0, round(ponderato, 4)], abs=1e-4)
+    assert [p.quantita for p in storico.punti] == [2, 1, 8]
+    assert storico.prezzo_medio == pytest.approx(v["media"])
+
+
+def test_i_casi_limite_della_fusione_sono_uguali_nel_pv_e_in_catena(sql):
+    """I casi che il seme casuale non garantisce, ognuno uguale nelle due strade:
+    un calo di esattamente il 5% su una riga per fattura (prima il float di
+    pandas lo portava a 4,99999% e spariva dal PV), due fatture nello stesso
+    giorno (spareggio sul nome del file), righe senza file (acquisti a se'),
+    quantita' a zero (media semplice)."""
+    from services.routers.gruppo import _variazioni_catena
+    from services.routers.prezzi import _calcola_variazioni_prezzi_sync
+
+    _semina_sedi(sql)
+    _riga(sql, SEDE1, "2026-03-06", "PASTO DI GRANO", "H.D. ITALIA", Decimal("1.80"), quantita=40, file="a.xml")
+    _riga(sql, SEDE1, "2026-04-10", "PASTO DI GRANO", "H.D. ITALIA", Decimal("1.71"), quantita=40, file="b.xml")
+    # stesso giorno: «B.xml» viene prima di «a.xml» (codepoint), l'ultimo e' a.xml
+    _riga(sql, SEDE1, "2026-05-01", "LATTE", "ADC", Decimal("1.00"), file="z.xml")
+    _riga(sql, SEDE1, "2026-05-02", "LATTE", "ADC", Decimal("2.00"), file="a.xml")
+    _riga(sql, SEDE1, "2026-05-02", "LATTE", "ADC", Decimal("3.00"), file="B.xml")
+    # senza file: due righe, due acquisti
+    _riga(sql, SEDE1, "2026-05-03", "PANE", "ADC", Decimal("1.00"), senza_file=True)
+    _riga(sql, SEDE1, "2026-05-03", "PANE", "ADC", Decimal("1.50"), senza_file=True)
+    # quantita' a zero: media semplice (4,00)
+    _riga(sql, SEDE1, "2026-05-04", "OLIO", "ADC", Decimal("2.00"), file="o1.xml")
+    _riga(sql, SEDE1, "2026-05-05", "OLIO", "ADC", Decimal("3.00"), quantita=0, file="o2.xml")
+    _riga(sql, SEDE1, "2026-05-05", "OLIO", "ADC", Decimal("5.00"), quantita=0, file="o2.xml")
+    # decimali periodici: (2,88x2 + 3,83x4) / 6 = 3,51333... -> 6 decimali in tutte e due
+    _riga(sql, SEDE1, "2026-05-06", "BURRO", "ADC", Decimal("1.00"), file="u1.xml")
+    _riga(sql, SEDE1, "2026-05-07", "BURRO", "ADC", Decimal("2.88"), quantita=2, file="u2.xml")
+    _riga(sql, SEDE1, "2026-05-07", "BURRO", "ADC", Decimal("3.83"), quantita=4, file="u2.xml")
+    # uno storno nella stessa fattura: pesano solo le quantita' positive
+    _riga(sql, SEDE1, "2026-05-08", "ACETO", "ADC", Decimal("2.00"), file="c1.xml")
+    _riga(sql, SEDE1, "2026-05-09", "ACETO", "ADC", Decimal("1.00"), quantita=3, file="c2.xml")
+    _riga(sql, SEDE1, "2026-05-09", "ACETO", "ADC", Decimal("5.00"), quantita=-2, file="c2.xml")
+
+    pv = {v["prodotto"]: v for v in _calcola_variazioni_prezzi_sync(_righe_pv(sql, SEDE1), 5.0)}
+    catena = {v["prodotto"]: v for v in _variazioni_catena(_coppie(sql), NOMI, 5.0)}
+    assert set(pv) == set(catena) == {"PASTO DI GRANO", "LATTE", "PANE", "OLIO", "BURRO", "ACETO"}
+    # Uguali al bit, non solo a meno di una tolleranza: e' l'arrotondamento a 6
+    # decimali dalle due parti a renderlo possibile.
+    for prodotto in pv:
+        assert pv[prodotto]["storico_valori"] == catena[prodotto]["storico_valori"], prodotto
+    for strada in (pv, catena):
+        assert strada["BURRO"]["storico_valori"] == [1.0, round((2.88 * 2 + 3.83 * 4) / 6, 6)]
+        assert strada["ACETO"]["storico_valori"] == [2.0, 1.0]
+    for strada in (pv, catena):
+        assert strada["PASTO DI GRANO"]["aumento_perc"] == -5.0
+        assert strada["LATTE"]["storico_valori"] == [1.0, 3.0, 2.0]
+        assert strada["LATTE"]["n_fattura"] == "a.xml"
+        assert strada["PANE"]["storico_valori"] == [1.0, 1.5]
+        assert strada["OLIO"]["storico_valori"] == [2.0, 4.0]
+
+
+def test_la_rpc_ordina_il_testo_per_codepoint_come_pandas():
+    """Il Postgres dei test nasce con LANG=C.UTF-8, quindi l'ordine del testo e'
+    gia' quello dei codepoint e togliere `COLLATE "C"` non farebbe fallire
+    nessun test eseguito; il live e' en_US.UTF-8, dove «G-1» e «f-1» si
+    scambiano. Presidio sul TESTO della migration (unico possibile qui): lo
+    spareggio, la categoria e i nomi devono dichiarare la collation."""
+    from pathlib import Path
+
+    testo = sorted((Path(__file__).resolve().parents[1] / "supabase/migrations").glob("*_gruppo_prezzi_catena*.sql"))[-1].read_text()
+    corpo = testo.split("AS $function$")[1]
+    for frammento in (
+        'd.file_key COLLATE "C" DESC',
+        'd.unita_key COLLATE "C" DESC',
+        'max(r.categoria COLLATE "C")',
+        'mode() WITHIN GROUP (ORDER BY r.descrizione COLLATE "C")',
+        'mode() WITHIN GROUP (ORDER BY r.fornitore COLLATE "C")',
+    ):
+        assert frammento in corpo, frammento

@@ -14,6 +14,7 @@ from config.constants import CATEGORIE_SPESE_GENERALI
 from utils.supabase_paging import fetch_all
 from utils.ttl_cache import TTLCache
 from utils.voci_prezzo import (
+    una_riga_per_documento,
     chiave_prodotto,
     chiavi_prodotto,
     maschera_voce_non_prezzo,
@@ -346,14 +347,40 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
     df['_desc_key'] = chiavi_prodotto(df['descrizione'])
     df['_forn_key'] = df['fornitore'].astype(str).str.strip().str.upper()
 
+    # Il nome a video e' il piu' frequente fra le RIGHE, come `mode()` nella RPC
+    # di catena: calcolato dopo la fusione per fattura, le due strade
+    # sceglierebbero nomi diversi per la stessa serie.
+    def _moda(serie) -> str:
+        valori = serie.mode()
+        return str(valori.iloc[0]) if len(valori) else ""
+
+    nomi = {
+        chiave: (_moda(g['descrizione']), _moda(g['fornitore']))
+        for chiave, g in df.groupby(['_desc_key', '_forn_key'])
+    }
+    if 'file_origine' not in df.columns:
+        df['file_origine'] = None
+    df = una_riga_per_documento(
+        df,
+        chiavi=['_desc_key', '_forn_key'],
+        file='file_origine',
+        data='data_documento',
+        prezzo='prezzo_unitario',
+        quantita='quantita',
+        unita='unita_misura' if 'unita_misura' in df.columns else None,
+        somme=('totale_riga',),
+        massimo=('categoria',),
+    )
+
     alert_list = []
 
-    for (_dk, _fk), group in df.groupby(['_desc_key', '_forn_key']):
-        group = group.sort_values('data_documento')
-        acquisti = group[group['prezzo_unitario'] > 0].copy()
-
+    # Un acquisto e' una fattura (`una_riga_per_documento`): l'ultimo e il
+    # penultimo non stanno piu' nella stessa fattura, e le righe arrivano gia'
+    # nell'ordine data/file/unita' della RPC di catena.
+    for (_dk, _fk), acquisti in df.groupby(['_desc_key', '_forn_key']):
         if len(acquisti) < 2:
             continue
+        nome_desc, nome_forn = nomi[(_dk, _fk)]
 
         ultimo = acquisti.iloc[-1]
         penultimo = acquisti.iloc[-2]
@@ -365,8 +392,8 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: s
             media=float(acquisti['prezzo_unitario'].mean()),
             data_penultimo=penultimo['data_documento'],
             data_ultimo=ultimo['data_documento'],
-            descrizione=str(group['descrizione'].mode()[0]),
-            fornitore=str(group['fornitore'].mode()[0]),
+            descrizione=nome_desc,
+            fornitore=nome_forn,
             categoria=ultimo.get('categoria', ''),
             n_fattura=ultimo.get('file_origine', ''),
             qta_ref=float(qta_all.mean()) if not qta_all.empty else 1.0,
@@ -537,7 +564,7 @@ def _load_fatture_for_prezzi(
 ) -> list:
     cols = (
         "descrizione,categoria,fornitore,prezzo_unitario,quantita,"
-        "totale_riga,data_documento,file_origine,tipo_documento"
+        "totale_riga,data_documento,file_origine,tipo_documento,unita_misura"
         + (f",{extra_cols}" if extra_cols else "")
     )
 
@@ -970,7 +997,7 @@ def _storico_per_chiave(sb, ristorante_id, prodotto, fornitore, data_da, data_a,
         while True:
             q = (
                 sb.table("fatture")
-                .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga,categoria,tipo_documento")
+                .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga,categoria,tipo_documento,unita_misura")
                 .eq("ristorante_id", ristorante_id)
                 .is_("deleted_at", "null")
                 .eq("oscurata", False)
@@ -1027,6 +1054,24 @@ def _risposta_storico(sb, ristorante_id, prodotto, fornitore, df) -> StoricoPrez
     df = df[df['prezzo_unitario'] > 0]
     if df.empty:
         return StoricoPrezzoResponse(prodotto=prodotto, fornitore=fornitore, punti=[], prezzo_medio=0.0)
+    # Un punto per fattura, con la stessa regola della riga della lista: prima
+    # due righe della stessa fattura erano due «acquisti» nell'elenco e nel
+    # grafico, e la media non era quella della riga.
+    df = df.assign(
+        __k=chiavi_prodotto(df['descrizione']),
+        __fk=df['fornitore'].astype(str).str.strip().str.upper(),
+    )
+    df = una_riga_per_documento(
+        df,
+        chiavi=['__k', '__fk'],
+        file='file_origine',
+        data='data_documento',
+        prezzo='prezzo_unitario',
+        quantita='quantita',
+        unita='unita_misura' if 'unita_misura' in df.columns else None,
+        somme=('totale_riga',),
+    )
+    df = df.sort_values(['data_documento'], kind='mergesort')
     num_map = _load_num_documento_map(sb, ristorante_id)
     punti = [
         StoricoPrezzoPoint(
@@ -1094,7 +1139,7 @@ def _storico_prodotto_sede(
     while True:
         q = (
             sb.table("fatture")
-            .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga")
+            .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga,unita_misura")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .eq("oscurata", False)

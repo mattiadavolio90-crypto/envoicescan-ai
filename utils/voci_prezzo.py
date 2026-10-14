@@ -93,9 +93,10 @@ def una_riga_per_documento(
       di misura (UPPER/TRIM). Unita' diverse nella stessa fattura NON si fondono
       (decisione di Mattia, 14/10/2026: un cartone mediato con un pezzo da' un
       prezzo senza senso e spegnerebbe «Confezione diversa?»).
-    - Prezzo: media ponderata sulla quantita' (`quantita` mancante = 1), media
-      semplice se la quantita' sommata non e' positiva. Non totale/quantita':
-      sul live 803 righe se ne scostano oltre l'1% (sconti in riga).
+    - Prezzo: media ponderata sulle quantita' positive (`quantita` mancante =
+      1), media semplice se nessuna lo e'; arrotondato a 6 decimali come nella
+      RPC. Non totale/quantita': sul live 803 righe se ne scostano oltre l'1%
+      (sconti in riga).
     - `quantita` e le colonne in `somme` si sommano, quelle in `massimo`
       prendono il massimo (in ordine di codepoint, come `COLLATE "C"` in SQL),
       tutte le altre il valore della prima riga.
@@ -111,7 +112,10 @@ def una_riga_per_documento(
     lavoro = df.copy()
     lavoro["__q"] = pd.to_numeric(lavoro[quantita], errors="coerce").fillna(1.0)
     lavoro["__p"] = pd.to_numeric(lavoro[prezzo], errors="coerce").fillna(0.0)
-    lavoro["__pq"] = lavoro["__p"] * lavoro["__q"]
+    # Pesano solo le quantita' positive: uno storno (quantita' negativa nella
+    # stessa fattura) darebbe un prezzo d'acquisto negativo.
+    lavoro["__qp"] = lavoro["__q"].where(lavoro["__q"] > 0, 0.0)
+    lavoro["__pq"] = lavoro["__p"] * lavoro["__qp"]
     lavoro["__u"] = (
         lavoro[unita].fillna("").astype(str).str.strip().str.upper() if unita else ""
     )
@@ -122,7 +126,7 @@ def una_riga_per_documento(
     lavoro["__pos"] = range(len(lavoro))
 
     gruppo = chiavi + ["__f", "__d", "__u", "__solo"]
-    speciali = {"__q", "__p", "__pq", "__u", "__f", "__d", "__solo", "__pos", quantita, prezzo, file, data}
+    speciali = {"__q", "__qp", "__p", "__pq", "__u", "__f", "__d", "__solo", "__pos", quantita, prezzo, file, data}
     if unita:
         speciali.add(unita)
     altre = [c for c in lavoro.columns if c not in gruppo and c not in speciali]
@@ -141,19 +145,25 @@ def una_riga_per_documento(
         valori_massimo[c] = dict(zip(lavoro.loc[presenti, c], testo[presenti]))
 
     g = lavoro.groupby(gruppo, sort=False, dropna=False)
-    out = g[["__q", "__pq"]].sum()
+    out = g[["__q", "__qp", "__pq"]].sum()
     out["__p"] = g["__p"].mean()
     if da_sommare:
         out[da_sommare] = g[da_sommare].sum(min_count=1)
     if da_massimo:
         out[da_massimo] = g[da_massimo].max()
         for c in da_massimo:
-            out[c] = out[c].map(valori_massimo[c])
+            out[c] = out[c].map(valori_massimo[c]).astype(object)
+            out.loc[out[c].isna(), c] = None
     prima = g["__pos"].min()
     out[prime] = lavoro[prime].iloc[prima.to_numpy()].to_numpy()
     out = out.reset_index()
     out[quantita] = out["__q"]
-    out[prezzo] = out["__p"].where(out["__q"] <= 0, out["__pq"] / out["__q"].where(out["__q"] > 0, 1.0))
+    # Arrotondato a 6 decimali come `round(..., 6)` nella RPC: senza, 1,71 x 40
+    # / 40 in virgola mobile fa 1,7100000000000002, e un calo di esattamente il
+    # 5% scendeva a 4,99999% e spariva dal PV ma non dalla catena (trovato il
+    # 14/10/2026 su PASTO DI GRANO di H.D. ITALIA).
+    ponderato = out["__pq"] / out["__qp"].where(out["__qp"] > 0, 1.0)
+    out[prezzo] = ponderato.where(out["__qp"] > 0, out["__p"]).round(6)
     out[file] = out["__f"].where(out["__solo"] < 0, None)
     out = out.sort_values(chiavi + ["__d", "__f", "__u", "__solo"], kind="mergesort")
-    return out.drop(columns=["__q", "__p", "__pq", "__u", "__f", "__d", "__solo"], errors="ignore").reset_index(drop=True)
+    return out.drop(columns=["__q", "__qp", "__p", "__pq", "__u", "__f", "__d", "__solo"], errors="ignore").reset_index(drop=True)

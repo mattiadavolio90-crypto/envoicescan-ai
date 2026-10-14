@@ -108,3 +108,28 @@ def test_totale_tutto_mancante_resta_mancante():
 
 def test_tabella_vuota():
     assert _uno(pd.DataFrame(columns=["sede", "prodotto", "fornitore", "file", "data", "prezzo", "q", "um"])).empty
+
+
+def test_una_riga_sola_tiene_il_suo_prezzo_esatto():
+    """1,71 x 40 / 40 in virgola mobile e' 1,7100000000000002: un calo di
+    esattamente il 5% scendeva a 4,99999% e spariva dal PV ma non dalla catena
+    (PASTO DI GRANO di H.D. ITALIA, trovato il 14/10/2026)."""
+    df = _righe({"file": "1.xml", "prezzo": 1.71, "q": 40})
+    assert _uno(df).loc[0, "prezzo"] == 1.71
+
+
+def test_il_prezzo_ponderato_ha_sei_decimali_come_la_rpc():
+    df = _righe({"file": "1.xml", "prezzo": 2.88, "q": 2}, {"file": "1.xml", "prezzo": 3.83, "q": 4})
+    assert _uno(df).loc[0, "prezzo"] == round((2.88 * 2 + 3.83 * 4) / 6, 6)
+
+
+def test_uno_storno_nella_stessa_fattura_non_da_un_prezzo_negativo():
+    df = _righe({"file": "1.xml", "prezzo": 1.0, "q": 3}, {"file": "1.xml", "prezzo": 5.0, "q": -2})
+    out = _uno(df)
+    assert out.loc[0, "prezzo"] == 1.0, "pesano solo le quantita' positive"
+    assert out.loc[0, "q"] == 1, "la quantita' resta la somma"
+
+
+def test_categoria_tutta_mancante_resta_vuota_non_nan():
+    df = _righe({"file": "1.xml", "prezzo": 1.0, "q": 1, "categoria": None})
+    assert _uno(df).loc[0, "categoria"] is None
