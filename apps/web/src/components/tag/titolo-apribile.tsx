@@ -19,7 +19,7 @@ export function TitoloApribile({
     <h3 className="text-sm font-semibold">
       <Button
         variant="ghost"
-        size="sm"
+        size="default"
         aria-expanded={aperto}
         className="-ml-2 gap-1.5 font-semibold aria-expanded:bg-transparent hover:aria-expanded:bg-muted"
         onClick={() => onCambia(!aperto)}
