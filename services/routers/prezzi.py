@@ -916,6 +916,8 @@ def get_storico_prodotto(
     fornitore: str = "",
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
+    desc_key: Optional[str] = None,
+    forn_key: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ) -> StoricoPrezzoResponse:
     user = _resolve_user_from_token(authorization)
@@ -923,7 +925,96 @@ def get_storico_prodotto(
     ristorante_id = _resolve_ristorante_id(user, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
-    return _storico_prodotto_sede(sb, ristorante_id, prodotto, fornitore, data_da, data_a)
+    return _storico_prodotto_sede(
+        sb, ristorante_id, prodotto, fornitore, data_da, data_a, desc_key=desc_key, forn_key=forn_key,
+    )
+
+
+def _parola_per_filtro(desc_key: str) -> str:
+    """La parola piu' lunga della chiave, per il pre-filtro `ilike` sul DB.
+
+    Ogni parola della chiave sta anche nella descrizione grezza (la chiave toglie
+    solo maiuscole, spazi ai bordi e il numero d'ordine, che puo' stare in testa:
+    «ORDER 41484 (122741) BRAVO»), quindi `%parola%` non perde righe; il
+    confronto esatto si fa dopo, in pandas. Senza `%`, `_` e `\\`, che in
+    `ilike` sono caratteri speciali.
+    """
+    parole = [w for w in desc_key.split() if not any(c in w for c in "%_\\")]
+    return max(parole, key=len) if parole else ""
+
+
+def _storico_per_chiave(sb, ristorante_id, prodotto, fornitore, data_da, data_a, desc_key, forn_key):
+    import pandas as pd
+
+    desc_key = desc_key.strip().upper()
+    forn_key = forn_key.strip().upper()
+    parola = _parola_per_filtro(desc_key)
+    all_rows: list = []
+    page = 0
+    page_size = 1000
+    while True:
+        q = (
+            sb.table("fatture")
+            .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .eq("oscurata", False)
+            .gt("prezzo_unitario", 0)
+            .order("data_documento", desc=False)
+            .order("id", desc=False)
+            .range(page * page_size, (page + 1) * page_size - 1)
+        )
+        if parola:
+            q = q.ilike("descrizione", f"%{parola}%")
+        if data_da:
+            q = q.gte("data_documento", data_da)
+        if data_a:
+            q = q.lte("data_documento", data_a)
+        resp = q.execute()
+        if not resp.data:
+            break
+        all_rows.extend(resp.data)
+        if len(resp.data) < page_size:
+            break
+        page += 1
+
+    vuoto = StoricoPrezzoResponse(prodotto=prodotto, fornitore=fornitore, punti=[], prezzo_medio=0.0)
+    if not all_rows:
+        return vuoto
+    df = pd.DataFrame(all_rows)
+    mask = (chiavi_prodotto(df['descrizione']) == desc_key) & (
+        df['fornitore'].astype(str).str.strip().str.upper() == forn_key
+    )
+    return _risposta_storico(sb, ristorante_id, prodotto, fornitore, df[mask].copy()) if mask.any() else vuoto
+
+
+def _risposta_storico(sb, ristorante_id, prodotto, fornitore, df) -> StoricoPrezzoResponse:
+    import pandas as pd
+
+    df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
+    df['quantita'] = pd.to_numeric(df.get('quantita', pd.Series(dtype=float)), errors='coerce')
+    df['totale_riga'] = pd.to_numeric(df.get('totale_riga', pd.Series(dtype=float)), errors='coerce')
+    df = df[df['prezzo_unitario'] > 0]
+    if df.empty:
+        return StoricoPrezzoResponse(prodotto=prodotto, fornitore=fornitore, punti=[], prezzo_medio=0.0)
+    num_map = _load_num_documento_map(sb, ristorante_id)
+    punti = [
+        StoricoPrezzoPoint(
+            data=str(r['data_documento']),
+            prezzo_unitario=round(float(r['prezzo_unitario']), 4),
+            fattura=str(r.get('file_origine', '') or ''),
+            numero_documento=num_map.get(str(r.get('file_origine', '') or ''), ''),
+            quantita=round(float(r['quantita']), 3) if pd.notna(r['quantita']) else None,
+            totale_riga=round(float(r['totale_riga']), 2) if pd.notna(r['totale_riga']) else None,
+        )
+        for _, r in df.iterrows()
+    ]
+    return StoricoPrezzoResponse(
+        prodotto=prodotto,
+        fornitore=fornitore,
+        punti=punti,
+        prezzo_medio=round(float(df['prezzo_unitario'].mean()), 4),
+    )
 
 
 def _storico_prodotto_sede(
@@ -933,11 +1024,23 @@ def _storico_prodotto_sede(
     fornitore: str = "",
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
+    desc_key: Optional[str] = None,
+    forn_key: Optional[str] = None,
 ) -> StoricoPrezzoResponse:
     """Gli acquisti di un prodotto in UNA sede. `ristorante_id` arriva gia'
     verificato dal chiamante: la sede di sessione qui, una sede del gruppo dalla
-    catena (`/api/gruppo/prezzi/storico`)."""
+    catena (`/api/gruppo/prezzi/storico`).
+
+    Con `desc_key`/`forn_key` (le chiavi intere che la riga porta) gli acquisti
+    sono ESATTAMENTE quelli che la lista ha raggruppato. Senza, si ripiega sul
+    nome a video, tagliato a 60: il confronto sui primi 30 caratteri mescolava
+    prodotti diversi (624 prodotti su 1.058 col nome oltre i 60, misurato il
+    14/10/2026: lotti di pesce, ricambi, contratti).
+    """
     import pandas as pd
+
+    if desc_key:
+        return _storico_per_chiave(sb, ristorante_id, prodotto, fornitore, data_da, data_a, desc_key, forn_key or "")
 
     # Pulisce il nome prodotto dai suffissi UI (e dal numero d'ordine, che la
     # riga non porta piu' ma una vecchia richiesta potrebbe) prima dei filtri DB
@@ -968,6 +1071,7 @@ def _storico_prodotto_sede(
             .gt("prezzo_unitario", 0)
             .ilike("descrizione", f"{prod_prefix}%")
             .order("data_documento", desc=False)
+            .order("id", desc=False)
             .range(page * page_size, (page + 1) * page_size - 1)
         )
         if data_da:
@@ -1006,31 +1110,7 @@ def _storico_prodotto_sede(
     elif fornitore:
         mask = mask & (df['_forn'] == fornitore.strip().upper())
 
-    df = df[mask & (df['prezzo_unitario'] > 0)].copy()
-
-    if df.empty:
-        return StoricoPrezzoResponse(prodotto=prodotto, fornitore=fornitore, punti=[], prezzo_medio=0.0)
-
-    prezzo_medio = round(float(df['prezzo_unitario'].mean()), 4)
-    num_map = _load_num_documento_map(sb, ristorante_id)
-    punti = [
-        StoricoPrezzoPoint(
-            data=str(r['data_documento']),
-            prezzo_unitario=round(float(r['prezzo_unitario']), 4),
-            fattura=str(r.get('file_origine', '') or ''),
-            numero_documento=num_map.get(str(r.get('file_origine', '') or ''), ''),
-            quantita=round(float(r['quantita']), 3) if pd.notna(r['quantita']) else None,
-            totale_riga=round(float(r['totale_riga']), 2) if pd.notna(r['totale_riga']) else None,
-        )
-        for _, r in df.iterrows()
-    ]
-
-    return StoricoPrezzoResponse(
-        prodotto=prodotto,
-        fornitore=fornitore,
-        punti=punti,
-        prezzo_medio=prezzo_medio,
-    )
+    return _risposta_storico(sb, ristorante_id, prodotto, fornitore, df[mask & (df['prezzo_unitario'] > 0)].copy())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

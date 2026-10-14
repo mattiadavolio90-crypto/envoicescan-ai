@@ -3650,13 +3650,17 @@ def gruppo_prezzi_storico(
     fornitore: str = "",
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
+    desc_key: Optional[str] = None,
+    forn_key: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ) -> StoricoPrezzoResponse:
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     # Solo una sede di QUESTO gruppo: l'id arriva dal client.
     if ristorante_id not in rid_to_nome:
         raise HTTPException(status_code=404, detail="Punto vendita non trovato")
-    return _storico_prodotto_sede(sb, ristorante_id, prodotto, fornitore, data_da, data_a)
+    return _storico_prodotto_sede(
+        sb, ristorante_id, prodotto, fornitore, data_da, data_a, desc_key=desc_key, forn_key=forn_key,
+    )
 
 
 @router.get(

@@ -396,13 +396,17 @@ function VariazioneCardBase<R extends RigaVariazione>({
                 media={r.media}
                 fallbackPrezzi={spark.length >= 2 ? spark : undefined}
               />
-              {storico && (
+              {storico && storico.punti.length > 0 ? (
                 <ListaAcquisti
                   punti={storico.punti}
                   media={storico.prezzo_medio || r.media}
                   onApriFattura={onApriFattura ? (p) => onApriFattura(r, p) : undefined}
                   puntoVendita={nomePuntoVendita}
                 />
+              ) : (
+                // Prima qui non compariva niente: il cliente non sapeva se le
+                // fatture mancassero o non si fossero caricate.
+                <p className="mt-3 text-xs text-muted-foreground">Elenco fatture non disponibile per questo prodotto.</p>
               )}
             </>
           )}

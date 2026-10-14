@@ -73,3 +73,20 @@ export function chiavePreferito(r: Parameters<typeof coppiaPreferito>[0]): strin
   const c = coppiaPreferito(r);
   return `${c.prodotto}|${c.fornitore}`;
 }
+
+// I parametri per aprire lo storico di una riga. Le chiavi intere (`desc_key`,
+// `forn_key`) fanno trovare al worker ESATTAMENTE gli acquisti che la lista ha
+// raggruppato: col solo nome a video, tagliato a 60, il worker confrontava i
+// primi 30 caratteri e mescolava prodotti diversi (624 su 1.058 nomi lunghi,
+// 14/10/2026).
+export function parametriStorico(
+  r: { prodotto: string; fornitore: string; desc_key?: string; forn_key?: string },
+  extra: Record<string, string> = {},
+): URLSearchParams {
+  const qs = new URLSearchParams({ ...extra, prodotto: r.prodotto, fornitore: r.fornitore });
+  if (r.desc_key) {
+    qs.set("desc_key", r.desc_key);
+    qs.set("forn_key", r.forn_key ?? "");
+  }
+  return qs;
+}

@@ -481,3 +481,47 @@ def test_l_anteprima_della_fattura_di_una_sede_del_gruppo(db_sql, sql, monkeypat
     with pytest.raises(HTTPException) as e:
         G.gruppo_prezzi_fattura(SEDE2, "f-limone.xml", authorization="x")
     assert e.value.status_code == 404
+
+
+def test_lo_storico_aperto_dalla_riga_ha_gli_stessi_acquisti_della_riga(db_sql, sql):
+    """La riga porta le chiavi intere (`desc_key`, `forn_key`) e lo storico deve
+    trovare ESATTAMENTE gli acquisti che la lista ha raggruppato. Col solo nome a
+    video, tagliato a 60, il worker ripiegava sui primi 30 caratteri e mescolava
+    prodotti diversi: 624 nomi lunghi su 1.058 (14/10/2026), soprattutto lotti di
+    pesce che differiscono nelle ultime cifre."""
+    from services.routers.prezzi import _calcola_variazioni_prezzi_sync, _storico_prodotto_sede
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    lotto = "BRANZINI 600/800 NIKO GRECIA ALLEVATO DICENTRARCHUS LABRAX ALLEVATE GRECIA (NIKO3103) "
+    a, b = lotto + "147", lotto + "148"
+    _riga(sql, SEDE1, "2026-03-01", a, "ITTICA NORD SRL", Decimal("10.00"), categoria="PESCE")
+    # stesso prodotto: numero d'ordine in testa, fornitore scritto in minuscolo
+    _riga(sql, SEDE1, "2026-04-01", "ORDER 41484 (122741) " + a, "ittica nord srl ", Decimal("11.00"), categoria="PESCE")
+    _riga(sql, SEDE1, "2026-05-01", a, "ITTICA NORD SRL", Decimal("13.00"), categoria="PESCE")
+    # un altro lotto: stessi primi 60 caratteri, prodotto diverso
+    _riga(sql, SEDE1, "2026-03-15", b, "ITTICA NORD SRL", Decimal("30.00"), categoria="PESCE")
+    _riga(sql, SEDE1, "2026-04-15", b, "ITTICA NORD SRL", Decimal("40.00"), categoria="PESCE")
+
+    riga = next(v for v in _calcola_variazioni_prezzi_sync(_righe_pv(sql, SEDE1), 5.0) if v["storico_valori"][0] == 10.0)
+    assert riga["prodotto"] == a[:60] == b[:60], "il caso deve avere i due lotti indistinguibili a video"
+
+    storico = _storico_prodotto_sede(
+        ClientSQL(db_sql), SEDE1, riga["prodotto"], riga["fornitore"], DA, A,
+        desc_key=riga["desc_key"], forn_key=riga["forn_key"],
+    )
+    assert [p.prezzo_unitario for p in storico.punti] == riga["storico_valori"] == [10.0, 11.0, 13.0]
+    assert storico.prezzo_medio == pytest.approx(riga["media"])
+
+
+def test_lo_storico_per_chiave_non_si_tira_dietro_un_altro_fornitore(db_sql, sql):
+    from services.routers.prezzi import _storico_prodotto_sede
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    _riga(sql, SEDE1, "2026-03-01", "LATTE INTERO", "ADC", Decimal("1.00"))
+    _riga(sql, SEDE1, "2026-03-02", "LATTE INTERO", "ADC ITALIA", Decimal("9.00"))
+    _riga(sql, SEDE1, "2026-03-03", "LATTE INTERO 1L", "ADC", Decimal("5.00"))
+
+    storico = _storico_prodotto_sede(ClientSQL(db_sql), SEDE1, "LATTE INTERO", "ADC", desc_key="LATTE INTERO", forn_key="ADC")
+    assert [p.prezzo_unitario for p in storico.punti] == [1.00]

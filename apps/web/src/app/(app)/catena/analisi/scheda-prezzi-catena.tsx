@@ -32,6 +32,7 @@ import {
   SPIEGAZIONE_DA_CONTROLLARE,
   coppiaPreferito,
   nomeProdotto,
+  parametriStorico,
   type VistaPrezzi,
 } from "@/lib/prezzi-viste";
 import {
@@ -261,7 +262,7 @@ export function SchedaPrezziCatena() {
       setStorico(null);
       setStoricoLoading(true);
       try {
-        const qs = new URLSearchParams({ ristorante_id: v.ristorante_id, prodotto: v.prodotto, fornitore: v.fornitore, ...range });
+        const qs = parametriStorico(v, { ristorante_id: v.ristorante_id, ...range });
         const res = await fetch(`/api/gruppo/prezzi/storico?${qs}`, { cache: "no-store" });
         if (!res.ok) throw new Error();
         setStorico(await res.json());

@@ -2577,6 +2577,32 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   mutazione 3/3 (striscia nella scheda, legenda nel contatore, `gravita` in catena); suite
 >   `-m "not sql"` sull'intera cartella `tests/` **19.433 verdi + 61 skip, 1 rosso non mio**
 >   (lo stesso `test_oscurate_choke_point`); `tsc` pulito. **Non fatto:** vista nel browser.
+>
+> - **14/10/2026 — Prezzi: lo storico aperto da una riga ha gli acquisti di QUELLA riga (Opus),
+>   NON pushato, nessuna migration.** Da screenshot di Mattia: ORTOFRUTTA PESO senza elenco
+>   fatture, solo «ultimi 5 acquisti disponibili». **Causa dello screen:** il fornitore («GIANOLI
+>   S.A.S. DI GIANOLI ESTER E C», 35 caratteri, tagliato a 30) faceva uscire vuoto lo storico
+>   col codice di prima di `ee6f8c84`; con quello oggi su Railway la stessa ricerca trova 9
+>   acquisti (simulata in SQL, deploy verificato col CLI). **Difetto trovato misurando:** la
+>   riga manda il nome tagliato a 60 e lo storico, mancando il confronto esatto, ripiegava sui
+>   primi 30 caratteri: **624 prodotti su 1.058** col nome oltre i 60 (28 fornitori, soprattutto
+>   lotti di pesce «...(NIKO3103) 147/148») aprivano grafico, media ed elenco fatture mescolati
+>   con altri prodotti. Le varianti di maiuscole/spazi nel fornitore, che cercavo, sono 0 sul
+>   DB. **Fatto:** la riga porta gia' `desc_key`/`forn_key`; `lib/prezzi-viste.ts`
+>   (`parametriStorico`) le manda dal PV e dalla catena, i due proxy le inoltrano, e
+>   `_storico_prodotto_sede` con le chiavi confronta esattamente come il raggruppamento della
+>   lista (pre-filtro DB `%parola piu' lunga%`, che regge il numero d'ordine in testa). Senza
+>   chiavi (risposte in cache) resta il percorso vecchio, ora con `ORDER BY id` nella
+>   paginazione. Sotto il grafico, se lo storico e' vuoto, compare «Elenco fatture non
+>   disponibile» invece di niente. **Prove:** 2 test su Postgres vero (lo storico ha gli stessi
+>   acquisti e la stessa media della riga anche fra due lotti uguali nei primi 60, col numero
+>   d'ordine in testa e il fornitore in minuscolo; nessun altro fornitore) e 4 frontend (lib +
+>   pagine + proxy); mutazione 6/6 (confronto esatto, fornitore, ramo chiavi, pre-filtro,
+>   lib, proxy — un primo mutante sul fornitore non si era applicato ed e' stato rifatto);
+>   611 test prezzi/isolamento/permessi/OpenAPI verdi; OpenAPI rigenerato (+2 parametri su 2
+>   rotte); suite `python -m pytest tests/ -q -p no:randomly` **20.648 verdi + 61 skip + 1
+>   xfail, 1 rosso non mio** (`test_oscurate_choke_point` su `gruppo_prezzi_fattura`, commit
+>   `a5e9e0f9` della sessione dell'anteprima in catena). **Non fatto:** prova nel browser.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

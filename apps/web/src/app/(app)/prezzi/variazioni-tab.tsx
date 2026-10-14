@@ -17,6 +17,7 @@ import {
   contaDaControllare,
   coppiaPreferito,
   inVista,
+  parametriStorico,
   type VistaPrezzi,
 } from "@/lib/prezzi-viste";
 import {
@@ -148,12 +149,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     setStorico(null);
     setStoricoLoading(true);
     try {
-      const qs = new URLSearchParams({
-        prodotto: r.prodotto,
-        fornitore: r.fornitore,
-        data_da: currentRange.data_da,
-        data_a: currentRange.data_a,
-      });
+      const qs = parametriStorico(r, { data_da: currentRange.data_da, data_a: currentRange.data_a });
       const res = await fetch(`/api/prezzi/storico-prodotto?${qs}`);
       if (!res.ok) throw new Error();
       setStorico(await res.json());

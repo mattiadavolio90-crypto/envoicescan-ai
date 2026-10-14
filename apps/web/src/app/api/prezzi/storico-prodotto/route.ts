@@ -26,6 +26,11 @@ export async function GET(req: NextRequest) {
     const qs = new URLSearchParams({ prodotto, fornitore });
     if (data_da) qs.set("data_da", data_da);
     if (data_a) qs.set("data_a", data_a);
+    // Le chiavi intere della riga: senza, il worker ripiega sul nome tagliato a 60.
+    for (const k of ["desc_key", "forn_key"]) {
+      const v = searchParams.get(k);
+      if (v) qs.set(k, v);
+    }
     const res = await fetch(`${WORKER_URL}/api/prezzi/storico-prodotto?${qs}`, {
       headers: workerHeaders(token),
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),

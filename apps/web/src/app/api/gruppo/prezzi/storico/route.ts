@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing param: ristorante_id, prodotto" }, { status: 400 });
   }
   const qs = new URLSearchParams({ ristorante_id: ristoranteId, prodotto, fornitore: sp.get("fornitore") ?? "" });
-  for (const k of ["data_da", "data_a"]) {
+  for (const k of ["data_da", "data_a", "desc_key", "forn_key"]) {
     const v = sp.get(k);
     if (v) qs.set(k, v);
   }

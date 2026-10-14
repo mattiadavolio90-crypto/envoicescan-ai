@@ -93,3 +93,38 @@ def test_la_scala_di_gravita_non_torna(relativo):
     sorgente = (Path(__file__).resolve().parents[1] / "apps/web/src" / relativo).read_text(encoding="utf-8")
     for traccia in ("gravita", "GRAVITA", "Critico", "critiche", "border-l-4"):
         assert traccia not in sorgente, f"{relativo}: «{traccia}» e' tornato"
+
+
+def test_lo_storico_si_apre_con_le_chiavi_intere_della_riga():
+    qs = _ts(
+        "emit(m.parametriStorico(input, {data_da: '2026-01-01'}).toString())",
+        {"prodotto": "BRANZINI 600/800 NIKO", "fornitore": "ITTICA", "desc_key": "BRANZINI 600/800 NIKO (X) 147", "forn_key": "ITTICA NORD SRL"},
+    )
+    from urllib.parse import parse_qs
+
+    p = parse_qs(qs)
+    assert p["desc_key"] == ["BRANZINI 600/800 NIKO (X) 147"]
+    assert p["forn_key"] == ["ITTICA NORD SRL"]
+    assert p["prodotto"] == ["BRANZINI 600/800 NIKO"] and p["data_da"] == ["2026-01-01"]
+
+
+def test_senza_chiavi_lo_storico_si_apre_col_nome():
+    """Una risposta in cache di prima delle chiavi: niente desc_key vuoto, che il
+    worker leggerebbe come «nessun prodotto»."""
+    qs = _ts("emit(m.parametriStorico(input).toString())", {"prodotto": "LATTE", "fornitore": "ADC"})
+    assert "desc_key" not in qs and "forn_key" not in qs
+
+
+@pytest.mark.parametrize("relativo, attesa", [
+    ("app/(app)/prezzi/variazioni-tab.tsx", "parametriStorico(r, {"),
+    ("app/(app)/catena/analisi/scheda-prezzi-catena.tsx", "parametriStorico(v, {"),
+    ("app/api/prezzi/storico-prodotto/route.ts", '["desc_key", "forn_key"]'),
+    ("app/api/gruppo/prezzi/storico/route.ts", '"desc_key", "forn_key"]'),
+])
+def test_le_chiavi_arrivano_fino_al_worker(relativo, attesa):
+    """La lib conta solo se le pagine la usano e i proxy inoltrano le chiavi:
+    un proxy che le scarta riporta il worker sul nome tagliato, in silenzio."""
+    from pathlib import Path
+
+    sorgente = (Path(__file__).resolve().parents[1] / "apps/web/src" / relativo).read_text(encoding="utf-8")
+    assert attesa in sorgente
