@@ -283,3 +283,13 @@ def test_notifica_visibile_titolare_e_home_vedono_tutto():
     solo_fatture = _sotto_utente({"analisi_fatture": True})
     assert pr.notifica_visibile(solo_fatture, None) is False
     assert pr.notifica_visibile(solo_fatture, "/pagina-sconosciuta") is False
+
+
+def test_l_anteprima_della_fattura_si_apre_da_analisi_fatture():
+    """Dagli acquisti di Analisi Fatture → Articoli si apre la fattura (Mattia,
+    12/10/2026): un sotto-utente con la sola Analisi Fatture avrebbe preso 403
+    e il toast «Errore nel caricamento della fattura». Solo in piu' a chi ha
+    gia' la pagina: chi non ce l'ha resta fuori."""
+    rotta = ("GET", "/api/scadenziario/anteprima")
+    assert pr.rotta_consentita(_sotto_utente({"analisi_fatture": True}), rotta) is True
+    assert pr.rotta_consentita(_sotto_utente({"margini": True}), rotta) is False

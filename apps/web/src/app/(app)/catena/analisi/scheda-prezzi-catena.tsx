@@ -9,7 +9,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
 import { intervalloPeriodo } from "@/lib/periodo";
 import type { StoricoPrezzoPoint, StoricoPrezzoResponse } from "@/lib/prezzi";
-import { AnteprimaFatturaDialog } from "../../prezzi/anteprima-fattura-dialog";
+import { AnteprimaFatturaDialog } from "@/components/fatture/anteprima-fattura-dialog";
 import {
   chiaveDivario,
   chiaveStellaCatena,

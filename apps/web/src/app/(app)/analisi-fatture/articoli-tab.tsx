@@ -47,6 +47,8 @@ import {
 import { messaggioListaVuota } from "@/lib/esito-caricamento";
 import { Input } from "@/components/ui/input";
 import { DropdownCategoria } from "@/components/fatture/dropdown-categoria";
+import { AnteprimaFatturaDialog } from "@/components/fatture/anteprima-fattura-dialog";
+import { rigaApribile } from "@/lib/anteprima-fattura";
 import { formatData, formatEuro } from "./periodi";
 
 type Props = {
@@ -831,6 +833,7 @@ function RigheArticolo({
 }) {
   const [righe, setRighe] = useState<RigaFattura[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [anteprima, setAnteprima] = useState<RigaFattura | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -870,6 +873,7 @@ function RigheArticolo({
   const cutoffNuovo = Date.now() - 24 * 60 * 60 * 1000;
 
   return (
+    <>
     <table className="w-full text-xs">
       <thead>
         <tr className="text-muted-foreground border-b">
@@ -885,10 +889,13 @@ function RigheArticolo({
         {righe.map((r) => {
           const isNuova =
             r.created_at && new Date(r.created_at).getTime() >= cutoffNuovo;
+          const apribile = rigaApribile(r);
           return (
             <tr
               key={r.id}
-              className="border-b last:border-0 hover:bg-accent transition-colors"
+              onClick={apribile ? () => setAnteprima(r) : undefined}
+              title={apribile ? "Apri la fattura" : undefined}
+              className={`border-b last:border-0 hover:bg-accent transition-colors${apribile ? " cursor-pointer" : ""}`}
             >
               <td className="py-1 pr-4 text-muted-foreground">{formatData(r.data_documento)}</td>
               <td className="py-1 pr-4">
@@ -908,7 +915,7 @@ function RigheArticolo({
               <td className="py-1 pr-6 text-right tabular-nums font-medium">
                 {r.totale_riga != null ? formatEuro(r.totale_riga, 2) : "—"}
               </td>
-              <td className="py-1 pr-4 text-muted-foreground whitespace-nowrap">
+              <td className={`py-1 pr-4 whitespace-nowrap ${apribile ? "text-primary-text" : "text-muted-foreground"}`}>
                 {r.numero_documento || <em className="opacity-50">—</em>}
               </td>
             </tr>
@@ -916,5 +923,13 @@ function RigheArticolo({
         })}
       </tbody>
     </table>
+    <AnteprimaFatturaDialog
+      open={anteprima !== null}
+      fileOrigine={anteprima?.file_origine ?? null}
+      numeroDocumento={anteprima?.numero_documento ?? undefined}
+      prodotto={descrizione}
+      onClose={() => setAnteprima(null)}
+    />
+    </>
   );
 }

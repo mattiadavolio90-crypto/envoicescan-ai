@@ -2625,6 +2625,22 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   colonna, grafico, elenco). I tre punti sono verificati sul sorgente, non sul rendering
 >   (nessun runner frontend): resta da guardare nel browser. 4.136 test frontend verdi
 >   (`tests/test_*_frontend.py` + contrasto CSS); `tsc` pulito.
+>
+> - **14/10/2026 — Analisi Fatture → Articoli: dagli acquisti si apre la fattura (Opus), NON
+>   pushato, nessuna migration.** Richiesta di Mattia (screenshot 8): come in Variazioni prezzi.
+>   **Fatto:** `AnteprimaFatturaDialog` passa da `app/(app)/prezzi/` a `components/fatture/`
+>   (la usano ora PV, catena e Articoli); nella sotto-tabella di un articolo la riga si
+>   clicca e il N° fattura e' in colore link; `file_origine` resta solo un argomento, mai a
+>   video. Non si aprono le quote ripartite dal gruppo (`ripartita_su_gruppo`, id negativo):
+>   portano la fattura della capofila e l'anteprima, che cerca sulla sede di sessione, si
+>   aprirebbe vuota (`lib/anteprima-fattura.ts`, `rigaApribile`). **Permesso:** il sotto-utente
+>   con la sola Analisi Fatture avrebbe preso 403 su `GET /api/scadenziario/anteprima`:
+>   aggiunto `analisi_fatture` in `permessi_rotte.py` (solo in piu' a chi ha gia' la pagina).
+>   **Prove:** `test_anteprima_fattura_frontend.py` (5 casi + collegamento in Articoli) e un
+>   test in `test_permessi_rotte.py`; mutazione 4/4 (riparto, id negativo, clic su ogni riga,
+>   permesso); suite `python -m pytest tests/ -q -p no:randomly` **20.665 verdi + 61 skip + 1
+>   xfail, 1 rosso non mio** (`test_oscurate_choke_point` su `gruppo_prezzi_fattura`, commit
+>   `a5e9e0f9`). **Non fatto:** prova nel browser.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

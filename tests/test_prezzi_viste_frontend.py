@@ -153,3 +153,4 @@ def test_la_scheda_toglie_la_media_in_tutti_e_tre_i_punti():
     assert sorgente.count("senzaMedia={!conMedia}") == 2, "grafico ed elenco acquisti"
     assert "{!senzaMedia && <ReferenceLine" in sorgente
     assert '{!senzaMedia && <th className="text-right px-3 py-2 text-muted-foreground font-medium">Rispetto alla media</th>}' in sorgente
+

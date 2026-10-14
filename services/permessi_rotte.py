@@ -137,7 +137,8 @@ PAGINE_PER_ROTTA: Dict[Rotta, FrozenSet[str]] = {
     ("POST", "/api/scadenziario/notifica"): _p(S),
     ("GET", "/api/cestino"): _p(S),
     ("POST", "/api/fatture/sposta-sede"): _p(S),
-    ("GET", "/api/scadenziario/anteprima"): _p(S, C, P),
+    # anche dagli acquisti di Analisi Fatture → Articoli
+    ("GET", "/api/scadenziario/anteprima"): _p(S, C, P, F),
     ("GET", "/api/scadenziario/fornitori"): _p(S, C),
     ("GET", "/api/scadenziario/regole"): _p(S, C),
     ("POST", "/api/scadenziario/regole"): _p(S, C),

@@ -7,7 +7,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { toast } from "sonner";
 import type { VariazioniResponse, VariazionePrezzo, StoricoPrezzoResponse, StoricoPrezzoPoint } from "@/lib/prezzi";
 import { InfoPopover } from "@/components/ui/info-popover";
-import { AnteprimaFatturaDialog } from "./anteprima-fattura-dialog";
+import { AnteprimaFatturaDialog } from "@/components/fatture/anteprima-fattura-dialog";
 import { parseDecimaleIt } from "@/lib/format";
 import { intervalloPeriodo as isoDateRange } from "@/lib/periodo";
 import {

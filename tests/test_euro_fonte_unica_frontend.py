@@ -42,7 +42,7 @@ _MIGRATI = [
     "app/(app)/prezzi/sconti-tab.tsx",
     "app/(app)/prezzi/nc-tab.tsx",
     "app/(app)/prezzi/score-tab.tsx",
-    "app/(app)/prezzi/anteprima-fattura-dialog.tsx",
+    "components/fatture/anteprima-fattura-dialog.tsx",
     "app/(app)/prezzi/variazioni-tab.tsx",
     "app/(app)/analisi-e-tag/analisi-e-tag-client.tsx",
 ]
