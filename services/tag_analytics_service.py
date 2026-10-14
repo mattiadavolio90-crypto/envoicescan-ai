@@ -297,11 +297,14 @@ def _compute_fornitori(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
             if df_forn.empty:
                 return {"fornitori": [], "aggregati": None}
 
+    # «Acquisti» conta le fatture, non le righe (un acquisto e' una fattura,
+    # 14/10/2026): tre righe dello stesso fornitore nella stessa fattura erano
+    # tre acquisti.
     if usa_quantita_norm:
         df_fornitori = df_forn.groupby("Fornitore", as_index=False).agg(
             SpesaTotale=("TotaleRigaNum", "sum"),
             QuantitaTotale=("QuantitaNorm", "sum"),
-            NumAcquisti=("FileOrigine", "count"),
+            NumAcquisti=("FileOrigine", "nunique"),
         )
         df_fornitori["PrezzoMedio"] = df_fornitori.apply(
             lambda row: row["SpesaTotale"] / row["QuantitaTotale"]
@@ -314,7 +317,7 @@ def _compute_fornitori(df_tag_periodo: pd.DataFrame) -> Dict[str, Any]:
         df_fornitori = df_forn.groupby("Fornitore", as_index=False).agg(
             SpesaTotale=("TotaleRigaNum", "sum"),
             QuantitaTotale=("Quantita", "sum"),
-            NumAcquisti=("FileOrigine", "count"),
+            NumAcquisti=("FileOrigine", "nunique"),
             PrezzoMedio=("PrezzoUnitario", "mean"),
         )
         quantita_label = "Q.tà"

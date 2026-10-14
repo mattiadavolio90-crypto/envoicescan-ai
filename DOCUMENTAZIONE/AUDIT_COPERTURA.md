@@ -2798,6 +2798,14 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   sotto-tabella, unita', pesi positivi della gemella, trend); 462 test esistenti di
 >   Articoli/export/isolamento verdi; suite `python -m pytest tests/ -q -p no:randomly`
 >   **20.775 verdi + 62 skip, 0 rossi**.
+>
+> - **14/10/2026 — Un acquisto = una fattura, Fase 5a: «Acquisti» in Analisi e Tag (Opus), NON
+>   pushato.** `_compute_fornitori` contava le righe (`count` su `FileOrigine`): ora le fatture
+>   distinte (`nunique`), nei due rami (quantita' normalizzate e no). In catena i tag dichiarano
+>   gia' «Voci in fattura» / «righe»: invariati. **Prove:** un test parametrizzato sui due
+>   rami; mutazione 2/2 (il ramo senza quantita' e' sopravvissuto al primo giro: il caso in PZ
+>   passava comunque dalle quantita' normalizzate, ucciso con quantita' mancanti); 538 test di
+>   tag e chat verdi. Suite completa a fine Fase 5.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

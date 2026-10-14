@@ -3,6 +3,7 @@
 from datetime import date
 
 import pandas as pd
+import pytest
 
 import services.tag_analytics_service as tas
 from services.tag_analytics_service import (
@@ -170,3 +171,20 @@ def test_analizza_tag_empty_when_period_excludes_all(monkeypatch):
     # Periodo che non contiene nessuna riga (tutte a marzo 2026)
     result = analizza_tag("u1", "r1", 1, date(2025, 1, 1), date(2025, 12, 31))
     assert result["vuoto"] is True
+
+
+@pytest.mark.parametrize("quantita", [[1, 2, 3, 1], [None, None, None, None]])
+def test_gli_acquisti_di_un_fornitore_contano_le_fatture(quantita):
+    """Un acquisto e' una fattura (14/10/2026): tre righe dello stesso
+    fornitore nella stessa fattura erano tre «Acquisti». Con le quantita' si
+    passa dal ramo delle quantita' normalizzate, senza dall'altro."""
+    file = ["f1", "f1", "f1", "f2"]
+    righe = [
+        {"FileOrigine": f, "DataDocumento": "2026-03-01" if f == "f1" else "2026-04-01", "Fornitore": "FORN A",
+         "Descrizione": "Pomodoro Pelato", "Quantita": q, "UnitaMisura": "KG",
+         "PrezzoUnitario": 2.0, "TotaleRiga": 2.0, "Categoria": "ALIMENTARI"}
+        for f, q in zip(file, quantita)
+    ]
+    df_tag = _prepare_tag_dataframe(pd.DataFrame(righe), _build_associazioni_map(_associazioni()))
+    fornitori = _compute_fornitori(df_tag)["fornitori"]
+    assert [f["num_acquisti"] for f in fornitori] == [2]
