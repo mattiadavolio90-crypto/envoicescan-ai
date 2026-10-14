@@ -267,41 +267,12 @@ def test_un_account_inesistente_e_rifiutato(scenario, psycopg, tabella, colonne,
             sc.conn.execute(f"INSERT INTO public.{tabella} {colonne} VALUES {valori}", params)
 
 
-def _senza_i_blocchi_della_cascata(sc, chi):
-    """Toglie PRIMA i dati che oggi impediscono di cancellare un account intero
-    (vedi il test xfail sotto): qui si prova la FK dei tag di catena, non quei
-    due difetti."""
-    sedi = (chi.ids["sede1"], chi.ids["sede2"])
-    sc.conn.execute("DELETE FROM public.riparto_costi_catena_quote WHERE ristorante_id IN (%s, %s)", sedi)
-    sc.conn.execute("DELETE FROM public.ricavi_giornalieri WHERE ristorante_id IN (%s, %s)", sedi)
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="due difetti PRE-ESISTENTI, trovati il 14/10/2026 e fuori da questa fase: (1) "
-           "riparto_costi_catena_quote.ristorante_id e' l'unica FK verso ristoranti senza ON DELETE "
-           "CASCADE (su 66), quindi un account di catena col riparto non si cancella; (2) la cascata "
-           "users -> ristoranti -> ricavi_giornalieri fa scattare trg_ricavi_giornalieri_sync_margini, "
-           "che reinserisce margini_mensili per un ristorante gia' cancellato. Quando entrambi saranno "
-           "chiusi questo test passera': togli l'xfail.",
-)
-def test_cancellare_un_account_intero_oggi_fallisce_per_riparto_e_trigger_dei_margini(scenario):
-    sc = scenario
-    a = sc.a
-    assert _uno(sc, "SELECT count(*) FROM public.ricavi_giornalieri WHERE user_id = %s", a.ids["user_id"])[0] > 0
-    assert _uno(sc, "SELECT count(*) FROM public.riparto_costi_catena_quote WHERE ristorante_id = %s", a.ids["sede1"])[0] > 0
-    with sc.conn.transaction():
-        sc.conn.execute("DELETE FROM public.users WHERE id = %s", (a.ids["user_id"],))
-    assert _uno(sc, "SELECT count(*) FROM public.users WHERE id = %s", a.ids["user_id"])[0] == 0
-
-
 def test_cancellare_l_account_porta_via_tag_prodotti_e_cartelle_di_catena(scenario):
     """Prima della FK restavano tag e prodotti (dati scritti dal cliente): le
     cartelle sparivano e i tag perdevano solo la cartella."""
     sc = scenario
     a, b = sc.a, sc.b
     assert _righe_di_catena(sc, a) == (1, 1, 1)
-    _senza_i_blocchi_della_cascata(sc, a)
 
     sc.conn.execute("DELETE FROM public.users WHERE id = %s", (a.ids["user_id"],))
 
@@ -314,7 +285,6 @@ def test_elimina_account_dal_cliente_non_lascia_tag_di_catena(scenario):
     """La strada vera: POST /api/account/elimina conta sul CASCADE da users."""
     sc = scenario
     a, b = sc.a, sc.b
-    _senza_i_blocchi_della_cascata(sc, a)
 
     resp = sc.chiama(a, "POST", "/api/account/elimina", json_={"conferma": "ELIMINA"})
 

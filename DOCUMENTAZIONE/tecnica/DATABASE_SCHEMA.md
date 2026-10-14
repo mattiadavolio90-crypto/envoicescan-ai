@@ -6,6 +6,26 @@ Supabase PostgreSQL 15, EU Frankfurt. RLS attivo su tutte le tabelle.
 `auth.uid()` sempre NULL (auth custom). Accesso solo via `service_role_key`.
 Soft-delete: query su `fatture` e `prodotti` filtrare sempre `deleted_at IS NULL`.
 
+### Cancellazione di un account o di una sede
+
+«Elimina account» (cliente e admin) ed «Elimina sede» (admin) cancellano la riga
+di `users` o di `ristoranti` e contano sul `ON DELETE CASCADE` per tutto il
+resto. Dal 14/10/2026 (`20261014122000_elimina_account_cascata_completa.sql`)
+nessuna FK verso `users` o `ristoranti` blocca la cancellazione (le quote del
+riparto erano l'ultima senza CASCADE) e tutte le tabelle con `user_id` hanno la
+FK verso `users`: le ultime otto erano `classificazioni_manuali`,
+`fatture_documenti`, `gruppo_segnali_state` (user_id da text a uuid),
+`prezzi_preferiti`, `riparto_costi_catena`, `riparto_regole_fornitore`,
+`upload_events`, `upload_locks`. Allo stesso modo ogni tabella con
+`ristorante_id` ha la FK verso `ristoranti` (le ultime tre: `fatture_documenti`,
+`upload_events`, `upload_locks`). Quasi tutte sono `ON DELETE CASCADE`;
+`ai_usage_events` e `marketplace_leads` sono `SET NULL` (le righe restano,
+senza l'account). «Elimina sede» rifiuta (409) una sede che ha quote nei
+riparti di catena: col CASCADE il riparto resterebbe senza pareggio e il primo
+ricalcolo sposterebbe quel costo su un'altra sede. Lo provano i test `-m sql`
+di `tests/test_sql_elimina_account_cascata.py`; per le tabelle future, il test
+sul catalogo «ogni tabella con `user_id`/`ristorante_id` ha la FK».
+
 ---
 
 ## Tabelle Core
@@ -239,7 +259,10 @@ Mattia il 3/10/2026.
 | — | UNIQUE(ristorante_id, data) | |
 
 Il trigger `trg_ricavi_giornalieri_sync_margini` ricostruisce il mese in
-`margini_mensili` a ogni scrittura.
+`margini_mensili` a ogni scrittura. Dal 14/10/2026 salta il ricalcolo quando la
+sede non c'è più (cancellazione della sede o dell'account): prima reinseriva il
+mese per una sede appena cancellata e la cancellazione falliva
+(`20261014122000_elimina_account_cascata_completa.sql`).
 
 ### `ricavi_modalita_mensile` — Override modalità mensile
 

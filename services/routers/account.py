@@ -380,9 +380,12 @@ class SvuotaDatiBody(BaseModel):
     conferma: str
 
 
-# Tabelle figlie di `users`/`ristoranti` SENZA FK ON DELETE CASCADE: vanno
-# cancellate ESPLICITAMENTE per user_id, altrimenti la sola delete di `ristoranti`
-# (che propaga il cascade) le lascerebbe orfane. Verificato sullo schema live.
+# Tabelle che la sola delete di `ristoranti` non svuota del tutto: vanno
+# cancellate ESPLICITAMENTE per user_id (lo svuotamento non cancella l'utente,
+# quindi il CASCADE da `users` non aiuta). `prodotti_utente` non ha
+# ristorante_id, `upload_events` ha righe con ristorante_id NULL; le altre due
+# hanno la FK CASCADE da `ristoranti` dal 14/10/2026 (migration
+# 20261014122000) e restano qui per sicurezza.
 # NB: `classificazioni_manuali` NON e' qui: nel DB ha righe globali con
 # user_id NULL e non va filtrata per user → la lasciamo intatta.
 # NB: `fatture_queue` NON e' piu' qui dal 30/7/2026 (audit Database): ha FK
@@ -594,8 +597,9 @@ def account_elimina(
         raise HTTPException(status_code=403, detail="Gli account amministratore non possono essere eliminati da qui")
 
     sb = _get_supabase_client()
-    # La cancellazione di users propaga in cascata (FK ON DELETE CASCADE). Una manciata
-    # di tabelle storiche con user_id TEXT/senza FK vengono ripulite esplicitamente prima.
+    # La cancellazione di users propaga in cascata (FK ON DELETE CASCADE): dal
+    # 14/10/2026 anche a queste due (migration 20261014122000), che restano
+    # ripulite qui per prime e contate nel log.
     deleted_extra: Dict[str, int] = {}
     for tabella, col in [("upload_events", "user_id"), ("classificazioni_manuali", "user_id")]:
         try:

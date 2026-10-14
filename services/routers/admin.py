@@ -2467,8 +2467,8 @@ def admin_elimina_cliente(
         ("prodotti_utente", "user_id"),
         ("upload_events", "user_id"),
         ("classificazioni_manuali", "user_id"),
-        # daily_briefing_state ha user_id TEXT (no FK CASCADE possibile): va ripulita
-        # esplicitamente qui, altrimenti restano dati del cliente cancellato (GDPR).
+        # daily_briefing_state: oggi user_id e' uuid con FK CASCADE; la pulizia
+        # esplicita resta dai tempi in cui era TEXT.
         ("daily_briefing_state", "user_id"),
         ("ristoranti", "user_id"),
         ("ricette", "user_id"),
@@ -2770,6 +2770,20 @@ def admin_elimina_sede(
     resp = sb.table("ristoranti").select("id,nome_ristorante").eq("id", sede_id).eq("user_id", cliente_id).limit(1).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail="Sede non trovata")
+    # Le quote del riparto se ne andrebbero con la sede (FK CASCADE dal
+    # 14/10/2026) e il riparto resterebbe senza pareggio: al primo ricalcolo
+    # «l'ultima sede assorbe» sposterebbe quel costo su un'altra sede senza che
+    # nessuno l'abbia deciso. Prima si rifanno i riparti, poi si cancella.
+    quote = (
+        sb.table("riparto_costi_catena_quote").select("riparto_id")
+        .eq("ristorante_id", sede_id).execute()
+    )
+    riparti = {q["riparto_id"] for q in (quote.data or [])}
+    if riparti:
+        raise HTTPException(
+            status_code=409,
+            detail=f"La sede ha quote in {len(riparti)} riparti di catena: vanno tolte o rifatte prima di eliminarla",
+        )
     sb.table("ristoranti").delete().eq("id", sede_id).execute()
     from services.settore_service import invalida_cache
     invalida_cache(cliente_id)

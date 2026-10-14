@@ -2506,6 +2506,45 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `fatture_documenti`, `gruppo_segnali_state` (user_id text), `prezzi_preferiti`,
 >   `riparto_costi_catena`, `riparto_regole_fornitore`, `upload_locks`. Da chiudere da chi ha in
 >   mano riparto e margini, con una migration (CASCADE sulle FK che mancano e guardia nel trigger).
+> - **14/10/2026 — «Elimina account» non fallisce piu' e non lascia dati; «Elimina sede» idem,
+>   o rifiuta se la sede ha riparti (Opus), NON pushato, migration
+>   `20261014122000_elimina_account_cascata_completa.sql`, da applicare dal SQL Editor (l'MCP
+>   l'ha rifiutata: contiene un DROP CONSTRAINT).**
+>   Chiusi i tre difetti trovati scrivendo la FK dei tag di catena (voce sopra), su richiesta di
+>   Mattia («sistema tutto tu»). (1) La FK delle quote del riparto verso `ristoranti` passa a
+>   `ON DELETE CASCADE`: era nata per vietare quote verso sedi inesistenti, garanzia che resta.
+>   (2) `sync_margini_mensili_from_ricavi` salta il ricalcolo in DELETE quando la sede non c'e'
+>   piu'; il resto del corpo e' identico al live (`pg_get_functiondef`). Correzione alla voce
+>   sopra: la funzione NON era stata rivista il 12/10, quella migration aggiunge solo la guardia
+>   dei ricavi senza IVA. (3) FK `user_id -> users ON DELETE CASCADE` sulle otto tabelle che non
+>   l'avevano (`gruppo_segnali_state.user_id` da text a uuid: 70 righe, tutte uuid, nessuna
+>   funzione/vista/policy la legge) e indice su `user_id` dove mancava (`prezzi_preferiti`,
+>   `upload_locks`). Sul live prima: 0 righe orfane in tutte e otto. (4) FK `ristorante_id ->
+>   ristoranti ON DELETE CASCADE` sulle tre tabelle che non l'avevano (`fatture_documenti`,
+>   `upload_events`, `upload_locks`; 0 orfani, 811 eventi con sede NULL lasciati stare). **Misurato con una sonda:**
+>   la guardia sulla sola sede basta anche se sul live la FK dei ricavi verso `users` scatta
+>   PRIMA di quella delle sedi: i trigger di riga dei ricavi girano dopo tutte le cascate dello
+>   statement, e a quel punto sede e account sono gia' spariti. La seconda condizione
+>   (account assente) l'avevo scritta e l'ho tolta: il suo mutante sopravviveva perche' era
+>   ridondante. **Dal `code-reviewer` (🟡, nessun bug):** col CASCADE sulle quote, cancellare UNA
+>   sede di un riparto lasciava il riparto senza pareggio, e il primo ricalcolo («l'ultima sede
+>   assorbe») avrebbe spostato quel costo sull'altra sede in silenzio, con un alert Telegram ogni
+>   mattina: ora `admin_elimina_sede` risponde 409 se la sede ha quote, e i riparti si rifanno
+>   prima. Sue anche la FK delle sedi sulle tre tabelle (punto 4), il test sul catalogo (la mia
+>   docstring diceva che «non resta niente» prende una tabella nuova: falso, vede solo le
+>   tabelle seminate) e due commenti vecchi (`daily_briefing_state` non e' piu' TEXT).
+>   **Test:** `tests/test_sql_elimina_account_cascata.py`, 19 `-m sql`: cancellazione diretta,
+>   `POST /api/account/elimina`, `DELETE` dell'admin sul cliente, sede col riparto rifiutata
+>   senza toccare niente, sede senza riparto (coi ricavi e le tre tabelle) che sparisce lasciando
+>   l'altra, il ricalcolo che resta vivo togliendo un giorno di ricavi, le otto FK, «ogni tabella
+>   con `user_id`/`ristorante_id` ha la FK» dal catalogo, nessuna FK bloccante, rilancio
+>   idempotente. L'altro cliente resta identico riga per riga.
+>   Tolti da `test_sql_gruppo_tag_cartelle.py` l'xfail strict e l'aggiramento che toglieva
+>   quote e ricavi prima della cascata. **Mutanti 10 su 10 uccisi** (quote senza CASCADE, senza
+>   guardia, guardia sempre vera, tolte dalle liste `upload_events` per l'account e per la sede,
+>   `gruppo_segnali_state`, `classificazioni_manuali`; 409 tolto, 409 solo con due riparti).
+>   `-m sql` 1.229 verdi, 556 test dell'admin verdi, OpenAPI senza drift. Le pulizie a mano
+>   nelle due route restano (ridondanti ma innocue).
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e
