@@ -383,3 +383,46 @@ def test_le_voci_di_una_sede_portano_la_sede():
     consumi = {"mesi_avviso": ["2026-10"], "righe": [{"ristorante_id": "r1", "mese": "2026-10", "totale": 60, "limite": 50, "sopra_soglia": True}]}
     assert _per_chiave(_voci(consumi=consumi))["soglia:r1"]["ristorante_id"] == "r1"
     assert _per_chiave(_voci(n_categorie=2))["categorie"]["ristorante_id"] is None
+
+
+def test_gli_arrivi_sdi_contano_solo_le_fatture_dello_sdi():
+    """In fatture_queue passano anche gli upload manuali ambigui smistati a una
+    sede: contarli azzererebbe il «nessuna fattura dallo SDI» con lo SDI rotto."""
+    import services.fastapi_worker  # noqa: F401
+    import services.routers.admin as admin
+
+    filtri = []
+
+    class _Q:
+        def __init__(self, tabella):
+            self.tabella = tabella
+
+        def select(self, *_a, **_k):
+            return self
+
+        def eq(self, col, val):
+            filtri.append((self.tabella, col, val))
+            return self
+
+        def in_(self, *_a):
+            return self
+
+        def order(self, *_a, **_k):
+            return self
+
+        def limit(self, *_a):
+            return self
+
+        def execute(self):
+            return type("R", (), {"data": []})()
+
+    class _SB:
+        def table(self, nome):
+            return _Q(nome)
+
+    sedi = {"u1": [{"id": "r1", "sdi_attivo": True, "partita_iva": "1"}, {"id": "r2", "sdi_attivo": False}]}
+    admin._arricchisci_canali(_SB(), sedi, ["u1"])
+    coda = [(c, v) for t, c, v in filtri if t == "fatture_queue"]
+    assert ("source", "invoicetronic") in coda
+    assert ("ristorante_id", "r1") in coda and ("ristorante_id", "r2") not in coda
+    assert sedi["u1"][0]["sdi_letto"] is True and sedi["u1"][0]["ultimo_sdi_at"] is None

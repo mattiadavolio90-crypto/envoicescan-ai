@@ -217,14 +217,16 @@ def _arricchisci_canali(sb, sedi_per_utente: Dict[str, List[Dict[str, Any]]],
     dire «non so», non «spento»."""
     sedi = [s for lista in sedi_per_utente.values() for s in lista]
     ids = [str(s["id"]) for s in sedi]
-    # L'ultima fattura arrivata DALLO SDI (fatture_queue), non l'ultimo
-    # caricamento: un upload a mano azzererebbe il conto anche con lo SDI rotto.
-    # Una query per sede con lo SDI acceso (poche), sull'indice per sede.
+    # L'ultima fattura arrivata DALLO SDI (fatture_queue con source
+    # 'invoicetronic'), non l'ultimo caricamento: un upload a mano azzererebbe il
+    # conto anche con lo SDI rotto, e in coda passano anche gli upload manuali
+    # ambigui smistati a una sede. Una query per sede con lo SDI acceso (poche).
     for s in sedi:
         if not s.get("sdi_attivo"):
             continue
         try:
             rows = (sb.table("fatture_queue").select("created_at").eq("ristorante_id", str(s["id"]))
+                    .eq("source", "invoicetronic")
                     .order("created_at", desc=True).limit(1).execute().data or [])
             s["ultimo_sdi_at"] = rows[0]["created_at"] if rows else None
             s["sdi_letto"] = True
