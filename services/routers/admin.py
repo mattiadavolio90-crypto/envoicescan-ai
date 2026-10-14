@@ -2784,6 +2784,21 @@ def admin_elimina_sede(
             status_code=409,
             detail=f"La sede ha quote in {len(riparti)} riparti di catena: vanno tolte o rifatte prima di eliminarla",
         )
+    # Stessa ragione per le regole: una regola a percentuali che nomina la sede
+    # farebbe rispondere 400 al prossimo riparto di quel fornitore.
+    regole = (
+        sb.table("riparto_regole_fornitore").select("fornitore,percentuali")
+        .eq("user_id", cliente_id).execute()
+    )
+    fornitori = sorted(
+        str(r.get("fornitore") or "") for r in (regole.data or [])
+        if isinstance(r.get("percentuali"), dict) and sede_id in r["percentuali"]
+    )
+    if fornitori:
+        raise HTTPException(
+            status_code=409,
+            detail=f"La sede compare nelle percentuali di riparto di {len(fornitori)} fornitori: vanno cambiate prima di eliminarla",
+        )
     sb.table("ristoranti").delete().eq("id", sede_id).execute()
     from services.settore_service import invalida_cache
     invalida_cache(cliente_id)

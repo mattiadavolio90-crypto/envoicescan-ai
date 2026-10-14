@@ -21,8 +21,10 @@ FK verso `users`: le ultime otto erano `classificazioni_manuali`,
 `upload_events`, `upload_locks`). Quasi tutte sono `ON DELETE CASCADE`;
 `ai_usage_events` e `marketplace_leads` sono `SET NULL` (le righe restano,
 senza l'account). «Elimina sede» rifiuta (409) una sede che ha quote nei
-riparti di catena: col CASCADE il riparto resterebbe senza pareggio e il primo
-ricalcolo sposterebbe quel costo su un'altra sede. Lo provano i test `-m sql`
+riparti di catena (col CASCADE il riparto resterebbe senza pareggio e il primo
+ricalcolo sposterebbe quel costo su un'altra sede) o che compare nelle
+`percentuali` di una regola di `riparto_regole_fornitore` (il prossimo riparto
+di quel fornitore risponderebbe 400). Lo provano i test `-m sql`
 di `tests/test_sql_elimina_account_cascata.py`; per le tabelle future, il test
 sul catalogo «ogni tabella con `user_id`/`ristorante_id` ha la FK».
 

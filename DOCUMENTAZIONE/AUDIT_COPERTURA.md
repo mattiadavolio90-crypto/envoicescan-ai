@@ -2513,7 +2513,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   CONSTRAINT).** Verificata sul live: 0 FK bloccanti verso `users`/`ristoranti`, 0 tabelle con
 >   `user_id` o `ristorante_id` senza FK, guardia nel trigger, `gruppo_segnali_state.user_id`
 >   uuid, i due indici; righe intatte (572 quote, 83 margini, 70 segnali, 3.993 documenti, 7.071
->   eventi). Advisor di sicurezza: nessun rilievo nuovo.
+>   eventi). Advisor di sicurezza: nessun rilievo nuovo. **Note non bloccanti chiuse (Mattia:
+>   «sistema le cose non bloccanti pendenti»):** «Elimina sede» rifiuta (409) anche la sede che
+>   compare nelle `percentuali` di una regola di riparto (sul live nessuna regola a percentuali:
+>   latente); 2 test `-m sql` (regola che la nomina, regola che nomina solo l'altra sede), 2
+>   mutanti uccisi. Il «lock occupato» su una sede cancellata NON si corregge: `_acquire_upload_lock`
+>   ha come unico chiamante `handle_uploaded_files`, raggiunto solo da `legacy_streamlit/`, fuori
+>   produzione. Lo scarto fra il nome del file e la versione registrata sul live
+>   (`20261014133156`) e' quello di ogni migration passata da `apply_migration`: il DB live e' lo
+>   stato vero, la migration e' idempotente.
 >   Chiusi i tre difetti trovati scrivendo la FK dei tag di catena (voce sopra), su richiesta di
 >   Mattia («sistema tutto tu»). (1) La FK delle quote del riparto verso `ristoranti` passa a
 >   `ON DELETE CASCADE`: era nata per vietare quote verso sedi inesistenti, garanzia che resta.

@@ -150,6 +150,43 @@ def test_elimina_sede_col_riparto_e_rifiutata_senza_toccare_niente(sc):
     assert sc.impronta(b) == prima_b
 
 
+def test_elimina_sede_nelle_percentuali_di_una_regola_e_rifiutata(sc):
+    """Senza quote, ma la regola del fornitore la nomina: il prossimo riparto
+    di quel fornitore risponderebbe 400 «Sede non appartenente all'account»."""
+    import json
+
+    from fastapi import HTTPException
+
+    a = sc.a
+    s1, s2 = a.ids["sede1"], a.ids["sede2"]
+    sc.conn.execute("DELETE FROM public.riparto_costi_catena_quote WHERE ristorante_id = %s", (s1,))
+    sc.conn.execute(
+        "UPDATE public.riparto_regole_fornitore SET regola = 'percentuali', percentuali = %s::jsonb WHERE user_id = %s",
+        (json.dumps({s1: 30, s2: 70}), a.ids["user_id"]),
+    )
+
+    with pytest.raises(HTTPException) as err:
+        _elimina_sede(sc, a, s1)
+
+    assert err.value.status_code == 409
+    assert "1 fornitori" in err.value.detail
+    assert _uno(sc, "SELECT count(*) FROM public.ristoranti WHERE id = %s", s1)[0] == 1
+
+
+def test_una_regola_che_nomina_solo_l_altra_sede_non_blocca(sc):
+    import json
+
+    a = sc.a
+    s1, s2 = a.ids["sede1"], a.ids["sede2"]
+    sc.conn.execute("DELETE FROM public.riparto_costi_catena_quote WHERE ristorante_id = %s", (s1,))
+    sc.conn.execute(
+        "UPDATE public.riparto_regole_fornitore SET regola = 'percentuali', percentuali = %s::jsonb WHERE user_id = %s",
+        (json.dumps({s2: 100}), a.ids["user_id"]),
+    )
+
+    assert _elimina_sede(sc, a, s1)["ok"] is True
+
+
 def test_elimina_sede_senza_riparto_porta_via_la_sede_e_lascia_il_resto(sc):
     """Coi ricavi (il ricalcolo dei margini) e con le tre tabelle che non
     avevano la FK verso `ristoranti`."""
