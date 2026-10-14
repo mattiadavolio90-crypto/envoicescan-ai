@@ -316,6 +316,11 @@ tiene → deve sempre poter rientrare". I tag sono il suo focus dichiarato.
 > Pre-filtro candidati: `calcola_alert(df, soglia_minima=_SOGLIA_PERC_CANDIDATO)`
 > con `_SOGLIA_PERC_CANDIDATO = 3.0` (genera candidati, poi si applica la soglia
 > cliente). Deve restare ≤ soglia cliente minima sensata.
+>
+> Dal 14/10/2026 (briefing v39) un acquisto è **una fattura**: le righe dello
+> stesso prodotto nella stessa fattura si fondono a prezzo ponderato prima del
+> confronto ultimo/penultimo, con la regola dell'Osservatorio
+> (`una_riga_per_documento` in `utils/voci_prezzo.py`).
 
 ---
 

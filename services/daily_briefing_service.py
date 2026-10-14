@@ -185,7 +185,10 @@ logger = get_logger('daily_briefing')
 #   38 (13/10): il numero d'ordine nel nome del prodotto («... ORDER 2025916»)
 #               non spezza piu' la serie dei prezzi: le consegne di LA GE' GE'
 #               diventano confrontabili e possono dare avvisi nuovi.
-_BRIEFING_CODE_VERSION = 38
+#   39 (14/10): negli avvisi prezzi un acquisto e' una fattura (le righe dello
+#               stesso prodotto nella stessa fattura si fondono): spariscono gli
+#               avvisi nati dentro una fattura, ne compaiono di nascosti.
+_BRIEFING_CODE_VERSION = 39
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il

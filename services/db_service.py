@@ -23,7 +23,13 @@ except ImportError:
 from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
 from utils.validation import SPECIAL_ROW_SCONTO_OMAGGIO, classify_special_row, classify_special_row_vectorized
 from utils.streamlit_compat import make_cache as _make_cache
-from utils.voci_prezzo import chiavi_prodotto, maschera_voce_non_prezzo, salto_da_controllare, togli_numero_ordine
+from utils.voci_prezzo import (
+    chiavi_prodotto,
+    maschera_voce_non_prezzo,
+    salto_da_controllare,
+    togli_numero_ordine,
+    una_riga_per_documento,
+)
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -703,14 +709,41 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     df['_desc_key'] = chiavi_prodotto(df['Descrizione'])
     df['_forn_key'] = df['Fornitore'].astype(str).str.strip().str.upper()
 
+    # Il nome a video: il piu' frequente fra le RIGHE, come l'Osservatorio.
+    def _moda(serie) -> str:
+        valori = serie.mode()
+        return str(valori.iloc[0]) if len(valori) else ""
+
+    nomi = {
+        chiave: (togli_numero_ordine(_moda(g['Descrizione'])), _moda(g['Fornitore']))
+        for chiave, g in df.groupby(['_desc_key', '_forn_key'])
+    }
+
+    # Un acquisto e' una fattura, con la regola dell'Osservatorio
+    # (`una_riga_per_documento`): due righe della stessa fattura erano due
+    # «acquisti», e l'avviso confrontava la fattura con se stessa (sul live, su
+    # 3.656 serie del 2026, in 822 ultimo e penultimo stavano nella stessa
+    # fattura: 763 variazioni vere nascoste, 27 avvisi finti).
+    df['PrezzoUnitario'] = pd.to_numeric(df['PrezzoUnitario'], errors='coerce').fillna(0.0)
+    df = df[df['PrezzoUnitario'] > 0]
+    if 'Quantita' not in df.columns:
+        df = df.assign(Quantita=None)
+    df = una_riga_per_documento(
+        df,
+        chiavi=['_desc_key', '_forn_key'],
+        file='FileOrigine',
+        data='DataDocumento',
+        prezzo='PrezzoUnitario',
+        quantita='Quantita',
+        unita='UnitaMisura' if 'UnitaMisura' in df.columns else None,
+        somme=('TotaleRiga',),
+        massimo=('Categoria',),
+    )
+
     # Raggruppa per Descrizione + Fornitore (case-insensitive, senza il numero
     # d'ordine che un fornitore scrive nel nome: una consegna non e' un prodotto)
-    for (_dk, _fk), group in df.groupby(['_desc_key', '_forn_key']):
-        prodotto = togli_numero_ordine(group['Descrizione'].mode()[0])
-        fornitore = group['Fornitore'].mode()[0]
-        group = group.sort_values('DataDocumento')
-
-        acquisti_validi = group[group['PrezzoUnitario'] > 0].copy()
+    for (_dk, _fk), acquisti_validi in df.groupby(['_desc_key', '_forn_key']):
+        prodotto, fornitore = nomi[(_dk, _fk)]
 
         if len(acquisti_validi) < 2:
             continue

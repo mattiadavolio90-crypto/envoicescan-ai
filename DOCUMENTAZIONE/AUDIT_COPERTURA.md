@@ -2768,6 +2768,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   arrotondamento, pesi positivi, categoria «nan», nome mancante; piu' i 5 della Fase 1
 >   rieseguiti); 25 test SQL di catena verdi su Postgres vero; suite `python -m pytest tests/
 >   -q -p no:randomly` **20.762 verdi + 62 skip, 0 rossi**.
+>
+> - **14/10/2026 — Un acquisto = una fattura, Fase 3: avvisi prezzi di Home, chat, notifiche e
+>   briefing (Opus), NON pushato, nessuna migration.** `calcola_alert` usa la stessa regola
+>   dell'Osservatorio: nomi a video dalla `mode()` sulle righe, prezzi a zero fuori PRIMA della
+>   fusione, poi `una_riga_per_documento` sulla data effettiva (competenza se c'e') e
+>   l'unita'. Misurato dal revisore della Fase 2 sul live: su 3.656 serie del 2026, in 822
+>   ultimo e penultimo stavano nella stessa fattura (763 variazioni vere nascoste, 27 avvisi
+>   finti). **`_BRIEFING_CODE_VERSION` 38 -> 39** con la riga di storico; nota in
+>   `DOCUMENTAZIONE/tecnica/BRIEFING_HOME.md`. **Prove:** `test_avvisi_un_acquisto_per_fattura.py`
+>   (5: due prezzi in una fattura non sono un avviso; ultimo ponderato contro la fattura prima;
+>   avviso e Osservatorio scelgono la stessa fattura e gli stessi prezzi; unita' diverse non
+>   fuse; un omaggio a prezzo zero non abbassa il prezzo); mutazione 4/4 (fusione, filtro dei
+>   prezzi a zero — sopravvissuto al primo giro, ucciso col test dell'omaggio —, unita');
+>   661 test esistenti sugli avvisi e il briefing verdi; suite `python -m pytest tests/ -q -p
+>   no:randomly` **20.767 verdi + 62 skip, 0 rossi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
