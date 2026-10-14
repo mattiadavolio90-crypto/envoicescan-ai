@@ -525,3 +525,42 @@ def test_lo_storico_per_chiave_non_si_tira_dietro_un_altro_fornitore(db_sql, sql
 
     storico = _storico_prodotto_sede(ClientSQL(db_sql), SEDE1, "LATTE INTERO", "ADC", desc_key="LATTE INTERO", forn_key="ADC")
     assert [p.prezzo_unitario for p in storico.punti] == [1.00]
+
+
+def test_lo_storico_per_chiave_ha_le_stesse_esclusioni_della_riga(db_sql, sql):
+    """Una nota di credito a prezzo positivo e una riga in spesa generale con lo
+    stesso nome non entrano nella riga: non devono entrare nemmeno nel suo storico."""
+    from services.routers.prezzi import _calcola_variazioni_prezzi_sync, _storico_prodotto_sede
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    _riga(sql, SEDE1, "2026-03-01", "MOZZARELLA", "ADC", Decimal("5.00"))
+    _riga(sql, SEDE1, "2026-04-01", "MOZZARELLA", "ADC", Decimal("6.00"))
+    _riga(sql, SEDE1, "2026-04-10", "MOZZARELLA", "ADC", Decimal("2.00"), tipo="TD04")
+    _riga(sql, SEDE1, "2026-04-20", "MOZZARELLA", "ADC", Decimal("9.00"), categoria="MANUTENZIONE E ATTREZZATURE")
+
+    riga = _calcola_variazioni_prezzi_sync(_righe_pv(sql, SEDE1), 5.0)[0]
+    storico = _storico_prodotto_sede(
+        ClientSQL(db_sql), SEDE1, riga["prodotto"], riga["fornitore"], DA, A,
+        desc_key=riga["desc_key"], forn_key=riga["forn_key"],
+    )
+    assert [p.prezzo_unitario for p in storico.punti] == riga["storico_valori"] == [5.0, 6.0]
+
+
+def test_lo_storico_si_apre_anche_col_numero_d_ordine_incollato(db_sql, sql):
+    """«NORVEGIA ORDER 222449/222450» diventa la chiave «NORVEGIA/222450»: la
+    parola piu' lunga della chiave non sta nella descrizione grezza (caso reale
+    sul live, 14/10/2026)."""
+    from services.routers.prezzi import _storico_prodotto_sede
+    from tests.helpers_supabase_sql import ClientSQL
+    from utils.voci_prezzo import chiave_prodotto
+
+    _semina_sedi(sql)
+    grezza = "SALMONE NORVEGIA ORDER 222449/222450"
+    chiave = chiave_prodotto(grezza)
+    assert "NORVEGIA/222450" in chiave and "NORVEGIA/222450" not in grezza
+    _riga(sql, SEDE1, "2026-03-01", grezza, "ITTICA", Decimal("10.00"), categoria="PESCE")
+    _riga(sql, SEDE1, "2026-04-01", grezza, "ITTICA", Decimal("12.00"), categoria="PESCE")
+
+    storico = _storico_prodotto_sede(ClientSQL(db_sql), SEDE1, chiave, "ITTICA", desc_key=chiave, forn_key="ITTICA")
+    assert [p.prezzo_unitario for p in storico.punti] == [10.00, 12.00]

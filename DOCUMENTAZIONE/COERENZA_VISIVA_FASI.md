@@ -782,8 +782,9 @@ elencate nei commit. Le più importanti:
   **rimossi** (spiegavano colori che non ci sono più). È un pezzo del §4b
   anticipato: senza il colore, la gerarchia la fanno grassetto e separatori
   già presenti.
-- **O1 chiuso**: la gravità delle variazioni (critico/alto/medio) è una scala
-  di grigi, il giudizio sta solo sull'impatto in euro.
+- **O1 chiuso**: la gravità delle variazioni (critico/alto/medio) era una scala
+  di grigi; dal 14/10/2026 non c'è più (tre grigi indistinguibili, decisione di
+  Mattia). Il giudizio sta solo sull'impatto in euro.
 - **H5/W1/W2**: le card tinte (Personale, Spese) sono neutre col totale in
   blu; il numero porta il colore, non il pannello.
 - **AF1/T1**: i riquadri KPI sono neutri con «Spesa totale» in blu.

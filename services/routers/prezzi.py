@@ -933,59 +933,81 @@ def get_storico_prodotto(
 def _parola_per_filtro(desc_key: str) -> str:
     """La parola piu' lunga della chiave, per il pre-filtro `ilike` sul DB.
 
-    Ogni parola della chiave sta anche nella descrizione grezza (la chiave toglie
-    solo maiuscole, spazi ai bordi e il numero d'ordine, che puo' stare in testa:
-    «ORDER 41484 (122741) BRAVO»), quindi `%parola%` non perde righe; il
-    confronto esatto si fa dopo, in pandas. Senza `%`, `_` e `\\`, che in
-    `ilike` sono caratteri speciali.
+    Di norma ogni parola della chiave sta anche nella descrizione grezza (la
+    chiave toglie maiuscole, spazi ai bordi e il numero d'ordine, anche in
+    testa: «ORDER 41484 (122741) BRAVO»); il confronto esatto si fa dopo, in
+    pandas. Eccezione: un numero d'ordine senza spazio dopo incolla due parole,
+    e se cosi' non trova niente `_storico_per_chiave` rilegge sul solo
+    fornitore (resta scoperto il caso misto, 0 sul live il 14/10/2026). Senza
+    `%`, `_` e `\\`, che in `ilike` sono caratteri speciali.
     """
     parole = [w for w in desc_key.split() if not any(c in w for c in "%_\\")]
     return max(parole, key=len) if parole else ""
 
 
 def _storico_per_chiave(sb, ristorante_id, prodotto, fornitore, data_da, data_a, desc_key, forn_key):
+    """Gli acquisti con QUESTE chiavi, con le stesse esclusioni della lista
+    (`_calcola_variazioni_prezzi_sync`): spese generali, note di credito anche
+    a prezzo positivo, cauzioni. Altrimenti lo storico mostrerebbe acquisti che
+    la riga non ha contato."""
     import pandas as pd
 
     desc_key = desc_key.strip().upper()
     forn_key = forn_key.strip().upper()
-    parola = _parola_per_filtro(desc_key)
-    all_rows: list = []
-    page = 0
-    page_size = 1000
-    while True:
-        q = (
-            sb.table("fatture")
-            .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga")
-            .eq("ristorante_id", ristorante_id)
-            .is_("deleted_at", "null")
-            .eq("oscurata", False)
-            .gt("prezzo_unitario", 0)
-            .order("data_documento", desc=False)
-            .order("id", desc=False)
-            .range(page * page_size, (page + 1) * page_size - 1)
-        )
-        if parola:
-            q = q.ilike("descrizione", f"%{parola}%")
-        if data_da:
-            q = q.gte("data_documento", data_da)
-        if data_a:
-            q = q.lte("data_documento", data_a)
-        resp = q.execute()
-        if not resp.data:
-            break
-        all_rows.extend(resp.data)
-        if len(resp.data) < page_size:
-            break
-        page += 1
 
-    vuoto = StoricoPrezzoResponse(prodotto=prodotto, fornitore=fornitore, punti=[], prezzo_medio=0.0)
-    if not all_rows:
-        return vuoto
-    df = pd.DataFrame(all_rows)
-    mask = (chiavi_prodotto(df['descrizione']) == desc_key) & (
-        df['fornitore'].astype(str).str.strip().str.upper() == forn_key
-    )
-    return _risposta_storico(sb, ristorante_id, prodotto, fornitore, df[mask].copy()) if mask.any() else vuoto
+    def leggi(colonna, pattern):
+        righe: list = []
+        page = 0
+        page_size = 1000
+        while True:
+            q = (
+                sb.table("fatture")
+                .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga,categoria,tipo_documento")
+                .eq("ristorante_id", ristorante_id)
+                .is_("deleted_at", "null")
+                .eq("oscurata", False)
+                .gt("prezzo_unitario", 0)
+                .order("data_documento", desc=False)
+                .order("id", desc=False)
+                .range(page * page_size, (page + 1) * page_size - 1)
+            )
+            if pattern:
+                q = q.ilike(colonna, pattern)
+            if data_da:
+                q = q.gte("data_documento", data_da)
+            if data_a:
+                q = q.lte("data_documento", data_a)
+            resp = q.execute()
+            if not resp.data:
+                break
+            righe.extend(resp.data)
+            if len(resp.data) < page_size:
+                break
+            page += 1
+        if not righe:
+            return pd.DataFrame()
+        df = pd.DataFrame(righe)
+        mask = (
+            (chiavi_prodotto(df['descrizione']) == desc_key)
+            & (df['fornitore'].astype(str).str.strip().str.upper() == forn_key)
+            & ~df['categoria'].isin(_CATEGORIE_SPESE_PREZZI)
+            & ~_mask_nota_credito(df)
+            & ~_mask_voce_non_prezzo(df)
+        )
+        return df[mask].copy()
+
+    parola = _parola_per_filtro(desc_key)
+    df = leggi("descrizione", f"%{parola}%" if parola else "")
+    if df.empty and parola:
+        # Il numero d'ordine tolto senza uno spazio dopo incolla due parole
+        # («NORVEGIA ORDER 222449/222450» -> «NORVEGIA/222450»): quella parola
+        # nella descrizione grezza non c'e'. Secondo giro sul solo fornitore,
+        # piu' largo ma che non perde niente (`%` e `_` nel nome allargano
+        # soltanto).
+        df = leggi("fornitore", f"%{forn_key}%" if "\\" not in forn_key else "")
+    if df.empty:
+        return StoricoPrezzoResponse(prodotto=prodotto, fornitore=fornitore, punti=[], prezzo_medio=0.0)
+    return _risposta_storico(sb, ristorante_id, prodotto, fornitore, df)
 
 
 def _risposta_storico(sb, ristorante_id, prodotto, fornitore, df) -> StoricoPrezzoResponse:

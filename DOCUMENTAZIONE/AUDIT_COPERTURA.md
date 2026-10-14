@@ -2641,6 +2641,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   permesso); suite `python -m pytest tests/ -q -p no:randomly` **20.665 verdi + 61 skip + 1
 >   xfail, 1 rosso non mio** (`test_oscurate_choke_point` su `gruppo_prezzi_fattura`, commit
 >   `a5e9e0f9`). **Non fatto:** prova nel browser.
+>
+> - **14/10/2026 — Code-reviewer sui 5 commit dagli screenshot (a5354386, e87846f4, a99afc60,
+>   14209240, 6eac8fb5): 🟢, nessun blocco.** Tre rilievi non bloccanti, chiusi: (1) il
+>   pre-filtro `%parola%` dello storico per chiave assumeva che ogni parola della chiave stia
+>   nella descrizione grezza, falso quando il numero d'ordine e' tolto senza spazio dopo
+>   («NORVEGIA ORDER 222449/222450» -> «NORVEGIA/222450», 1 riga sul live): se non trova niente
+>   rilegge sul solo fornitore; (2) lo storico per chiave non applicava le esclusioni della
+>   riga (spese generali, note di credito a prezzo positivo — 10 sul live —, cauzioni): ora
+>   le stesse di `_calcola_variazioni_prezzi_sync`; (3) `COERENZA_VISIVA_FASI.md` diceva ancora
+>   che la gravita' e' una scala di grigi. +2 test su Postgres, mutazione 3/3 (note di credito,
+>   spese generali, secondo giro); 160 test prezzi + presidio oscurate (solo il rosso noto di
+>   `a5e9e0f9`). Il push resta bloccato da quel rosso, che tocca alla sessione dell'anteprima
+>   in catena.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
