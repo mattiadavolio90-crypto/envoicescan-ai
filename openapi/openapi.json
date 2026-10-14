@@ -13583,57 +13583,15 @@
         }
       }
     },
-    "/api/admin/qualita-ai/coda": {
+    "/api/admin/categorie/da-sistemare": {
       "get": {
         "tags": [
           "Admin"
         ],
-        "summary": "Admin Qualita Coda",
-        "description": "Righe speciali raggruppate per descrizione.\n\nscope='da_controllare' (default): coda di lavoro, ESCLUDE le righe la cui\n    descrizione e' stata classificata a mano da un umano (intoccabili).\nscope='scelte_clienti': SOLO quelle a impronta umana, sola lettura.",
-        "operationId": "admin_qualita_coda_api_admin_qualita_ai_coda_get",
+        "summary": "Admin Categorie Da Sistemare",
+        "description": "Admin → Categorie: un gruppo per descrizione, il piu' pesante in euro per\nprimo (services/admin_categorie_service.py). Il filtro per cliente lo fa il\nbrowser su `cliente_ids`: la lista e' piccola (190 gruppi il 14/10/2026).",
+        "operationId": "admin_categorie_da_sistemare_api_admin_categorie_da_sistemare_get",
         "parameters": [
-          {
-            "name": "cliente_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cliente Id"
-            }
-          },
-          {
-            "name": "bucket",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bucket"
-            }
-          },
-          {
-            "name": "scope",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "da_controllare",
-              "title": "Scope"
-            }
-          },
           {
             "name": "x-worker-key",
             "in": "header",
@@ -13737,80 +13695,6 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ClassificaBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/qualita-ai/coda/suggerisci-ai": {
-      "post": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Admin Qualita Suggerisci Ai",
-        "description": "Prepara suggerimenti AI per le righe dubbie (NON scrive la categoria).",
-        "operationId": "admin_qualita_suggerisci_ai_api_admin_qualita_ai_coda_suggerisci_ai_post",
-        "parameters": [
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SuggerisciAiBody"
               }
             }
           }
@@ -14214,116 +14098,6 @@
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/qualita-ai/audit": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Admin Qualita Audit",
-        "description": "Feed audit log azioni AI/admin su classificazioni.",
-        "operationId": "admin_qualita_audit_api_admin_qualita_ai_audit_get",
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "per_page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 50,
-              "title": "Per Page"
-            }
-          },
-          {
-            "name": "attore",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Attore"
-            }
-          },
-          {
-            "name": "solo_annullabili",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Solo Annullabili"
-            }
-          },
-          {
-            "name": "x-worker-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Worker-Key"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -29875,37 +29649,6 @@
           "prezzo_medio"
         ],
         "title": "StoricoPrezzoResponse"
-      },
-      "SuggerisciAiBody": {
-        "properties": {
-          "cliente_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cliente Id"
-          },
-          "ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ids"
-          }
-        },
-        "type": "object",
-        "title": "SuggerisciAiBody"
       },
       "SvuotaDatiBody": {
         "properties": {

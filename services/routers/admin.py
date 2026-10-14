@@ -43,6 +43,7 @@ from services.consumi_service import riepilogo_cliente, salute_sede
 from utils.supabase_paging import fetch_all
 from config.constants import (
     CATEGORIA_ARTICOLO_DI_VENDITA,
+    CATEGORIA_NON_CLASSIFICATA,
     CATEGORIE_FOOD_BEVERAGE,
     PIANO_LIMITI_FATTURE_MESE,
     PIANO_LIMITE_FATTURE_DEFAULT,
@@ -701,163 +702,55 @@ def _suggerimento_deterministico(desc: str, cat_attuale: str):
     return consolidata, ("regola" if motivo_forte else "memoria")
 
 
-@router.get("/api/admin/qualita-ai/coda", tags=["Admin"])
-def admin_qualita_coda(
-    cliente_id: Optional[str] = None,
-    bucket: Optional[str] = None,
-    scope: str = "da_controllare",
-    admin_user: dict = Depends(_verify_admin),
-):
-    """Righe speciali raggruppate per descrizione.
-
-    scope='da_controllare' (default): coda di lavoro, ESCLUDE le righe la cui
-        descrizione e' stata classificata a mano da un umano (intoccabili).
-    scope='scelte_clienti': SOLO quelle a impronta umana, sola lettura.
-    """
-    import pandas as pd
-    from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE
-    from utils.text_utils import pulisci_caratteri_corrotti
-
-    sb = get_supabase_client()
+def _clienti_non_admin(sb) -> Dict[str, str]:
+    """id → nome dei clienti (gli account admin restano fuori dalla coda)."""
     admin_emails = _admin_emails_set()
-
-    allowed_ids: list = []
-    nomi_per_user: dict = {}
-    if cliente_id:
-        allowed_ids = [cliente_id]
-    else:
-        users_resp = sb.table("users").select("id,email,nome_ristorante").execute()
-        for u in (users_resp.data or []):
-            if u.get("email", "").lower() in admin_emails:
-                continue
-            allowed_ids.append(u["id"])
-            nomi_per_user[u["id"]] = u.get("nome_ristorante") or u.get("email") or u["id"]
-    if not allowed_ids:
-        return {"gruppi": [], "stats": {}}
-
-    all_rows: list = []
-    page_size = 1000
-    offset = 0
-    while True:
-        q = (sb.table("fatture")
-             .select("id,descrizione,categoria,fornitore,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review,user_id")
-             .is_("deleted_at", "null")
-             .in_("user_id", allowed_ids)
-             .order("id")
-             .range(offset, offset + page_size - 1))
-        resp = q.execute()
-        chunk = resp.data or []
-        if not chunk:
-            break
-        all_rows.extend(chunk)
-        if len(chunk) < page_size:
-            break
-        offset += page_size
-
-    _empty_stats = {"totale": 0, "diciture": 0, "sconti": 0, "storni": 0, "ambigue": 0, "scelte_clienti": 0}
-    if not all_rows:
-        return {"gruppi": [], "stats": _empty_stats}
-
-    df = pd.DataFrame(all_rows)
-    if "descrizione" in df.columns:
-        df["descrizione"] = df["descrizione"].apply(lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x)
-
-    meta = classify_special_row_vectorized(df)
-    df["bucket_raw"] = meta["bucket"]
-    df["bucket"] = df["bucket_raw"].where(~df["needs_review"].fillna(False).astype(bool), other="da_verificare")
-    df = df[df["bucket"] != SPECIAL_ROW_NORMALE].copy()
-
-    # A1: segrega le righe a impronta umana
-    umane = _descrizioni_impronta_umana(sb, allowed_ids)
-    df["_desc_norm"] = df["descrizione"].apply(lambda s: s.strip().upper() if isinstance(s, str) else "")
-    df["_umana"] = df["_desc_norm"].isin(umane)
-    n_scelte_clienti = int(df["_umana"].sum())
-
-    if scope == "scelte_clienti":
-        df = df[df["_umana"]].copy()
-    else:
-        df = df[~df["_umana"]].copy()
-
-    if bucket:
-        df = df[df["bucket"] == bucket]
-
-    if df.empty:
-        return {"gruppi": [], "stats": {**_empty_stats, "scelte_clienti": n_scelte_clienti}}
-
-    stats = {
-        "totale": len(df),
-        "diciture": int((df["bucket"] == "dicitura").sum()),
-        "sconti": int((df["bucket"] == "sconto_omaggio").sum()),
-        "storni": int((df["bucket"] == "storno").sum()),
-        "ambigue": int((df["bucket"] == "da_verificare").sum()),
-        "scelte_clienti": n_scelte_clienti,
+    return {
+        u["id"]: u.get("nome_ristorante") or u.get("email") or u["id"]
+        for u in (sb.table("users").select("id,email,nome_ristorante").execute().data or [])
+        if (u.get("email") or "").strip().lower() not in admin_emails
     }
 
-    # Raggruppa per descrizione
-    grp = df.groupby("descrizione", as_index=False).agg(
-        bucket=("bucket", "first"),
-        count=("id", "count"),
-        ids=("id", list),
-        categoria=("categoria", "first"),
-        fornitore=("fornitore", "first"),
-        prezzo_max=("prezzo_unitario", "max"),
-        user_ids=("user_id", list),
+
+def _righe_da_sistemare(sb, allowed_ids: list) -> List[Dict[str, Any]]:
+    """Le righe vive che aspettano l'admin: `needs_review` oppure `Da Classificare`
+    (2 righe sul live, il 14/10/2026, erano Da Classificare senza needs_review).
+    Le fatture escluse dai conti non pesano sui margini: non c'e' niente da decidere.
+    Due letture invece di un `or_`: il valore ha uno spazio e andrebbe quotato."""
+    from services.db_service import escludi_oscurate, filter_active
+
+    if not allowed_ids:
+        return []
+    colonne = "id,descrizione,categoria,fornitore,totale_riga,prezzo_unitario,user_id"
+    per_id: Dict[Any, Dict[str, Any]] = {}
+    for filtro in (("needs_review", True), ("categoria", CATEGORIA_NON_CLASSIFICATA)):
+        q = escludi_oscurate(filter_active(sb.table("fatture").select(colonne)))
+        for r in fetch_all(q.eq(*filtro).in_("user_id", allowed_ids).order("id")):
+            per_id[r["id"]] = r
+    return list(per_id.values())
+
+
+@router.get("/api/admin/categorie/da-sistemare", tags=["Admin"])
+def admin_categorie_da_sistemare(admin_user: dict = Depends(_verify_admin)):
+    """Admin → Categorie: un gruppo per descrizione, il piu' pesante in euro per
+    primo (services/admin_categorie_service.py). Il filtro per cliente lo fa il
+    browser su `cliente_ids`: la lista e' piccola (190 gruppi il 14/10/2026)."""
+    from services.admin_categorie_service import componi_da_sistemare
+    from services.settore_service import settore_utente
+
+    sb = get_supabase_client()
+    nomi = _clienti_non_admin(sb)
+    allowed_ids = list(nomi)
+    righe = _righe_da_sistemare(sb, allowed_ids)
+    umane = _descrizioni_impronta_umana(sb, allowed_ids)
+    con_righe = {str(r.get("user_id")) for r in righe if r.get("user_id")}
+    retail = {u for u in con_righe if settore_utente(u, sb) == SETTORE_RETAIL}
+    gruppi = componi_da_sistemare(righe, umane, nomi, retail, _suggerimento_deterministico)
+    clienti = sorted(
+        ({"id": u, "nome": nomi.get(u, u)} for u in {u for g in gruppi for u in g["cliente_ids"]}),
+        key=lambda c: c["nome"].lower(),
     )
-    grp["prezzo_max"] = grp["prezzo_max"].fillna(0).round(4)
-    grp = grp.sort_values(["bucket", "count"], ascending=[True, False])
-
-    # A2: pre-carica i suggerimenti AI gia' preparati (categoria_suggerita su prodotti_master)
-    descrizioni_coda = grp["descrizione"].dropna().astype(str).tolist()
-    suggerimenti_ai: dict = {}
-    try:
-        for i in range(0, len(descrizioni_coda), 200):
-            chunk = descrizioni_coda[i:i + 200]
-            resp = (sb.table("prodotti_master")
-                    .select("descrizione,categoria_suggerita,suggerimento_fonte")
-                    .in_("descrizione", chunk)
-                    .not_.is_("categoria_suggerita", "null")
-                    .execute())
-            for r in (resp.data or []):
-                cs = r.get("categoria_suggerita")
-                if cs:
-                    suggerimenti_ai[str(r.get("descrizione") or "").strip().upper()] = (
-                        cs, r.get("suggerimento_fonte") or "ai")
-    except Exception as e:  # pragma: no cover - difensivo
-        logger.warning("coda: load suggerimenti AI fallito: %s", e)
-
-    gruppi = grp.to_dict("records")
-    for g in gruppi:
-        g["ids"] = [int(i) for i in g["ids"]]
-        g["count"] = int(g["count"])
-        g["prezzo_max"] = float(g["prezzo_max"])
-
-        # Cliente: nome se 1 solo user, altrimenti "N clienti"
-        uids = list({str(u) for u in (g.pop("user_ids", None) or [])})
-        if len(uids) == 1:
-            g["cliente"] = nomi_per_user.get(uids[0]) or (cliente_id and "—") or uids[0]
-        else:
-            g["cliente"] = f"{len(uids)} clienti"
-
-        # A2: suggerimento con FONTE esplicita (deterministico affidabile, poi AI).
-        desc = str(g.get("descrizione") or "")
-        cat_attuale = str(g.get("categoria") or "")
-        # Retail: dizionario, regole e suggerimenti AI sono dei ristoranti. Un gruppo
-        # con righe di un negozio resta in coda per la classificazione a mano, senza
-        # suggerimento: «Accetta tutti» raccoglie le fonti regola/memoria in blocco.
-        from services.settore_service import settore_utente
-        if any(settore_utente(u, sb) == SETTORE_RETAIL for u in uids):
-            g["categoria_suggerita"] = None
-            g["fonte"] = None
-            continue
-        suggerita, fonte = _suggerimento_deterministico(desc, cat_attuale)
-        if not suggerita and desc:
-            ai = suggerimenti_ai.get(desc.strip().upper())
-            if ai and ai[0] and ai[0] != cat_attuale:
-                suggerita, fonte = ai[0], (ai[1] or "ai")
-        g["categoria_suggerita"] = suggerita
-        g["fonte"] = fonte
-
-    return {"gruppi": gruppi, "stats": stats}
+    return {"gruppi": gruppi, "clienti": clienti}
 
 
 class ClassificaBody(BaseModel):
@@ -1000,210 +893,21 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
                     "ultima_modifica": now,
                 }, on_conflict="descrizione").execute()
 
-    _log_review_action(
+    # Le righe SCRITTE, non quelle chieste: «Annulla» riporta indietro solo
+    # quello che e' cambiato (NOTE e i gate di settore ne lasciano in coda).
+    log_id = _log_review_action(
         sb,
         attore=f"admin:{admin_user.get('email', 'admin')}",
         azione="classifica",
         categoria_a=body.categoria,
-        ids_fatture=body.ids,
+        ids_fatture=target_ids,
         descrizione=prima_desc,
         categoria_da=prima_cat_da,
         nota=f"salva_memoria={body.salva_memoria}",
     )
 
     logger.info("admin_qualita_classifica: %d righe → %s | admin=%s | %d righe di negozi lasciate in coda", len(target_ids), body.categoria, admin_user.get("email"), righe_in_coda)
-    return {"ok": True, "righe_aggiornate": len(target_ids), "righe_in_coda": righe_in_coda}
-
-
-class SuggerisciAiBody(BaseModel):
-    cliente_id: Optional[str] = None
-    ids: Optional[List[int]] = None
-
-
-def prepara_suggerimenti_ai(sb, allowed_ids: list, only_ids: Optional[list] = None,
-                            attore: str = "admin") -> dict:
-    """Prepara suggerimenti AI per le righe dubbie SENZA scriverne la categoria.
-
-    Per ogni descrizione 'da_verificare' che NON ha gia' un suggerimento
-    deterministico (regola/dizionario), chiama GPT e salva il risultato in
-    prodotti_master.categoria_suggerita (+ fonte 'ai', + suggerito_at). NON tocca
-    fatture.categoria ne' needs_review: e' solo una proposta da approvare a mano.
-
-    Idempotente: salta descrizioni con un suggerimento gia' fresco (<24h).
-    Usata dall'endpoint on-demand coda/suggerisci-ai.
-    """
-    import pandas as pd
-    from datetime import datetime, timezone, timedelta
-    from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE
-    from utils.text_utils import pulisci_caratteri_corrotti
-    from services.ai_service import decisione_deterministica, classifica_con_ai
-
-    if not allowed_ids:
-        return {"suggerite": 0, "saltate": 0, "errori": 0}
-
-    all_rows: list = []
-    page_size = 1000
-    offset = 0
-    while True:
-        q = (sb.table("fatture")
-             .select("id,descrizione,categoria,fornitore,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review,user_id")
-             .is_("deleted_at", "null")
-             .in_("user_id", allowed_ids)
-             .order("id")
-             .range(offset, offset + page_size - 1))
-        if only_ids:
-            q = q.in_("id", only_ids)
-        resp = q.execute()
-        chunk = resp.data or []
-        if not chunk:
-            break
-        all_rows.extend(chunk)
-        if len(chunk) < page_size:
-            break
-        offset += page_size
-
-    if not all_rows:
-        return {"suggerite": 0, "saltate": 0, "errori": 0}
-
-    df = pd.DataFrame(all_rows)
-    df["descrizione"] = df["descrizione"].apply(lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x)
-    meta = classify_special_row_vectorized(df)
-    df["bucket_raw"] = meta["bucket"]
-    df["bucket"] = df["bucket_raw"].where(~df["needs_review"].fillna(False).astype(bool), other="da_verificare")
-    # Solo righe ambigue reali (da_verificare). Diciture/sconti/storni hanno gia'
-    # il loro percorso (auto-review) e non vanno mandati a GPT.
-    df = df[df["bucket"] == "da_verificare"].copy()
-    if df.empty:
-        return {"suggerite": 0, "saltate": 0, "errori": 0}
-
-    # Una riga rappresentativa per descrizione (fornitore + categoria attuale)
-    grp = df.groupby("descrizione", as_index=False).agg(
-        categoria=("categoria", "first"),
-        fornitore=("fornitore", "first"),
-    )
-
-    # Escludi cio' che ha gia' una soluzione deterministica (regola/dizionario):
-    # quelle non hanno bisogno dell'AI, la coda le suggerisce gia'.
-    da_chiedere: list = []
-    fornitori: list = []
-    saltate = 0
-    for _, r in grp.iterrows():
-        desc = str(r.get("descrizione") or "").strip()
-        if not desc:
-            continue
-        cat_att = str(r.get("categoria") or "")
-        # Stesso nucleo degli altri percorsi: prima qui le due fonti erano valutate
-        # in OR e nell'ordine inverso, quindi una riga poteva essere "gia' risolta"
-        # da un dizionario che la pipeline vera avrebbe poi scavalcato.
-        cat_det, _m, _c = decisione_deterministica(desc)
-        if cat_det and cat_det not in ("Da Classificare", cat_att):
-            saltate += 1
-            continue
-        da_chiedere.append(desc)
-        fornitori.append(str(r.get("fornitore") or ""))
-
-    if not da_chiedere:
-        return {"suggerite": 0, "saltate": saltate, "errori": 0}
-
-    # Idempotenza: salta descrizioni gia' suggerite di fresco (<24h)
-    fresca_soglia = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    gia_fresche: set = set()
-    try:
-        for i in range(0, len(da_chiedere), 200):
-            chunk = da_chiedere[i:i + 200]
-            resp = (sb.table("prodotti_master")
-                    .select("descrizione,suggerito_at")
-                    .in_("descrizione", chunk)
-                    .not_.is_("categoria_suggerita", "null")
-                    .gte("suggerito_at", fresca_soglia)
-                    .execute())
-            for r in (resp.data or []):
-                gia_fresche.add(str(r.get("descrizione") or ""))
-    except Exception as e:  # pragma: no cover - difensivo
-        logger.warning("suggerisci-ai: check idempotenza fallito: %s", e)
-
-    pendenti = [(d, f) for d, f in zip(da_chiedere, fornitori) if d not in gia_fresche]
-    saltate += len(da_chiedere) - len(pendenti)
-    if not pendenti:
-        return {"suggerite": 0, "saltate": saltate, "errori": 0}
-
-    descs = [d for d, _ in pendenti]
-    forns = [f for _, f in pendenti]
-
-    suggerite = 0
-    errori = 0
-    now = datetime.now(timezone.utc).isoformat()
-    BATCH = 40
-    from config.constants import TUTTE_LE_CATEGORIE
-    _categorie_valide = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE"}
-
-    # Questo tool opera sulla memoria GLOBALE (prodotti_master), non su un singolo
-    # ristorante: non ha un ristorante_id da attribuire nel ledger ai_usage_events
-    # (track_ai_usage lo richiede). Il costo va comunque reso visibile in log,
-    # altrimenti resta invisibile all'alert soglia mensile senza alcuna traccia.
-    _batch_calls = 0
-
-    for i in range(0, len(descs), BATCH):
-        chunk_d = descs[i:i + BATCH]
-        chunk_f = forns[i:i + BATCH]
-        try:
-            categorie, _conf = classifica_con_ai(
-                lista_descrizioni=chunk_d,
-                lista_fornitori=chunk_f,
-                return_confidenze=True,
-            )
-            _batch_calls += 1
-        except Exception as exc:
-            errori += len(chunk_d)
-            logger.warning("suggerisci-ai batch %d-%d errore GPT: %s", i, i + BATCH, exc)
-            continue
-
-        for desc, cat in zip(chunk_d, categorie):
-            cat = (cat or "").strip()
-            # Non salvare suggerimenti inutili: fallback, vuoti o categorie non valide.
-            if not cat or cat in ("Da Classificare", "Da Clasificare") or cat not in _categorie_valide:
-                continue
-            try:
-                sb.table("prodotti_master").upsert({
-                    "descrizione": desc,
-                    "categoria_suggerita": cat,
-                    "suggerimento_fonte": "ai",
-                    "suggerito_at": now,
-                }, on_conflict="descrizione").execute()
-                suggerite += 1
-            except Exception as exc:
-                errori += 1
-                logger.warning("suggerisci-ai upsert '%s' errore: %s", desc[:40], exc)
-
-    logger.info(
-        "prepara_suggerimenti_ai: suggerite=%d saltate=%d errori=%d batch_gpt=%d "
-        "(fuori dal ledger ai_usage_events: nessun ristorante_id, tool globale) | attore=%s",
-        suggerite, saltate, errori, _batch_calls, attore,
-    )
-    return {"suggerite": suggerite, "saltate": saltate, "errori": errori}
-
-
-@router.post("/api/admin/qualita-ai/coda/suggerisci-ai", tags=["Admin"])
-def admin_qualita_suggerisci_ai(body: SuggerisciAiBody, admin_user: dict = Depends(_verify_admin)):
-    """Prepara suggerimenti AI per le righe dubbie (NON scrive la categoria)."""
-    sb = get_supabase_client()
-    admin_emails = _admin_emails_set()
-
-    if body.cliente_id:
-        allowed_ids = [body.cliente_id]
-    else:
-        users_resp = sb.table("users").select("id,email").execute()
-        allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
-
-    # Retail: i suggerimenti sono col prompt dei ristoranti e finiscono in
-    # prodotti_master (memoria globale): gli account retail restano fuori.
-    from services.settore_service import settore_utente
-    allowed_ids = [uid for uid in allowed_ids if settore_utente(uid, sb) != SETTORE_RETAIL]
-    res = prepara_suggerimenti_ai(
-        sb, allowed_ids, only_ids=body.ids,
-        attore=f"admin:{admin_user.get('email', 'admin')}",
-    )
-    return {"ok": True, **res}
+    return {"ok": True, "righe_aggiornate": len(target_ids), "righe_in_coda": righe_in_coda, "log_id": log_id}
 
 
 # ── Qualità AI — Memoria globale ─────────────────────────────────────────────
@@ -1488,40 +1192,7 @@ def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user: dict
     return {"ok": True}
 
 
-# ── Qualità AI — Audit log ────────────────────────────────────────────────────
-
-@router.get("/api/admin/qualita-ai/audit", tags=["Admin"])
-def admin_qualita_audit(
-    page: int = 1,
-    per_page: int = 50,
-    attore: Optional[str] = None,
-    solo_annullabili: bool = False,
-    admin_user: dict = Depends(_verify_admin),
-):
-    """Feed audit log azioni AI/admin su classificazioni."""
-    per_page = min(per_page, 200)
-    offset = (page - 1) * per_page
-    sb = get_supabase_client()
-
-    q = sb.table("ai_review_log").select("*")
-    if attore:
-        q = q.eq("attore", attore)
-    if solo_annullabili:
-        q = q.is_("annullato_at", "null")
-
-    count_q = sb.table("ai_review_log").select("id", count="exact")
-    if attore:
-        count_q = count_q.eq("attore", attore)
-    if solo_annullabili:
-        count_q = count_q.is_("annullato_at", "null")
-    try:
-        total = count_q.execute().count or 0
-    except Exception:
-        total = 0
-
-    rows = q.order("created_at", desc=True).range(offset, offset + per_page - 1).execute().data or []
-    return {"rows": rows, "total": total, "page": page, "per_page": per_page}
-
+# ── Qualità AI — Annulla una classificazione (il toast «Annulla» di Categorie) ──
 
 class AnnullaBody(BaseModel):
     log_id: int
@@ -1915,30 +1586,17 @@ _QUEUE_STATI_PROBLEMA = ["unknown_tenant", "da_assegnare", "failed", "dead"]
 # ── Categorie da classificare (il numero della voce in Oggi) ──────────────────
 
 def _conta_categorie_da_controllare(sb) -> int:
-    """Le DESCRIZIONI uniche da decidere, non le righe grezze needs_review,
-    escluse le scelte cliente a impronta umana (gia' sacre): e' quello che
-    l'admin trova entrando in Categorie → Da controllare (admin_qualita_coda)."""
-    admin_emails = _admin_emails_set()
-    allowed_ids = [
-        u["id"] for u in (sb.table("users").select("id,email").execute().data or [])
-        if (u.get("email") or "").strip().lower() not in admin_emails
-    ]
+    """I gruppi che l'admin trova in Categorie → Da sistemare: stesse righe,
+    stessa esclusione delle scelte dei clienti (services/admin_categorie_service.py)."""
+    from services.admin_categorie_service import conta_da_sistemare
+
+    allowed_ids = list(_clienti_non_admin(sb))
     if not allowed_ids:
         return 0
-    # Query CROSS-TENANT (tutti i clienti insieme): e' il caso piu' esposto al
-    # cap di 1000 righe di PostgREST, per questo fetch_all.
-    rows = fetch_all(sb.table("fatture")
-            .select("descrizione")
-            .eq("needs_review", True)
-            .is_("deleted_at", "null")
-            .in_("user_id", allowed_ids))
-    umane = _descrizioni_impronta_umana(sb, allowed_ids)
-    descrizioni = {
-        (r.get("descrizione") or "").strip().upper()
-        for r in rows
-        if (r.get("descrizione") or "").strip()
-    }
-    return len(descrizioni - umane)
+    righe = _righe_da_sistemare(sb, allowed_ids)
+    if not righe:
+        return 0
+    return conta_da_sistemare(righe, _descrizioni_impronta_umana(sb, allowed_ids))
 
 
 def _classifica_salute_invoicetronic(n_unknown: int, n_dead: int, n_failed: int,

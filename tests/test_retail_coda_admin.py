@@ -1,9 +1,9 @@
 """La coda qualita' dell'admin non suggerisce food a un negozio, e non lo promuove in memoria globale.
 
-Terzo punto d'uscita trovato dal reviewer (seconda lettura). `admin_qualita_coda`
-lavora su tutti gli utenti non-admin e propone `_suggerimento_deterministico`
-(dizionario e regole dei ristoranti); il pulsante «Accetta tutti» del frontend
-scrive in blocco le fonti `regola`/`memoria`. `admin_qualita_classifica` poi
+Terzo punto d'uscita trovato dal reviewer (seconda lettura). La coda dell'admin
+(dal 14/10/2026 `admin_categorie_da_sistemare`) lavora su tutti gli utenti
+non-admin e propone `_suggerimento_deterministico` (dizionario e regole dei
+ristoranti); «Usa suggerita» lo scrive. `admin_qualita_classifica` poi
 promuove la descrizione in `prodotti_master` verified=True.
 
 Scelta (coerente con la guardia gia' in `admin_qualita_risolvi_conflitto`): le
@@ -34,7 +34,7 @@ SETTORI = {"u-rist": "ristorazione", "u-retail": "retail"}
 def _riga(id_, desc, user):
     return {"id": id_, "descrizione": desc, "categoria": "Da Classificare", "fornitore": "X",
             "prezzo_unitario": 10.0, "totale_riga": 10.0, "quantita": 1, "tipo_documento": "TD01",
-            "needs_review": True, "user_id": user}
+            "needs_review": True, "user_id": user, "oscurata": False}
 
 
 def _coda(monkeypatch, righe):
@@ -42,7 +42,7 @@ def _coda(monkeypatch, righe):
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
     monkeypatch.setattr(admin, "_admin_emails_set", lambda: set())
     monkeypatch.setattr(ss, "settore_utente", lambda uid, supabase_client=None: SETTORI.get(uid, "ristorazione"))
-    out = admin.admin_qualita_coda(admin_user=_ADMIN)
+    out = admin.admin_categorie_da_sistemare(admin_user=_ADMIN)
     return {g["descrizione"]: g for g in out["gruppi"]}
 
 
@@ -51,13 +51,13 @@ def test_un_gruppo_di_un_negozio_resta_in_coda_senza_suggerimento(monkeypatch):
     # Stesso testo per i due clienti: un solo gruppo, e contiene righe retail.
     g = gruppi["BISTECCA DI MANZO"]
     assert sorted(g["ids"]) == [1, 2]
-    assert g["categoria_suggerita"] is None and g["fonte"] is None
+    assert g["suggerita"] is None and g["fonte"] is None
 
 
 def test_per_un_ristorante_il_suggerimento_deterministico_resta(monkeypatch):
     gruppi = _coda(monkeypatch, [_riga(1, "BISTECCA DI MANZO", "u-rist")])
     g = gruppi["BISTECCA DI MANZO"]
-    assert g["categoria_suggerita"] == "CARNE"
+    assert g["suggerita"] == "CARNE"
     assert g["fonte"] in ("regola", "memoria")
 
 
@@ -65,7 +65,7 @@ def test_una_riga_retail_da_sola_resta_in_coda_senza_suggerimento(monkeypatch):
     gruppi = _coda(monkeypatch, [_riga(1, "TROTA SALMONATA", "u-retail")])
     g = gruppi["TROTA SALMONATA"]
     assert g["ids"] == [1]
-    assert g["categoria_suggerita"] is None and g["fonte"] is None
+    assert g["suggerita"] is None and g["fonte"] is None
 
 
 def _classifica(monkeypatch, righe, categoria="MANUTENZIONE E ATTREZZATURE"):
@@ -99,21 +99,6 @@ def test_gruppo_misto_promuove_per_i_ristoranti(monkeypatch):
     assert _classifica(monkeypatch, [_riga_cl(1, "u-retail"), _riga_cl(2, "u-rist")]) == [("upsert", "prodotti_master")]
 
 
-# ── suggerimenti AI: l'altra porta della memoria globale ──
-# `admin_qualita_suggerisci_ai` mandava le righe dei negozi al prompt dei
-# ristoranti e salvava il suggerimento in memoria globale.
-
-def test_suggerisci_ai_non_manda_i_negozi_al_prompt_dei_ristoranti(monkeypatch):
-    sb = FakeClient({"users": UTENTI})
-    ricevuti: list = []
-    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
-    monkeypatch.setattr(admin, "_admin_emails_set", lambda: set())
-    monkeypatch.setattr(admin, "prepara_suggerimenti_ai", lambda _sb, allowed_ids, **kw: ricevuti.append(list(allowed_ids)) or {"suggerite": 0, "saltate": 0, "errori": 0})
-    monkeypatch.setattr(ss, "settore_utente", lambda uid, supabase_client=None: SETTORI.get(uid, "ristorazione"))
-    admin.admin_qualita_suggerisci_ai(admin.SuggerisciAiBody(), admin_user=_ADMIN)
-    assert ricevuti == [["u-rist"]]
-
-
 # ── classifica: la categoria scelta a mano non va sulle righe dei negozi ─────
 # Quinta lettura del reviewer: il gate del commit 64fbe5b guardava solo la
 # promozione in memoria globale, ma `aggiorna_categoria_fatture` riceveva TUTTI
@@ -142,7 +127,7 @@ def _classifica_scritture(monkeypatch, righe, categoria):
 def test_gruppo_misto_una_food_va_solo_sulle_righe_del_ristorante(monkeypatch):
     out, scritte, master = _classifica_scritture(monkeypatch, [_riga_cl(1, "u-retail"), _riga_cl(2, "u-rist")], "SALUMI")
     assert scritte == [([2], "SALUMI")]
-    assert out == {"ok": True, "righe_aggiornate": 1, "righe_in_coda": 1}
+    assert out == {"ok": True, "righe_aggiornate": 1, "righe_in_coda": 1, "log_id": None}
     assert master == [("upsert", "prodotti_master")]
 
 

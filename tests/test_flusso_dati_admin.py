@@ -365,12 +365,12 @@ def test_categorie_da_classificare_conta_le_descrizioni_non_le_righe(monkeypatch
         ],
         # categorie = DESCRIZIONI uniche needs_review, escluse le scelte umane
         "fatture": [
-            {"id": "a", "user_id": "u1", "descrizione": "GELATO X", "needs_review": True, "deleted_at": None},
-            {"id": "a2", "user_id": "u1", "descrizione": "GELATO X", "needs_review": True, "deleted_at": None},  # stessa descr → 1 sola
-            {"id": "d", "user_id": "u1", "descrizione": "TORTA Y", "needs_review": True, "deleted_at": None},
-            {"id": "e", "user_id": "u1", "descrizione": "COUPON Z", "needs_review": True, "deleted_at": None},   # impronta umana → escluso
-            {"id": "b", "user_id": "u1", "descrizione": "X", "needs_review": True, "deleted_at": "2026-01-01"},  # cestino → escluso
-            {"id": "c", "user_id": "u1", "descrizione": "OK", "needs_review": False, "deleted_at": None},        # non review → escluso
+            {"id": "a", "user_id": "u1", "descrizione": "GELATO X", "needs_review": True, "deleted_at": None, "oscurata": False},
+            {"id": "a2", "user_id": "u1", "descrizione": "GELATO X", "needs_review": True, "deleted_at": None, "oscurata": False},  # stessa descr → 1 sola
+            {"id": "d", "user_id": "u1", "descrizione": "TORTA Y", "needs_review": True, "deleted_at": None, "oscurata": False},
+            {"id": "e", "user_id": "u1", "descrizione": "COUPON Z", "needs_review": True, "deleted_at": None, "oscurata": False},   # impronta umana → escluso
+            {"id": "b", "user_id": "u1", "descrizione": "X", "needs_review": True, "deleted_at": "2026-01-01", "oscurata": False},  # cestino → escluso
+            {"id": "c", "user_id": "u1", "descrizione": "OK", "needs_review": False, "deleted_at": None, "oscurata": False},        # non review → escluso
         ],
         "prodotti_utente": [
             {"descrizione": "COUPON Z", "classificato_da": "Manuale (cliente)", "user_id": "u1"},

@@ -62,12 +62,9 @@ ELENCO_SENZA_FILTRO = {
     ("routers/fatture.py", "get_categorie_disponibili"): "elenco categorie esistenti",
     ("routers/fatture.py", "get_fornitori_disponibili"): "elenco fornitori esistenti",
     ("routers/fatture.py", "fatture_sposta_sede"): "spostamento fra sedi",
-    ("routers/admin.py", "_conta_categorie_da_controllare"): "tooling admin qualita'",
     ("routers/admin.py", "_imp"): "tooling admin qualita'",
     ("routers/admin.py", "admin_qualita_audit_annulla"): "tooling admin qualita'",
     ("routers/admin.py", "admin_qualita_classifica"): "tooling admin qualita'",
-    ("routers/admin.py", "admin_qualita_coda"): "tooling admin qualita'",
-    ("routers/admin.py", "prepara_suggerimenti_ai"): "tooling admin memoria AI",
     ("db_service.py", "get_descrizioni_distinte"): "catalogo descrizioni per l'AI",
 
     # ── Ingestione: decidono se un file e' gia' stato caricato. Una fattura

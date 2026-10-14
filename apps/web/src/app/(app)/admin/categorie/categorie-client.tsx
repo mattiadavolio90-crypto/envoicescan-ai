@@ -1,541 +1,419 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  RefreshCw, CheckCircle, Trash2, ArrowRightLeft, Search, Undo2, Activity,
-  Lock, Sparkles,
-} from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { AlertTriangle, ArrowRightLeft, Check, CheckCircle, ChevronDown, RefreshCw, Search, Trash2 } from "lucide-react";
 import { CATEGORIE_TUTTE } from "@/lib/admin";
+import { formatEuro } from "@/lib/format";
+import {
+  DA_CLASSIFICARE, esitoClassifica, filtra, leggiDaSistemare, puoConfermare, riepilogo, rigaSotto, toglieGruppo,
+  type DatiDaSistemare, type GruppoDaSistemare,
+} from "@/lib/admin-categorie";
 
-// ─── Tipi condivisi ───────────────────────────────────────────────────────────
-type ClienteOpzione = { id: string; nome: string };
+async function chiama(url: string, method: string, body?: object) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok || d?.ok === false) throw new Error(d.detail || d.error || "Errore");
+  return d;
+}
 
-const FONTE_META: Record<string, { label: string; icon: string; cls: string }> = {
-  regola: { label: "Regola", icon: "🔧", cls: "bg-sky-100 text-sky-700" },
-  memoria: { label: "Memoria", icon: "🧠", cls: "bg-violet-100 text-violet-700" },
-  ai: { label: "AI", icon: "🤖", cls: "bg-amber-100 text-amber-700" },
-};
+type Esito = { chiave: string; scritte: number; chieste: number; logId: number | null };
 
-// ─── SCHEDA: Da controllare ────────────────────────────────────────────────────
-function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
-  clienti: ClienteOpzione[];
-  filtroCliente: string;
-  setFiltroCliente: (v: string) => void;
-}) {
-  const [loading, setLoading] = useState(false);
-  const [gruppi, setGruppi] = useState<Record<string, unknown>[]>([]);
-  const [stats, setStats] = useState<Record<string, number>>({});
-  const [filtroBucket, setFiltroBucket] = useState("tutti");
-  const [aiRunning, setAiRunning] = useState(false);
-  const [bulkRunning, setBulkRunning] = useState(false);
-  const [accepting, setAccepting] = useState<number | null>(null);
+// ─── Da sistemare ────────────────────────────────────────────────────────────
+function DaSistemare() {
+  const [dati, setDati] = useState<DatiDaSistemare | null>(null);
+  const [errore, setErrore] = useState(false);
+  const [caricamento, setCaricamento] = useState(true);
+  const [cliente, setCliente] = useState("tutti");
+  const [testo, setTesto] = useState("");
+  const [scelti, setScelti] = useState<Set<string>>(new Set());
+  const [occupato, setOccupato] = useState(false);
+  const [daCambiare, setDaCambiare] = useState<GruppoDaSistemare[] | null>(null);
+  const [categoriaNuova, setCategoriaNuova] = useState("");
+  const [confermaBlocco, setConfermaBlocco] = useState(false);
 
-  // dialog classifica + conferma globale
-  const [classGruppo, setClassGruppo] = useState<Record<string, unknown> | null>(null);
-  const [classCategoria, setClassCategoria] = useState("📝 NOTE E DICITURE");
-  const [classSaving, setClassSaving] = useState(false);
-  const [confermaRivediAI, setConfermaRivediAI] = useState(false);
-  const [confermaAccettaSicuri, setConfermaAccettaSicuri] = useState(false);
-  const [daAccettare, setDaAccettare] = useState<{ g: Record<string, unknown>; idx: number } | null>(null);
-  const [confermaClassifica, setConfermaClassifica] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
+  const carica = useCallback(async () => {
+    setCaricamento(true);
     try {
-      const qs = new URLSearchParams({ scope: "da_controllare" });
-      if (filtroBucket !== "tutti") qs.set("bucket", filtroBucket);
-      if (filtroCliente !== "tutti") qs.set("cliente_id", filtroCliente);
-      const res = await fetch(`/api/admin/qualita-ai/coda?${qs}`);
-      if (!res.ok) { toast.error("Errore caricamento coda"); return; }
-      const d = await res.json();
-      setGruppi(d.gruppi || []);
-      setStats(d.stats || {});
-    } catch { toast.error("Errore di connessione"); }
-    finally { setLoading(false); }
-  }, [filtroBucket, filtroCliente]);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function classificaIds(ids: unknown, categoria: string): Promise<number> {
-    const res = await fetch("/api/admin/qualita-ai/coda/classifica", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids, categoria, salva_memoria: true }),
-    });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.detail || "Errore");
-    return d.righe_aggiornate || 0;
-  }
-
-  async function handleRivediAI() {
-    setAiRunning(true);
-    try {
-      const res = await fetch("/api/admin/qualita-ai/coda/suggerisci-ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(filtroCliente !== "tutti" ? { cliente_id: filtroCliente } : {}),
-      });
-      const d = await res.json();
-      if (!res.ok) { toast.error(d.detail || "Errore"); return; }
-      toast.success(`AI: ${d.suggerite} suggerimenti pronti${d.saltate ? `, ${d.saltate} già risolti` : ""}${d.errori ? ` (${d.errori} errori)` : ""}`);
-      load();
-    } catch { toast.error("Errore richiesta AI"); }
-    finally { setAiRunning(false); }
-  }
-
-  // Gruppi "sicuri": suggerimento da regola o memoria (alta fiducia)
-  const sicuri = gruppi.filter((g) => g.categoria_suggerita && (g.fonte === "regola" || g.fonte === "memoria"));
-
-  async function handleAccettaSicuri() {
-    if (sicuri.length === 0) return;
-    setBulkRunning(true);
-    let ok = 0, ko = 0;
-    for (const g of sicuri) {
-      try { await classificaIds(g.ids, String(g.categoria_suggerita)); ok++; }
-      catch { ko++; }
+      const res = await fetch("/api/admin/categorie/da-sistemare", { cache: "no-store" });
+      const letto = leggiDaSistemare(await res.json().catch(() => null));
+      if (!res.ok || !letto) { setErrore(true); return; }
+      setDati(letto);
+      setErrore(false);
+      setScelti(new Set());
+    } catch {
+      setErrore(true);
+    } finally {
+      setCaricamento(false);
     }
-    toast.success(`${ok} approvati${ko ? `, ${ko} errori` : ""}`);
-    setBulkRunning(false);
-    load();
+  }, []);
+
+  useEffect(() => { carica(); }, [carica]);
+
+  const visibili = useMemo(() => (dati ? filtra(dati.gruppi, cliente, testo) : []), [dati, cliente, testo]);
+  const sceltiVisibili = visibili.filter((g) => scelti.has(g.chiave));
+  const confermabili = sceltiVisibili.filter(puoConfermare);
+  const totali = riepilogo(visibili);
+
+  async function annulla(logIds: number[]) {
+    try {
+      for (const id of logIds) await chiama("/api/admin/qualita-ai/audit/annulla", "POST", { log_id: id });
+      toast.success("Annullato");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
+    carica();
   }
 
-  async function handleAccetta(g: Record<string, unknown>, idx: number) {
-    const suggerita = String(g.categoria_suggerita || "");
-    if (!suggerita) return;
-    setAccepting(idx);
-    try {
-      const n = await classificaIds(g.ids, suggerita);
-      toast.success(`${n} righe → ${suggerita}`);
-      setGruppi((prev) => prev.filter((_, i) => i !== idx));
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Errore"); }
-    finally { setAccepting(null); }
-  }
-
-  async function handleClassifica() {
-    if (!classGruppo || !classCategoria) return;
-    setClassSaving(true);
-    try {
-      const ids = classGruppo.ids;
-      const n = await classificaIds(ids, classCategoria);
-      const desc = classGruppo.descrizione;
-      setClassGruppo(null);
-      // Con "📝 NOTE E DICITURE" (che e' il default del dialog) il backend scrive
-      // SOLO sulle righe a importo 0 — regola di dominio #2, admin.py:978-985.
-      // Rimuovere comunque tutto il gruppo mostrava "4 righe classificate", faceva
-      // sparire un gruppo da 12 e le altre 8 riapparivano al refresh successivo.
-      const totali = Array.isArray(ids) ? ids.length : n;
-      if (n >= totali) {
-        toast.success(`${n} righe classificate`);
-        setGruppi((prev) => prev.filter((g) => g.descrizione !== desc));
-      } else {
-        toast.success(`${n} di ${totali} righe classificate — le altre restano in coda`);
-        load();
+  // Una chiamata per gruppo: la memoria globale si salva per descrizione.
+  async function salva(gruppi: GruppoDaSistemare[], categoria: string | null) {
+    setOccupato(true);
+    const esiti: Esito[] = [];
+    let errori = 0;
+    for (const g of gruppi) {
+      try {
+        const d = await chiama("/api/admin/qualita-ai/coda/classifica", "POST", {
+          ids: g.ids, categoria: categoria ?? g.categoria, salva_memoria: true,
+        });
+        esiti.push({ chiave: g.chiave, scritte: d.righe_aggiornate ?? 0, chieste: g.ids.length, logId: d.log_id ?? null });
+      } catch (e) {
+        errori++;
+        if (gruppi.length === 1) toast.error(e instanceof Error ? e.message : "Errore");
       }
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Errore"); }
-    finally { setClassSaving(false); }
+    }
+    setOccupato(false);
+    setScelti(new Set());
+    if (esiti.length === 0) return;
+
+    const scritte = esiti.reduce((s, e) => s + e.scritte, 0);
+    const chieste = esiti.reduce((s, e) => s + e.chieste, 0);
+    const logIds = esiti.map((e) => e.logId).filter((i): i is number => i !== null);
+    toast.success(
+      esitoClassifica(scritte, chieste) + (errori ? ` · ${errori} non salvat${errori === 1 ? "o" : "i"}` : ""),
+      logIds.length ? { action: { label: "Annulla", onClick: () => annulla(logIds) } } : undefined,
+    );
+    if (esiti.every((e) => toglieGruppo(e.scritte, e.chieste)) && !errori) {
+      const via = new Set(esiti.map((e) => e.chiave));
+      setDati((prima) => prima && { ...prima, gruppi: prima.gruppi.filter((g) => !via.has(g.chiave)) });
+    } else {
+      carica();
+    }
   }
+
+  function apriCambia(gruppi: GruppoDaSistemare[]) {
+    const unico = gruppi.length === 1 ? gruppi[0] : null;
+    setCategoriaNuova(unico ? (unico.suggerita ?? (unico.categoria !== DA_CLASSIFICARE ? unico.categoria : "")) : "");
+    setDaCambiare(gruppi);
+  }
+
+  function seleziona(chiave: string) {
+    setScelti((prima) => {
+      const dopo = new Set(prima);
+      if (dopo.has(chiave)) dopo.delete(chiave); else dopo.add(chiave);
+      return dopo;
+    });
+  }
+
+  if (errore && !dati) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-incerto/40 bg-incerto/10 p-4 text-sm">
+        <span className="flex items-center gap-2"><AlertTriangle className="size-4 text-incerto" /> Non riesco a leggere le righe da sistemare.</span>
+        <Button size="sm" variant="outline" onClick={carica} disabled={caricamento}><RefreshCw className="size-4 mr-1" /> Riprova</Button>
+      </div>
+    );
+  }
+  if (!dati) return <p className="text-sm text-muted-foreground">Caricamento…</p>;
+
+  const tutti = visibili.length > 0 && sceltiVisibili.length === visibili.length;
 
   return (
-    <div className="space-y-4">
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { k: "totale", label: "Totale in coda", color: "text-foreground" },
-          { k: "ambigue", label: "Da decidere", color: "text-red-600" },
-          { k: "diciture", label: "Diciture", color: "text-blue-700" },
-          { k: "sconti", label: "Sconti/Omaggi", color: "text-green-700" },
-        ].map((s) => (
-          <Card key={s.k} className="p-3">
-            <p className="text-xs text-muted-foreground">{s.label}</p>
-            <p className={`text-2xl font-bold tabular-nums ${s.color}`}>{stats[s.k] ?? "—"}</p>
-          </Card>
-        ))}
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Cliente:</span>
-          <NativeSelect value={filtroCliente} onValueChange={setFiltroCliente} className="w-44 border-border bg-background">
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Da sistemare</h2>
+          <p className="text-sm text-muted-foreground">
+            {totali.gruppi} prodott{totali.gruppi === 1 ? "o" : "i"} · {totali.righe} righe · {formatEuro(totali.euro)}. Ogni scelta vale per tutti i clienti.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Cerca prodotto o fornitore" className="w-56 pl-8" value={testo} onChange={(e) => setTesto(e.target.value)} />
+          </div>
+          <NativeSelect value={cliente} onValueChange={setCliente} className="w-44" aria-label="Cliente">
             <option value="tutti">Tutti i clienti</option>
-            {clienti.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            {dati.clienti.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </NativeSelect>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Tipo:</span>
-          <NativeSelect value={filtroBucket} onValueChange={setFiltroBucket} className="w-40 border-border bg-background">
-            <option value="tutti">Tutti i tipi</option>
-            <option value="da_verificare">Da decidere</option>
-            <option value="dicitura">Diciture</option>
-            <option value="sconto_omaggio">Sconti/Omaggi</option>
-            <option value="storno">Storni</option>
-          </NativeSelect>
-        </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setConfermaRivediAI(true)} disabled={aiRunning}>
-          <Sparkles className={`size-4 mr-1 ${aiRunning ? "animate-pulse" : ""}`} />
-          {aiRunning ? "AI in corso…" : "Rivedi con AI"}
-        </Button>
-        {sicuri.length > 0 && (
-          <Button size="sm" onClick={() => setConfermaAccettaSicuri(true)} disabled={bulkRunning} className="ml-auto">
-            <CheckCircle className="size-4 mr-1" />
-            {bulkRunning ? "Approvo…" : `Accetta tutti i sicuri (${sicuri.length})`}
+          <Button variant="ghost" size="sm" onClick={carica} disabled={caricamento}>
+            <RefreshCw className={`size-4 mr-1 ${caricamento ? "animate-spin" : ""}`} /> Aggiorna
           </Button>
-        )}
+        </div>
       </div>
 
-      {/* Tabella */}
-      {gruppi.length === 0 ? (
-        <div className="rounded-lg border p-10 text-center">
-          {loading ? <p className="text-muted-foreground">Caricamento…</p> : (
-            <div className="space-y-2">
-              <CheckCircle className="size-10 text-emerald-500 mx-auto" />
-              <p className="font-medium">Niente da controllare</p>
-              <p className="text-sm text-muted-foreground">Tutte le categorie sono a posto.</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50 text-left">
-                <th className="px-4 py-2 font-medium">Descrizione</th>
-                <th className="px-4 py-2 font-medium hidden md:table-cell">Attuale</th>
-                <th className="px-4 py-2 font-medium">Suggerita</th>
-                <th className="px-4 py-2 font-medium hidden sm:table-cell">Fonte</th>
-                <th className="px-4 py-2 font-medium hidden lg:table-cell">Cliente</th>
-                <th className="px-4 py-2 font-medium hidden lg:table-cell">Occ.</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {gruppi.map((g, i) => {
-                const suggerita = g.categoria_suggerita ? String(g.categoria_suggerita) : null;
-                const fonte = g.fonte ? String(g.fonte) : null;
-                const fm = fonte ? FONTE_META[fonte] : null;
-                return (
-                  <tr key={i} className="hover:bg-muted/30">
-                    <td className="px-4 py-2 font-medium max-w-xs truncate" title={String(g.descrizione)}>{String(g.descrizione || "—")}</td>
-                    <td className="px-4 py-2 hidden md:table-cell text-muted-foreground truncate max-w-[130px] text-xs">{String(g.categoria || "—")}</td>
-                    <td className="px-4 py-2">
-                      {suggerita ? (
-                        <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-semibold truncate inline-block max-w-[140px]" title={suggerita}>{suggerita}</span>
-                      ) : <span className="text-xs text-muted-foreground">—</span>}
-                    </td>
-                    <td className="px-4 py-2 hidden sm:table-cell">
-                      {fm ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${fm.cls}`}>{fm.icon} {fm.label}</span> : <span className="text-xs text-muted-foreground">—</span>}
-                    </td>
-                    <td className="px-4 py-2 hidden lg:table-cell text-xs text-muted-foreground truncate max-w-[120px]">{String(g.cliente || "—")}</td>
-                    <td className="px-4 py-2 hidden lg:table-cell tabular-nums text-xs">{String(g.count)}</td>
-                    <td className="px-4 py-2">
-                      <div className="flex gap-1 justify-end">
-                        {suggerita && (
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-emerald-700 hover:bg-emerald-50"
-                            disabled={accepting === i} onClick={() => setDaAccettare({ g, idx: i })}>
-                            {accepting === i ? "…" : "Accetta"}
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => {
-                          setClassGruppo(g);
-                          setClassCategoria(suggerita || (String(g.bucket) === "dicitura" ? "📝 NOTE E DICITURE" : String(g.categoria || "📝 NOTE E DICITURE")));
-                        }}>
-                          Scegli
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {sceltiVisibili.length > 0 && (
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 text-sm shadow-sm">
+          <span className="px-1 font-medium">{sceltiVisibili.length} selezionat{sceltiVisibili.length === 1 ? "o" : "i"}</span>
+          <Button size="sm" disabled={occupato || confermabili.length === 0} onClick={() => setConfermaBlocco(true)}>
+            <Check className="size-4 mr-1" /> Giuste ({confermabili.length})
+          </Button>
+          <Button size="sm" variant="outline" disabled={occupato} onClick={() => apriCambia(sceltiVisibili)}>Cambia categoria…</Button>
+          <Button size="sm" variant="ghost" onClick={() => setScelti(new Set())}>Deseleziona</Button>
         </div>
       )}
 
-      {/* Dialog classifica */}
-      <Dialog open={!!classGruppo} onOpenChange={(o) => !o && setClassGruppo(null)}>
+      {visibili.length === 0 ? (
+        <div className="flex items-center gap-2 rounded-md border border-positivo/30 bg-positivo/10 p-4 text-sm">
+          <CheckCircle className="size-4 text-positivo" />
+          {dati.gruppi.length === 0 ? "Tutto a posto: nessuna categoria da sistemare." : "Nessun prodotto con questo filtro."}
+        </div>
+      ) : (
+        <div className="rounded-lg border">
+          <label className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <input type="checkbox" checked={tutti} onChange={() => setScelti(tutti ? new Set() : new Set(visibili.map((g) => g.chiave)))} />
+            Seleziona tutti
+          </label>
+          <ul className="divide-y">
+            {visibili.map((g) => {
+              const misto = g.categorie.length > 1;
+              return (
+                <li key={g.chiave} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <input type="checkbox" className="mt-1" checked={scelti.has(g.chiave)} onChange={() => seleziona(g.chiave)} aria-label={`Seleziona ${g.descrizione}`} />
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-sm font-medium" title={g.descrizione}>{g.descrizione}</p>
+                      <p className="truncate text-xs text-muted-foreground" title={rigaSotto(g)}>{rigaSotto(g)}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        {misto ? (
+                          <span className="rounded-full bg-incerto/10 px-2 py-0.5 font-medium text-incerto" title={g.categorie.join(", ")}>
+                            {g.categorie.length} categorie diverse
+                          </span>
+                        ) : (
+                          <span className={`rounded-full px-2 py-0.5 font-medium ${g.categoria === DA_CLASSIFICARE ? "bg-negativo/10 text-negativo" : "bg-muted"}`}>
+                            {g.categoria === DA_CLASSIFICARE ? "Da classificare" : g.categoria}
+                          </span>
+                        )}
+                        {g.suggerita && <span className="text-muted-foreground">suggerita: <b className="font-medium text-foreground">{g.suggerita}</b></span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 pl-7 sm:pl-0">
+                    <span className="w-20 text-right text-sm tabular-nums">{formatEuro(g.euro)}</span>
+                    {g.suggerita ? (
+                      <Button size="sm" variant="outline" disabled={occupato} onClick={() => salva([g], g.suggerita)}>Usa suggerita</Button>
+                    ) : puoConfermare(g) ? (
+                      <Button size="sm" variant="outline" disabled={occupato} onClick={() => salva([g], null)}><Check className="size-4 mr-1" /> Giusta</Button>
+                    ) : null}
+                    <Button size="sm" variant="ghost" disabled={occupato} onClick={() => apriCambia([g])}>Cambia</Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <Dialog open={daCambiare !== null} onOpenChange={(o) => { if (!o) setDaCambiare(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Scegli categoria</DialogTitle>
-            <DialogDescription className="truncate">{String(classGruppo?.descrizione || "")}</DialogDescription>
+            <DialogTitle>Scegli la categoria</DialogTitle>
+            <DialogDescription className="break-words">
+              {daCambiare?.length === 1
+                ? `${daCambiare[0].descrizione} · ${rigaSotto(daCambiare[0])}`
+                : `${daCambiare?.length ?? 0} prodotti selezionati`}
+            </DialogDescription>
           </DialogHeader>
-          <div className="min-w-0 space-y-3 py-2">
-            <p className="text-sm text-muted-foreground">{String(classGruppo?.count || 0)} occorrenze · {String(classGruppo?.cliente || "")}</p>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Categoria</label>
-              <NativeSelect value={classCategoria} onValueChange={setClassCategoria}>
-                {CATEGORIE_TUTTE.map((c) => <option key={c} value={c}>{c}</option>)}
-              </NativeSelect>
-            </div>
-            <p className="text-xs text-amber-600">⚠️ La scelta verrà salvata in memoria globale e varrà per tutti i clienti.</p>
-          </div>
+          <NativeSelect value={categoriaNuova} onValueChange={setCategoriaNuova} placeholder="Seleziona la categoria…">
+            {CATEGORIE_TUTTE.map((c) => <option key={c} value={c}>{c}</option>)}
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">Vale per tutti i clienti: finisce nella memoria globale.</p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setClassGruppo(null)} disabled={classSaving}>Annulla</Button>
-            <Button onClick={() => setConfermaClassifica(true)} disabled={classSaving}>
-              {classSaving ? "Salvataggio…" : "Applica e salva"}
-            </Button>
+            <Button variant="outline" onClick={() => setDaCambiare(null)}>Annulla</Button>
+            <Button disabled={!categoriaNuova || occupato} onClick={() => {
+              const gruppi = daCambiare ?? [];
+              setDaCambiare(null);
+              salva(gruppi, categoriaNuova);
+            }}>Salva</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <ConfirmDialog
-        open={confermaRivediAI}
-        titolo={`Chiedere all'AI un suggerimento per le righe dubbie ${filtroCliente !== "tutti" ? `del cliente "${clienti.find((c) => c.id === filtroCliente)?.nome}"` : "di tutti i clienti"}?`}
-        messaggio="Non modifica nulla: prepara solo i suggerimenti da approvare."
-        confermaLabel="Chiedi all'AI"
-        onConferma={handleRivediAI}
-        onClose={() => setConfermaRivediAI(false)}
+        open={confermaBlocco}
+        titolo={`Confermare la categoria di ${confermabili.length} prodott${confermabili.length === 1 ? "o" : "i"}?`}
+        messaggio="Ognuno tiene la categoria che ha, e la scelta vale per tutti i clienti. Quelli da classificare o con categorie diverse restano in lista."
+        confermaLabel="Conferma"
+        onConferma={() => salva(confermabili, null)}
+        onClose={() => setConfermaBlocco(false)}
       />
-
-      <ConfirmDialog
-        open={confermaAccettaSicuri}
-        titolo={`Accettare ${sicuri.length} suggerimenti sicuri (regola/memoria)?`}
-        messaggio="Le categorie verranno salvate in memoria globale e varranno per TUTTI i clienti."
-        confermaLabel="Accetta tutti"
-        onConferma={handleAccettaSicuri}
-        onClose={() => setConfermaAccettaSicuri(false)}
-      />
-
-      <ConfirmDialog
-        open={daAccettare !== null}
-        titolo={daAccettare ? `Salvare "${String(daAccettare.g.categoria_suggerita)}" per "${String(daAccettare.g.descrizione)}"?` : ""}
-        messaggio="Varrà in memoria globale per tutti i clienti."
-        confermaLabel="Salva"
-        onConferma={() => { if (daAccettare) handleAccetta(daAccettare.g, daAccettare.idx); }}
-        onClose={() => setDaAccettare(null)}
-      />
-
-      <ConfirmDialog
-        open={confermaClassifica}
-        titolo={classGruppo ? `Salvare "${classCategoria}" per "${String(classGruppo.descrizione)}"?` : ""}
-        messaggio="Varrà in memoria globale per tutti i clienti."
-        confermaLabel="Salva"
-        onConferma={handleClassifica}
-        onClose={() => setConfermaClassifica(false)}
-      />
-    </div>
+    </section>
   );
 }
 
-// ─── SCHEDA: Scelte clienti (sola lettura) ──────────────────────────────────────
-function ScelteClientiTab({ clienti, filtroCliente, setFiltroCliente }: {
-  clienti: ClienteOpzione[];
-  filtroCliente: string;
-  setFiltroCliente: (v: string) => void;
-}) {
-  const [loading, setLoading] = useState(false);
-  const [gruppi, setGruppi] = useState<Record<string, unknown>[]>([]);
+// ─── Conflitti ───────────────────────────────────────────────────────────────
+type Conflitto = { local_id: string; descrizione: string; categoria_locale: string; categoria_globale: string; nome_cliente: string; volte_locale: number };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+function Conflitti() {
+  const [righe, setRighe] = useState<Conflitto[] | null>(null);
+  const [aperto, setAperto] = useState(false);
+  const [occupato, setOccupato] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/qualita-ai/conflitti", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setRighe(Array.isArray(d) ? d : null))
+      .catch(() => setRighe(null));
+  }, []);
+
+  async function risolvi(c: Conflitto, azione: "promuovi" | "ignora") {
+    setOccupato(c.local_id);
     try {
-      const qs = new URLSearchParams({ scope: "scelte_clienti" });
-      if (filtroCliente !== "tutti") qs.set("cliente_id", filtroCliente);
-      const res = await fetch(`/api/admin/qualita-ai/coda?${qs}`);
-      if (!res.ok) { toast.error("Errore caricamento"); return; }
-      const d = await res.json();
-      setGruppi(d.gruppi || []);
-    } catch { toast.error("Errore di connessione"); }
-    finally { setLoading(false); }
-  }, [filtroCliente]);
+      await chiama("/api/admin/qualita-ai/conflitti/risolvi", "POST", { local_id: c.local_id, azione });
+      toast.success(azione === "promuovi" ? "Ora vale per tutti i clienti" : "Resta solo per questo cliente");
+      setRighe((prima) => prima && prima.filter((x) => x.local_id !== c.local_id));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setOccupato(null);
+    }
+  }
 
-  useEffect(() => { load(); }, [load]);
+  if (!righe || righe.length === 0) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 items-center flex-wrap">
-        <NativeSelect value={filtroCliente} onValueChange={setFiltroCliente} className="w-44">
-          <option value="tutti">Tutti i clienti</option>
-          {clienti.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-        </NativeSelect>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
-        </Button>
-      </div>
-      <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700">
-        <Lock className="size-4 mt-0.5 shrink-0" />
-        <span>Queste categorie sono state scelte a mano dai clienti (o promosse manualmente). Sono intoccabili: anche se sembrano sbarcate, per il cliente vanno bene così. Non compaiono nella coda &quot;Da controllare&quot;.</span>
-      </div>
-      {gruppi.length === 0 ? (
-        <div className="rounded-lg border p-10 text-center text-sm text-muted-foreground">
-          {loading ? "Caricamento…" : "Nessuna scelta manuale in coda speciale."}
-        </div>
-      ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50 text-left">
-              <th className="px-4 py-2 font-medium">Descrizione</th>
-              <th className="px-4 py-2 font-medium">Categoria</th>
-              <th className="px-4 py-2 font-medium hidden md:table-cell">Cliente</th>
-              <th className="px-4 py-2 font-medium hidden lg:table-cell">Occ.</th>
-            </tr></thead>
-            <tbody className="divide-y">
-              {gruppi.map((g, i) => (
-                <tr key={i} className="hover:bg-muted/30">
-                  <td className="px-4 py-2 font-medium max-w-xs truncate" title={String(g.descrizione)}>
-                    <Lock className="inline size-3 mr-1 text-amber-500" />{String(g.descrizione || "—")}
-                  </td>
-                  <td className="px-4 py-2 text-xs">{String(g.categoria || "—")}</td>
-                  <td className="px-4 py-2 hidden md:table-cell text-xs text-muted-foreground truncate max-w-[140px]">{String(g.cliente || "—")}</td>
-                  <td className="px-4 py-2 hidden lg:table-cell tabular-nums text-xs">{String(g.count)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <section className="rounded-lg border">
+      <button type="button" onClick={() => setAperto((a) => !a)} aria-expanded={aperto}
+        className="flex w-full items-center justify-between gap-3 p-3 text-left">
+        <span className="flex items-center gap-2">
+          <ArrowRightLeft className="size-4 text-incerto" />
+          <span>
+            <span className="text-sm font-semibold">Conflitti con la memoria globale ({righe.length})</span>
+            <span className="block text-xs text-muted-foreground">Un cliente ha scelto una categoria diversa da quella che vale per tutti.</span>
+          </span>
+        </span>
+        <ChevronDown className={`size-4 shrink-0 transition-transform ${aperto ? "rotate-180" : ""}`} />
+      </button>
+      {aperto && (
+        <ul className="max-h-[28rem] divide-y overflow-y-auto border-t">
+          {righe.map((c) => (
+            <li key={c.local_id} className="flex flex-col gap-2 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-medium" title={c.descrizione}>{c.descrizione}</p>
+                <p className="text-xs text-muted-foreground">
+                  {c.nome_cliente}: <b className="font-medium text-foreground">{c.categoria_locale}</b> · per tutti: {c.categoria_globale}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" variant="outline" disabled={occupato === c.local_id} onClick={() => risolvi(c, "promuovi")}>Vale per tutti</Button>
+                <Button size="sm" variant="ghost" disabled={occupato === c.local_id} onClick={() => risolvi(c, "ignora")}>Solo sua</Button>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </section>
   );
 }
 
-// ─── SCHEDA: Memoria globale ────────────────────────────────────────────────────
-type ProdRow = { id: string; descrizione: string; categoria: string; volte_visto: number; verified: boolean; classificato_da: string; categoria_suggerita?: string; motivo?: string };
+// ─── Memoria globale: si cerca, non si sfoglia ───────────────────────────────
+type VoceMemoria = { id: string; descrizione: string; categoria: string; volte_visto: number };
 
-function MemoriaTab() {
-  const [rows, setRows] = useState<ProdRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [stato, setStato] = useState("tutti");
-  const [editRow, setEditRow] = useState<ProdRow | null>(null);
-  const [editCat, setEditCat] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
-  const [daEliminare, setDaEliminare] = useState<string | null>(null);
+function Memoria() {
+  const [testo, setTesto] = useState("");
+  const [voci, setVoci] = useState<VoceMemoria[] | null>(null);
+  const [modifica, setModifica] = useState<VoceMemoria | null>(null);
+  const [categoria, setCategoria] = useState("");
+  const [daEliminare, setDaEliminare] = useState<VoceMemoria | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    const cerca = testo.trim();
+    if (cerca.length < 2) { setVoci(null); return; }
+    const t = setTimeout(async () => {
+      try {
+        const qs = new URLSearchParams({ stato: "tutti", page: "1", per_page: "50", search: cerca });
+        const res = await fetch(`/api/admin/qualita-ai/memoria?${qs}`, { cache: "no-store" });
+        const d = await res.json().catch(() => ({}));
+        setVoci(res.ok && Array.isArray(d.rows) ? d.rows : []);
+      } catch {
+        setVoci([]);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [testo]);
+
+  async function salva() {
+    if (!modifica || !categoria) return;
+    const voce = modifica;
+    setModifica(null);
     try {
-      const qs = new URLSearchParams({ stato, page: String(page), per_page: "100", ...(search ? { search } : {}) });
-      const res = await fetch(`/api/admin/qualita-ai/memoria?${qs}`);
-      if (!res.ok) { toast.error("Errore caricamento memoria"); return; }
-      const d = await res.json();
-      setRows(d.rows || []);
-      setTotal(d.total || 0);
-    } catch { toast.error("Errore di connessione"); }
-    finally { setLoading(false); }
-  }, [stato, page, search]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // res.ok va controllato: un 404/422 e' una fetch RIUSCITA, e senza il controllo
-  // un errore del server dava toast verde e riga tolta dallo stato. Il resto del
-  // file lo fa gia' ovunque (:72-73, :85-86, :626-627): erano queste due fuori
-  // dalla convenzione del file stesso.
-  async function handleSalvaEdit() {
-    if (!editRow || !editCat) return;
-    setEditSaving(true);
-    try {
-      const res = await fetch(`/api/admin/qualita-ai/memoria/${editRow.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoria: editCat }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.ok === false) throw new Error(data?.detail || "Errore");
-      // righe_propagate: una modifica di memoria globale puo' riscrivere centinaia
-      // di righe o nessuna. Dirlo distingue i due esiti, che davano lo stesso toast.
-      const propagate = typeof data?.righe_propagate === "number" ? data.righe_propagate : null;
-      toast.success(
-        propagate === null
-          ? "Categoria aggiornata"
-          : propagate > 0
-            ? `Categoria aggiornata — ${propagate} righe aggiornate`
-            : "Categoria aggiornata — nessuna riga da aggiornare",
-      );
-      setEditRow(null);
-      load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Errore"); }
-    finally { setEditSaving(false); }
+      const d = await chiama(`/api/admin/qualita-ai/memoria/${voce.id}`, "PATCH", { categoria });
+      const n = typeof d.righe_propagate === "number" ? d.righe_propagate : null;
+      toast.success(n ? `Categoria aggiornata, ${n} righe corrette` : "Categoria aggiornata");
+      setVoci((prima) => prima && prima.map((v) => (v.id === voce.id ? { ...v, categoria } : v)));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
   }
 
-  async function handleDelete(id: string) {
+  async function elimina(voce: VoceMemoria) {
     try {
-      const res = await fetch(`/api/admin/qualita-ai/memoria/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.ok === false) throw new Error(data?.detail || "Errore");
+      await chiama(`/api/admin/qualita-ai/memoria/${voce.id}`, "DELETE");
       toast.success("Voce eliminata");
-      setRows((prev) => prev.filter((r) => r.id !== id));
-      setTotal((t) => t - 1);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Errore"); }
+      setVoci((prima) => prima && prima.filter((v) => v.id !== voce.id));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input placeholder="Cerca descrizione…" className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-        </div>
-        <NativeSelect value={stato} onValueChange={(v) => { setStato(v); setPage(1); }} className="w-36">
-          <option value="tutti">Tutti</option>
-          <option value="verified">Verificati</option>
-          <option value="non_verified">Non verificati</option>
-          <option value="sospette">Sospetti AI</option>
-        </NativeSelect>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
-        </Button>
+    <section className="space-y-2 rounded-lg border p-3">
+      <div>
+        <h2 className="text-sm font-semibold">Memoria globale</h2>
+        <p className="text-xs text-muted-foreground">Le categorie che valgono per tutti i clienti. Cerca un prodotto per correggerne una sbagliata.</p>
       </div>
-      <p className="text-sm text-muted-foreground">{total} voci · pagina {page}</p>
-      <div className="rounded-lg border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead><tr className="border-b bg-muted/50 text-left">
-            <th className="px-4 py-2 font-medium">Descrizione</th>
-            <th className="px-4 py-2 font-medium">Categoria</th>
-            {stato === "sospette" && <th className="px-4 py-2 font-medium">Suggerita</th>}
-            <th className="px-4 py-2 font-medium">×</th>
-            <th className="px-4 py-2 font-medium">✓</th>
-            <th className="px-4 py-2" />
-          </tr></thead>
-          <tbody className="divide-y">
-            {rows.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">{loading ? "Caricamento…" : "Nessun risultato"}</td></tr>}
-            {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-muted/30">
-                <td className="px-4 py-2 max-w-[220px] truncate text-xs" title={r.descrizione}>{r.descrizione}</td>
-                <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-[130px]">{r.categoria}</td>
-                {stato === "sospette" && <td className="px-4 py-2 text-xs text-amber-600">{r.categoria_suggerita || "—"}</td>}
-                <td className="px-4 py-2 tabular-nums text-xs">{r.volte_visto}</td>
-                <td className="px-4 py-2">{r.verified ? <CheckCircle className="size-4 text-emerald-500" /> : <span className="text-muted-foreground text-xs">—</span>}</td>
-                <td className="px-4 py-2">
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setEditRow(r); setEditCat(r.categoria); }}>Modifica</Button>
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => setDaEliminare(r.id)}>
-                      <Trash2 className="size-3" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input placeholder="Cerca nella memoria…" className="pl-8" value={testo} onChange={(e) => setTesto(e.target.value)} />
       </div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← Precedente</Button>
-        <Button variant="outline" size="sm" disabled={rows.length < 100} onClick={() => setPage((p) => p + 1)}>Successiva →</Button>
-      </div>
+      {voci && voci.length === 0 && <p className="text-sm text-muted-foreground">Nessuna voce trovata.</p>}
+      {voci && voci.length > 0 && (
+        <ul className="divide-y rounded-md border">
+          {voci.map((v) => (
+            <li key={v.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+              <div className="min-w-0">
+                <p className="truncate" title={v.descrizione}>{v.descrizione}</p>
+                <p className="text-xs text-muted-foreground">{v.categoria} · vista {v.volte_visto} volt{v.volte_visto === 1 ? "a" : "e"}</p>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                <Button size="sm" variant="ghost" onClick={() => { setModifica(v); setCategoria(v.categoria); }}>Modifica</Button>
+                <Button size="sm" variant="ghost" className="text-destructive" aria-label="Elimina" onClick={() => setDaEliminare(v)}><Trash2 className="size-4" /></Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
-      <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
+      <Dialog open={modifica !== null} onOpenChange={(o) => { if (!o) setModifica(null); }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Modifica categoria</DialogTitle></DialogHeader>
-          <div className="min-w-0 space-y-3 py-2">
-            <p className="text-sm truncate text-muted-foreground">{editRow?.descrizione}</p>
-            <NativeSelect value={editCat} onValueChange={setEditCat} placeholder="Seleziona categoria…">
-              {CATEGORIE_TUTTE.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-            </NativeSelect>
-          </div>
+          <DialogHeader>
+            <DialogTitle>Modifica categoria</DialogTitle>
+            <DialogDescription className="break-words">{modifica?.descrizione}</DialogDescription>
+          </DialogHeader>
+          <NativeSelect value={categoria} onValueChange={setCategoria}>
+            {CATEGORIE_TUTTE.map((c) => <option key={c} value={c}>{c}</option>)}
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">Corregge anche le righe già caricate dai clienti, tranne quelle che hanno scelto a mano.</p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditRow(null)}>Annulla</Button>
-            <Button onClick={handleSalvaEdit} disabled={editSaving}>{editSaving ? "Salvataggio…" : "Salva"}</Button>
+            <Button variant="outline" onClick={() => setModifica(null)}>Annulla</Button>
+            <Button onClick={salva} disabled={!categoria}>Salva</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -543,241 +421,22 @@ function MemoriaTab() {
       <ConfirmDialog
         open={daEliminare !== null}
         titolo="Eliminare questa voce dalla memoria globale?"
-        onConferma={() => { if (daEliminare) handleDelete(daEliminare); }}
+        messaggio={daEliminare ? `«${daEliminare.descrizione}» non avrà più una categoria valida per tutti.` : ""}
+        confermaLabel="Elimina"
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
         onClose={() => setDaEliminare(null)}
       />
-    </div>
+    </section>
   );
 }
-
-// ─── SCHEDA: Storico (audit + conflitti) ────────────────────────────────────────
-type Conflitto = { local_id: string; global_id: string; descrizione: string; categoria_locale: string; categoria_globale: string; email_cliente: string; nome_cliente: string; volte_locale: number; volte_globale: number };
-
-function ConflittiRiquadro() {
-  const [conflitti, setConflitti] = useState<Conflitto[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/qualita-ai/conflitti");
-      if (res.ok) setConflitti(await res.json());
-    } catch { /* silenzioso */ }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function risolvi(c: Conflitto, azione: "promuovi" | "ignora") {
-    try {
-      await fetch("/api/admin/qualita-ai/conflitti/risolvi", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ local_id: c.local_id, azione }),
-      });
-      toast.success(azione === "promuovi" ? "Promossa a globale" : "Conflitto ignorato");
-      setConflitti((prev) => prev.filter((x) => x.local_id !== c.local_id));
-    } catch { toast.error("Errore"); }
-  }
-
-  if (loading && conflitti.length === 0) return null;
-  if (conflitti.length === 0) return null;
-
-  return (
-    <Card className="p-4 border-amber-500/40">
-      <div className="flex items-center gap-2 mb-2">
-        <ArrowRightLeft className="size-4 text-amber-600" />
-        <h3 className="text-sm font-semibold">Conflitti locale ↔ globale ({conflitti.length})</h3>
-      </div>
-      <div className="space-y-1.5">
-        {conflitti.map((c) => (
-          <div key={c.local_id} className="flex items-center justify-between gap-2 text-xs border-b pb-1.5">
-            <span className="truncate max-w-[180px]" title={c.descrizione}>{c.descrizione}</span>
-            <span className="text-amber-700 shrink-0">{c.categoria_locale}</span>
-            <span className="text-muted-foreground shrink-0">vs {c.categoria_globale}</span>
-            <div className="flex gap-1 shrink-0">
-              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => risolvi(c, "promuovi")}>Promuovi</Button>
-              <Button size="sm" variant="ghost" className="h-6 text-xs text-muted-foreground" onClick={() => risolvi(c, "ignora")}>Ignora</Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-type LogRow = {
-  id: number; created_at: string; attore: string; azione: string; descrizione: string;
-  categoria_da: string; categoria_a: string; righe_count: number; nota: string; annullato_at: string | null;
-};
-const AZIONE_LABEL: Record<string, string> = {
-  classifica: "Classifica manuale", auto_review: "Auto-review", risolvi_conflitto: "Risolvi conflitto", annulla: "Annullata",
-};
-const AZIONE_COLOR: Record<string, string> = {
-  classifica: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
-  auto_review: "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300",
-  risolvi_conflitto: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
-  annulla: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
-};
-
-function StoricoTab() {
-  const [rows, setRows] = useState<LogRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [soloAnnullabili, setSoloAnnullabili] = useState(false);
-  const [undoing, setUndoing] = useState<number | null>(null);
-  const [daAnnullare, setDaAnnullare] = useState<LogRow | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({ page: String(page), per_page: "50" });
-      if (soloAnnullabili) qs.set("solo_annullabili", "true");
-      const res = await fetch(`/api/admin/qualita-ai/audit?${qs}`);
-      if (!res.ok) { toast.error("Errore caricamento log"); return; }
-      const d = await res.json();
-      setRows(d.rows || []);
-      setTotal(d.total || 0);
-    } catch { toast.error("Errore di connessione"); }
-    finally { setLoading(false); }
-  }, [page, soloAnnullabili]);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function handleAnnulla(row: LogRow) {
-    setUndoing(row.id);
-    try {
-      const res = await fetch("/api/admin/qualita-ai/audit/annulla", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ log_id: row.id }),
-      });
-      const d = await res.json();
-      if (!res.ok) { toast.error(d.detail || "Errore annullamento"); return; }
-      toast.success(`Annullato: ${d.righe_ripristinate} righe ripristinate a "${row.categoria_da}"`);
-      load();
-    } catch { toast.error("Errore di connessione"); }
-    finally { setUndoing(null); }
-  }
-
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Registro di tutte le modifiche di categoria (chi, quando, da quale categoria a quale). Da qui puoi anche annullare un&apos;azione.
-      </p>
-      <ConflittiRiquadro />
-      <div className="flex gap-2 flex-wrap items-center">
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
-        </Button>
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" checked={soloAnnullabili} onChange={(e) => { setSoloAnnullabili(e.target.checked); setPage(1); }} className="rounded" />
-          Solo annullabili
-        </label>
-        <span className="text-sm text-muted-foreground">{total} azioni totali</span>
-      </div>
-      <div className="rounded-lg border overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b bg-muted/50 text-left">
-              <th className="px-3 py-2 font-medium">Data</th>
-              <th className="px-3 py-2 font-medium">Tipo</th>
-              <th className="px-3 py-2 font-medium">Descrizione</th>
-              <th className="px-3 py-2 font-medium hidden md:table-cell">Da → A</th>
-              <th className="px-3 py-2 font-medium">N.</th>
-              <th className="px-3 py-2 font-medium hidden lg:table-cell">Attore</th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rows.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                {loading ? "Caricamento…" : (
-                  <div className="space-y-2"><Activity className="size-8 text-muted-foreground/50 mx-auto" /><p>Nessuna azione registrata</p></div>
-                )}
-              </td></tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.id} className={`hover:bg-muted/30 ${r.annullato_at ? "opacity-50" : ""}`}>
-                <td className="px-3 py-2 tabular-nums whitespace-nowrap text-muted-foreground">
-                  {new Date(r.created_at).toLocaleString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${AZIONE_COLOR[r.azione] || "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-                    {AZIONE_LABEL[r.azione] || r.azione}
-                  </span>
-                </td>
-                <td className="px-3 py-2 max-w-[180px] truncate" title={r.descrizione}>{r.descrizione || "—"}</td>
-                <td className="px-3 py-2 hidden md:table-cell">
-                  {r.categoria_da ? (<span className="text-muted-foreground">{r.categoria_da} <span className="mx-1">→</span> {r.categoria_a}</span>) : (<span>{r.categoria_a}</span>)}
-                </td>
-                <td className="px-3 py-2 tabular-nums font-medium">{r.righe_count}</td>
-                <td className="px-3 py-2 hidden lg:table-cell text-muted-foreground truncate max-w-[120px]">{r.attore}</td>
-                <td className="px-3 py-2">
-                  {!r.annullato_at && r.azione !== "annulla" && r.categoria_da && r.righe_count > 0 ? (
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700"
-                      disabled={undoing === r.id} onClick={() => setDaAnnullare(r)} title="Ripristina categoria precedente">
-                      <Undo2 className="size-3 mr-1" />{undoing === r.id ? "…" : "Annulla"}
-                    </Button>
-                  ) : r.annullato_at ? (<span className="text-[10px] text-muted-foreground">Annullata</span>) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← Precedente</Button>
-        <Button variant="outline" size="sm" disabled={rows.length < 50} onClick={() => setPage((p) => p + 1)}>Successiva →</Button>
-      </div>
-
-      <ConfirmDialog
-        open={daAnnullare !== null}
-        titolo={daAnnullare ? `Annullare "${AZIONE_LABEL[daAnnullare.azione] || daAnnullare.azione}" su "${daAnnullare.descrizione || "—"}" (${daAnnullare.righe_count} righe)?` : ""}
-        confermaLabel="Annulla azione"
-        onConferma={() => { if (daAnnullare) handleAnnulla(daAnnullare); }}
-        onClose={() => setDaAnnullare(null)}
-      />
-    </div>
-  );
-}
-
-// ─── ROOT ───────────────────────────────────────────────────────────────────────
-const TABS = ["da_controllare", "scelte_clienti", "memoria", "storico"] as const;
-const TAB_LABELS: Record<string, string> = {
-  da_controllare: "📋 Da controllare",
-  scelte_clienti: "🔒 Scelte clienti",
-  memoria: "🌍 Memoria globale",
-  storico: "📜 Storico modifiche",
-};
 
 export function CategorieClient() {
-  const [tab, setTab] = useState<typeof TABS[number]>("da_controllare");
-  const [clienti, setClienti] = useState<ClienteOpzione[]>([]);
-  const [filtroCliente, setFiltroCliente] = useState("tutti");
-
-  useEffect(() => {
-    fetch("/api/admin/clienti")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: { id: string; nome_ristorante: string }[]) =>
-        setClienti(data.map((c) => ({ id: c.id, nome: c.nome_ristorante || c.id }))))
-      .catch(() => {});
-  }, []);
-
   return (
-    <div className="space-y-4">
-      <div className="flex gap-1 border-b min-w-0 overflow-x-auto">
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {TAB_LABELS[t]}
-          </button>
-        ))}
-      </div>
-
-      {tab === "da_controllare" && <DaControllareTab clienti={clienti} filtroCliente={filtroCliente} setFiltroCliente={setFiltroCliente} />}
-      {tab === "scelte_clienti" && <ScelteClientiTab clienti={clienti} filtroCliente={filtroCliente} setFiltroCliente={setFiltroCliente} />}
-      {tab === "memoria" && <MemoriaTab />}
-      {tab === "storico" && <StoricoTab />}
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold tracking-tight">Categorie</h1>
+      <DaSistemare />
+      <Conflitti />
+      <Memoria />
     </div>
   );
 }

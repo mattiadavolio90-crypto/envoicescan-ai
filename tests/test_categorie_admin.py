@@ -2,9 +2,9 @@
 
 - `_descrizioni_impronta_umana`: segrega le righe scelte a mano (Manuale/Utente/
   Admin) che NON devono entrare nella coda "Da controllare".
-- `prepara_suggerimenti_ai`: prepara suggerimenti GPT per le righe dubbie SENZA
-  scriverne la categoria; salta quelle gia' risolte da regola/dizionario; non
-  tocca mai fatture.categoria / needs_review.
+- `_suggerimento_deterministico`: il suggerimento della pagina «Da sistemare».
+  («Rivedi con AI» e `prepara_suggerimenti_ai` tolti il 14/10/2026: in
+  prodotti_master non c'era nessun suggerimento AI salvato.)
 
 Fake client Supabase in-memory che riproduce il chaining usato dal router
 (table/select/eq/in_/is_/not_.is_/gte/range/upsert/execute).
@@ -169,108 +169,12 @@ def test_impronta_umana_normalizza_uppercase_e_trim():
     assert atteso == "PANE CASERECCIO"
 
 
-# ─── prepara_suggerimenti_ai ──────────────────────────────────────────────────
-
-def _fatture_dubbie(*descrizioni):
-    return [
-        {
-            "id": i + 1, "user_id": "u1", "descrizione": d, "categoria": "SERVIZI E CONSULENZE",
-            "fornitore": "FORNITORE X", "prezzo_unitario": 5.0, "totale_riga": 5.0,
-            "quantita": 1, "tipo_documento": "TD01", "needs_review": True,
-        }
-        for i, d in enumerate(descrizioni)
-    ]
-
-
-def test_suggerisci_ai_salta_regola_forte_e_non_chiama_gpt(monkeypatch):
-    # MAGNUM CLASSICO ha gia' una regola forte (-> RIVENDITA): non deve andare a GPT.
-    sb = FakeClient({"fatture": _fatture_dubbie("MAGNUM CLASSICO")})
-
-    chiamato = {"gpt": False}
-
-    def _fake_gpt(*a, **k):
-        chiamato["gpt"] = True
-        return ([], [])
-    monkeypatch.setattr("services.ai_service.classifica_con_ai", _fake_gpt)
-
-    res = admin.prepara_suggerimenti_ai(sb, ["u1"])
-    assert chiamato["gpt"] is False
-    assert res["suggerite"] == 0
-    assert res["saltate"] >= 1
-    # Nessuna scrittura su fatture (categoria/needs_review intatti)
-    for r in sb.dump("fatture"):
-        assert r["categoria"] == "SERVIZI E CONSULENZE"
-        assert r["needs_review"] is True
-
-
-def test_suggerisci_ai_prepara_suggerimento_senza_scrivere_categoria(monkeypatch):
-    # Descrizione ignota al dizionario: deve chiamare GPT e salvare il
-    # suggerimento in prodotti_master SENZA toccare fatture.
-    sb = FakeClient({"fatture": _fatture_dubbie("TRSSE TLTTE GM SHNE"), "prodotti_master": []})
-
-    def _fake_gpt(lista_descrizioni, **k):
-        cats = ["MATERIALE DI CONSUMO" for _ in lista_descrizioni]
-        return (cats, ["media" for _ in lista_descrizioni])
-    monkeypatch.setattr("services.ai_service.classifica_con_ai", _fake_gpt)
-
-    res = admin.prepara_suggerimenti_ai(sb, ["u1"])
-    assert res["suggerite"] == 1
-    master = sb.dump("prodotti_master")
-    assert len(master) == 1
-    assert master[0]["categoria_suggerita"] == "MATERIALE DI CONSUMO"
-    assert master[0]["suggerimento_fonte"] == "ai"
-    assert master[0].get("suggerito_at")
-    # NON ha scritto la categoria definitiva
-    assert "categoria" not in master[0] or master[0].get("categoria") != "MATERIALE DI CONSUMO"
-    # fatture intatte
-    for r in sb.dump("fatture"):
-        assert r["categoria"] == "SERVIZI E CONSULENZE"
-        assert r["needs_review"] is True
-
-
-def test_suggerisci_ai_scarta_categoria_non_valida(monkeypatch):
-    sb = FakeClient({"fatture": _fatture_dubbie("XYZ IGNOTO QWE"), "prodotti_master": []})
-
-    def _fake_gpt(lista_descrizioni, **k):
-        # GPT ritorna fallback / categoria inesistente: NON va salvato.
-        return (["Da Classificare"], ["bassa"])
-    monkeypatch.setattr("services.ai_service.classifica_con_ai", _fake_gpt)
-
-    res = admin.prepara_suggerimenti_ai(sb, ["u1"])
-    assert res["suggerite"] == 0
-    assert sb.dump("prodotti_master") == []
-
-
-def test_suggerisci_ai_idempotente_salta_suggerimento_fresco(monkeypatch):
-    from datetime import datetime, timezone
-    fresco = datetime.now(timezone.utc).isoformat()
-    sb = FakeClient({
-        "fatture": _fatture_dubbie("QWE IGNOTO ZXC"),
-        "prodotti_master": [{
-            "descrizione": "QWE IGNOTO ZXC", "categoria_suggerita": "MATERIALE DI CONSUMO",
-            "suggerimento_fonte": "ai", "suggerito_at": fresco,
-        }],
-    })
-
-    chiamato = {"gpt": False}
-
-    def _fake_gpt(*a, **k):
-        chiamato["gpt"] = True
-        return ([], [])
-    monkeypatch.setattr("services.ai_service.classifica_con_ai", _fake_gpt)
-
-    res = admin.prepara_suggerimenti_ai(sb, ["u1"])
-    assert chiamato["gpt"] is False        # gia' suggerito di fresco -> skip
-    assert res["suggerite"] == 0
-    assert res["saltate"] >= 1
-
-
 def test_modulo_admin_importa_helper_categorie():
     # Guardia: i nuovi simboli devono esistere a livello modulo.
     m = importlib.reload(admin) if False else admin
     assert hasattr(m, "_descrizioni_impronta_umana")
-    assert hasattr(m, "prepara_suggerimenti_ai")
-    assert hasattr(m, "admin_qualita_suggerisci_ai")
+    assert hasattr(m, "admin_categorie_da_sistemare")
+    assert hasattr(m, "_righe_da_sistemare")
     assert hasattr(m, "_suggerimento_deterministico")
 
 

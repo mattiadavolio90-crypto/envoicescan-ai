@@ -28,7 +28,7 @@ stato dismesso con lo switch DNS dell'8/6/2026 e **rimosso dal repo il 17/7/2026
 
 | Layer | Percorso | Note |
 |---|---|---|
-| Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — 14 aree app + auth/legal/mobile, 176 route API (`git ls-files apps/web/src/app/api | grep -c '/route.ts$'`, 13/10/2026 sera, dopo il riordino dell'admin che ne ha tolte 12) |
+| Frontend (produzione) | `apps/web/` | Next.js 16 (App Router) su Vercel — 14 aree app + auth/legal/mobile, 174 route API (`git ls-files apps/web/src/app/api | grep -c '/route.ts$'`, 14/10/2026, dopo il riordino di Admin → Categorie: −3 +1) |
 | Business logic | `services/*.py` | DB, AI, upload, notifiche, documenti, margini |
 | Utilità | `utils/*.py` | Formatters, validatori, helpers |
 | Configurazione | `config/*.py` | Costanti, logger, prompt AI |

@@ -7,7 +7,7 @@ del DB — e una chiamata API diretta (o un client vecchio in cache) scriveva
 `CARNE` sulla riga di un negozio senza che niente la fermasse.
 
 Quattro dei sei punti passano ora da `categorie_ammesse(settore)`. Gli altri due
-(`admin.py` suggerisci-ai e memoria globale) restano su `TUTTE_LE_CATEGORIE` **di
+(`admin.py` suggerisci-ai, tolto il 14/10/2026, e memoria globale) restano su `TUTTE_LE_CATEGORIE` **di
 proposito**: scrivono solo su `prodotti_master`, che e' la memoria dei ristoranti
 e che la Fase 1 ha gia' chiuso al retail. Ammettere li' ARTICOLO DI VENDITA
 creerebbe una voce che nessun negozio puo' leggere e che i ristoranti non devono

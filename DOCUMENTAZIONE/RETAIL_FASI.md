@@ -621,7 +621,7 @@ multi-riga, 20 punti) — e ne è uscito un quarto buco, della stessa famiglia d
 | `upload_handler.py:903` (memoria AI post-upload) | utente | categoria da `classifica_via_worker`, gated (1.4) |
 | agente notturno (rimosso il 13/10/2026) | master | account retail esclusi prima della query (seconda lettura) |
 | `admin.py:1084` (`admin_qualita_classifica`) | master | solo se almeno una riga ristorazione (seconda lettura) |
-| `admin.py:1257` (`prepara_suggerimenti_ai`) | master, solo `categoria_suggerita` | chiamanti: **`admin_qualita_suggerisci_ai` (esclude i retail)**; l'agente notturno, l'altro chiamante, è stato rimosso il 13/10/2026 |
+| `prepara_suggerimenti_ai` (tolta il 14/10/2026 con «Rivedi con AI», riordino di Admin → Categorie: in `prodotti_master` non c'era nessun suggerimento AI salvato) | master, solo `categoria_suggerita` | nessun chiamante resta; il suggerimento della pagina «Da sistemare» è solo `_suggerimento_deterministico`, spento per i gruppi con righe retail |
 | **`admin.py:1379/1406` (`admin_qualita_auto_review`)** | master, `verified=True` | **era SCOPERTO**: per gli sconti/omaggi promuoveva la categoria già presente sulla riga — per un negozio ARTICOLO DI VENDITA — e da lì ai ristoranti come bypass. Ora le righe si classificano (una dicitura a importo zero è tale anche per un negozio, lo sconto conferma la categoria che la riga ha già) ma la promozione avviene solo se la descrizione ha almeno una riga ristorazione, come in `classifica` |
 | `admin.py:1549/1581` (update/delete di una voce globale per id) | master | azioni dell'admin su voci già globali: neutre |
 | `admin.py:1695` (marca «eccezione locale accettata») | utente | neutro |
