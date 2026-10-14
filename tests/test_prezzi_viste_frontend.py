@@ -128,3 +128,28 @@ def test_le_chiavi_arrivano_fino_al_worker(relativo, attesa):
 
     sorgente = (Path(__file__).resolve().parents[1] / "apps/web/src" / relativo).read_text(encoding="utf-8")
     assert attesa in sorgente
+
+
+@pytest.mark.parametrize("riga, attesa", [
+    ({"da_controllare": True}, False),
+    ({"da_controllare": False}, True),
+    ({}, True),
+])
+def test_la_media_non_si_mostra_su_una_confezione_diversa(riga, attesa):
+    """ANATRA ARROSTO 16PZ: 16 PZ a 4,90 € e 1 PZ a 84,55 € (12/10/2026). La
+    media del periodo mescola pezzo e cartone e non dice niente."""
+    assert _ts("emit(m.mediaSignificativa(input))", riga) is attesa
+
+
+def test_la_scheda_toglie_la_media_in_tutti_e_tre_i_punti():
+    """Colonna «Media periodo», grafico e «Rispetto alla media» seguono la
+    stessa regola: toglierla in un punto solo lascerebbe la media sbagliata
+    negli altri due."""
+    from pathlib import Path
+
+    sorgente = (Path(__file__).resolve().parents[1] / "apps/web/src/components/prezzi/variazione-card.tsx").read_text(encoding="utf-8")
+    assert "const conMedia = mediaSignificativa(r);" in sorgente
+    assert '{conMedia ? fmtEuro(r.media) : "—"}' in sorgente
+    assert sorgente.count("senzaMedia={!conMedia}") == 2, "grafico ed elenco acquisti"
+    assert "{!senzaMedia && <ReferenceLine" in sorgente
+    assert '{!senzaMedia && <th className="text-right px-3 py-2 text-muted-foreground font-medium">Rispetto alla media</th>}' in sorgente

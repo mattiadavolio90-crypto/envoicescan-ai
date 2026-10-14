@@ -20,8 +20,10 @@ import type { StoricoPrezzoResponse, StoricoPrezzoPoint } from "@/lib/prezzi";
 import { parseDecimaleIt, formatEuro } from "@/lib/format";
 import { puntiSparkline } from "@/lib/sparkline-punti";
 import {
+  MEDIA_NON_SIGNIFICATIVA,
   NOTA_OLTRE_SEI_MESI,
   SPIEGAZIONE_DA_CONTROLLARE,
+  mediaSignificativa,
   nomeProdotto,
 } from "@/lib/prezzi-viste";
 
@@ -111,10 +113,13 @@ export function PrezzoChart({
   storico,
   media,
   fallbackPrezzi,
+  senzaMedia = false,
 }: {
   storico: StoricoPrezzoResponse | null;
   media: number;
   fallbackPrezzi?: number[];
+  /** Riga «Confezione diversa?»: prezzi in euro, niente media ne' distanza da essa. */
+  senzaMedia?: boolean;
 }) {
   const punti = storico?.punti ?? [];
   const mediaUsata = storico?.prezzo_medio ?? media;
@@ -152,7 +157,11 @@ export function PrezzoChart({
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground">
-        Media: <span className="font-semibold text-foreground">{fmtEuro(mediaLabel)}</span>
+        {senzaMedia ? (
+          <span className="text-incerto">{MEDIA_NON_SIGNIFICATIVA}</span>
+        ) : (
+          <>Media: <span className="font-semibold text-foreground">{fmtEuro(mediaLabel)}</span></>
+        )}
         {punti.length < 2 && fallbackPrezzi && fallbackPrezzi.length >= 2 && (
           <span className="ml-2 text-incerto">(ultimi {fallbackPrezzi.length} acquisti disponibili)</span>
         )}
@@ -161,23 +170,24 @@ export function PrezzoChart({
         <LineChart data={chartData} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
           <XAxis dataKey="data" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
           <YAxis
-            domain={domain}
+            domain={senzaMedia ? ["auto", "auto"] : domain}
             tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}%`}
+            tickFormatter={(v: number) => (senzaMedia ? fmtEuro(v) : `${v > 0 ? "+" : ""}${v}%`)}
           />
           <Tooltip
             formatter={(value, _name, props) => {
               const v = typeof value === "number" ? value : 0;
               const payload = props.payload as ChartPoint | undefined;
+              if (senzaMedia) return [payload?.label ?? fmtEuro(v), "Prezzo"];
               return [`${fmtPct(v)} (${payload?.label ?? ""})`, "Variazione"];
             }}
             labelStyle={{ fontSize: 11, color: "var(--muted-foreground)" }}
             itemStyle={{ color: "var(--foreground)" }}
             contentStyle={TOOLTIP_STYLE}
           />
-          <ReferenceLine
+          {!senzaMedia && <ReferenceLine
             y={0}
             stroke="var(--muted-foreground)"
             strokeDasharray="4 4"
@@ -189,8 +199,8 @@ export function PrezzoChart({
               fill: "var(--muted-foreground)",
               dy: -4,
             }}
-          />
-          <Line type="monotone" dataKey="var_pct" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary)" }} activeDot={{ r: 5, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }} />
+          />}
+          <Line type="monotone" dataKey={senzaMedia ? "prezzo" : "var_pct"} stroke="var(--primary)" strokeWidth={2} dot={{ r: 3, fill: "var(--primary)" }} activeDot={{ r: 5, fill: "var(--primary)", stroke: "var(--card)", strokeWidth: 2 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -205,9 +215,12 @@ export function ListaAcquisti({
   media,
   onApriFattura,
   puntoVendita,
+  senzaMedia = false,
 }: {
   punti: StoricoPrezzoPoint[];
   media: number;
+  /** Riga «Confezione diversa?»: niente colonna «Rispetto alla media». */
+  senzaMedia?: boolean;
   /** Assente: righe non cliccabili. */
   onApriFattura?: (p: StoricoPrezzoPoint) => void;
   /** Catena: di quale punto vendita sono gli acquisti. */
@@ -234,7 +247,7 @@ export function ListaAcquisti({
                 <th className="text-right px-3 py-2 text-muted-foreground font-medium">Quantità</th>
                 <th className="text-right px-3 py-2 text-muted-foreground font-medium">Prezzo unitario</th>
                 <th className="text-right px-3 py-2 text-muted-foreground font-medium">Totale</th>
-                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Rispetto alla media</th>
+                {!senzaMedia && <th className="text-right px-3 py-2 text-muted-foreground font-medium">Rispetto alla media</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -257,9 +270,11 @@ export function ListaAcquisti({
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                       {p.totale_riga != null ? fmtEuro(p.totale_riga) : "—"}
                     </td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${delta > 0.05 ? "text-negativo" : delta < -0.05 ? "text-positivo" : "text-muted-foreground"}`}>
-                      {Math.abs(delta) < 0.05 ? "—" : fmtPct(delta)}
-                    </td>
+                    {!senzaMedia && (
+                      <td className={`px-3 py-2 text-right tabular-nums ${delta > 0.05 ? "text-negativo" : delta < -0.05 ? "text-positivo" : "text-muted-foreground"}`}>
+                        {Math.abs(delta) < 0.05 ? "—" : fmtPct(delta)}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -285,6 +300,7 @@ export type RigaVariazione = {
   /** Stringa «€1,20 → €1,35»: solo fallback per risposte vecchie in cache. */
   storico?: string;
   storico_valori?: number[];
+  da_controllare?: boolean;
 };
 
 /**
@@ -321,6 +337,7 @@ function VariazioneCardBase<R extends RigaVariazione>({
   // le response servite dalla cache prima del deploy che ha aggiunto il campo.
   const spark = r.storico_valori ?? parseStorico(r.storico ?? "");
   const { nome, oltreSeiMesi } = nomeProdotto(r.prodotto);
+  const conMedia = mediaSignificativa(r);
 
   return (
     <div className={`rounded-lg border border-border bg-card shadow-sm overflow-hidden`}>
@@ -357,7 +374,9 @@ function VariazioneCardBase<R extends RigaVariazione>({
               le colonne in fila, e cambiarne una qui senza cambiarla la' scolla i
               titoli dai dati. */}
           <div className={`text-right shrink-0 ${COL_MEDIA}`}>
-            <p className="text-xs tabular-nums text-muted-foreground">{fmtEuro(r.media)}</p>
+            <p className="text-xs tabular-nums text-muted-foreground" title={conMedia ? undefined : MEDIA_NON_SIGNIFICATIVA}>
+              {conMedia ? fmtEuro(r.media) : "—"}
+            </p>
           </div>
 
           <div className={`text-right shrink-0 ${COL_PENULTIMO}`}>
@@ -395,6 +414,7 @@ function VariazioneCardBase<R extends RigaVariazione>({
                 storico={storico}
                 media={r.media}
                 fallbackPrezzi={spark.length >= 2 ? spark : undefined}
+                senzaMedia={!conMedia}
               />
               {storico && storico.punti.length > 0 ? (
                 <ListaAcquisti
@@ -402,6 +422,7 @@ function VariazioneCardBase<R extends RigaVariazione>({
                   media={storico.prezzo_medio || r.media}
                   onApriFattura={onApriFattura ? (p) => onApriFattura(r, p) : undefined}
                   puntoVendita={nomePuntoVendita}
+                  senzaMedia={!conMedia}
                 />
               ) : (
                 // Prima qui non compariva niente: il cliente non sapeva se le

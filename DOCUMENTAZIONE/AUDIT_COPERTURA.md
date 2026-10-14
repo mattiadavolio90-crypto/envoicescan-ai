@@ -2611,6 +2611,20 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   rotte); suite `python -m pytest tests/ -q -p no:randomly` **20.648 verdi + 61 skip + 1
 >   xfail, 1 rosso non mio** (`test_oscurate_choke_point` su `gruppo_prezzi_fattura`, commit
 >   `a5e9e0f9` della sessione dell'anteprima in catena). **Non fatto:** prova nel browser.
+>
+> - **14/10/2026 — Prezzi: sulle righe «Confezione diversa?» niente media (Opus), NON pushato,
+>   solo frontend.** Da screenshot di Mattia: ANATRA ARROSTO 16PZ 10KG di H.D. ITALIA, sul DB in
+>   4 sedi fatturata a cartone (1 PZ a 95 € e poi 84,55 €) o a pezzi (16 PZ a 4,90 € = 78,40 €):
+>   rincaro vero circa +8%, a video +1.600%. Decisione di Mattia: niente ricalcolo per
+>   confezione, basta «Da controllare» (gia' in `73870617`, ora rinominato «Confezione
+>   diversa?»). **In piu':** su quelle righe la media del periodo mescola pezzo e cartone e
+>   non dice niente. `mediaSignificativa` in `lib/prezzi-viste.ts`: la scheda (PV e catena)
+>   mostra «—» nella colonna della media con la spiegazione, il grafico dice i prezzi in euro
+>   senza la linea della media, l'elenco acquisti perde «Rispetto alla media». **Prove:** 3
+>   casi sulla regola (node) + controllo dei tre punti della scheda; mutazione 4/4 (regola,
+>   colonna, grafico, elenco). I tre punti sono verificati sul sorgente, non sul rendering
+>   (nessun runner frontend): resta da guardare nel browser. 4.136 test frontend verdi
+>   (`tests/test_*_frontend.py` + contrasto CSS); `tsc` pulito.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

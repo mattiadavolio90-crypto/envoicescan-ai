@@ -90,3 +90,13 @@ export function parametriStorico(
   }
   return qs;
 }
+
+// Su una riga «Confezione diversa?» la media del periodo mescola pezzo e
+// confezione (ANATRA ARROSTO 16PZ: 16 PZ a 4,90 € e 1 PZ a 84,55 €, screenshot
+// di Mattia del 12/10/2026): non si mostra, e nemmeno la distanza da essa.
+export const MEDIA_NON_SIGNIFICATIVA =
+  "Fatturato a volte a pezzo e a volte a confezione: la media mescolerebbe le due cose, quindi non si calcola.";
+
+export function mediaSignificativa(r: { da_controllare?: boolean }): boolean {
+  return r.da_controllare !== true;
+}
