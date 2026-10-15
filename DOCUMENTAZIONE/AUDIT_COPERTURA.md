@@ -3094,6 +3094,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   pende la decisione K03) oppure `senza_incasso`, con una frase in `dati_incompleti` e
 >   `mol_pct` a null; la descrizione dello strumento dice di non commentare quel MOL. +4 test
 >   in `tests/test_chat_query_margini_onesta.py`; **4 mutanti, 4 uccisi**.
+>
+> - **15/10/2026 — Fix n. 16 dell'audit di ottobre (K17): un guasto di uno strumento non
+>   costa crediti senza risposta.** I crediti si scalano prima del giro con OpenAI; solo gli
+>   strumenti della fase F avevano un try, un'eccezione negli altri otto diventava un 502 con
+>   3 crediti gia' spesi (2 domande su 134 dal 5/6, 6 crediti, nessuno di ricarica). Ora
+>   `_chat_esegui_tool_sede` avvolge ogni strumento: `HTTPException` torna col suo messaggio,
+>   il resto si logga e torna al modello come `errore`, come gia' faceva la catena.
+>   **Dichiarato, non fatto**: un guasto di OpenAI dopo la RPC (504, 502) consuma ancora i
+>   crediti e il contatore a video li mostra fino al ricaricamento; uno storno serve una RPC
+>   che scrive su `chat_usage_log`. Le card di registrazione (`_assistente.proponi`) restano
+>   fuori dalla rete. +10 test in `tests/test_chat_strumento_guasto_non_e_502.py`; **3
+>   mutanti, 3 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

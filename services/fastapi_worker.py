@@ -6007,7 +6007,28 @@ def _chat_esegui_tool_sede(
 
     In vista punto vendita e' la sede attiva; in vista catena e' la sede che il
     modello ha nominato, gia' verificata fra quelle dell'account
-    (_chat_esegui_tool_catena). Qui non si risolve piu' niente dal token."""
+    (_chat_esegui_tool_catena). Qui non si risolve piu' niente dal token.
+
+    Un guasto di uno strumento torna al modello come `errore`, come in catena.
+    Prima risaliva fino a un 502 dopo che la domanda aveva gia' scalato i crediti:
+    il cliente pagava una risposta che non arrivava (audit di ottobre 2026, K17)."""
+    try:
+        return _chat_esegui_tool_sede_grezzo(
+            nome, args, user=user, supabase_client=supabase_client,
+            authorization=authorization, ristorante_id=ristorante_id, settore=settore,
+        )
+    except HTTPException as exc:
+        return {"errore": exc.detail}
+    except Exception as exc:
+        logger.warning("chat: strumento %s fallito: %s", nome, exc)
+        return {"errore": "dato non leggibile in questo momento: non dire che non c'e', "
+                          "di' che non riesci a leggerlo e rimanda alla pagina"}
+
+
+def _chat_esegui_tool_sede_grezzo(
+    nome: str, args: Dict[str, Any], *, user: Dict[str, Any], supabase_client,
+    authorization: Optional[str], ristorante_id: Optional[str], settore: Optional[str],
+) -> Dict[str, Any]:
     user_id = str(user["id"])
     # Il gate dei tool toglie lo strumento dalla LISTA OFFERTA al modello; qui si
     # controlla anche l'ESECUZIONE. Non e' ridondante: il dispatcher esegue
@@ -6064,22 +6085,15 @@ def _chat_esegui_tool_sede(
             return {"errore": "questa sezione non e' attiva per il tuo account"}
         if not ristorante_id:
             return {"errore": "nessun locale selezionato"}
-        # Un guasto qui (pandas, analisi dei tag) non deve far cadere tutta la
-        # risposta con un 502: il modello riceve l'errore e lo dice (revisore, 9/10).
-        try:
-            if nome == "query_personale":
-                return _chat_query_personale(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
-            if nome == "query_spese_extra":
-                return _chat_query_spese_extra(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
-            if nome == "score_fornitori":
-                return _chat_score_fornitori(supabase_client, ristorante_id, args.get("fornitore"))
-            if nome == "avvisi_prezzi":
-                return _chat_avvisi_prezzi(user_id, supabase_client, ristorante_id)
-            return _chat_query_tag(user_id, ristorante_id, args.get("tag"))
-        except Exception as exc:
-            logger.warning("chat: strumento %s fallito: %s", nome, exc)
-            return {"errore": "dato non leggibile in questo momento: non dire che non c'e', "
-                              "di' che non riesci a leggerlo e rimanda alla pagina"}
+        if nome == "query_personale":
+            return _chat_query_personale(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
+        if nome == "query_spese_extra":
+            return _chat_query_spese_extra(supabase_client, ristorante_id, args.get("mese"), args.get("anno"))
+        if nome == "score_fornitori":
+            return _chat_score_fornitori(supabase_client, ristorante_id, args.get("fornitore"))
+        if nome == "avvisi_prezzi":
+            return _chat_avvisi_prezzi(user_id, supabase_client, ristorante_id)
+        return _chat_query_tag(user_id, ristorante_id, args.get("tag"))
     if nome in _assistente.STRUMENTI_PROPOSTA:
         # Le card hanno bisogno delle liste di chat_ai (vista punto vendita):
         # arrivare qui vuol dire un chiamante che non le passa, cioe' la catena.
