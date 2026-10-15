@@ -574,6 +574,38 @@ export function statoDocumento(d: Documento, today?: Date): StatoDocumento {
    ritardo resta sul titolo di sezione e sulla data di scadenza. */
 
 /**
+ * Le scadenze che il calendario disegna nel mese: quelle ancora da pagare,
+ * scadute o no. Gli esclusi sono quelli di `statoDocumento`, come nei KPI della
+ * stessa pagina e nell'endpoint del worker: la griglia contava anche le fatture
+ * escluse dai conti (audit di ottobre 2026), e il totale del giorno smentiva le
+ * card sopra. `mese` e' 0-based come `Date.getMonth()`.
+ */
+export function scadenzeDelMese(documenti: Documento[], anno: number, mese: number, today?: Date): Documento[] {
+  return documenti.filter((d) => {
+    const stato = statoDocumento(d, today);
+    if (stato !== "Scaduta" && stato !== "Da pagare") return false;
+    const s = parseLocalDate(d.scadenza_effettiva);
+    return !!s && s.getFullYear() === anno && s.getMonth() === mese;
+  });
+}
+
+export function aggregaCalendario(
+  documenti: Documento[],
+  anno: number,
+  mese: number,
+  today?: Date,
+): Record<number, { totale: number; count: number }> {
+  const map: Record<number, { totale: number; count: number }> = {};
+  for (const doc of scadenzeDelMese(documenti, anno, mese, today)) {
+    const giorno = parseLocalDate(doc.scadenza_effettiva)!.getDate();
+    if (!map[giorno]) map[giorno] = { totale: 0, count: 0 };
+    map[giorno].totale += doc.totale_documento || 0;
+    map[giorno].count += 1;
+  }
+  return map;
+}
+
+/**
  * Le scadute che il calendario NON sta mostrando, perche' cadono in un altro mese.
  *
  * Il calendario disegna una casella sola per le scadenze del mese visualizzato:

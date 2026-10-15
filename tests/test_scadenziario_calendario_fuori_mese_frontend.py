@@ -167,3 +167,62 @@ def test_lo_stesso_mese_di_un_anno_diverso_e_fuori(tz):
     """
     docs = [_doc("vecchia.xml", "2025-06-10")]
     assert _fuori(docs, 2026, 5, tz)["count"] == 1
+
+
+# ── La griglia e la lista del giorno ────────────────────────────────────────
+#
+# Fino all'audit di ottobre 2026 la griglia saltava solo pagate e note di
+# credito: una fattura esclusa dai conti con scadenza nel mese entrava nel totale
+# del giorno, mentre le card sopra e l'endpoint del worker la escludevano.
+
+
+def _mese_giugno():
+    return [
+        _doc("osc.xml", "2026-06-21", oscurata=True, totale_documento=500.0),
+        _doc("osc-scaduta.xml", "2026-06-03", oscurata=True, totale_documento=40.0),
+        _doc("ok.xml", "2026-06-23", totale_documento=1100.0),
+        _doc("ok2.xml", "2026-06-23", totale_documento=300.0),
+        _doc("scaduta.xml", "2026-06-05", totale_documento=200.0),
+        _doc("pagata.xml", "2026-06-23", pagata=True, totale_documento=50.0),
+        _doc("nc.xml", "2026-06-23", is_nota_credito=True, totale_documento=70.0),
+        _doc("luglio.xml", "2026-07-02", totale_documento=900.0),
+    ]
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_griglia_conta_solo_le_scadenze_da_pagare_del_mese(tz):
+    agg = esegui_ts(
+        MODULO,
+        f"emit(m.aggregaCalendario(input, 2026, 5, new Date('{OGGI}')));",
+        argomento=_mese_giugno(),
+        tz=tz,
+        richiede=["aggregaCalendario"],
+    )
+    assert agg == {"5": {"totale": 200, "count": 1}, "23": {"totale": 1400, "count": 2}}
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_lista_del_mese_esclude_le_fatture_escluse_dai_conti(tz):
+    docs = esegui_ts(
+        MODULO,
+        f"emit(m.scadenzeDelMese(input, 2026, 5, new Date('{OGGI}')).map(d => d.file_origine));",
+        argomento=_mese_giugno(),
+        tz=tz,
+        richiede=["scadenzeDelMese"],
+    )
+    assert sorted(docs) == ["ok.xml", "ok2.xml", "scaduta.xml"]
+
+
+def test_griglia_e_lista_del_giorno_usano_le_funzioni_della_lib():
+    from pathlib import Path
+
+    sorgente = (
+        Path(__file__).resolve().parent.parent
+        / "apps/web/src/app/(app)/scadenziario/scadenziario-client.tsx"
+    ).read_text(encoding="utf-8")
+    inizio = sorgente.index("function CalendarView(")
+    corpo = sorgente[inizio:sorgente.index("\nfunction ", inizio + 1)]
+    assert "useMemo(() => aggregaCalendario(documenti, anno, mese)" in corpo
+    assert "return scadenzeDelMese(documenti, anno, mese)" in corpo
+    assert "if (doc.pagata) continue;" not in corpo
+    assert "if (d.pagata) return false;" not in corpo

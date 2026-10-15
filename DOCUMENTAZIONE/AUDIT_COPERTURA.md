@@ -2904,6 +2904,16 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   endpoint dell'anteprima dalla scheda Prezzi, sede verificata nel gruppo); in vista sede
 >   l'URL resta quello di prima, perche' l'endpoint di gruppo vuole la pagina Catena. +4 test
 >   in `tests/test_scadenziario_anteprima_catena_frontend.py`; **5 mutanti, 5 uccisi**.
+>
+> - **15/10/2026 — Fix n. 3 dell'audit di ottobre (K02): il calendario non conta le fatture
+>   escluse dai conti.** Griglia e lista del giorno saltavano solo pagate e note di credito,
+>   mentre card, «scadute fuori dal mese» e l'endpoint del worker escludevano anche le
+>   oscurate. Ora `scadenzeDelMese` e `aggregaCalendario` in `lib/scadenziario.ts` passano
+>   da `statoDocumento` (contano solo «Scaduta» e «Da pagare»). Platea oggi: 1 fattura
+>   esclusa in tutto il DB, a giugno; il difetto scattava al primo «Escludi dai conti» su
+>   una scadenza futura. +5 test in `tests/test_scadenziario_calendario_fuori_mese_frontend.py`
+>   (il cui commento «gli stessi esclusi del calendario» ora e' vero); **6 mutanti, 6
+>   uccisi**, uno dopo aver messo due fatture sullo stesso giorno.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

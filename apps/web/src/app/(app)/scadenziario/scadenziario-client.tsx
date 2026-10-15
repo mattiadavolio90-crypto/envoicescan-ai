@@ -26,7 +26,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, aggregaCalendario, scadenzeDelMese, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
@@ -497,21 +497,7 @@ function CalendarView({ documenti }: CalendarViewProps) {
   const [mese, setMese] = useState(today.getMonth()); // 0-based
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
-  const agg = useMemo(() => {
-    const map: Record<number, { totale: number; count: number }> = {};
-    for (const doc of documenti) {
-      if (doc.pagata) continue;
-      if (doc.is_nota_credito) continue;
-      const dt = parseLocalDate(doc.scadenza_effettiva);
-      if (dt && dt.getFullYear() === anno && dt.getMonth() === mese) {
-        const d = dt.getDate();
-        if (!map[d]) map[d] = { totale: 0, count: 0 };
-        map[d].totale += doc.totale_documento || 0;
-        map[d].count += 1;
-      }
-    }
-    return map;
-  }, [documenti, anno, mese]);
+  const agg = useMemo(() => aggregaCalendario(documenti, anno, mese), [documenti, anno, mese]);
 
   const maxVal = useMemo(() => Math.max(0, ...Object.values(agg).map(v => v.totale)), [agg]);
 
@@ -532,12 +518,8 @@ function CalendarView({ documenti }: CalendarViewProps) {
 
   const dayDocs = useMemo(() => {
     if (!selectedDay) return [];
-    return documenti.filter(d => {
-      if (d.pagata) return false;
-      if (d.is_nota_credito) return false;
-      const dt = parseLocalDate(d.scadenza_effettiva);
-      return !!dt && dt.getFullYear() === anno && dt.getMonth() === mese && dt.getDate() === selectedDay;
-    });
+    return scadenzeDelMese(documenti, anno, mese)
+      .filter(d => parseLocalDate(d.scadenza_effettiva)!.getDate() === selectedDay);
   }, [documenti, anno, mese, selectedDay]);
 
   // Le scadute degli altri mesi: il calendario mostra una finestra sola, e su
