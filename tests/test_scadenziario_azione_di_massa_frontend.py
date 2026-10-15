@@ -57,7 +57,17 @@ def _doc(fo, pagata=False, **kw):
     return base
 
 
+def _sel(documenti, nomi):
+    """La selezione come la tiene la pagina: chiavi sede|file (`chiaveDocumento`).
+    I test scritti per nome selezionano quel file su ogni sede che lo ha; un nome
+    che nessun documento porta resta una chiave estranea."""
+    chiavi = [f"{d.get('ristorante_id') or ''}|{d['file_origine']}" for d in documenti if d["file_origine"] in nomi]
+    presenti = {d["file_origine"] for d in documenti}
+    return chiavi + [f"|{n}" for n in nomi if n not in presenti]
+
+
 def _piano(documenti, selezionate, pagata):
+    selezionate = _sel(documenti, selezionate)
     # `undefined` sparisce da JSON.stringify: la sede mono-sede torna come null.
     return esegui_ts(
         MODULO,
@@ -88,12 +98,12 @@ def test_seleziona_tutte_poi_segna_non_pagate_non_manda_nulla():
         argomento=documenti,
         richiede=["chiaviSelezionaTutte"],
     )
-    assert sorted(selezionate) == ["a.xml", "b.xml", "c.xml"], (
+    assert sorted(selezionate) == ["|a.xml", "|b.xml", "|c.xml"], (
         "«Seleziona tutte» ha cambiato popolazione: questo test non descrive piu' "
         "il caso reale e va rivisto"
     )
 
-    piano = _piano(documenti, selezionate, False)
+    piano = _piano(documenti, [k.split("|", 1)[1] for k in selezionate], False)
 
     assert piano["gruppi"] == [], (
         "«Segna non pagate» su fatture gia' da pagare manda ancora qualcosa "
@@ -164,6 +174,7 @@ def test_in_catena_raggruppa_per_sede_solo_le_fatture_che_cambiano():
 # ── 2. L'aggiornamento a video e il testo della conferma, eseguiti ───────────
 
 def _dopo_l_azione(documenti, selezionate, pagata, oggi="2026-09-26"):
+    selezionate = _sel(documenti, selezionate)
     return esegui_ts(
         MODULO,
         "const p = m.pianoAzioneDiMassa(input.documenti, input.selezionate, input.pagata);"
@@ -217,7 +228,7 @@ def _messaggio(documenti, selezionate, pagata):
         MODULO,
         "const p = m.pianoAzioneDiMassa(input.documenti, input.selezionate, input.pagata);"
         "emit({ testo: m.messaggioConfermaAzioneDiMassa(p, input.pagata), euro: m.formatEuro(input.atteso) });",
-        argomento={"documenti": documenti, "selezionate": selezionate, "pagata": pagata,
+        argomento={"documenti": documenti, "selezionate": _sel(documenti, selezionate), "pagata": pagata,
                    "atteso": sum(d["totale_documento"] for d in documenti
                                  if d["file_origine"] in selezionate and d["pagata"] != pagata)},
         richiede=["pianoAzioneDiMassa", "messaggioConfermaAzioneDiMassa", "formatEuro"],
@@ -386,10 +397,10 @@ def test_i_pulsanti_si_spengono_e_dicono_perche(sorgente: str):
 def test_il_motivo_del_pulsante_spento():
     esito = esegui_ts(
         MODULO,
-        "const pag = m.pianoAzioneDiMassa(input.docs, ['a.xml'], true);"
-        "const non = m.pianoAzioneDiMassa(input.docs, ['a.xml'], false);"
+        "const pag = m.pianoAzioneDiMassa(input.docs, ['|a.xml'], true);"
+        "const non = m.pianoAzioneDiMassa(input.docs, ['|a.xml'], false);"
         "emit([m.motivoAzioneSpenta(pag, true), m.motivoAzioneSpenta(non, false),"
-        "      m.motivoAzioneSpenta(m.pianoAzioneDiMassa(input.docs, ['p.xml'], true), true)]);",
+        "      m.motivoAzioneSpenta(m.pianoAzioneDiMassa(input.docs, ['|p.xml'], true), true)]);",
         argomento={"docs": [_doc("a.xml"), _doc("p.xml", pagata=True)]},
         richiede=["pianoAzioneDiMassa", "motivoAzioneSpenta"],
     )
@@ -484,3 +495,84 @@ def test_la_conferma_usa_il_messaggio_del_piano(sorgente: str):
         "messaggio={confermaBulk ? messaggioConfermaAzioneDiMassa(pianoPagate, true) "
         ": messaggioConfermaAzioneDiMassa(pianoNonPagate, false)}"
     ) in dialog, f"la conferma non usa piu' il messaggio del piano del suo verso: {dialog}"
+
+
+# ── Stesso file_origine su due sedi (audit di ottobre 2026, K04) ─────────────
+#
+# Il controllo dei doppioni al caricamento e' per sede: niente impedisce lo
+# stesso nome file su due sedi dello stesso account. Con la selezione per sola
+# file_origine una spunta selezionava due righe, «Seleziona tutte» annunciava N
+# e ne scriveva di piu', e «Segna non pagate» toglieva il pagamento a una
+# fattura dell'altra sede che nessuno aveva scelto. Oggi 0 casi nei dati.
+
+
+def test_una_spunta_su_una_sede_scrive_solo_su_quella():
+    documenti = [_doc("DUP2.xml", ristorante_id="rA"), _doc("DUP2.xml", ristorante_id="rB")]
+    out = esegui_ts(
+        MODULO,
+        "const k = m.chiaveDocumento(input[0]);"
+        "const p = m.pianoAzioneDiMassa(input, [k], true);"
+        "emit({ gruppi: p.gruppi, sezione: m.statoSelezioneSezione(input, [k]) });",
+        argomento=documenti,
+        richiede=["chiaveDocumento", "pianoAzioneDiMassa", "statoSelezioneSezione"],
+    )
+    assert out["gruppi"] == [{"ristorante_id": "rA", "file_origini": ["DUP2.xml"]}]
+    assert out["sezione"] == {"selezionabili": 2, "selezionati": 1, "tutte": False}
+
+
+def test_seleziona_tutte_non_tocca_l_omonima_pagata_dell_altra_sede():
+    documenti = [
+        _doc("X1.xml", ristorante_id="rA"),
+        _doc("DUP.xml", ristorante_id="rA"),
+        _doc("DUP.xml", pagata=True, ristorante_id="rB"),
+    ]
+    out = esegui_ts(
+        MODULO,
+        "const k = m.chiaviSelezionaTutte(input);"
+        "const p = m.pianoAzioneDiMassa(input, k, false);"
+        "emit({ gruppi: p.gruppi, motivo: m.motivoAzioneSpenta(p, false) });",
+        argomento=documenti,
+        richiede=["chiaviSelezionaTutte", "pianoAzioneDiMassa", "motivoAzioneSpenta"],
+    )
+    assert out == {"gruppi": [], "motivo": "Le fatture selezionate sono già tutte da pagare"}
+
+
+def test_seleziona_tutte_annuncia_quante_ne_scrive():
+    documenti = [_doc("DUP2.xml", ristorante_id="rA"), _doc("DUP2.xml", ristorante_id="rB")]
+    out = esegui_ts(
+        MODULO,
+        "const k = m.chiaviSelezionaTutte(input);"
+        "const p = m.pianoAzioneDiMassa(input, k, true);"
+        "emit({ chiavi: k.length, distinte: new Set(k).size, cambiano: p.cambiano.length, giaCosi: p.giaCosi });",
+        argomento=documenti,
+        richiede=["chiaviSelezionaTutte", "pianoAzioneDiMassa"],
+    )
+    assert out == {"chiavi": 2, "distinte": 2, "cambiano": 2, "giaCosi": 0}
+
+
+def test_stesso_documento_confronta_anche_la_sede():
+    out = esegui_ts(
+        MODULO,
+        "emit([m.stessoDocumento(input[0], input[1]), m.stessoDocumento(input[0], input[2])]);",
+        argomento=[
+            {"file_origine": "x.xml", "ristorante_id": "rA"},
+            {"file_origine": "x.xml", "ristorante_id": "rB"},
+            {"file_origine": "x.xml", "ristorante_id": "rA"},
+        ],
+        richiede=["stessoDocumento"],
+    )
+    assert out == [False, True]
+
+
+def test_il_client_usa_la_chiave_con_la_sede(sorgente: str):
+    sezione = _normalizza(_corpo_funzione(sorgente, "function AgendaSection("))
+    assert "key={chiaveDocumento(doc)}" in sezione
+    assert "onToggleSelect={() => onToggleSelect(chiaveDocumento(doc))}" in sezione
+    toggle_all = _normalizza(_corpo_funzione(sorgente, "function toggleAll("))
+    assert "if (selectAll) next.add(chiaveDocumento(d)); else next.delete(chiaveDocumento(d));" in toggle_all
+    for firma in ("async function handleSetScadenza(doc: Documento", "async function handleElimina(doc: Documento",
+                  "async function handleOscura(doc: Documento", "function handleSpostata(doc: Documento"):
+        corpo = _normalizza(_corpo_funzione(sorgente, firma))
+        assert "stessoDocumento(d, doc)" in corpo, firma
+        assert "d.file_origine === doc.file_origine" not in corpo, firma
+        assert "d.file_origine !== doc.file_origine" not in corpo, firma

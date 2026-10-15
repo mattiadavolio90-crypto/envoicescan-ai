@@ -151,6 +151,6 @@ def test_in_archivio_niente_selezione():
     riga = _corpo(s, "function DocumentoRow(")
     assert re.search(r"\{mostraScadenze && \(\s*<input\s+type=\"checkbox\"", riga)
     sezione = _corpo(s, "function AgendaSection(")
-    assert "selected={mostraScadenze && selectedFileOrigini.has(doc.file_origine)}" in sezione
+    assert "selected={mostraScadenze && selectedFileOrigini.has(chiaveDocumento(doc))}" in sezione
     assert "{mostraScadenze && selectedCount > 0 && (" in sezione
     assert "{view === \"agenda\" && selectedFileOrigini.size > 0 && (" in s

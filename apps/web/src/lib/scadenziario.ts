@@ -156,7 +156,26 @@ export function documentiSelezionabili(documenti: Documento[]): Documento[] {
  * credito. Prima, «Seleziona tutte» era l'unica strada per scriverci sopra.
  */
 export function chiaviSelezionaTutte(documenti: Documento[]): string[] {
-  return documentiSelezionabili(documenti).map(d => d.file_origine);
+  return documentiSelezionabili(documenti).map(chiaveDocumento);
+}
+
+/**
+ * La chiave di un documento nella pagina: sede piu' file. In catena lo stesso
+ * `file_origine` puo' stare su due sedi (il controllo dei doppioni al
+ * caricamento e' per sede): con la sola `file_origine` una spunta selezionava
+ * due righe e l'azione di massa scriveva anche sulla sede non scelta (audit di
+ * ottobre 2026, oggi 0 casi nei dati). La usano selezione, piano e aggiornamenti
+ * a video.
+ */
+export function chiaveDocumento(d: Pick<Documento, "ristorante_id" | "file_origine">): string {
+  return `${d.ristorante_id ?? ""}|${d.file_origine}`;
+}
+
+export function stessoDocumento(
+  a: Pick<Documento, "ristorante_id" | "file_origine">,
+  b: Pick<Documento, "ristorante_id" | "file_origine">,
+): boolean {
+  return chiaveDocumento(a) === chiaveDocumento(b);
 }
 
 export type AperturaSezione = { open: boolean; primaDellaRicerca: boolean | null };
@@ -192,7 +211,7 @@ export function statoSelezioneSezione(
 ): { selezionabili: number; selezionati: number; tutte: boolean } {
   const set = new Set(selezionate);
   const selezionabili = documentiSelezionabili(docs);
-  const selezionati = selezionabili.filter(d => set.has(d.file_origine)).length;
+  const selezionati = selezionabili.filter(d => set.has(chiaveDocumento(d))).length;
   return {
     selezionabili: selezionabili.length,
     selezionati,
@@ -232,7 +251,7 @@ export function pianoAzioneDiMassa(
   const cambiano: Documento[] = [];
   let giaCosi = 0;
   for (const d of documenti) {
-    if (!set.has(d.file_origine)) continue;
+    if (!set.has(chiaveDocumento(d))) continue;
     if (d.pagata === pagata) {
       giaCosi++;
       continue;
@@ -306,11 +325,10 @@ export function applicaPagataAVideo(
   pagata: boolean,
   oggi: string,
 ): Documento[] {
-  const chiave = (d: Documento) => `${d.ristorante_id ?? ""}|${d.file_origine}`;
-  const cambiate = new Set(cambiano.map(chiave));
+  const cambiate = new Set(cambiano.map(chiaveDocumento));
   const pagata_at = pagata ? oggi : null;
   return documenti.map(d =>
-    cambiate.has(chiave(d)) ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
+    cambiate.has(chiaveDocumento(d)) ? { ...d, pagata, pagata_at, data_pagamento: pagata_at } : d
   );
 }
 

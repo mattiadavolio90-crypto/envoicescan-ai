@@ -2951,6 +2951,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `righe_eliminate`. Senza body resta la sede attiva (vista sede invariata). Schema
 >   OpenAPI rigenerato. +3 test in `tests/test_cestino_multisede.py`, +4 in
 >   `tests/test_scadenziario_cestino_catena_frontend.py`; **9 mutanti, 9 uccisi**.
+>
+> - **15/10/2026 — Fix n. 7 dell'audit di ottobre (K04): la selezione dello Scadenzario usa
+>   sede piu' file.** Selezione, «Seleziona tutte», spunta di sezione, piano dell'azione di
+>   massa e gli aggiornamenti a video di scadenza, elimina, sposta ed escludi andavano per
+>   sola `file_origine`: con lo stesso nome file su due sedi (il controllo dei doppioni al
+>   caricamento e' per sede) una spunta selezionava due righe e «Segna non pagate» poteva
+>   togliere il pagamento a una fattura dell'altra sede. Oggi 0 casi su 3.645 documenti:
+>   difetto latente. Ora `chiaveDocumento` e `stessoDocumento` in `lib/scadenziario.ts`, la
+>   stessa chiave che `applicaPagataAVideo` usava gia'. 25 test esistenti passavano
+>   selezioni di nomi e sono stati portati alle chiavi; +5 test con lo stesso file su due
+>   sedi in `tests/test_scadenziario_azione_di_massa_frontend.py`; **10 mutanti, 10
+>   uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

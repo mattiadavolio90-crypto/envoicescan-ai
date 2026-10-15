@@ -258,19 +258,19 @@ class TestChiaviSelezionaTutte:
     def test_non_manda_la_nota_di_credito_all_endpoint(self, tz):
         """Il caso che scriveva `pagata=true` su un TD04."""
         docs = [_doc_fo("a.xml"), _doc_fo("nc.xml", is_nota_credito=True)]
-        assert _chiavi(docs, tz) == ["a.xml"]
+        assert _chiavi(docs, tz) == ["|a.xml"]
 
     def test_non_manda_l_oscurata(self, tz):
         docs = [_doc_fo("a.xml"), _doc_fo("osc.xml", oscurata=True)]
-        assert _chiavi(docs, tz) == ["a.xml"]
+        assert _chiavi(docs, tz) == ["|a.xml"]
 
     def test_non_manda_la_gia_pagata(self, tz):
         docs = [_doc_fo("a.xml"), _doc_fo("p.xml", pagata=True)]
-        assert _chiavi(docs, tz) == ["a.xml"]
+        assert _chiavi(docs, tz) == ["|a.xml"]
 
     def test_manda_le_chiavi_non_i_documenti(self, tz):
         out = _chiavi([_doc_fo("a.xml"), _doc_fo("b.xml")], tz)
-        assert out == ["a.xml", "b.xml"]
+        assert out == ["|a.xml", "|b.xml"]
 
     def test_quante_ne_manda_e_quante_ne_annuncia(self, tz):
         """Il numero sul pulsante e' `chiaviSelezionaTutte(...).length`: e'
@@ -298,24 +298,24 @@ class TestStatoSelezioneSezione:
 
     def test_una_sezione_di_sole_note_di_credito_non_e_mai_piena(self, tz):
         docs = [_doc_fo("nc1.xml", is_nota_credito=True), _doc_fo("nc2.xml", is_nota_credito=True)]
-        stato = _stato(docs, ["nc1.xml", "nc2.xml"], tz)
+        stato = _stato(docs, ["|nc1.xml", "|nc2.xml"], tz)
         assert stato["selezionabili"] == 0
         assert stato["tutte"] is False
 
     def test_selezione_parziale(self, tz):
         docs = [_doc_fo("a.xml"), _doc_fo("b.xml")]
-        stato = _stato(docs, ["a.xml"], tz)
+        stato = _stato(docs, ["|a.xml"], tz)
         assert (stato["selezionati"], stato["tutte"]) == (1, False)
 
     def test_le_chiavi_estranee_non_contano(self, tz):
         docs = [_doc_fo("a.xml")]
-        stato = _stato(docs, ["a.xml", "di-un-altra-sezione.xml"], tz)
+        stato = _stato(docs, ["|a.xml", "|di-un-altra-sezione.xml"], tz)
         assert stato["selezionati"] == 1
         assert stato["tutte"] is True
 
     def test_una_pagata_selezionata_non_rende_piena_la_sezione(self, tz):
         docs = [_doc_fo("a.xml"), _doc_fo("p.xml", pagata=True)]
-        stato = _stato(docs, ["p.xml"], tz)
+        stato = _stato(docs, ["|p.xml"], tz)
         assert stato["selezionati"] == 0
         assert stato["tutte"] is False
 

@@ -30,7 +30,7 @@ import {
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
-  chiaviSelezionaTutte, statoSelezioneSezione, pianoAzioneDiMassa, applicaPagataAVideo,
+  chiaviSelezionaTutte, chiaveDocumento, stessoDocumento, statoSelezioneSezione, pianoAzioneDiMassa, applicaPagataAVideo,
   messaggioConfermaAzioneDiMassa, motivoAzioneSpenta,
   aperturaSezione, type AperturaSezione, ricercaAttiva,
   inPuntiVendita, alternaPuntoVendita, etichettaPuntiVendita,
@@ -325,10 +325,10 @@ function AgendaSection({
         <div className="border-t divide-y divide-border/50">
           {docs.map((doc) => (
             <DocumentoRow
-              key={doc.file_origine}
+              key={chiaveDocumento(doc)}
               doc={doc}
-              selected={mostraScadenze && selectedFileOrigini.has(doc.file_origine)}
-              onToggleSelect={() => onToggleSelect(doc.file_origine)}
+              selected={mostraScadenze && selectedFileOrigini.has(chiaveDocumento(doc))}
+              onToggleSelect={() => onToggleSelect(chiaveDocumento(doc))}
               onPaga={onPaga}
               onPeek={onPeek}
               sedeTecnicaId={sedeTecnicaId}
@@ -1628,6 +1628,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       body: JSON.stringify({ vista_fatture: v }),
     }).catch(() => {});
   }
+  // Chiavi `chiaveDocumento` (sede + file), non i soli file_origine.
   const [selectedFileOrigini, setSelectedFileOrigini] = useState<Set<string>>(new Set());
   const [peekDoc, setPeekDoc] = useState<Documento | null>(null);
   const [regoleOpen, setRegoleOpen] = useState(false);
@@ -1791,10 +1792,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     }
   }, [modalitaCatena]);
 
-  function toggleSelect(fo: string) {
+  function toggleSelect(chiave: string) {
     setSelectedFileOrigini(prev => {
       const next = new Set(prev);
-      if (next.has(fo)) next.delete(fo); else next.add(fo);
+      if (next.has(chiave)) next.delete(chiave); else next.add(chiave);
       return next;
     });
   }
@@ -1803,8 +1804,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     setSelectedFileOrigini(prev => {
       const next = new Set(prev);
       for (const d of docs) {
-        if (selectAll) next.add(d.file_origine);
-        else next.delete(d.file_origine);
+        if (selectAll) next.add(chiaveDocumento(d));
+        else next.delete(chiaveDocumento(d));
       }
       return next;
     });
@@ -1884,7 +1885,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     if (!res.ok) { await loadData(); throw new Error("Errore salvataggio"); }
     const data = await res.json();
     setDocumenti(prev => prev.map(d =>
-      d.file_origine === doc.file_origine
+      stessoDocumento(d, doc)
         ? {
             ...d,
             scadenza_effettiva: data.scadenza_effettiva ?? null,
@@ -1908,7 +1909,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
       throw new Error(detail || "Errore durante l'eliminazione");
     }
     toast.success("Fattura spostata nel cestino");
-    setDocumenti(prev => prev.filter(d => d.file_origine !== doc.file_origine));
+    setDocumenti(prev => prev.filter(d => !stessoDocumento(d, doc)));
     setPeekDoc(null);
     // Ricarica il cestino se era già aperto
     if (cestinoOpen) loadCestino();
@@ -1929,19 +1930,17 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     }
     toast.success(oscurata ? "Fattura esclusa dai conti" : "Fattura rimessa nei conti");
     // `.map` e non `.filter` come handleElimina: la riga RESTA in elenco, cambia
-    // solo sezione. Il match include ristorante_id perche' in catena lo stesso
-    // file_origine puo' esistere su piu' sedi: senza, si marcherebbero a video
-    // due fatture con un solo click (handleElimina e handleSetScadenza hanno
-    // questo difetto — preesistente, non allargato qui).
+    // solo sezione. `stessoDocumento` confronta anche la sede: in catena lo
+    // stesso file_origine puo' esistere su piu' sedi.
     setDocumenti(prev => prev.map(d =>
-      d.file_origine === doc.file_origine && d.ristorante_id === doc.ristorante_id
+      stessoDocumento(d, doc)
         ? { ...d, oscurata }
         : d
     ));
   }
 
   function handleSpostata(doc: Documento) {
-    setDocumenti(prev => prev.filter(d => d.file_origine !== doc.file_origine));
+    setDocumenti(prev => prev.filter(d => !stessoDocumento(d, doc)));
     setPeekDoc(null);
   }
 
