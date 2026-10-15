@@ -2865,6 +2865,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `/health` dava `c5b4b8ac` (21:19): `md5(prosrc)` uguale al corpo dei file, EXECUTE solo a
 >   `service_role`. CI del commit verde (Tests, Vercel, OpenAPI). `get_advisors`: niente di
 >   nuovo; `articoli_da_fatture` senza `search_path` fisso era gia' cosi' sul live.
+>
+> - **15/10/2026 — Audit di correttezza di ottobre, in sola lettura (fasi Trova e Verifica).**
+>   Perimetro: cio' che e' cambiato dopo L1-L9 (440 commit dal 14/09) su quattro filoni —
+>   quadrature numeriche, sotto-utenti, chat di catena, Gestione Fatture. Ricalcolo da SQL
+>   indipendente su quattro account (due catene, due sedi singole, una ferma da luglio); ogni
+>   query in `BEGIN READ ONLY`. Trova: 9 finder + critico (Fable, Opus sui filoni di solo
+>   codice); Verifica: 11 agenti diversi dai finder. **40 difetti confermati (1 alta, 17
+>   media, 22 bassa), 0 smentiti, 8 falsi allarmi, 2 incerti.** I numeri di fondo (costi
+>   automatici, MOL, note di credito nei margini, Da Classificare fuori dai margini)
+>   coincidono al centesimo con la funzione del DB; i difetti stanno nei bordi. L'unico grave:
+>   l'archivio «Per mese» di Gestione Fatture somma le note di credito come fatture (5 account
+>   su 6). Sotto-utenti: nessuna falla di isolamento. Nessun fix in questa voce. Report:
+>   `docs/storico/audit-2026-10/AUDIT_CORRETTEZZA_OTTOBRE.md`.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
