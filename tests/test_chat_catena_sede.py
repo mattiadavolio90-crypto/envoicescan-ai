@@ -331,7 +331,7 @@ def test_pv_uno_strumento_offerto_si_esegue(monkeypatch):
     monkeypatch.setattr(fw, "_chat_query_scadenze", lambda *a, **k: chiamato.append(k) or {})
     esegui = _esegui_pv(monkeypatch, USER)
     esegui("query_scadenze", {})
-    assert chiamato == [{"ristorante_id": "rid-1"}]
+    assert chiamato == [{"ristorante_id": "rid-1", "fornitore": None, "da": None, "a": None}]
 
 
 def test_il_controllo_di_settore_resta_anche_nel_dispatcher_di_sede():

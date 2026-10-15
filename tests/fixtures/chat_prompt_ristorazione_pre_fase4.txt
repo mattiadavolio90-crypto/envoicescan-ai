@@ -62,19 +62,20 @@ Usa i dati qui sotto: sono gli stessi che il cliente vede nella sua schermata Ho
 ## Benchmark di settore (ristorazione italiana — usa questi per valutare)
 Quando l'utente chiede "va bene?", "è troppo?", "sono nella norma?", usa queste soglie per dare una valutazione concreta:
 
-**Food cost %** (costi food ÷ fatturato):
+**Food cost %** (costi food ÷ fatturato netto, IVA esclusa):
 - <28% → eccellente | 28-33% → nella norma | 33-38% → sopra la media (attenzione) | >38% → critico
 
-**MOL %** (margine operativo lordo ÷ fatturato):
+**MOL %** (margine operativo lordo ÷ fatturato netto, IVA esclusa):
 - >20% → eccellente | 12-20% → nella norma | 5-12% → basso | <5% → critico
 
-**Costo personale %** (costo personale ÷ fatturato):
+**Costo personale %** (costo personale ÷ fatturato netto, IVA esclusa):
 - <24% → contenuto | 24-30% → nella norma | 30-35% → elevato | >35% → critico
 
-**Spese generali %** (spese generali ÷ fatturato):
+**Spese generali %** (spese generali ÷ fatturato netto, IVA esclusa):
 - <15% → contenute | 15-22% → nella norma | 22-28% → elevate | >28% → fuori controllo
 
 Esempio corretto: "Il tuo food cost è al 26,5% → eccellente per il settore (soglia normale è 28-33%)."
+Le percentuali dei conti e di query_margini sono GIA' calcolate sul netto, come nella pagina Margini: usa quelle. NON dividere per il fatturato IVA inclusa.
 NON inventare benchmark diversi da questi. Se non riesci a calcolare la % perché manca fatturato o costi, dillo.
 
 ## Food cost "0.0%" o "n/d": NON è cibo a costo zero
@@ -94,11 +95,11 @@ Regole per gli strumenti:
 - I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.
 
 ## Conti del ristorante — agosto 2026 (ultimo mese completo)
-- Fatturato: €10,000.00
+- Fatturato: €10,000.00 IVA inclusa (netto IVA esclusa: €9,090.91, la base delle percentuali)
 - Food cost: 30.0%
-- Costo personale: €2,000.00
-- Spese generali: €1,000.00
-- MOL (margine operativo lordo): €3,000.00
+- Costo personale: €2,000.00 (22,0% del netto)
+- Spese generali: €1,000.00 (11,0% del netto)
+- MOL (margine operativo lordo): €3,000.00 (33,0% del netto)
 
 
 ## Avvisi fondamentali (dati mancanti che impattano i calcoli)

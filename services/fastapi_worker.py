@@ -2666,6 +2666,12 @@ class HomeKpiResponse(BaseModel):
     # all'ultimo mese completo). Vuoto se un solo mese (niente linea da disegnare).
     mol_mensile: List[MolMensilePoint] = []
     mol_mensile_anno: Optional[int] = None       # anno di riferimento dello sparkline
+    # Base delle percentuali della pagina Margini (IVA esclusa) e le percentuali
+    # gia' calcolate, per la chat: il modello non deve dividere per il lordo.
+    netto: float = 0.0
+    personale_pct: Optional[float] = None
+    spese_pct: Optional[float] = None
+    mol_pct: Optional[float] = None
 
 
 # Avvisi mostrabili nel configuratore, in ordine di gerarchia. I due upload
@@ -3690,11 +3696,11 @@ def _build_chat_system_prompt(
             kpi_testo += (
                 f"\n\n## Conti del {_attivita} — {kpi.periodo_label} "
                 f"(ultimo mese completo)\n"
-                f"- Fatturato: €{kpi.fatturato:,.2f}\n"
+                f"- Fatturato: €{kpi.fatturato:,.2f} IVA inclusa{_netto_testo(getattr(kpi, 'netto', None))}\n"
                 f"- {_merce_kpi}: {fc}\n"
-                f"- Costo personale: €{kpi.costo_personale:,.2f}\n"
-                f"- Spese generali: €{kpi.spese_generali:,.2f}\n"
-                f"- MOL (margine operativo lordo): €{kpi.mol:,.2f}\n"
+                f"- Costo personale: €{kpi.costo_personale:,.2f}{_pct_testo(getattr(kpi, 'personale_pct', None))}\n"
+                f"- Spese generali: €{kpi.spese_generali:,.2f}{_pct_testo(getattr(kpi, 'spese_pct', None))}\n"
+                f"- MOL (margine operativo lordo): €{kpi.mol:,.2f}{_pct_testo(getattr(kpi, 'mol_pct', None))}\n"
             )
             if kpi.confronto_label:
                 kpi_testo += f"  (confronto {kpi.confronto_label})\n"
@@ -4042,19 +4048,20 @@ Spiega la causa GIUSTA: il costo merce si calcola come (costi merce ÷ fatturato
         _blocco_benchmark = """## Benchmark di settore (ristorazione italiana — usa questi per valutare)
 Quando l'utente chiede "va bene?", "è troppo?", "sono nella norma?", usa queste soglie per dare una valutazione concreta:
 
-**Food cost %** (costi food ÷ fatturato):
+**Food cost %** (costi food ÷ fatturato netto, IVA esclusa):
 - <28% → eccellente | 28-33% → nella norma | 33-38% → sopra la media (attenzione) | >38% → critico
 
-**MOL %** (margine operativo lordo ÷ fatturato):
+**MOL %** (margine operativo lordo ÷ fatturato netto, IVA esclusa):
 - >20% → eccellente | 12-20% → nella norma | 5-12% → basso | <5% → critico
 
-**Costo personale %** (costo personale ÷ fatturato):
+**Costo personale %** (costo personale ÷ fatturato netto, IVA esclusa):
 - <24% → contenuto | 24-30% → nella norma | 30-35% → elevato | >35% → critico
 
-**Spese generali %** (spese generali ÷ fatturato):
+**Spese generali %** (spese generali ÷ fatturato netto, IVA esclusa):
 - <15% → contenute | 15-22% → nella norma | 22-28% → elevate | >28% → fuori controllo
 
 Esempio corretto: "Il tuo food cost è al 26,5% → eccellente per il settore (soglia normale è 28-33%)."
+Le percentuali dei conti e di query_margini sono GIA' calcolate sul netto, come nella pagina Margini: usa quelle. NON dividere per il fatturato IVA inclusa.
 NON inventare benchmark diversi da questi. Se non riesci a calcolare la % perché manca fatturato o costi, dillo."""
         _blocco_merce_zero = """## Food cost "0.0%" o "n/d": NON è cibo a costo zero
 Spiega la causa GIUSTA: il food cost si calcola come (costi food ÷ fatturato). Se è 0% o n/d quando IL FATTURATO C'È, vuol dire che mancano i COSTI FOOD del mese — le fatture fornitori non sono ancora state caricate o categorizzate per quel mese, NON che mancano i ricavi. Dillo così: "il food cost non è ancora calcolabile: per quel mese i ricavi ci sono ma mancano i costi delle fatture food". Solo se manca anche il fatturato di' che mancano i ricavi."""
@@ -4187,6 +4194,7 @@ Food cost: <28% eccellente | 28-33% norma | 33-38% attenzione | >38% critico
 MOL %: >20% eccellente | 12-20% norma | 5-12% basso | <5% critico
 Costo personale: <24% contenuto | 24-30% norma | 30-35% elevato | >35% critico
 Spese generali: <15% contenute | 15-22% norma | 22-28% elevate | >28% fuori controllo
+Le percentuali sono sul fatturato NETTO (IVA esclusa), come nella pagina Margini: per un singolo punto vendita usa quelle gia' calcolate da query_margini, non dividere per il fatturato IVA inclusa.
 NON inventare benchmark diversi da questi."""
         _riga_coperti_catena = '- Per "quale PV ha il margine/scontrino/coperti migliore o peggiore" usa gruppo_margini_coperti.'
 
@@ -5364,8 +5372,10 @@ def _chat_query_margini(
             risultati.append({
                 "mese": f"{_MESI[mm]} {aa}",
                 "fatturato": k["fatturato"],
+                "fatturato_netto": k["netto"],
                 "food_cost_pct": k["food_cost_pct"],
                 "mol": k["mol"],
+                **_pct_su_netto(k),
                 # Il mese in corso e' incompleto: senza questo flag l'AI lo
                 # confronta coi mesi chiusi come se fosse un calo reale.
                 "parziale": (mm == oggi.month and aa == oggi.year),
@@ -9873,6 +9883,35 @@ def _merge_override_mensile(margini_anno: dict, sb, ristorante_id: str, anno: in
     return margini_anno
 
 
+def _pct_su_netto(kpi: dict) -> Dict[str, Optional[float]]:
+    """Personale, spese e MOL in % del fatturato NETTO, come la pagina Margini
+    (routers/margini.py: `*_perc` su netto). La chat dava al modello il solo
+    fatturato IVA inclusa e le soglie «÷ fatturato»: dividendo da solo sul lordo
+    il modello spostava le fasce (MOL 12,0% «norma» diventava 11,0% «basso»,
+    audit di ottobre 2026, K05)."""
+    netto = float(kpi.get("netto") or 0)
+    if netto <= 0:
+        return {"personale_pct": None, "spese_pct": None, "mol_pct": None}
+    return {
+        "personale_pct": round(float(kpi["costo_personale"]) / netto * 100, 1),
+        "spese_pct": round(float(kpi["spese_generali"]) / netto * 100, 1),
+        "mol_pct": round(float(kpi["mol"]) / netto * 100, 1),
+    }
+
+
+def _netto_testo(v: Any) -> str:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+        return ""
+    return f" (netto IVA esclusa: €{v:,.2f}, la base delle percentuali)"
+
+
+def _pct_testo(v: Any) -> str:
+    """« (31,2% del netto)» per il prompt; niente se la % non c'e'."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return ""
+    return f" ({v:.1f}% del netto)".replace(".", ",")
+
+
 def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: int) -> dict:
     """Compone i 4 KPI per un mese di calendario.
 
@@ -10137,6 +10176,8 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         confronto_escluso=confronto_escluso,
         mol_mensile=mol_mensile,
         mol_mensile_anno=anno_usato if mol_mensile else None,
+        netto=kpi["netto"],
+        **_pct_su_netto(kpi),
     )
     # Eviction opportunistica delle entry scadute: la chiave include anno:mese,
     # quindi col passare dei giorni si accumulerebbero chiavi morte mai rimosse

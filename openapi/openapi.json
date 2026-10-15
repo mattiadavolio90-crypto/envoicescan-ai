@@ -24870,6 +24870,44 @@
               }
             ],
             "title": "Mol Mensile Anno"
+          },
+          "netto": {
+            "type": "number",
+            "title": "Netto",
+            "default": 0.0
+          },
+          "personale_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personale Pct"
+          },
+          "spese_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spese Pct"
+          },
+          "mol_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mol Pct"
           }
         },
         "type": "object",

@@ -35,6 +35,7 @@ def _kpi_mock():
         has_data=True, food_cost_pct=30.0, fatturato=10000.0,
         costo_personale=2000.0, spese_generali=1000.0, mol=3000.0,
         periodo_label="agosto 2026", confronto_label=None,
+        netto=9090.91, personale_pct=22.0, spese_pct=11.0, mol_pct=33.0,
     )
 
 
@@ -414,3 +415,10 @@ def test_la_catena_di_un_ristorante_riceve_le_descrizioni_di_ieri(monkeypatch):
     atteso = {t["function"]["name"]: t["function"]["description"]
               for t in fw._CHAT_TOOLS_GRUPPO}
     assert d == atteso
+
+
+def test_catena_ristorazione_dichiara_la_base_netta_delle_percentuali(monkeypatch):
+    """Audit di ottobre 2026 (K05): le soglie della catena non dicevano su quale
+    fatturato, e query_margini dava solo il lordo."""
+    p = _prompt_catena(SETTORE_RISTORAZIONE, monkeypatch)
+    assert "Le percentuali sono sul fatturato NETTO (IVA esclusa)" in p

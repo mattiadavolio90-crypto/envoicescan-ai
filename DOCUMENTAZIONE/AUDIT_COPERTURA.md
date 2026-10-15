@@ -3062,6 +3062,23 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   e' fra i sub-responsabili della privacy e riceve il saluto col nome del referente e le
 >   cifre del briefing (dichiararlo, togliere il nome dal testo, o passare alla voce del
 >   dispositivo). +4 test in `tests/test_tts_accesso_frontend.py`; **4 mutanti, 4 uccisi**.
+>
+> - **15/10/2026 — Fix n. 14 dell'audit di ottobre (K05): la chat ha le percentuali sul
+>   netto.** Il blocco dei conti del prompt dava il solo fatturato IVA inclusa, le soglie
+>   dicevano «÷ fatturato» e `query_margini` non aveva il netto: il modello divideva sul
+>   lordo, mentre la pagina Margini divide sul netto. A settembre 2 sedi su 3 con costi
+>   cambiavano fascia (MOL 12,0% «norma» contro 11,0% «basso»; personale 35,9% «critico»
+>   contro 32,8% «elevato»). Ora `_pct_su_netto` calcola personale, spese e MOL in % del
+>   netto come `routers/margini.py`; arrivano in `HomeKpiResponse` (`netto`,
+>   `personale_pct`, `spese_pct`, `mol_pct`, schema OpenAPI rigenerato), nel prompt accanto a
+>   ogni importo e in `query_margini` (con `fatturato_netto`). Le soglie del prompt di sede
+>   dicono «÷ fatturato netto, IVA esclusa», quelle di catena dichiarano la base. **Il prompt
+>   dei ristoranti cambia di proposito**: rigenerata
+>   `tests/fixtures/chat_prompt_ristorazione_pre_fase4.txt` (17 righe di differenza, tutte di
+>   questo fix, rilette). +7 test in `tests/test_chat_query_margini_onesta.py`, +1 in
+>   `tests/test_chat_settore_retail.py`; **7 mutanti, 7 uccisi**. Corretto anche
+>   `tests/test_chat_catena_sede.py`, rosso dal fix n. 12: confrontava gli argomenti esatti
+>   passati a `_chat_query_scadenze`, che ora ne ha tre in piu'.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
