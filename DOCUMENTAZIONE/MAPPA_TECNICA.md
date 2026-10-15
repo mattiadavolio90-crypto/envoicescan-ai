@@ -65,7 +65,7 @@ SELECT round(sum(coalesce(fatturato_iva10,0)+coalesce(fatturato_iva22,0)
 | Ricezione fatture SDI | `supabase/functions/invoicetronic-webhook/` (Deno) |
 | Saldo crediti Invoicetronic e i suoi avvisi | `services/invoicetronic_saldo.py` (controllo ogni 6 ore dal queue-worker) + il webhook (avviso al primo 403 `usage_limit_exceeded`) |
 | Costanti, categorie, prompt | `config/` |
-| L'avatar dell'assistente in Home (il flusso che ruota, fase L del 15/10/2026) | logica pura in `apps/web/src/lib/avatar-flusso.ts`, disegno in `apps/web/src/components/home/disegno-flusso.ts`, colonna e benvenuto in `apps/web/src/components/home/riquadro-assistente.tsx` — dettaglio in `DOCUMENTAZIONE/tecnica/BRIEFING_HOME.md` §10 |
+| L'avatar dell'assistente in Home (il flusso che ruota, fase L del 15/10/2026) | logica pura in `apps/web/src/lib/avatar-flusso.ts`, disegno in `apps/web/src/components/home/disegno-flusso.ts`, il riquadro (flusso dentro a sinistra, altezza fissa, la chat scorre dentro) e il benvenuto in `apps/web/src/components/home/riquadro-assistente.tsx` — dettaglio in `DOCUMENTAZIONE/tecnica/BRIEFING_HOME.md` §10 |
 
 ### I servizi che contano
 

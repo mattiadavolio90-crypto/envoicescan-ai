@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils";
 // segue il tema. Senza storage del browser non parte: meglio niente che ogni volta.
 
 const DURATA_FORMA = 3; // secondi prima del volo
+// Le finestre che chiedono qualcosa (il consenso privacy al primo accesso, ogni Dialog
+// dell'app) hanno la precedenza. Non l'avviso cookie: e' un banner, non blocca.
+const FINESTRA_APERTA = '[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [role="alertdialog"]';
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta oggi." }: { saluto: string; sottotitolo?: string }) {
@@ -23,9 +26,23 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
   const saltaRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    // Una finestra gia' aperta (il consenso privacy al primo accesso) ha la precedenza:
-    // niente benvenuto e niente chiave scritta, ripartira' alla prossima Home.
-    if (document.querySelector('[role="dialog"]')) return;
+    // Si decide dopo due frame: una finestra che si apre insieme alla pagina (il consenso
+    // privacy) monta il suo contenuto un paio di commit dopo. Se c'e', niente benvenuto e
+    // niente chiave scritta: ripartira' alla prossima Home.
+    let annullato = false;
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(() => {
+        if (!annullato) decidi();
+      });
+    });
+    return () => {
+      annullato = true;
+      cancelAnimationFrame(id);
+    };
+  }, []);
+
+  function decidi() {
+    if (document.querySelector(FINESTRA_APERTA)) return;
     let giaVisto = true;
     try {
       const chiave = chiaveBenvenuto(giornoDiRoma(new Date()));
@@ -36,7 +53,7 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
     }
     const menoAnimazioni = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (mostraBenvenuto({ gia_visto: giaVisto, meno_animazioni: menoAnimazioni })) setAttivo(true);
-  }, []);
+  }
 
   useEffect(() => {
     if (!attivo) return;
@@ -88,6 +105,8 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
       const dt = Math.min(0.05, (ora - ultimo) / 1000);
       ultimo = ora;
       const e = (ora - t0) / 1000;
+      // Una finestra aperta a meta' benvenuto: si fa da parte subito.
+      if (!partito && document.querySelector(FINESTRA_APERTA)) saltaRef.current();
       if (!partito) {
         disegno.assemble = Math.min(1, e / 1.5);
         disegno.cresce = clamp((e - 1.35) / 0.45, 0, 1);

@@ -206,3 +206,13 @@ def test_senza_durata_si_stima_dal_tempo(durata):
 def test_la_frazione_resta_fra_0_e_1():
     assert _chiama("frazioneLetta", None, 999, 10) == 1
     assert _chiama("frazioneLetta", None, -5, 10) == 0
+
+
+def test_un_audio_in_streaming_senza_durata_nota_si_stima_dal_tempo():
+    """Prima dei metadati la durata di un audio in streaming e' Infinity: non e' una durata."""
+    f = esegui_ts(
+        MODULO,
+        "emit(m.frazioneLetta({currentTime: 3, duration: Infinity}, 4, 300));",
+        richiede=["frazioneLetta"],
+    )
+    assert f == pytest.approx(0.2)

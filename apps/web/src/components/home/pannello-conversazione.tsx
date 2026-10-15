@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { Loader2, Send, SquarePen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,11 @@ import { CardCifraDettata } from "./card-cifra";
 // Il disegno della conversazione dentro il riquadro dell'assistente: lo usano
 // la Home vera (ConversazioneAssistente) e il Demo Tour (DemoConversazione),
 // cosi' la demo non puo' mostrare un prodotto diverso da quello vero.
+
+/** Dentro il riquadro dell'assistente da computer (fase L, 15/10/2026) il riquadro ha
+ *  un'altezza fissa: la conversazione riempie lo spazio che resta e scorre dentro, invece di
+ *  allungare la pagina. Fuori (demo, schermi stretti) resta com'era. */
+export const ConversazioneAltezzaFissa = createContext(false);
 
 export function PannelloConversazione({
   voci,
@@ -48,6 +53,7 @@ export function PannelloConversazione({
   ancoraDemo?: string;
 }) {
   const lista = useRef<HTMLDivElement>(null);
+  const altezzaFissa = useContext(ConversazioneAltezzaFissa);
 
   // In fondo alla lista a ogni messaggio, scorrendo la lista e non la pagina:
   // scrollIntoView portava giu' tutta la Home appena si apriva.
@@ -57,9 +63,22 @@ export function PannelloConversazione({
   }, [voci.length, attesa]);
 
   return (
-    <div data-demo-anchor={ancoraDemo} className="relative mt-5 space-y-3 border-t border-primary/15 pt-4">
+    <div
+      data-demo-anchor={ancoraDemo}
+      className={cn(
+        "relative mt-5 space-y-3 border-t border-primary/15 pt-4",
+        altezzaFissa && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:justify-end",
+      )}
+    >
       {(voci.length > 0 || attesa) && (
-        <div ref={lista} className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1" aria-live="polite">
+        <div
+          ref={lista}
+          className={cn(
+            "max-h-[26rem] space-y-2.5 overflow-y-auto pr-1",
+            altezzaFissa && "lg:max-h-none lg:min-h-0 lg:flex-1",
+          )}
+          aria-live="polite"
+        >
           {voci.map((v, i) => (
             <div key={i} className="space-y-2">
               <div

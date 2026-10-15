@@ -55,3 +55,18 @@ def test_ascolta_dice_quando_smette_anche_se_sparisce():
     """Se il pulsante si smonta mentre legge (cambio pagina), l'avatar non deve restare a parlare."""
     t = _n(_ASCOLTA)
     assert 'onStatoRef.current?.("idle",null);' in t
+
+
+def test_ascolta_avvisa_quando_passa_alla_voce_di_sistema():
+    """Se l'audio cade mentre suona lo stato resta «playing»: senza questa chiamata l'avatar
+    seguirebbe ancora l'audio morto e la frase evidenziata si fermerebbe."""
+    t = _n(_ASCOLTA)
+    corpo = t[t.index("functionfallbackWebSpeech()"):t.index("asyncfunctionplay()")]
+    assert 'setStato("playing");onStatoRef.current?.("playing",null);' in corpo
+
+
+def test_da_computer_la_conversazione_scorre_dentro_il_riquadro():
+    t = _n(_RIQUADRO)
+    assert "<ConversazioneAltezzaFissa.Providervalue={true}>" in t
+    pannello = _n(_WEB / "components/home/pannello-conversazione.tsx")
+    assert 'altezzaFissa&&"lg:max-h-nonelg:min-h-0lg:flex-1"' in pannello

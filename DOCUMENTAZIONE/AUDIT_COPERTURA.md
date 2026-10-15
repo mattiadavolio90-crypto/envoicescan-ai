@@ -2978,15 +2978,17 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   pushato** (`8367534a`, `e8ccc6b2` e i rilievi del revisore). Mattia ha bocciato il viso
 >   («l'aspetto umanoide inquieta»): al suo posto un flusso astratto, tre nastri di fili che si
 >   attorcigliano mentre scorrono, con fili di luce che salgono. Mockup approvato alla v9.
->   Da computer una colonna sticky accanto al briefing (Home PV e catena), sotto `lg` e su `/m`
+>   Da computer una card sola ad altezza fissa (Home PV e catena) col flusso dentro a sinistra e
+>   la conversazione che scorre dentro (seconda prova di Mattia); sotto `lg` e su `/m`
 >   una fascia in cima; quattro modi (riposo, ascolta, pensa, parla con la frase letta
 >   evidenziata); benvenuto una volta al giorno di Roma. Solo frontend: niente worker, niente
 >   DB, `_BRIEFING_CODE_VERSION` invariata. La voce del flusso è **simulata** di proposito
 >   (Web Audio sull'audio di «Ascolta» rischiava di ammutolirlo). Visto a schermo su una pagina
 >   di prova col riquadro vero e gli stili dell'app (la Home vera richiede il login di Mattia,
 >   che l'ha provata in locale e ha chiesto 4 ritocchi, fatti). Test:
->   `tests/test_avatar_flusso_frontend.py` (35) e `tests/test_avatar_cablaggio_frontend.py` (9);
->   **12 mutanti, 12 uccisi**. Il revisore (verdetto NON CHIUSA) ha trovato: commit e doc di
+>   `tests/test_avatar_flusso_frontend.py` (36) e `tests/test_avatar_cablaggio_frontend.py` (11);
+>   **15 mutanti, 15 uccisi** (i 3 ultimi sui rilievi della seconda revisione: durata Infinity
+>   dell'audio in streaming, voce di sistema dopo un audio caduto, altezza fissa della chat). Il revisore (verdetto NON CHIUSA) ha trovato: commit e doc di
 >   chiusura mancanti, e quattro ritocchi minori (voce di sistema dopo un audio caduto, benvenuto
 >   sopra il consenso privacy, `setTesto` a ogni frame, la stima della lettura nel `.tsx`): fatti.
 >   Dichiarato, non fatto: l'avatar «pensa» anche se la domanda in attesa è di un'altra vista; un
