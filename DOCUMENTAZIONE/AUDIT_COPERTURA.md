@@ -3028,6 +3028,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   manca, come gli strumenti della fase F; vale anche per un anno precedente illeggibile (i
 >   sei mesi attraversano gennaio). +4 test in `tests/test_chat_query_margini_onesta.py`;
 >   **2 mutanti, 2 uccisi**.
+>
+> - **15/10/2026 — Fix n. 11 dell'audit di ottobre (K20): confronto_prezzi non mette in fila
+>   unita' diverse.** Lo strumento leggeva `unita_misura` ma non la restituiva e ordinava per
+>   prezzo fra unita' diverse: 1,20 €/PZ (mozzarella da 125 g) risultava «la piu'
+>   conveniente» contro 8 €/KG. Sul live le sedi con almeno due fornitori in unita' diverse
+>   sono la regola (caffe' 9/9, olio 8/9, pane 8/8). Ora ogni voce porta l'unita' normalizzata
+>   (`_unita_confrontabile`: i sinonimi del pezzo, del kg e del litro misurati oggi sulle
+>   righe degli ultimi 180 giorni, ad esempio PZ/NUM./NR/N.), l'ordine e' dentro l'unita',
+>   `migliore_per_unita` lo calcola lo strumento e una `nota` vieta al modello il confronto
+>   fra unita' diverse; aggiornata anche la descrizione dello strumento. Cosa resta: la
+>   conversione fra unita' (CT da 3 kg contro KG) non si fa, servirebbe il peso della
+>   confezione. +2 test in `tests/test_chat_confronto_prezzi_per_fattura.py`; **5 mutanti, 5
+>   uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

@@ -51,3 +51,38 @@ def test_un_fornitore_trovato_solo_per_categoria_senza_descrizione_non_rompe():
     righe = [_riga("ADC", "", 2.0, 1, "b.xml", "2026-05-01"), _riga("MEFON", "LATTE", 1.0, 1, "m.xml", "2026-05-01")]
     esito = fw._chat_confronto_prezzi({"id": "u1"}, _Catena(righe), "latticini")
     assert [f["fornitore"] for f in esito["fornitori"]] == ["MEFON"]
+
+
+# ── Unita' di misura diverse (audit di ottobre 2026, K20) ─────────────────
+
+
+def test_prezzi_in_unita_diverse_non_si_mettono_in_fila():
+    """1,20 €/PZ (mozzarella da 125 g) non e' «piu' conveniente» di 8 €/KG: al
+    kg costa 9,60. Ogni voce porta la sua unita', l'ordine e' dentro l'unita' e
+    il migliore lo dice lo strumento per ciascuna."""
+    righe = [
+        _riga("ALFA", "MOZZARELLA FIOR DI LATTE KG", 8.0, 1, "a.xml", "2026-05-01", um="KG"),
+        _riga("BETA", "MOZZARELLA 125G", 1.2, 1, "b.xml", "2026-05-01", um="PZ"),
+        _riga("GAMMA", "MOZZARELLA BUFALA", 7.5, 1, "c.xml", "2026-05-01", um="KG."),
+        _riga("DELTA", "MOZZARELLA 250G", 2.0, 1, "d.xml", "2026-05-01", um="NUM."),
+        _riga("EPSILON", "MOZZARELLA CT 3KG", 36.0, 1, "e.xml", "2026-05-01", um="CT"),
+    ]
+    esito = fw._chat_confronto_prezzi({"id": "u1"}, _Catena(righe), "mozzarella")
+    assert [(f["fornitore"], f["unita"]) for f in esito["fornitori"]] == [
+        ("GAMMA", "KG"), ("ALFA", "KG"),
+        ("BETA", "PZ"), ("DELTA", "PZ"),
+        ("EPSILON", "CT"),
+    ]
+    assert esito["migliore_per_unita"] == {"KG": "GAMMA", "PZ": "BETA", "CT": "EPSILON"}
+    assert "unita' di misura diverse" in esito["nota"]
+
+
+def test_sinonimi_del_pezzo_sono_la_stessa_unita():
+    righe = [
+        _riga("ALFA", "UOVA", 0.30, 1, "a.xml", "2026-05-01", um="NR"),
+        _riga("BETA", "UOVA", 0.25, 1, "b.xml", "2026-05-01", um="N."),
+    ]
+    esito = fw._chat_confronto_prezzi({"id": "u1"}, _Catena(righe), "uova")
+    assert {f["unita"] for f in esito["fornitori"]} == {"PZ"}
+    assert esito["migliore_per_unita"] == {"PZ": "BETA"}
+    assert "nota" not in esito

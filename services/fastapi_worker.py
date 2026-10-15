@@ -5408,6 +5408,21 @@ def _chat_query_coperti(user: Dict[str, Any], supabase_client, authorization: Op
     }
 
 
+# Le grafie dell'unita' che sul live indicano la stessa cosa (misurato il
+# 15/10/2026 sulle righe degli ultimi 180 giorni): PZ e NUM. sono confrontabili,
+# KG e PZ no. Cio' che non e' qui resta com'e' e fa gruppo a se'.
+_UNITA_SINONIMI = {
+    **dict.fromkeys(("PZ", "NUM", "NR", "N", "NU", "UN", "EA", "PEZZI", "PEZZO", "NUMERO"), "PZ"),
+    **dict.fromkeys(("KG", "KGM", "CHILOGRAMM", "CHILOGRAMMI", "KILOGRAMMI", "KILO"), "KG"),
+    **dict.fromkeys(("LT", "L", "LTR", "LITRI", "LITRO"), "LT"),
+}
+
+
+def _unita_confrontabile(um: Optional[str]) -> str:
+    u = (um or "").upper().replace(".", "").strip()
+    return _UNITA_SINONIMI.get(u, u)
+
+
 def _chat_confronto_prezzi(
     user: Dict[str, Any], supabase_client, prodotto: str,
     ristorante_id: Optional[str] = None,
@@ -5461,15 +5476,34 @@ def _chat_confronto_prezzi(
         riga = scelto["riga"]
         per_forn[forn] = {
             "prezzo": round(scelto["prezzo"], 4),
+            "unita": _unita_confrontabile(riga.get("unita_misura")),
             "data": riga.get("data_documento") or "",
             "descrizione": riga.get("descrizione"),
         }
 
-    confronto = sorted(
-        [{"fornitore": f, **v} for f, v in per_forn.items()],
-        key=lambda x: x["prezzo"],
-    )
-    return {"prodotto": prodotto, "fornitori": confronto[:10], "trovati": len(confronto)}
+    # Un prezzo al pezzo e uno al kg non si mettono in fila: la mozzarella da
+    # 125 g a 1,20 €/PZ risultava «la piu' conveniente» contro 8 €/KG (audit di
+    # ottobre 2026, K20). Si ordina dentro la stessa unita', il gruppo con piu'
+    # fornitori per primo, e il migliore lo dice lo strumento, non il modello.
+    per_unita: Dict[str, List[Dict[str, Any]]] = {}
+    for f, v in per_forn.items():
+        per_unita.setdefault(v["unita"], []).append({"fornitore": f, **v})
+    ordine_unita = sorted(per_unita, key=lambda u: (-len(per_unita[u]), u))
+    confronto = [
+        voce for u in ordine_unita
+        for voce in sorted(per_unita[u], key=lambda x: x["prezzo"])
+    ]
+    esito: Dict[str, Any] = {
+        "prodotto": prodotto, "fornitori": confronto[:10], "trovati": len(confronto),
+        "migliore_per_unita": {
+            (u or "senza unita'"): min(per_unita[u], key=lambda x: x["prezzo"])["fornitore"]
+            for u in ordine_unita
+        },
+    }
+    if len(per_unita) > 1:
+        esito["nota"] = ("prezzi in unita' di misura diverse: confronta solo i fornitori "
+                         "con la stessa unita', non dire quale costa meno fra unita' diverse")
+    return esito
 
 
 # ─── Strumenti della chat di SEDE (usati anche in vista catena, step 6) ─────
@@ -5550,7 +5584,9 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
                 "Confronta il prezzo di un prodotto tra i fornitori per trovare il "
                 "migliore. Usalo per 'chi mi fa X al prezzo migliore', 'confronta i "
                 "prezzi di Y'. Guarda gli ULTIMI 180 GIORNI: se l'utente chiede un "
-                "periodo piu' vecchio, dillo (vedi solo gli ultimi 6 mesi)."
+                "periodo piu' vecchio, dillo (vedi solo gli ultimi 6 mesi). Ogni "
+                "prezzo ha la sua unita': confronta solo prezzi con la stessa unita' "
+                "(migliore_per_unita), mai un prezzo al pezzo con uno al kg."
             ),
             "parameters": {
                 "type": "object",
