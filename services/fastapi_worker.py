@@ -5310,20 +5310,24 @@ def _chat_query_margini(
 
     def _anno(a: int):
         if a not in cache_anni:
-            try:
-                m = carica_margini_anno(user_id, ristorante_id, a)
-                m = _merge_override_mensile(m, supabase_client, ristorante_id, a)
-                fb, sp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, a)
-                cache_anni[a] = (m, fb, sp)
-            except Exception:
-                cache_anni[a] = ({}, {}, {})
+            m = carica_margini_anno(user_id, ristorante_id, a)
+            m = _merge_override_mensile(m, supabase_client, ristorante_id, a)
+            fb, sp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, a)
+            cache_anni[a] = (m, fb, sp)
         return cache_anni[a]
 
     risultati = []
     visti = []
     mm, aa = oggi.month, oggi.year
     for _ in range(6):
-        margini, fb, sp = _anno(aa)
+        # Un guasto di lettura non e' un anno senza margini: con dizionari vuoti
+        # il modello rispondeva «non hai dati» (audit di ottobre 2026, K19).
+        try:
+            margini, fb, sp = _anno(aa)
+        except Exception as exc:
+            logger.warning("chat query_margini: margini %s non leggibili: %s", aa, exc)
+            return {"errore": "dato non leggibile in questo momento: non dire che non c'e', "
+                              "di' che non riesci a leggerlo e rimanda alla pagina Margini"}
         k = _kpi_periodo(margini, fb, sp, mm)
         if k["has_data"]:
             visti.append((aa, mm))

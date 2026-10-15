@@ -3020,6 +3020,14 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   presidiati sul worker da `tests/test_chat_quota_giorno_di_roma.py`); un altro 429 mostra il
 >   suo messaggio e lascia scrivere. Il test che fissava il ripiego sul giorno e' stato
 >   sostituito da 4 (+3 netti) in `tests/test_home_chat_frontend.py`; **2 mutanti, 2 uccisi**.
+>
+> - **15/10/2026 — Fix n. 10 dell'audit di ottobre (K19): query_margini dice il guasto.** Un
+>   errore di lettura dei margini o dei costi diventava `{"mesi": []}`, la stessa risposta di
+>   una sede senza margini, senza una riga di log: il modello diceva «non hai dati». Ora il
+>   guasto si logga e lo strumento risponde `errore` con l'istruzione di non dire che il dato
+>   manca, come gli strumenti della fase F; vale anche per un anno precedente illeggibile (i
+>   sei mesi attraversano gennaio). +4 test in `tests/test_chat_query_margini_onesta.py`;
+>   **2 mutanti, 2 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
