@@ -630,3 +630,42 @@ def test_segna_fattura_pagata_non_e_cachata_la_seconda_scrittura_arriva_a_db():
         "non e' stato aggiornato"
     )
     assert doc["pagata_manuale_at"] is not None
+
+
+# ─── Audit di ottobre 2026: la RID pagata porta la data dell'addebito ─────────
+
+
+def _scadenziario_rid(monkeypatch, **doc):
+    monkeypatch.setattr(
+        "services.documenti_service._get_fornitori_pagamenti_config_cached",
+        lambda *a, **k: [_regola_rid()],
+    )
+    sb = _FakeSupabase({
+        "fatture": [_fattura_riga(data_documento="2026-06-01")],
+        "fatture_documenti": [_doc_rid(**doc)],
+        "ristoranti": [{"id": "rist-1", "nuovi_da": None}],
+    })
+    return get_documenti_scadenziario(user_id="u1", ristorante_id="rist-1", supabase_client=sb)[0]
+
+
+def test_regola_rid_porta_la_data_dell_addebito(monkeypatch):
+    """«Pagate (mese)» conta per data di pagamento: una RID marcata pagata senza
+    data ne restava fuori (3 fatture di ottobre per 205,89 €). La data e'
+    l'addebito, cioe' la scadenza RID."""
+    r = _scadenziario_rid(monkeypatch, pagata=False, pagata_at=None, pagata_manuale_at=None)
+    assert r["pagata"] is True
+    assert r["pagata_at"] == "2026-06-01"
+    assert r["data_pagamento"] == "2026-06-01"
+
+
+def test_regola_rid_non_cambia_una_data_di_pagamento_gia_scritta(monkeypatch):
+    r = _scadenziario_rid(monkeypatch, pagata=True, pagata_at="2026-06-09T10:00:00+00:00", pagata_manuale_at=None)
+    assert r["pagata_at"] == "2026-06-09"
+
+
+def test_rid_smentita_dall_utente_resta_senza_data(monkeypatch):
+    r = _scadenziario_rid(
+        monkeypatch, pagata=False, pagata_at=None, pagata_manuale_at="2026-08-11T10:00:00+00:00",
+    )
+    assert r["pagata"] is False
+    assert r["pagata_at"] is None

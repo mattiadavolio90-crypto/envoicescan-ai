@@ -765,6 +765,33 @@ export function filtraDocumenti(
 }
 
 /**
+ * Il filtro periodo (Solo scadute, Questa settimana, Questo mese, date) seleziona
+ * scadenze e vale solo nella vista Scadenzario: Archivio e Calendario non lo
+ * applicano ai loro elenchi. Fuori dall'agenda si legge «tutti», cosi' le card
+ * non restano filtrate e «Pulisci filtri» non resta acceso su un filtro che a
+ * video non fa niente (audit di ottobre 2026). La scelta resta nello stato e
+ * torna valida rientrando nello Scadenzario.
+ */
+export function periodoInVista(view: string, periodo: Periodo): Periodo {
+  return view === "agenda" ? periodo : "tutti";
+}
+
+/**
+ * «Pagate (mese)» e' un consuntivo, non una scadenza: il filtro periodo scarta
+ * ogni pagata, e con «Scadute» attivo la card diceva 0 € pagati nel mese
+ * (audit di ottobre 2026). Valgono gli altri filtri (fornitori, nuove, ricerca,
+ * punti vendita), che la card dichiara con «(filtro)».
+ */
+export function pagateDelMese(
+  documenti: Documento[],
+  filtri: FiltriScadenziario,
+  extra?: (d: Documento) => boolean,
+): { count: number; totale: number } {
+  const kpi = computeKpi(filtraDocumenti(documenti, { ...filtri, periodo: "tutti", dataDa: "", dataA: "" }, extra));
+  return { count: kpi.pagate_mese_count, totale: kpi.pagate_mese_totale };
+}
+
+/**
  * Filtro punti vendita della catena (Mattia, 29/9: da pillole a scelta singola a
  * una tendina con piu' punti vendita insieme). Nessuno scelto = tutti. La sede
  * tecnica «Gruppo» e' un punto vendita come gli altri, per id.

@@ -26,7 +26,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, aggregaCalendario, scadenzeDelMese, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, aggregaCalendario, scadenzeDelMese, periodoInVista, pagateDelMese, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
@@ -184,13 +184,15 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
         ${selected ? "bg-primary/8" : "hover:bg-muted/50"}`}
       onClick={() => onPeek(doc)}
     >
-      <input
-        type="checkbox"
-        checked={selected}
-        className="size-4 cursor-pointer flex-shrink-0 accent-primary"
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => { e.stopPropagation(); onToggleSelect(); }}
-      />
+      {mostraScadenze && (
+        <input
+          type="checkbox"
+          checked={selected}
+          className="size-4 cursor-pointer flex-shrink-0 accent-primary"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => { e.stopPropagation(); onToggleSelect(); }}
+        />
+      )}
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -311,7 +313,7 @@ function AgendaSection({
             {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
             <span className={`font-semibold text-sm ${accentClass}`}>{title}</span>
             <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
-            {selectedCount > 0 && (
+            {mostraScadenze && selectedCount > 0 && (
               <span className="text-xs text-primary font-medium">{selectedCount} sel.</span>
             )}
           </div>
@@ -325,7 +327,7 @@ function AgendaSection({
             <DocumentoRow
               key={doc.file_origine}
               doc={doc}
-              selected={selectedFileOrigini.has(doc.file_origine)}
+              selected={mostraScadenze && selectedFileOrigini.has(doc.file_origine)}
               onToggleSelect={() => onToggleSelect(doc.file_origine)}
               onPaga={onPaga}
               onPeek={onPeek}
@@ -1657,7 +1659,9 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   const [ordine, setOrdine] = useState<Ordine>("scadenza");
   const [ordineArchivio, setOrdineArchivio] = useState<OrdineArchivio>("data");
 
-  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove || filtroSede.size > 0 || ricerca.trim() !== "";
+  const periodo = periodoInVista(view, filtroPeriodo);
+  const filtriNonPeriodo = filtroFornitori.size > 0 || filtroSoloNuove || filtroSede.size > 0 || ricerca.trim() !== "";
+  const filtriAttivi = periodo !== "tutti" || filtriNonPeriodo;
 
   function resetFiltri() {
     setFiltroPeriodo("tutti");
@@ -1699,13 +1703,13 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
   // tests/test_scadenziario_filtri_frontend.py: qui dentro nessun test li
   // raggiungeva, e decidono quali fatture il cliente vede.
   const filtriComuni = useMemo(() => ({
-    periodo: filtroPeriodo,
+    periodo,
     fornitori: [...filtroFornitori],
     soloNuove: filtroSoloNuove,
     dataDa: filtroDateDa,
     dataA: filtroDateA,
     ricerca,
-  }), [filtroPeriodo, filtroFornitori, filtroSoloNuove, filtroDateDa, filtroDateA, ricerca]);
+  }), [periodo, filtroFornitori, filtroSoloNuove, filtroDateDa, filtroDateA, ricerca]);
 
   const documentiFiltrati = useMemo(
     () => filtraDocumenti(documenti, filtriComuni, matchFiltroSede),
@@ -1728,6 +1732,11 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
 
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
+  const pagate = useMemo(
+    () => pagateDelMese(documenti, filtriComuni, matchFiltroSede),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [documenti, filtriComuni, filtroSede, sedeTecnicaId],
+  );
 
   // KPI per sede (striscia cliccabile, solo modalità catena): stessi filtri
   // comuni di documentiFiltrati ma SENZA il filtro sede, aggregati per
@@ -2049,21 +2058,23 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     <div className="space-y-5 pb-20">
       {/* KPI bar — le card sono cliccabili e applicano il filtro periodo
           corrispondente (toggle: riclicco la card attiva → torno a "tutti").
-          "Pagate (mese)" è un consuntivo, non un filtro: resta informativa.
+          "Pagate (mese)" è un consuntivo, non un filtro: resta informativa, e il
+          periodo non la tocca (`pagateDelMese`). Fuori dallo Scadenzario le card
+          non filtrano: Calendario e Archivio non applicano il periodo.
           Nascosta in "Per mese": scadute / questa settimana / da pagare sono
           tutte grandezze di scadenza, e questa e' la vista di chi non le usa. */}
       <div className={`grid grid-cols-2 lg:grid-cols-4 gap-3 ${view === "lista_mensile" ? "hidden" : ""}`}>
         <KpiCard
           label={filtriAttivi ? "Scadute (filtro)" : "Scadute"}
           count={kpi.scadute_count} totale={kpi.scadute_totale} tone="negativo"
-          active={filtroPeriodo === "scadute"}
-          onClick={() => setFiltroPeriodo(p => p === "scadute" ? "tutti" : "scadute")}
+          active={periodo === "scadute"}
+          onClick={view === "agenda" ? () => setFiltroPeriodo(p => p === "scadute" ? "tutti" : "scadute") : undefined}
         />
         <KpiCard
           label={filtriAttivi ? "Settimana (filtro)" : "Questa settimana"}
           count={kpi.settimana_count} totale={kpi.settimana_totale} tone="incerto"
-          active={filtroPeriodo === "settimana"}
-          onClick={() => setFiltroPeriodo(p => p === "settimana" ? "tutti" : "settimana")}
+          active={periodo === "settimana"}
+          onClick={view === "agenda" ? () => setFiltroPeriodo(p => p === "settimana" ? "tutti" : "settimana") : undefined}
         />
         {/* La quota senza scadenza sta QUI e non in una quinta tessera: quelle
             fatture sono gia' dentro "Da pagare" (sono debiti a tutti gli
@@ -2076,10 +2087,10 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           sub={kpi.senza_scadenza_count > 0
             ? `di cui ${formatEuro(kpi.senza_scadenza_totale)} senza scadenza`
             : undefined}
-          active={filtroPeriodo === "tutti" && !filtriAttivi}
-          onClick={() => resetFiltri()}
+          active={view === "agenda" && !filtriAttivi}
+          onClick={view === "agenda" ? () => resetFiltri() : undefined}
         />
-        <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="neutro" />
+        <KpiCard label={filtriNonPeriodo ? "Pagate (mese, filtro)" : "Pagate (mese)"} count={pagate.count} totale={pagate.totale} tone="neutro" />
       </div>
 
       {/* Niente riquadro giallo «N fatture senza scadenza» (Mattia, 28/9): il
@@ -2318,8 +2329,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="size-3.5 text-muted-foreground flex-shrink-0" />
 
-          {/* Stato scadenza */}
-          <div className="flex items-center gap-1.5">
+          {/* Stato scadenza e finestra: solo nello Scadenzario (`periodoInVista`). */}
+          <div className={`items-center gap-1.5 ${view === "agenda" ? "flex" : "hidden"}`}>
             {(["tutti", "scadute"] as Periodo[]).map(p => {
               const labels: Partial<Record<Periodo, string>> = { tutti: "Tutti", scadute: "Solo scadute" };
               return (
@@ -2333,7 +2344,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
           {/* Finestra temporale — filtra su `scadenza_effettiva`, quindi in
               "Per mese" non avrebbe alcun effetto visibile: un chip che si
               accende e non cambia l'elenco e' peggio di un chip assente. */}
-          <div className={`items-center gap-1.5 ${view === "lista_mensile" ? "hidden" : "flex"}`}>
+          <div className={`items-center gap-1.5 ${view === "agenda" ? "flex" : "hidden"}`}>
             <Separator orientation="vertical" className="mr-0.5 h-5" />
             {(["settimana", "mese"] as Periodo[]).map(p => {
               const labels: Partial<Record<Periodo, string>> = { settimana: "Questa settimana", mese: "Questo mese" };
@@ -2352,9 +2363,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             >
               <Calendar />
             </FilterChip>
+            <Separator orientation="vertical" className="ml-0.5 h-5" />
           </div>
-
-          <Separator orientation="vertical" className="h-5" />
 
           {/* Punti vendita — solo catena: una tendina a scelta multipla al
               posto della riga di pillole a scelta singola (Mattia, 29/9). */}
@@ -2412,7 +2422,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         </div>
 
         {/* Date personalizzate */}
-        {filtroPeriodo === "personalizzato" && (
+        {periodo === "personalizzato" && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground">Scadenza da</span>
             <Input type="date" value={filtroDateDa} onChange={e => setFiltroDateDa(e.target.value)} className="h-7 text-xs w-36" />
@@ -2549,8 +2559,8 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
         <CalendarView documenti={documentiCalendario} />
       )}
 
-      {/* Floating bulk action bar */}
-      {selectedFileOrigini.size > 0 && (
+      {/* Floating bulk action bar: la selezione si fa solo nello Scadenzario. */}
+      {view === "agenda" && selectedFileOrigini.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full border bg-card shadow-lg px-5 py-3">
           <span className="text-sm font-medium">
             {selectedFileOrigini.size} selezionat{selectedFileOrigini.size === 1 ? "a" : "e"}

@@ -2914,6 +2914,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   una scadenza futura. +5 test in `tests/test_scadenziario_calendario_fuori_mese_frontend.py`
 >   (il cui commento «gli stessi esclusi del calendario» ora e' vero); **6 mutanti, 6
 >   uccisi**, uno dopo aver messo due fatture sullo stesso giorno.
+>
+> - **15/10/2026 — Fix n. 4 dell'audit di ottobre (K14, F4-06, F4-07): il filtro periodo vale
+>   solo nello Scadenzario, «Pagate (mese)» non lo subisce.** Tre difetti dello stesso pezzo
+>   di pagina. In Calendario card e chip di periodo filtravano le card ma non il calendario;
+>   in Archivio «Solo scadute» non cambiava l'elenco, le checkbox di riga non facevano niente
+>   e la barra delle azioni di massa restava a video; con «Scadute» attivo «Pagate (mese)»
+>   diceva 0 €. Ora `periodoInVista` (fuori dall'agenda il periodo si legge «tutti», la scelta
+>   resta per il ritorno), chip e card cliccabili solo nello Scadenzario, niente selezione in
+>   Archivio, `pagateDelMese` senza periodo e con «(filtro)» quando un altro filtro e' attivo.
+>   Nel worker la RID marcata pagata porta la data dell'addebito (la sua scadenza), se non ne
+>   ha gia' una: prima usciva dalla card (3 fatture di ottobre, 205,89 €). +20 test in
+>   `tests/test_scadenziario_periodo_in_vista_frontend.py`, +3 in
+>   `tests/test_documenti_service_rid_e_regole.py`; **15 mutanti, 15 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

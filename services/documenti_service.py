@@ -844,8 +844,12 @@ def get_documenti_scadenziario(
 
         # L'automatismo RID assume "pagata" salvo dichiarazione esplicita
         # dell'utente (pagata_manuale_at): quest'ultima vince sempre.
+        # La data e' quella dell'addebito (la scadenza RID, cioe' la data del
+        # documento): senza, la fattura usciva da «Pagate (mese)», che conta per
+        # data di pagamento (audit di ottobre 2026: 3 RID di ottobre, 205,89 €).
         if scadenza_src == "fornitore_rid" and not extra.get("pagata_manuale_at"):
             pagata = True
+            pagata_at = pagata_at or scadenza_eff
 
         tipo_doc = base.get("tipo_documento") or "TD01"
         is_nota_credito = tipo_doc.upper().strip() == "TD04"
