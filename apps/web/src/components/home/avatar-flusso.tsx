@@ -77,8 +77,12 @@ export function AvatarFlusso({
       const gx = bersaglio ? bersaglio.left + bersaglio.width * 0.3 : puntatore.dentro ? puntatore.x : null;
       const gy = bersaglio ? bersaglio.top + bersaglio.height / 2 : puntatore.dentro ? puntatore.y : null;
       if (gx !== null && gy !== null) {
-        tx = clamp((gx - (r.left + r.width / 2)) / (window.innerWidth * 0.4), -1, 1);
-        ty = clamp((gy - (r.top + r.height / 2)) / (window.innerHeight * 0.4), -1, 1);
+        // Il cursore conta solo vicino al flusso: lontano (sul menu, in fondo al briefing)
+        // il flusso resta dritto invece di girarsi e spegnersi da un lato.
+        const fuori = Math.hypot(Math.max(r.left - gx, 0, gx - r.right), Math.max(r.top - gy, 0, gy - r.bottom));
+        const peso = bersaglio ? 0.6 : Math.exp(-fuori / 220);
+        tx = clamp((gx - (r.left + r.width / 2)) / (window.innerWidth * 0.4), -1, 1) * peso;
+        ty = clamp((gy - (r.top + r.height / 2)) / (window.innerHeight * 0.4), -1, 1) * peso;
       }
       mx = avvicina(mx, tx, 6, dt);
       my = avvicina(my, ty, 6, dt);
