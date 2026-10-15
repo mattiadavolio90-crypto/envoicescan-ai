@@ -4838,20 +4838,30 @@ _CHAT_SCADENZE_LIMIT = 30
 # (la regressione del primo fix, che le faceva monopolizzare l'elenco quando erano
 # la maggioranza — fino al 91% del debito su un cliente reale).
 _CHAT_SCADENZE_QUOTA_SENZA_DATA = 10
+_CHAT_SCADENZE_TOP_FORNITORI = 10
 
 
 def _chat_query_scadenze(
     user: Dict[str, Any], supabase_client, solo_da_pagare: bool = True,
     ristorante_id: Optional[str] = None,
+    fornitore: Optional[str] = None, da: Optional[str] = None, a: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Scadenze del ristorante (per il tool della chat). Riusa la stessa fonte
     della pagina Gestione Fatture. `ristorante_id` esplicito dalla vista catena
-    (gia' verificato fra le sedi dell'account); assente = la sede attiva."""
+    (gia' verificato fra le sedi dell'account); assente = la sede attiva.
+
+    `fornitore` (parte del nome) e `da`/`a` (scadenza, ISO) filtrano PRIMA del
+    taglio a 30 voci, e i totali sono su tutte le voci filtrate: con centinaia di
+    fatture aperte «quanto devo a X» e «questa settimana» non si ricavano dalle
+    30 mostrate (audit di ottobre 2026, K21)."""
     from services.documenti_service import get_documenti_scadenziario
     ristorante_id = ristorante_id or _resolve_ristorante_id(user, supabase_client)
     if not ristorante_id:
         return {"scadenze": [], "totale_da_pagare": 0.0}
     docs = get_documenti_scadenziario(str(user["id"]), ristorante_id)
+    filtro_forn = (fornitore or "").strip().lower()
+    da = (da or "").strip()[:10] or None
+    a = (a or "").strip()[:10] or None
 
     voci = []
     totale = 0.0
@@ -4865,6 +4875,12 @@ def _chat_query_scadenze(
         if d.get("oscurata") or d.get("is_nota_credito"):
             continue
         if solo_da_pagare and d.get("pagata"):
+            continue
+        if filtro_forn and filtro_forn not in (d.get("fornitore") or "").lower():
+            continue
+        scad = d.get("scadenza_effettiva")
+        # Un periodo esclude chi non ha una scadenza: non si sa se ci cade.
+        if (da and (not scad or scad < da)) or (a and (not scad or scad > a)):
             continue
         imp = float(d.get("totale_documento") or 0)
         if not d.get("pagata"):
@@ -4905,6 +4921,20 @@ def _chat_query_scadenze(
         mostrate += coda[: _CHAT_SCADENZE_LIMIT - len(mostrate)]
 
     risultato = {"scadenze": mostrate, "totale_da_pagare": round(totale, 2)}
+    if filtro_forn or da or a:
+        risultato["filtro"] = {k: v for k, v in (("fornitore", fornitore), ("da", da), ("a", a)) if v}
+
+    oggi_iso = _oggi_rome().isoformat()
+    scadute = [v for v in con_data if v["scadenza"] < oggi_iso]
+    risultato["totale_scaduto"] = round(sum(v["importo"] for v in scadute), 2)
+    risultato["voci_scadute"] = len(scadute)
+    per_forn: Dict[str, List[float]] = {}
+    for v in non_pagate:
+        per_forn.setdefault(v["fornitore"], []).append(v["importo"])
+    risultato["da_pagare_per_fornitore"] = [
+        {"fornitore": f, "totale": round(sum(imp), 2), "fatture": len(imp)}
+        for f, imp in sorted(per_forn.items(), key=lambda kv: (-sum(kv[1]), kv[0]))
+    ][:_CHAT_SCADENZE_TOP_FORNITORI]
 
     # Come in _chat_query_costi: se il totale copre piu' voci di quelle mostrate,
     # l'AI deve saperlo per non spacciare un elenco parziale come completo.
@@ -5540,13 +5570,18 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             "name": "query_scadenze",
             "description": (
                 "Elenco delle scadenze di pagamento (fatture fornitori) con importi "
-                "e date. Usalo per 'cosa devo pagare', 'quanto devo a X', 'scadenze "
-                "questa settimana'."
+                "e date. Usalo per 'cosa devo pagare', 'quanto devo a X' (con "
+                "fornitore), 'scadenze questa settimana' (con da/a). L'elenco si "
+                "ferma a 30 voci: le cifre da dire sono i totali (totale_da_pagare, "
+                "totale_scaduto, da_pagare_per_fornitore), calcolati su tutte."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "solo_da_pagare": {"type": "boolean", "description": "true (default) = solo non pagate"},
+                    "fornitore": {"type": "string", "description": "Parte del nome del fornitore"},
+                    "da": {"type": "string", "description": "Scadenza dal (AAAA-MM-GG)"},
+                    "a": {"type": "string", "description": "Scadenza fino al (AAAA-MM-GG)"},
                 },
             },
         },
@@ -5969,6 +6004,7 @@ def _chat_esegui_tool_sede(
     if nome == "query_scadenze":
         return _chat_query_scadenze(
             user, supabase_client, args.get("solo_da_pagare", True), ristorante_id=ristorante_id,
+            fornitore=args.get("fornitore"), da=args.get("da"), a=args.get("a"),
         )
     if nome == "query_margini":
         return _chat_query_margini(user, supabase_client, authorization, ristorante_id=ristorante_id)

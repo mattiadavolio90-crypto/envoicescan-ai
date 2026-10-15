@@ -3043,6 +3043,16 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   conversione fra unita' (CT da 3 kg contro KG) non si fa, servirebbe il peso della
 >   confezione. +2 test in `tests/test_chat_confronto_prezzi_per_fattura.py`; **5 mutanti, 5
 >   uccisi**.
+>
+> - **15/10/2026 — Fix n. 12 dell'audit di ottobre (K21): query_scadenze risponde a «quanto
+>   devo a X».** La descrizione lo prometteva, ma lo strumento dava 30 voci e un totale unico:
+>   7 sedi su 11 hanno oltre 30 fatture aperte (fino a 1.019). Nel caso dell'audit, 55 aperte,
+>   le voci mostrate davano 2.100 € verso X contro 16.600 veri. Ora `fornitore` e `da`/`a`
+>   (sulla scadenza; un periodo esclude le fatture senza scadenza) filtrano prima del taglio, e
+>   lo strumento manda sempre `totale_scaduto` (prima di oggi a Roma) e
+>   `da_pagare_per_fornitore` (i 10 debiti piu' alti), calcolati su tutte le voci. La
+>   descrizione dice al modello che le cifre da dire sono i totali. +5 test in
+>   `tests/test_chat_query_scadenze.py`; **6 mutanti, 6 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

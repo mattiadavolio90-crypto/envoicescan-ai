@@ -237,3 +237,77 @@ def test_un_documento_senza_i_campi_nuovi_resta_un_debito(monkeypatch):
     r = _query(monkeypatch, docs)
     assert r["totale_da_pagare"] == 100.0
     assert len(r["scadenze"]) == 1
+
+
+# ── Filtri e totali su tutte le voci (audit di ottobre 2026, K21) ──────────
+#
+# La descrizione promette «quanto devo a X» e «scadenze questa settimana», ma
+# con centinaia di fatture aperte (7 sedi su 11 oltre 30) l'elenco a 30 voci non
+# basta a rispondere: il caso dell'audit, 55 aperte, dava 2.100 € verso X
+# sommando le voci mostrate contro 16.600 veri.
+
+from datetime import date
+
+
+def _caso_audit():
+    return (
+        [_doc("Y SRL", 500.0, "2026-10-%02d" % (1 + i % 28)) for i in range(25)]
+        + [_doc("X SPA", 1000.0, "2026-10-20") for _ in range(4)]
+        + [_doc("X SPA", 1000.0, "2026-12-10") for _ in range(8)]
+        + [_doc("Z SNC", 300.0) for _ in range(10)]
+        + [_doc("X SPA", 500.0) for _ in range(5)]
+        + [_doc("X SPA", 700.0, "2026-09-05") for _ in range(3)]
+    )
+
+
+def _query_k21(monkeypatch, docs, **kw):
+    monkeypatch.setattr(fw, "_resolve_ristorante_id", lambda u, sb: "rid-1")
+    monkeypatch.setattr(fw, "_oggi_rome", lambda: date(2026, 10, 15))
+    monkeypatch.setattr(
+        "services.documenti_service.get_documenti_scadenziario", lambda user_id, rid: docs,
+    )
+    return fw._chat_query_scadenze({"id": "u-test"}, MagicMock(), **kw)
+
+
+def test_quanto_devo_a_x_conta_tutte_le_sue_fatture(monkeypatch):
+    r = _query_k21(monkeypatch, _caso_audit(), fornitore="x spa")
+    assert r["totale_da_pagare"] == 16600.0
+    assert {v["fornitore"] for v in r["scadenze"]} == {"X SPA"}
+    assert r["filtro"] == {"fornitore": "x spa"}
+
+
+def test_questa_settimana_e_un_periodo_sulla_scadenza(monkeypatch):
+    r = _query_k21(monkeypatch, _caso_audit(), da="2026-10-15", a="2026-10-21")
+    # Y: giorni 15..21 → i in {14..20} → 7 fatture da 500; X: 4 da 1000 il 20/10
+    assert r["totale_da_pagare"] == 7500.0
+    assert all("2026-10-15" <= v["scadenza"] <= "2026-10-21" for v in r["scadenze"])
+
+
+def test_scaduto_e_debito_per_fornitore_senza_filtri(monkeypatch):
+    r = _query_k21(monkeypatch, _caso_audit())
+    assert len(r["scadenze"]) == 30 and r["totale_parziale"] is True
+    # scadute prima del 15/10: Y giorni 1..14 (14 fatture da 500) + X 3 da 700 a settembre
+    assert r["voci_scadute"] == 17
+    assert r["totale_scaduto"] == 14 * 500.0 + 3 * 700.0
+    per_forn = {f["fornitore"]: f for f in r["da_pagare_per_fornitore"]}
+    assert per_forn["X SPA"] == {"fornitore": "X SPA", "totale": 16600.0, "fatture": 20}
+    assert r["da_pagare_per_fornitore"][0]["fornitore"] == "X SPA", "dal debito piu' alto"
+    assert "filtro" not in r
+
+
+def test_il_dispatcher_passa_fornitore_e_periodo(monkeypatch):
+    monkeypatch.setattr(fw, "_oggi_rome", lambda: date(2026, 10, 15))
+    monkeypatch.setattr(
+        "services.documenti_service.get_documenti_scadenziario", lambda user_id, rid: _caso_audit(),
+    )
+    r = fw._chat_esegui_tool_sede(
+        "query_scadenze", {"fornitore": "X SPA", "da": "2026-10-01", "a": "2026-12-31"},
+        user={"id": "u-test"}, supabase_client=MagicMock(), authorization=None,
+        ristorante_id="rid-1", settore="ristorazione")
+    assert r["filtro"] == {"fornitore": "X SPA", "da": "2026-10-01", "a": "2026-12-31"}
+    assert r["totale_da_pagare"] == 12000.0
+
+
+def test_lo_schema_offre_fornitore_e_periodo():
+    schema = next(t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == "query_scadenze")
+    assert {"fornitore", "da", "a"} <= set(schema["function"]["parameters"]["properties"])
