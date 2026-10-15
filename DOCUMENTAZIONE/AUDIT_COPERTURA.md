@@ -3114,6 +3114,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   nessuna platea (agenda quasi vuota). Ora `_oggi_rome()` in entrambi. +2 test in
 >   `tests/test_chat_giorno_di_roma.py`, col giorno di Roma fissato lontano dal calendario
 >   vero cosi' il mutante cade a qualunque ora; **2 mutanti, 2 uccisi**.
+>
+> - **15/10/2026 — Code-reviewer sui fix 9-17 dell'audit di ottobre (gruppo chat), verdetto
+>   verde.** Nessun blocco. Inerenze verificate: `_chat_esegui_tool_sede` ha due chiamanti
+>   (sede e catena), `quotaEsaurita` uno (condiviso con /m), `HomeKpiResponse` ha solo campi
+>   in piu' che il frontend non legge; la rete di K17 non nasconde 403 (nessuno strumento
+>   solleva `HTTPException`, i gate veri stanno prima del giro). Nessun `*_CODE_VERSION` da
+>   bumpare, nessun ordine proxy/worker per questo gruppo. Precisazione al fix n. 14: il
+>   blocco «Conti» del prompt e' comune ai due settori, quindi **anche il negozio** riceve
+>   netto e «% del netto» accanto a personale, spese e MOL (gli stessi numeri della sua
+>   pagina Margini); le soglie «÷ fatturato netto» restano solo nel ramo ristorazione. Non
+>   bloccanti, lasciati: il test del frontend su K16 usa una copia scritta a mano dei testi
+>   della quota del worker (se cambiano li', va aggiornato anche qui); `da`/`a` di
+>   `query_scadenze` non sono validati come date; un 429 senza testo mostra ancora «limite
+>   di crediti per oggi» ma lascia la casella aperta. Suite `-m "not sql"`: 19.735 verdi +
+>   62 skip; `-m sql` mirati (chat, proposte, isolamento): 446 verdi.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
