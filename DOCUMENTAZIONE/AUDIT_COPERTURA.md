@@ -2986,8 +2986,8 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   (Web Audio sull'audio di «Ascolta» rischiava di ammutolirlo). Visto a schermo su una pagina
 >   di prova col riquadro vero e gli stili dell'app (la Home vera richiede il login di Mattia,
 >   che l'ha provata in locale e ha chiesto 4 ritocchi, fatti). Test:
->   `tests/test_avatar_flusso_frontend.py` (36) e `tests/test_avatar_cablaggio_frontend.py` (11);
->   **15 mutanti, 15 uccisi** (i 3 ultimi sui rilievi della seconda revisione: durata Infinity
+>   `tests/test_avatar_flusso_frontend.py` (36) e `tests/test_avatar_cablaggio_frontend.py` (13);
+>   **16 mutanti, 16 uccisi** (i 3 ultimi sui rilievi della seconda revisione: durata Infinity
 >   dell'audio in streaming, voce di sistema dopo un audio caduto, altezza fissa della chat). Il revisore (verdetto NON CHIUSA) ha trovato: commit e doc di
 >   chiusura mancanti, e quattro ritocchi minori (voce di sistema dopo un audio caduto, benvenuto
 >   sopra il consenso privacy, `setTesto` a ogni frame, la stima della lettura nel `.tsx`): fatti.
