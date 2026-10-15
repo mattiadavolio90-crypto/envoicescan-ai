@@ -84,3 +84,11 @@ def test_l_avatar_non_rompe_il_demo_tour(file):
     t = _n(file)
     assert "useAssistenteOpzionale()" in t
     assert "useAssistente()" not in t
+
+
+def test_il_benvenuto_non_parte_nel_demo_tour():
+    """La demo non ha AssistenteProvider: senza questo controllo il benvenuto coprirebbe la barra
+    del tour e consumerebbe quello del giorno a chi apre la demo dallo stesso browser."""
+    t = _n(_WEB / "components/home/benvenuto-assistente.tsx")
+    assert "constnellApp=useAssistenteOpzionale()!==null;" in t
+    assert "useEffect(()=>{if(!nellApp)return;" in t

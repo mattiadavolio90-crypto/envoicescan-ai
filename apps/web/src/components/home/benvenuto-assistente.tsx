@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DisegnoFlusso } from "@/components/home/disegno-flusso";
+import { useAssistenteOpzionale } from "@/components/home/assistente-provider";
 import { BASE_FLUSSO, chiaveBenvenuto, giornoDiRoma, mostraBenvenuto, type VarianteAvatar } from "@/lib/avatar-flusso";
 import { cn } from "@/lib/utils";
 
@@ -24,8 +25,13 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palcoRef = useRef<HTMLDivElement>(null);
   const saltaRef = useRef<() => void>(() => {});
+  // Solo nell'app vera, dopo il login: il Demo Tour pubblico usa lo stesso riquadro ma non ha
+  // AssistenteProvider. Li' il benvenuto coprirebbe la barra del tour e consumerebbe quello del
+  // giorno a un cliente che apre la demo dallo stesso browser (Mattia, 15/10).
+  const nellApp = useAssistenteOpzionale() !== null;
 
   useEffect(() => {
+    if (!nellApp) return;
     // Si decide dopo due frame: una finestra che si apre insieme alla pagina (il consenso
     // privacy) monta il suo contenuto un paio di commit dopo. Se c'e', niente benvenuto e
     // niente chiave scritta: ripartira' alla prossima Home.
@@ -39,7 +45,7 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
       annullato = true;
       cancelAnimationFrame(id);
     };
-  }, []);
+  }, [nellApp]);
 
   function decidi() {
     if (document.querySelector(FINESTRA_APERTA)) return;

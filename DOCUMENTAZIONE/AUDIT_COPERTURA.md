@@ -3001,6 +3001,10 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   presidio in `tests/test_avatar_cablaggio_frontend.py` (mutante ucciso) e verificato aprendo il
 >   tour vero in locale con Chrome headless. Nessun test di logica poteva vederlo: non
 >   renderizzano. Altezza fissa e narrativa tagliata ora solo quando c'è la conversazione.
+>   Quarta revisione **verde**. Poi, su decisione di Mattia: niente benvenuto nel Demo Tour
+>   (copriva la barra del tour e consumava quello del giorno di un cliente; presidio con mutante
+>   ucciso) e il tour allinea dall'alto un elemento più alto dello schermo (al passo 1 il riquadro
+>   finiva fuori vista in alto). Verificati entrambi aprendo il tour in locale.
 >
 > - **15/10/2026 — Code-reviewer sui fix 2-8 dell'audit di ottobre, verdetto rosso, chiuso.**
 >   Il blocco: K15 era chiuso a meta'. `/api/gruppo/prezzi/fattura` risolveva il gruppo senza
