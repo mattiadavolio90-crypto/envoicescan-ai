@@ -2995,6 +2995,12 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   telefono che apre `/dashboard` prima del rimando a `/m` consuma il benvenuto del giorno.
 >   Corretto anche `tests/test_briefing_prezzi_scesi_fatture.py` (fase F): ancorava l'acquisto a
 >   una data fissa mentre il motore usa la data vera, era rosso dal 15/10.
+>   **Terza revisione: il Demo Tour pubblico (`/demo`) andava in crash** al primo passo, perché il
+>   riquadro chiamava `useAssistente()` (che lancia senza `AssistenteProvider`, e la demo non ce
+>   l'ha). Mai arrivato in produzione: corretto prima del push con `useAssistenteOpzionale()`,
+>   presidio in `tests/test_avatar_cablaggio_frontend.py` (mutante ucciso) e verificato aprendo il
+>   tour vero in locale con Chrome headless. Nessun test di logica poteva vederlo: non
+>   renderizzano. Altezza fissa e narrativa tagliata ora solo quando c'è la conversazione.
 >
 > - **15/10/2026 — Code-reviewer sui fix 2-8 dell'audit di ottobre, verdetto rosso, chiuso.**
 >   Il blocco: K15 era chiuso a meta'. `/api/gruppo/prezzi/fattura` risolveva il gruppo senza

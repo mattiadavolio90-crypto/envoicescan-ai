@@ -457,7 +457,7 @@ frontend lo chiama, tenuto per compat OpenAPI).
 
 ## Changelog rilevante
 
-- **15/10/2026 (fase L «assistente consulente»: l'avatar)** — accanto al briefing un flusso
+- **15/10/2026 (fase L «assistente consulente»: l'avatar)** — nel riquadro del briefing un flusso
   astratto (tre nastri che si attorcigliano mentre scorrono, fili di luce che salgono), con
   quattro modi: riposo, ti ascolta (chat a fuoco), pensa (risposta in arrivo), parla («Ascolta»,
   con la frase letta evidenziata). Benvenuto una volta al giorno di Roma, saltabile, spento per

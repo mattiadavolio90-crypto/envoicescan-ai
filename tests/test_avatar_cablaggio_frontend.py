@@ -70,3 +70,17 @@ def test_da_computer_la_conversazione_scorre_dentro_il_riquadro():
     assert "<ConversazioneAltezzaFissa.Providervalue={true}>" in t
     pannello = _n(_WEB / "components/home/pannello-conversazione.tsx")
     assert 'altezzaFissa&&"lg:max-h-nonelg:min-h-0lg:flex-1"' in pannello
+
+
+@pytest.mark.parametrize(
+    "file",
+    [_RIQUADRO, _WEB / "components/home/use-modo-avatar.ts"],
+    ids=lambda p: p.name,
+)
+def test_l_avatar_non_rompe_il_demo_tour(file):
+    """Il riquadro del briefing gira anche nel Demo Tour pubblico (/demo), che non ha
+    AssistenteProvider: `useAssistente()` li' lancia e la demo va in crash al primo passo
+    (trovato dal revisore il 15/10, prima del push). Si usa la versione opzionale."""
+    t = _n(file)
+    assert "useAssistenteOpzionale()" in t
+    assert "useAssistente()" not in t

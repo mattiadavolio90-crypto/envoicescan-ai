@@ -61,6 +61,12 @@ export function useAssistente(): StatoAssistente {
   return c;
 }
 
+/** Per chi puo' vivere anche fuori dal provider: il riquadro del briefing compare pure nel
+ *  Demo Tour pubblico (/demo), che il provider non ce l'ha. Li' l'avatar non «pensa» mai. */
+export function useAssistenteOpzionale(): StatoAssistente | null {
+  return useContext(Contesto);
+}
+
 export function AssistenteProvider({
   utenteId,
   mobile = false,

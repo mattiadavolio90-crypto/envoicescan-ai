@@ -5,7 +5,7 @@ import { Sparkles } from "lucide-react";
 import { AscoltaButton, type StatoAscolta } from "@/components/ascolta-button";
 import { AvatarFlusso } from "@/components/home/avatar-flusso";
 import { BenvenutoAssistente } from "@/components/home/benvenuto-assistente";
-import { useAssistente } from "@/components/home/assistente-provider";
+import { useAssistenteOpzionale } from "@/components/home/assistente-provider";
 import { ConversazioneAltezzaFissa } from "@/components/home/pannello-conversazione";
 import {
   TESTO_MODO,
@@ -87,7 +87,8 @@ export function RiquadroAssistente({
 
   const mostrata = useTypewriter(narrativa, animate);
 
-  const { inCorso } = useAssistente();
+  // Opzionale: il riquadro gira anche nel Demo Tour pubblico, senza AssistenteProvider.
+  const inCorso = useAssistenteOpzionale()?.inCorso ?? null;
   const [ascolta, setAscolta] = useState(false);
   const [parla, setParla] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -143,7 +144,7 @@ export function RiquadroAssistente({
       <BenvenutoAssistente saluto={saluto} />
       {/* Una card sola (Mattia, 15/10): il flusso a sinistra fa parte del riquadro. Da computer
           l'altezza e' fissa e la conversazione scorre dentro, invece di allungare la pagina. */}
-      <div className="relative isolate overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background lg:grid lg:h-[min(640px,calc(100vh-7rem))] lg:min-h-[480px] lg:grid-cols-[minmax(240px,30%)_minmax(0,1fr)]">
+      <div className={cn("relative isolate overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background lg:grid lg:min-h-[480px] lg:grid-cols-[minmax(240px,30%)_minmax(0,1fr)]", children && "lg:h-[min(640px,calc(100vh-7rem))]")}>
         {/* Gli aloni stanno SOTTO il contenuto (-z-10 dentro isolate): sopra sbiadivano
             «Ascolta» e la fine delle prime righe. */}
         <div className="pointer-events-none absolute -right-16 -top-16 -z-10 size-56 rounded-full bg-accent blur-3xl" />
@@ -178,7 +179,8 @@ export function RiquadroAssistente({
           <h1 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">{saluto}</h1>
           <p
             ref={narrativaRef}
-            className="relative mt-3 max-w-none shrink-0 whitespace-pre-line text-base leading-relaxed text-foreground/90 lg:max-h-[45%] lg:overflow-y-auto">
+            className={cn("relative mt-3 max-w-none shrink-0 whitespace-pre-line text-base leading-relaxed text-foreground/90", children && "lg:max-h-[45%] lg:overflow-y-auto")}
+          >
             {parla && scritta
               ? elenco.map((f, i) => (
                   <span

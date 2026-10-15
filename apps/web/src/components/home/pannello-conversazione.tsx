@@ -13,7 +13,8 @@ import { CardCifraDettata } from "./card-cifra";
 
 /** Dentro il riquadro dell'assistente da computer (fase L, 15/10/2026) il riquadro ha
  *  un'altezza fissa: la conversazione riempie lo spazio che resta e scorre dentro, invece di
- *  allungare la pagina. Fuori (demo, schermi stretti) resta com'era. */
+ *  allungare la pagina. Vale anche nel Demo Tour, che usa lo stesso riquadro; sotto `lg` e
+ *  fuori dal riquadro resta com'era. */
 export const ConversazioneAltezzaFissa = createContext(false);
 
 export function PannelloConversazione({
@@ -67,7 +68,7 @@ export function PannelloConversazione({
       data-demo-anchor={ancoraDemo}
       className={cn(
         "relative mt-5 space-y-3 border-t border-primary/15 pt-4",
-        altezzaFissa && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:justify-end",
+        altezzaFissa && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:[&>*:first-child]:mt-auto",
       )}
     >
       {(voci.length > 0 || attesa) && (
