@@ -3106,6 +3106,14 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   che scrive su `chat_usage_log`. Le card di registrazione (`_assistente.proponi`) restano
 >   fuori dalla rete. +10 test in `tests/test_chat_strumento_guasto_non_e_502.py`; **3
 >   mutanti, 3 uccisi**.
+>
+> - **15/10/2026 — Fix n. 17 dell'audit di ottobre (K18): gli «oggi» della chat sono di
+>   Roma.** Gli appuntamenti di oggi nel prompt e il «mese non ancora caricato» di
+>   `query_costi` usavano `date.today()`, che sul server (UTC) fra mezzanotte e l'una (le due
+>   d'estate) e' ancora ieri, mentre il prompt scriveva «Oggi e'» dal giorno di Roma. Oggi
+>   nessuna platea (agenda quasi vuota). Ora `_oggi_rome()` in entrambi. +2 test in
+>   `tests/test_chat_giorno_di_roma.py`, col giorno di Roma fissato lontano dal calendario
+>   vero cosi' il mutante cade a qualunque ora; **2 mutanti, 2 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

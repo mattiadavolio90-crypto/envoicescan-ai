@@ -3744,8 +3744,10 @@ def _build_chat_system_prompt(
     # appuntamenti odierni cosi' la chat risponde a "cosa ho oggi" senza tool-call.
     if _pagine_set is None or "agenda" in _pagine_set:
         try:
-            from datetime import date as _date_ag
-            oggi_ag = _date_ag.today().isoformat()
+            # Il giorno di Roma, lo stesso di «Oggi e'» nel prompt: il server e' in
+            # UTC e fra mezzanotte e l'una (le due d'estate) dava gli appuntamenti
+            # di ieri (audit di ottobre 2026, K18).
+            oggi_ag = _oggi_rome().isoformat()
             if ristorante_id:
                 eventi = (
                     supabase_client.table("diario_eventi")
@@ -4812,8 +4814,7 @@ def _chat_query_costi(
     # Segnaliamo all'AI l'ultimo mese con acquisti, cosi' propone quello invece di
     # rispondere seccamente "non hai speso nulla".
     if not righe and mese and anno:
-        from datetime import date as _date_q
-        _oggi_q = _date_q.today()
+        _oggi_q = _oggi_rome()
         if (anno, mese) >= (_oggi_q.year, _oggi_q.month):
             q_ult = (
                 supabase_client.table("fatture")
