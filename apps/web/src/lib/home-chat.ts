@@ -132,7 +132,9 @@ export function messaggioRisposta(
 // saperlo per non dire la cosa sbagliata: segnare il GIORNO come esaurito su un
 // 429 MENSILE fa concludere al cliente «riprovo domani», e domani sara' fermo di
 // nuovo. Si riconosce dal testo perche' e' l'unico segnale che arriva al client:
-// il campo `error` lo scrive il backend, non l'utente.
+// il campo `error` lo scrive il backend, non l'utente. Un 429 senza uno dei due
+// testi non e' la quota (OpenAI sovraccarico, rate limit per IP): bloccare la
+// casella fino al ricaricamento per un guasto di pochi secondi era sbagliato.
 export type QuotaEsaurita = "giorno" | "mese" | null;
 
 export function quotaEsaurita(
@@ -140,7 +142,10 @@ export function quotaEsaurita(
   data: { error?: string },
 ): QuotaEsaurita {
   if (status !== 429) return null;
-  return (data.error ?? "").includes("questo mese") ? "mese" : "giorno";
+  const testo = data.error ?? "";
+  if (testo.includes("questo mese")) return "mese";
+  if (testo.includes("per oggi")) return "giorno";
+  return null;
 }
 
 // Il contatore segue la verita' del backend quando la manda (ogni risposta

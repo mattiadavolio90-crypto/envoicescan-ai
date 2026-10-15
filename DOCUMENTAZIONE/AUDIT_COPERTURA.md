@@ -3011,6 +3011,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   proxy nuovo con il worker vecchio svuoterebbe la sede di sessione dicendo un'altra sede; il
 >   push va fatto la sera, a catena ferma. Suite `-m "not sql"` sui fix 2-8: 19.677 verdi + 62
 >   skip.
+>
+> - **15/10/2026 — Fix n. 9 dell'audit di ottobre (K16): un 429 che non e' la quota non blocca
+>   la chat.** Il worker risponde 429 anche quando OpenAI e' sovraccarico (e il rate limit per
+>   IP e' un altro 429): `quotaEsaurita` trattava ogni 429 senza «questo mese» come il limite
+>   del giorno, e la casella restava bloccata con «Limite di oggi raggiunto» fino al
+>   ricaricamento. Ora riconosce solo i due testi della quota («per oggi», «questo mese», gia'
+>   presidiati sul worker da `tests/test_chat_quota_giorno_di_roma.py`); un altro 429 mostra il
+>   suo messaggio e lascia scrivere. Il test che fissava il ripiego sul giorno e' stato
+>   sostituito da 4 (+3 netti) in `tests/test_home_chat_frontend.py`; **2 mutanti, 2 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

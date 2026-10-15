@@ -303,9 +303,28 @@ def test_429_giornaliero_riconosciuto_come_giorno():
     assert _chiama("quotaEsaurita", [429, {"error": msg}]) == "giorno"
 
 
-def test_429_senza_messaggio_ripiega_sul_giorno():
-    """Senza testo si assume il caso piu' frequente e meno grave: il giorno."""
-    assert _chiama("quotaEsaurita", [429, {}]) == "giorno"
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {"error": "Servizio temporaneamente sovraccarico. Riprova tra qualche secondo."},
+        {"error": "Rate limit: max 30 richieste ogni 60s per IP."},
+    ],
+    ids=["senza-testo", "openai-sovraccarico", "rate-limit-ip"],
+)
+def test_429_che_non_e_la_quota_non_blocca_la_casella(data):
+    """Audit di ottobre 2026 (K16): il 429 di OpenAI sovraccarico diventava
+    «Limite di oggi raggiunto» e la casella restava bloccata fino al
+    ricaricamento. Solo i due testi della quota la esauriscono."""
+    assert _chiama("quotaEsaurita", [429, data]) is None
+
+
+def test_429_della_quota_col_testo_del_worker_di_oggi():
+    giorno = "Hai raggiunto il limite di 90 crediti AI per oggi. Il contatore si azzera a mezzanotte."
+    mese = ("Hai usato tutti i 900 crediti AI di questo mese. Ripartono il 1° del mese "
+            "prossimo: per continuare prima puoi chiedere una ricarica fra i Servizi.")
+    assert _chiama("quotaEsaurita", [429, {"error": giorno}]) == "giorno"
+    assert _chiama("quotaEsaurita", [429, {"error": mese}]) == "mese"
 
 
 def test_fuori_dal_429_nessuna_quota_e_esaurita():
