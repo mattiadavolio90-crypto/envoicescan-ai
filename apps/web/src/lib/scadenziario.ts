@@ -1003,3 +1003,23 @@ export function raggruppaPerMeseFattura(
   out.sort((a, b) => b.chiave.localeCompare(a.chiave));
   return out;
 }
+
+/**
+ * Le sedi che hanno qualcosa nel cestino di gruppo, con quante fatture. In
+ * catena il cestino elenca le fatture di tutte le sedi e lo svuotamento agisce
+ * su una sola: il bottone diceva «Svuota questa sede» senza dire quale, e
+ * rispondeva «Cestino svuotato» anche quando la sede di sessione non aveva
+ * niente (audit di ottobre 2026). Ora il cliente sceglie la sede per nome.
+ */
+export function sediNelCestino(
+  items: { ristorante_id?: string; sede_nome?: string }[],
+): { ristorante_id: string; nome: string; count: number }[] {
+  const perSede = new Map<string, { ristorante_id: string; nome: string; count: number }>();
+  for (const it of items) {
+    if (!it.ristorante_id) continue;
+    const s = perSede.get(it.ristorante_id) ?? { ristorante_id: it.ristorante_id, nome: it.sede_nome || "Punto vendita", count: 0 };
+    s.count += 1;
+    perSede.set(it.ristorante_id, s);
+  }
+  return [...perSede.values()].sort((a, b) => a.nome.localeCompare(b.nome, "it"));
+}

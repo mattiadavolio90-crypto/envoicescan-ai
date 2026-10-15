@@ -26,7 +26,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, aggregaCalendario, scadenzeDelMese, periodoInVista, pagateDelMese, esitoAzioneDiMassa, type EsitoGruppo, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, aggregaCalendario, scadenzeDelMese, periodoInVista, pagateDelMese, esitoAzioneDiMassa, type EsitoGruppo, sediNelCestino, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
@@ -1996,19 +1996,23 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     finally { setCestinoActionLoading(false); }
   }
 
-  // L'endpoint svuota la sola sede ATTIVA (cestino.py: _resolve_ristorante_id),
-  // per scelta: svuotare tutte le sedi di una catena con un click sarebbe piu'
-  // pericoloso del difetto che risolve. Ma in catena la lista mostra le fatture
-  // di TUTTE le sedi, e `setCestinoItems([])` le faceva sparire tutte a video:
-  // quelle delle altre sedi sembravano cancellate e ricomparivano al primo
-  // «Aggiorna». Si ricarica dal server, che dice la verita'.
-  async function handleCestinoSvuota() {
+  // L'endpoint svuota UNA sede, per scelta: svuotare tutte le sedi di una catena
+  // con un click sarebbe piu' pericoloso del difetto che risolve. In catena la
+  // lista mostra le fatture di TUTTE le sedi: il cliente sceglie la sede per
+  // nome (`sediNelCestino`) e il body la porta al worker, che ne verifica
+  // l'appartenenza. Si ricarica dal server, che dice la verita'.
+  async function handleCestinoSvuota(sede?: { ristorante_id: string; nome: string }) {
     setCestinoActionLoading(true);
     try {
-      const res = await fetch("/api/cestino/svuota", { method: "POST" });
+      const res = await fetch("/api/cestino/svuota", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sede ? { ristorante_id: sede.ristorante_id } : {}),
+      });
       const data = await res.json();
       if (!res.ok) { toast.error(data.detail || "Errore svuotamento"); return; }
-      toast.success("Cestino svuotato");
+      if (!data.righe_eliminate) toast.info(sede ? `Niente da eliminare nel cestino di ${sede.nome}` : "Niente da eliminare");
+      else toast.success(sede ? `Cestino di ${sede.nome} svuotato` : "Cestino svuotato");
       await loadCestino();
     } catch { toast.error("Errore di connessione"); }
     finally { setCestinoActionLoading(false); }
@@ -2186,26 +2190,40 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
             </p>
             <div className="flex items-center gap-2">
               {/* Conferma inline, come le due azioni per-riga qui sotto: questa
-                  pagina non usa ConfirmDialog. In catena il bottone dice quale
-                  sede svuota, perche' la lista ne mostra piu' di una e
-                  l'endpoint agisce sulla sola sede attiva. */}
+                  pagina non usa ConfirmDialog. In catena la conferma chiede
+                  QUALE punto vendita svuotare, per nome e con quante fatture:
+                  la lista ne mostra piu' di uno e l'endpoint ne svuota uno. */}
               {cestinoItems.length > 0 && (
                 cestinoConfermaSvuota ? (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap justify-end">
                     <span className="text-xs text-muted-foreground">
-                      {modalitaCatena ? "Elimini il cestino di questa sede?" : "Elimini tutto il cestino?"}
+                      {modalitaCatena ? "Elimini definitivamente il cestino di:" : "Elimini tutto il cestino?"}
                     </span>
                     <Button variant="outline" size="sm" onClick={() => setCestinoConfermaSvuota(false)} disabled={cestinoActionLoading}>
                       Annulla
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => { setCestinoConfermaSvuota(false); handleCestinoSvuota(); }}
-                      disabled={cestinoActionLoading}
-                    >
-                      {cestinoActionLoading ? <Loader2 className="size-3.5 animate-spin" /> : "Elimina"}
-                    </Button>
+                    {modalitaCatena ? (
+                      sediNelCestino(cestinoItems).map(sede => (
+                        <Button
+                          key={sede.ristorante_id}
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => { setCestinoConfermaSvuota(false); handleCestinoSvuota(sede); }}
+                          disabled={cestinoActionLoading}
+                        >
+                          {sede.nome} ({sede.count})
+                        </Button>
+                      ))
+                    ) : (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => { setCestinoConfermaSvuota(false); handleCestinoSvuota(); }}
+                        disabled={cestinoActionLoading}
+                      >
+                        {cestinoActionLoading ? <Loader2 className="size-3.5 animate-spin" /> : "Elimina"}
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <Button
@@ -2215,7 +2233,7 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
                     disabled={cestinoActionLoading}
                   >
                     <Trash2 className="size-3.5 mr-1" />
-                    {modalitaCatena ? "Svuota questa sede" : "Svuota tutto"}
+                    {modalitaCatena ? "Svuota un punto vendita" : "Svuota tutto"}
                   </Button>
                 )
               )}

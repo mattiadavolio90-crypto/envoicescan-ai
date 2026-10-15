@@ -70,6 +70,10 @@ class CestinoEliminaRequest(BaseModel):
     ristorante_id: Optional[str] = None
 
 
+class CestinoSvuotaRequest(BaseModel):
+    ristorante_id: Optional[str] = None
+
+
 class FatturaEliminaRequest(BaseModel):
     file_origine: str
     ristorante_id: Optional[str] = None
@@ -182,15 +186,18 @@ def elimina_definitivamente(
 
 
 @router.post("/api/cestino/svuota", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
-def svuota_cestino_endpoint(authorization: Optional[str] = Header(None)):
+def svuota_cestino_endpoint(
+    body: Optional[CestinoSvuotaRequest] = None, authorization: Optional[str] = Header(None)
+):
+    """Svuota il cestino di UNA sede: quella attiva, o quella del body (catena,
+    dove la lista mostra le fatture di tutte le sedi e il cliente sceglie quale
+    svuotare). Mai tutte insieme con un clic."""
     from services.db_service import svuota_cestino
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, sb)
-    if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    ristorante_id = _resolve_ristorante_scrivibile(user, sb, body.ristorante_id if body else None)
 
-    result = svuota_cestino(str(user["id"]), ristorante_id=ristorante_id)
+    result = svuota_cestino(str(user["id"]), ristorante_id=ristorante_id, supabase_client=sb)
 
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error", "Errore"))

@@ -347,3 +347,67 @@ def test_elimina_definitivo_cancella_solo_la_sede_indicata(monkeypatch):
 
     rimaste = sb.dump("fatture")
     assert [r["id"] for r in rimaste] == ["a1"], rimaste
+
+
+# ─── Svuota: una sede sola, quella scelta (audit di ottobre 2026) ─────────────
+
+
+def _cestino_due_sedi():
+    return FakeClient({
+        "fatture": [
+            {"id": "a1", "user_id": "u1", "ristorante_id": "r1", "file_origine": "A.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+            {"id": "a2", "user_id": "u1", "ristorante_id": "r1", "file_origine": "VIVA.xml",
+             "numero_riga": 1, "deleted_at": None},
+            {"id": "b1", "user_id": "u1", "ristorante_id": "r2", "file_origine": "B.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+            {"id": "b2", "user_id": "u1", "ristorante_id": "r2", "file_origine": "B.xml",
+             "numero_riga": 2, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+        "ristoranti": [
+            {"id": "r1", "user_id": "u1", "attivo": True},
+            {"id": "r2", "user_id": "u1", "attivo": True},
+        ],
+    })
+
+
+def test_svuota_con_sede_esplicita_svuota_quella_e_non_la_sede_attiva(monkeypatch):
+    """Catena: la lista mostra il cestino di tutte le sedi e il cliente sceglie
+    r2 per nome. Prima l'endpoint svuotava sempre la sede di sessione."""
+    sb = _cestino_due_sedi()
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    res = cestino.svuota_cestino_endpoint(
+        cestino.CestinoSvuotaRequest(ristorante_id="r2"), authorization="Bearer x",
+    )
+
+    assert res["righe_eliminate"] == 2
+    assert sorted(r["id"] for r in sb.dump("fatture")) == ["a1", "a2"]
+
+
+def test_svuota_senza_sede_resta_sulla_sede_attiva(monkeypatch):
+    sb = _cestino_due_sedi()
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    res = cestino.svuota_cestino_endpoint(None, authorization="Bearer x")
+
+    assert res["righe_eliminate"] == 1
+    assert sorted(r["id"] for r in sb.dump("fatture")) == ["a2", "b1", "b2"]
+
+
+def test_svuota_sede_di_un_altro_account_404(monkeypatch):
+    sb = FakeClient({
+        "fatture": [
+            {"id": "c1", "user_id": "u2", "ristorante_id": "r9", "file_origine": "F.xml",
+             "numero_riga": 1, "deleted_at": "2026-09-20T10:00:00Z"},
+        ],
+        "ristoranti": [{"id": "r9", "user_id": "u2", "attivo": True}],
+    })
+    _bind_cestino(monkeypatch, sb, "u1", "r1")
+
+    with pytest.raises(HTTPException) as ei:
+        cestino.svuota_cestino_endpoint(
+            cestino.CestinoSvuotaRequest(ristorante_id="r9"), authorization="Bearer x",
+        )
+    assert ei.value.status_code == 404
+    assert len(sb.dump("fatture")) == 1

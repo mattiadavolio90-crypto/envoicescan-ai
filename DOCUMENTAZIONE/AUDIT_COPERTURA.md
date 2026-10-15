@@ -2939,6 +2939,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   guasto transitorio. Due guardie di `tests/test_scadenziario_azione_di_massa_frontend.py`
 >   fissavano il comportamento vecchio e sono state riscritte, +4 casi; **7 mutanti, 7
 >   uccisi**.
+>
+> - **15/10/2026 — Fix n. 6 dell'audit di ottobre (F4-11): in catena lo svuotamento del
+>   cestino nomina la sede.** Il cestino di gruppo elenca tutte le sedi, lo svuotamento ne
+>   tocca una (scelta deliberata, tenuta): il bottone diceva «Svuota questa sede» senza dire
+>   quale, il worker svuotava la sede di sessione e il toast diceva «Cestino svuotato» anche
+>   a 0 righe. Ora la conferma elenca le sedi per nome e conteggio (`sediNelCestino` in
+>   `lib/scadenziario.ts`), `POST /api/cestino/svuota` accetta `ristorante_id` nel body con
+>   lo stesso controllo di appartenenza e di sede consentita di «elimina» e «ripristina»
+>   (`_resolve_ristorante_scrivibile`), il proxy inoltra il body, il toast legge
+>   `righe_eliminate`. Senza body resta la sede attiva (vista sede invariata). Schema
+>   OpenAPI rigenerato. +3 test in `tests/test_cestino_multisede.py`, +4 in
+>   `tests/test_scadenziario_cestino_catena_frontend.py`; **9 mutanti, 9 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

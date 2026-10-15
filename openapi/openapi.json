@@ -3803,6 +3803,7 @@
           "Cestino"
         ],
         "summary": "Svuota Cestino Endpoint",
+        "description": "Svuota il cestino di UNA sede: quella attiva, o quella del body (catena,\ndove la lista mostra le fatture di tutte le sedi e il cliente sceglie quale\nsvuotare). Mai tutte insieme con un clic.",
         "operationId": "svuota_cestino_endpoint_api_cestino_svuota_post",
         "parameters": [
           {
@@ -3838,6 +3839,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CestinoSvuotaRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -22422,6 +22440,23 @@
           "file_origine"
         ],
         "title": "CestinoRipristinaRequest"
+      },
+      "CestinoSvuotaRequest": {
+        "properties": {
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
+          }
+        },
+        "type": "object",
+        "title": "CestinoSvuotaRequest"
       },
       "ChatMessage": {
         "properties": {
