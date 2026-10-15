@@ -219,7 +219,7 @@ export default function PrivacyPage() {
             "Google (servizio di sintesi vocale di Google Translate)",
             "Lettura ad alta voce del briefing: quando premi «Ascolta», il testo letto viene inviato a Google per ottenere l'audio",
             "Infrastruttura Google, anche fuori dall'UE",
-            "Usato solo quando premi «Ascolta». Il testo inviato contiene il saluto con il nome di chi ascolta e le cifre del briefing. ONEFLUX non conserva l'audio",
+            "Usato solo quando premi «Ascolta». Il testo inviato è tutto il briefing letto: il saluto con il nome di chi ascolta, le cifre e, secondo il briefing, i titoli degli appuntamenti o, nella vista catena, il nome del gruppo e dei punti vendita. ONEFLUX non conserva l'audio",
           ],
         ]}
       />
@@ -255,7 +255,9 @@ export default function PrivacyPage() {
           dell&apos;attività o del punto vendita (se il nome dell&apos;attività manca,
           l&apos;indirizzo email dell&apos;account); gli indicatori economici (fatturato, food
           cost, costo del personale, spese, margine), le principali categorie di spesa e i
-          principali fornitori con i relativi importi. Quando l&apos;assistente li consulta per
+          principali fornitori con i relativi importi; se l&apos;agenda è attiva, gli
+          appuntamenti di oggi; nella vista catena, i nomi dei punti vendita e il loro
+          confronto. Quando l&apos;assistente li consulta per
           rispondere, vengono inviati anche: le righe delle fatture (descrizione del prodotto,
           fornitore, importo, data), le scadenze di pagamento per fornitore, i prezzi
           d&apos;acquisto e il loro andamento, gli appuntamenti dell&apos;agenda (titolo e

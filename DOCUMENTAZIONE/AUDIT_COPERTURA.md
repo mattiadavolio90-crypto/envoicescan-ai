@@ -3150,6 +3150,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   prompt porta davvero nome e sede in chiaro, Google e' una riga della tabella. **5
 >   mutanti, 5 uccisi**, due dopo aver stretto i test (cercavano «Google» e «in chiaro», che
 >   la pagina contiene anche altrove).
+>
+> - **15/10/2026 — Code-reviewer sul fix n. 18 (privacy), verdetto verde, e i suoi tre
+>   rilievi corretti.** Ogni affermazione nuova riscontrata nel codice; 11 mutanti suoi, 11
+>   uccisi. Corretti: la riga Google diceva «saluto e cifre», ma si legge tutto il briefing
+>   (titoli degli appuntamenti; in catena nome del gruppo e dei punti vendita); la privacy
+>   metteva gli appuntamenti di oggi e, in catena, i nomi dei punti vendita fra i dati
+>   inviati solo a richiesta, mentre sono nel prompt a ogni messaggio; il test sul prompt
+>   passava un fornitore nel formato sbagliato, che non entrava mai nel prompt (eccezione
+>   inghiottita): ora entra ed e' asserito. Anche `_testo_privacy()` toglie la tabella dei
+>   destinatari insieme ai tag (e' un attributo JSX): la riga Google si controlla sul testo
+>   grezzo. **3 mutanti, 3 uccisi**. Restano a Mattia: Google sta in una tabella intitolata
+>   «sub-responsabili» senza contratto; il testo del TTS viaggia nella query string di
+>   `/api/tts` e puo' finire nei log di Vercel.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

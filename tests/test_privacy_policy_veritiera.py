@@ -500,15 +500,17 @@ def test_la_privacy_dice_che_la_chat_e_in_chiaro_come_il_prompt() -> None:
             "email": "t@x.it", "pagine_abilitate": None}
     vecchio = (fw.home_kpi, fw._chat_top_cat_forn)
     fw.home_kpi = lambda *a, **k: None
-    fw._chat_top_cat_forn = lambda *a, **k: ([], [{"fornitore": "FORNITORE PROVA SRL", "totale": 10.0}])
+    fw._chat_top_cat_forn = lambda *a, **k: ([], [("FORNITORE PROVA SRL", 10.0)])
     try:
         prompt = fw._build_chat_system_prompt(user, sb, None, "r-1", "ristorazione")
     finally:
         fw.home_kpi, fw._chat_top_cat_forn = vecchio
     assert "Giulia Prova" in prompt and "Trattoria Prova" in prompt
+    assert "FORNITORE PROVA SRL" in prompt
     testo = _testo_privacy()
     assert "i dati sono trasmessi in chiaro, senza sostituire i nomi" in testo
     assert "il nome di chi scrive" in testo
+    assert "se l'agenda è attiva, gli appuntamenti di oggi" in testo
     assert "elaborato in forma anonimizzata" not in testo
 
 
@@ -525,6 +527,8 @@ def test_google_e_una_riga_dei_destinatari() -> None:
     righe = _destinatari()
     assert "OpenAI LP" in righe, "il test non misura piu' nulla"
     assert any(r.startswith("Google") for r in righe), righe
+    # La tabella e' un attributo JSX: _testo_privacy() toglie i tag e con loro le righe.
+    assert "nella vista catena, il nome del gruppo e dei punti vendita" in " ".join(_leggi(PRIVACY_TSX).split())
 
 
 def test_compliance_e_sicurezza_non_promettono_l_anonimizzazione_della_chat() -> None:
