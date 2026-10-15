@@ -5380,6 +5380,21 @@ def _chat_query_margini(
                 # confronta coi mesi chiusi come se fosse un calo reale.
                 "parziale": (mm == oggi.month and aa == oggi.year),
             })
+            # Un MOL che non e' un risultato: ricavi senza la merce (la Home lo
+            # colora di giallo) o costi senza incasso. La chat lo commentava
+            # come un margine vero (audit di ottobre 2026, K06).
+            if k["costi_mancanti"]:
+                risultati[-1]["costi_mancanti"] = True
+                risultati[-1]["dati_incompleti"] = (
+                    "mancano le fatture della merce: il MOL di questo mese non e' un "
+                    "risultato, non commentarlo come tale")
+            elif k["fatturato"] <= 0:
+                risultati[-1]["senza_incasso"] = True
+                risultati[-1]["dati_incompleti"] = (
+                    "ci sono costi ma nessun incasso registrato: il MOL negativo non e' "
+                    "una perdita, mancano i ricavi del mese")
+            if "dati_incompleti" in risultati[-1]:
+                risultati[-1]["mol_pct"] = None
         mm -= 1
         if mm == 0:
             mm, aa = 12, aa - 1
@@ -5603,7 +5618,8 @@ _CHAT_TOOLS_SEDE: List[Dict[str, Any]] = [
             "description": (
                 "Andamento di fatturato, food cost % e MOL negli ultimi mesi. "
                 "Usalo per 'com'è andato il MOL', 'andamento margini', 'food cost "
-                "nel tempo'."
+                "nel tempo'. Un mese con dati_incompleti non ha un MOL vero: dillo "
+                "invece di commentarlo."
             ),
             "parameters": {"type": "object", "properties": {}},
         },

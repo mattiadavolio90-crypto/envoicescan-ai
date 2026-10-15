@@ -3079,6 +3079,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `tests/test_chat_settore_retail.py`; **7 mutanti, 7 uccisi**. Corretto anche
 >   `tests/test_chat_catena_sede.py`, rosso dal fix n. 12: confrontava gli argomenti esatti
 >   passati a `_chat_query_scadenze`, che ora ne ha tre in piu'.
+>
+> - **15/10/2026 — Fix n. 15 dell'audit di ottobre (K06): query_margini dichiara i mesi a
+>   dati incompleti.** Un mese con incassi e senza fatture della merce (5 sedi a ottobre) dava
+>   alla chat un MOL gonfiato, uno con fatture e senza incassi (3 sedi) un MOL negativo pari
+>   ai soli costi, senza il flag che la Home usa per il giallo. Ora il mese porta
+>   `costi_mancanti` (lo stesso di `_kpi_periodo`, quindi la stessa soglia della Home, su cui
+>   pende la decisione K03) oppure `senza_incasso`, con una frase in `dati_incompleti` e
+>   `mol_pct` a null; la descrizione dello strumento dice di non commentare quel MOL. +4 test
+>   in `tests/test_chat_query_margini_onesta.py`; **4 mutanti, 4 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

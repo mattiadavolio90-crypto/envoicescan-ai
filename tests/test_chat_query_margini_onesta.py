@@ -10,6 +10,8 @@ Audit di ottobre 2026 sul filone chat:
 - K05: il modello riceveva il solo fatturato IVA inclusa e soglie «÷ fatturato»,
   e divideva da solo sul lordo: le fasce di MOL e personale cambiavano rispetto
   alla pagina Margini, che divide per il netto.
+- K06: un mese con incassi e senza merce (o con costi e senza incassi) arrivava
+  al modello come un MOL vero, senza il flag che la Home usa per il giallo.
 """
 from datetime import date
 from unittest.mock import MagicMock, patch
@@ -118,3 +120,44 @@ def test_home_kpi_porta_netto_e_percentuali_al_prompt():
 @pytest.mark.parametrize("v,atteso", [(30.3, " (30,3% del netto)"), (None, ""), (True, ""), ("x", "")])
 def test_percentuale_nel_prompt(v, atteso):
     assert fw._pct_testo(v) == atteso
+
+
+# ── K06: un MOL che non e' un risultato si dichiara ────────────────────────
+#
+# Ottobre 2026 sul live: 5 sedi con incassi e nessuna fattura (MOL gonfiato), 3
+# con fatture e nessun incasso (MOL negativo pari ai soli costi). La Home li
+# colora di giallo; la chat li riceveva come mesi normali.
+
+def _mesi(margini, fb):
+    carica = MagicMock(side_effect=lambda _u, _r, a: margini if a == 2026 else {})
+    costi = MagicMock(side_effect=lambda _u, _r, a: (fb, {}) if a == 2026 else ({}, {}))
+    return {r["mese"]: r for r in _query(carica, costi)["mesi"]}
+
+
+def test_mese_con_incassi_e_senza_merce():
+    mesi = _mesi({9: {"fatturato_iva10": 40000.0, "costo_dipendenti": 9000.0}}, {})
+    settembre = mesi["settembre 2026"]
+    assert settembre["costi_mancanti"] is True
+    assert "mancano le fatture della merce" in settembre["dati_incompleti"]
+    assert settembre["mol_pct"] is None
+    assert "senza_incasso" not in settembre
+
+
+def test_mese_con_costi_e_senza_incasso():
+    mesi = _mesi({9: {"costo_dipendenti": 9000.0}}, {9: 6941.22})
+    settembre = mesi["settembre 2026"]
+    assert settembre["senza_incasso"] is True
+    assert "mancano i ricavi" in settembre["dati_incompleti"]
+    assert "costi_mancanti" not in settembre
+
+
+def test_mese_completo_non_ha_avvisi():
+    carica, costi = _fonti()
+    settembre = {r["mese"]: r for r in _query(carica, costi)["mesi"]}["settembre 2026"]
+    assert not ({"costi_mancanti", "senza_incasso", "dati_incompleti"} & set(settembre))
+    assert settembre["mol_pct"] == 23.3
+
+
+def test_la_descrizione_dello_strumento_lo_dice():
+    schema = next(t for t in fw._CHAT_TOOLS_SEDE if t["function"]["name"] == "query_margini")
+    assert "dati_incompleti" in schema["function"]["description"]
