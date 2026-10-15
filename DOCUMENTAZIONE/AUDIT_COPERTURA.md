@@ -2878,6 +2878,23 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   l'archivio «Per mese» di Gestione Fatture somma le note di credito come fatture (5 account
 >   su 6). Sotto-utenti: nessuna falla di isolamento. Nessun fix in questa voce. Report:
 >   `docs/storico/audit-2026-10/AUDIT_CORRETTEZZA_OTTOBRE.md`.
+>
+> - **15/10/2026 — Fix n. 1 dell'audit di ottobre: l'Archivio «Per mese» sottrae le note di
+>   credito.** L'intestazione del mese sommava `totale_documento` di ogni documento, e una
+>   nota di credito arriva col totale dell'XML positivo: era contata come una fattura (149
+>   note su 5 account, 89.796 € di scarto sulle intestazioni). Ora `importoConSegno` e
+>   `totaleConSegno` in `lib/scadenziario.ts` (valore assoluto, cosi' vale anche col
+>   fallback alla somma delle righe, negativa) alimentano `raggruppaPerMeseFattura`,
+>   l'intestazione di `AgendaSection` e l'importo della riga, che porta anche l'etichetta
+>   «nota di credito». Fuori di proposito: la sezione «Note di credito» dello Scadenzario
+>   (crediti in positivo sotto un titolo che lo dice), le pagate (l'Archivio e' per
+>   consultare, dichiarato a video) e le escluse dai conti (decisione aperta, 1 documento
+>   oggi). +6 test in `tests/test_scadenziario_vista_mensile_frontend.py` (21 nel file);
+>   **8 mutanti, 8 uccisi**, uno dei quali sopravvissuto alla prima stesura della guardia
+>   (`Math.abs` nel render dell'intestazione). Suite `-m "not sql"`: 19.552 verdi + 62 skip
+>   + 1 rosso preesistente e non legato al fix
+>   (`test_briefing_prezzi_scesi_fatture.py::test_il_motore_li_restituisce_accanto_ai_rincari`,
+>   servizio prezzi, rosso anche da solo); `tsc` pulito sui sorgenti.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

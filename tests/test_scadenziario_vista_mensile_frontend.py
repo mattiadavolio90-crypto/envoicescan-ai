@@ -29,13 +29,13 @@ MODULO = "lib/scadenziario"
 FUSI = ["Europe/Rome", "America/Los_Angeles"]
 
 
-def _doc(file_origine, data_documento, totale=100.0):
+def _doc(file_origine, data_documento, totale=100.0, nota_credito=False):
     return {
         "id": file_origine,
         "file_origine": file_origine,
         "fornitore": "F",
-        "tipo_documento": "TD01",
-        "is_nota_credito": False,
+        "tipo_documento": "TD04" if nota_credito else "TD01",
+        "is_nota_credito": nota_credito,
         "totale_documento": totale,
         "data_documento": data_documento,
         "numero_documento": None,
@@ -172,3 +172,102 @@ def test_la_guardia_vuoto_testa_i_gruppi_resi_non_i_documenti_filtrati():
         "elenco pieno."
     )
     assert "gruppiMensili" in guardie, guardie
+
+
+# --- Le note di credito nel totale del mese (audit di correttezza, ottobre 2026) ---
+#
+# Il totale del mese sommava `totale_documento` di ogni documento. Una nota di
+# credito arriva dal worker col totale dell'XML, POSITIVO: era sommata come una
+# fattura. Misurato sul DB il 15/10/2026: 149 note di credito su 5 account, tutte
+# positive, 89.796 EUR di scarto sulle intestazioni dei mesi. Le fixture di
+# questo file avevano solo fatture TD01, quindi il test restava verde sul bug.
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_nota_di_credito_toglie_dal_totale_del_mese(tz):
+    """300 di fattura e 100 di nota di credito nello stesso mese fanno 200."""
+    docs = [
+        _doc("fattura.xml", "2026-05-10", totale=300.0),
+        _doc("nota.xml", "2026-05-20", totale=100.0, nota_credito=True),
+    ]
+    gruppi = _gruppi(docs, tz)
+    assert len(gruppi) == 1
+    assert gruppi[0]["totale"] == pytest.approx(200.0), gruppi[0]
+    # la nota resta nell'elenco del mese: si sottrae, non si nasconde
+    assert gruppi[0]["count"] == 2
+
+
+@pytest.mark.parametrize("tz", FUSI)
+def test_la_nota_di_credito_col_totale_negativo_toglie_lo_stesso(tz):
+    """Senza testata in fatture_documenti il worker somma le righe, che per una
+    nota di credito sono negative: anche cosi' deve togliere, non aggiungere."""
+    docs = [
+        _doc("fattura.xml", "2026-05-10", totale=300.0),
+        _doc("nota.xml", "2026-05-20", totale=-100.0, nota_credito=True),
+    ]
+    assert _gruppi(docs, tz)[0]["totale"] == pytest.approx(200.0)
+
+
+def test_importo_con_segno_cambia_solo_le_note_di_credito():
+    """Una fattura col totale negativo (uno storno scritto come TD01) resta com'e':
+    il segno si decide sul tipo del documento, non sul valore."""
+    casi = [
+        _doc("f.xml", "2026-05-10", totale=300.0),
+        _doc("n.xml", "2026-05-10", totale=100.0, nota_credito=True),
+        _doc("n2.xml", "2026-05-10", totale=-100.0, nota_credito=True),
+        _doc("neg.xml", "2026-05-10", totale=-50.0),
+        dict(_doc("vuoto.xml", "2026-05-10"), totale_documento=None),
+    ]
+    out = esegui_ts(
+        MODULO,
+        "emit(input.map((d) => m.importoConSegno(d)));",
+        argomento=casi,
+        richiede=["importoConSegno"],
+    )
+    assert out == [300.0, -100.0, -100.0, -50.0, 0]
+
+
+def test_intestazione_e_riga_usano_l_importo_con_segno():
+    """Il .tsx non e' eseguibile dai test: qui si guarda che l'intestazione della
+    sezione e l'importo della riga passino dalle funzioni di lib provate sopra, e
+    che la vecchia somma senza segno non sia tornata. La sezione «Note di
+    credito» dello Scadenzario resta fuori: mostra crediti in positivo per
+    scelta, sotto un titolo che lo dice."""
+    import pathlib
+    import re
+
+    sorgente = (pathlib.Path(__file__).resolve().parent.parent
+                / "apps/web/src/app/(app)/scadenziario/scadenziario-client.tsx"
+                ).read_text(encoding="utf-8")
+
+    def corpo(nome):
+        inizio = sorgente.find(f"function {nome}(")
+        assert inizio >= 0, f"{nome} non esiste piu'"
+        fine = sorgente.find("\nfunction ", inizio + 1)
+        return sorgente[inizio:fine if fine > inizio else len(sorgente)]
+
+    sezione = corpo("AgendaSection")
+    assert re.search(r"const totale = totaleConSegno\(docs\);", sezione), (
+        "l'intestazione di AgendaSection non calcola piu' il totale con "
+        "totaleConSegno: le note di credito tornano a sommarsi nell'Archivio"
+    )
+    assert not re.search(r"\.reduce\(\(s, d\) => s \+ \(?d\.totale_documento", sezione), (
+        "AgendaSection somma di nuovo totale_documento senza segno"
+    )
+    # Il totale col segno deve arrivare a video cosi' com'e': un Math.abs nel
+    # render (mutante sopravvissuto alla prima stesura) rimetterebbe in positivo
+    # un mese fatto di sole note di credito.
+    assert "{formatEuro(totale)}" in sezione, (
+        "l'intestazione di AgendaSection non mostra piu' il totale calcolato "
+        "con totaleConSegno"
+    )
+
+    riga = corpo("DocumentoRow")
+    assert "formatEuro(importoConSegno(doc))" in riga, (
+        "la riga del documento non mostra piu' l'importo col segno: in Archivio "
+        "una nota di credito comparirebbe come una fattura"
+    )
+    assert "formatEuro(doc.totale_documento)" not in riga
+    assert re.search(r"\{doc\.is_nota_credito && \(", riga), (
+        "la riga del documento non ha piu' l'etichetta «nota di credito»"
+    )

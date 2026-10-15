@@ -815,6 +815,23 @@ export function formatDate(iso: string | null): string {
 // mesi diversi per la stessa fattura a seconda di una regola cambiata. La data
 // del documento e' un fatto della fattura, non una deduzione.
 
+/**
+ * L'importo di un documento dentro un totale di lista: la nota di credito
+ * toglie. Il worker la manda col totale dell'XML, positivo, oppure con la somma
+ * delle righe, negativa: il valore assoluto copre i due casi. Senza, l'Archivio
+ * «Per mese» sommava le note di credito come fatture (audit di ottobre 2026,
+ * 149 note su 5 account). Nella sezione «Note di credito» dello Scadenzario
+ * l'importo resta positivo: li' la sezione stessa dice che sono crediti.
+ */
+export function importoConSegno(doc: Documento): number {
+  const valore = doc.totale_documento || 0;
+  return doc.is_nota_credito ? -Math.abs(valore) : valore;
+}
+
+export function totaleConSegno(documenti: Documento[]): number {
+  return documenti.reduce((s, d) => s + importoConSegno(d), 0);
+}
+
 export type GruppoMese = {
   chiave: string;   // "YYYY-MM", oppure "" per il gruppo senza data
   label: string;    // "marzo 2026"
@@ -872,7 +889,7 @@ export function raggruppaPerMeseFattura(
         ? [...docs].sort((a, b) =>
             (b.data_documento ?? "").localeCompare(a.data_documento ?? ""))
         : ordinaDocumenti(docs, ordine as Ordine),
-      totale: docs.reduce((s, d) => s + (d.totale_documento || 0), 0),
+      totale: totaleConSegno(docs),
       count: docs.length,
     };
   });

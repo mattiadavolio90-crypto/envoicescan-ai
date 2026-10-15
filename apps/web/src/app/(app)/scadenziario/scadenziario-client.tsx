@@ -26,7 +26,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
@@ -203,6 +203,11 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
               esclusa da te
             </span>
           )}
+          {doc.is_nota_credito && (
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-accent text-primary-text">
+              nota di credito
+            </span>
+          )}
           {mostraScadenze && <ScadenzaBadge source={doc.scadenza_source} />}
           {doc.sede_nome && (
             <SedeBadge nome={doc.sede_nome} isSedeTecnica={!!doc.ristorante_id && doc.ristorante_id === sedeTecnicaId} />
@@ -219,7 +224,7 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
       </div>
 
       <div className="text-right flex-shrink-0">
-        <p className="font-semibold text-sm tabular-nums">{formatEuro(doc.totale_documento)}</p>
+        <p className="font-semibold text-sm tabular-nums">{formatEuro(importoConSegno(doc))}</p>
       </div>
 
       {mostraScadenze && !doc.pagata && (
@@ -282,7 +287,7 @@ function AgendaSection({
   }, [someSelected]);
 
   if (docs.length === 0) return null;
-  const totale = docs.reduce((s, d) => s + (d.totale_documento || 0), 0);
+  const totale = totaleConSegno(docs);
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
