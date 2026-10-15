@@ -2895,6 +2895,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   + 1 rosso preesistente e non legato al fix
 >   (`test_briefing_prezzi_scesi_fatture.py::test_il_motore_li_restituisce_accanto_ai_rincari`,
 >   servizio prezzi, rosso anche da solo); `tsc` pulito sui sorgenti.
+>
+> - **15/10/2026 — Fix n. 2 dell'audit di ottobre (K15): in catena l'anteprima di una fattura
+>   legge la sede della fattura.** Da `/catena/fatture` il dettaglio chiamava
+>   `/api/scadenziario/anteprima`, che cerca nella sede della sessione: «Nessuna riga
+>   trovata» su 2.542 documenti di 2 catene. `urlAnteprimaFattura` in `lib/scadenziario.ts`
+>   manda in catena a `/api/gruppo/prezzi/fattura` con la sede del documento (lo stesso
+>   endpoint dell'anteprima dalla scheda Prezzi, sede verificata nel gruppo); in vista sede
+>   l'URL resta quello di prima, perche' l'endpoint di gruppo vuole la pagina Catena. +4 test
+>   in `tests/test_scadenziario_anteprima_catena_frontend.py`; **5 mutanti, 5 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

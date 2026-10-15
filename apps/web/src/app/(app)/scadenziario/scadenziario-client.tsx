@@ -26,7 +26,7 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
@@ -786,7 +786,7 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina, onOscura, 
     setLoadingRighe(true);
     setAnteprimaOpen(true);
     try {
-      const res = await fetch(`/api/scadenziario/anteprima?file_origine=${encodeURIComponent(doc.file_origine)}`);
+      const res = await fetch(urlAnteprimaFattura(doc, modalitaCatena));
       if (res.ok) { const d = await res.json(); setRighe(d.righe ?? []); }
     } catch { /* silenzioso */ }
     finally { setLoadingRighe(false); }

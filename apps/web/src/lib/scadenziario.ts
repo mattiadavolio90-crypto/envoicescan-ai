@@ -832,6 +832,23 @@ export function totaleConSegno(documenti: Documento[]): number {
   return documenti.reduce((s, d) => s + importoConSegno(d), 0);
 }
 
+/**
+ * Da dove si leggono le righe dell'anteprima. `/api/scadenziario/anteprima`
+ * cerca nella sede della sessione: in catena la fattura e' quasi sempre di
+ * un'altra sede, e l'anteprima diceva «Nessuna riga trovata» (audit di ottobre
+ * 2026: 2.542 documenti su 2 catene). In catena si chiede la sede del documento.
+ */
+export function urlAnteprimaFattura(
+  doc: Pick<Documento, "file_origine" | "ristorante_id">,
+  modalitaCatena: boolean,
+): string {
+  if (modalitaCatena && doc.ristorante_id) {
+    const qs = new URLSearchParams({ ristorante_id: doc.ristorante_id, file_origine: doc.file_origine });
+    return `/api/gruppo/prezzi/fattura?${qs}`;
+  }
+  return `/api/scadenziario/anteprima?file_origine=${encodeURIComponent(doc.file_origine)}`;
+}
+
 export type GruppoMese = {
   chiave: string;   // "YYYY-MM", oppure "" per il gruppo senza data
   label: string;    // "marzo 2026"
