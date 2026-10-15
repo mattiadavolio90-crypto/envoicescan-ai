@@ -6,6 +6,9 @@ import { toast } from "sonner";
 import { Sparkles, AlertTriangle, ChevronRight, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
+import { AvatarFlusso } from "@/components/home/avatar-flusso";
+import { BenvenutoAssistente } from "@/components/home/benvenuto-assistente";
+import { useModoAvatar } from "@/components/home/use-modo-avatar";
 import type { GruppoOverview } from "@/lib/gruppo";
 import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
 import { SALUTE_TINT, ETICHETTA_INCOMPLETO } from "@/lib/salute-tint";
@@ -73,11 +76,17 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   // codaRaggiungibile=false: su /m la coda da assegnare non esiste, quindi il testo
   // rimanda al computer invece che "qui sotto".
   const msgDaCollocare = messaggioFattureDaCollocare(overview.briefing, false);
+  const { modo, suStato } = useModoAvatar();
 
   return (
     <div className="space-y-4">
       {/* Briefing di gruppo */}
+      <BenvenutoAssistente saluto={`${overview.briefing.saluto}, ${overview.nome_gruppo}`} />
       <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.05] to-background p-5">
+        {/* L'assistente (fase L): il flusso in cima, come nella Home del locale. */}
+        <div className="relative -mx-5 -mt-5 mb-2 h-32">
+          <AvatarFlusso modo={modo} variante="fascia" className="absolute inset-0" />
+        </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs font-medium text-primary/80">
             <Sparkles className="size-3.5" />
@@ -92,6 +101,7 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
             ]
               .filter(Boolean)
               .join(" ")}
+            onStato={suStato}
           />
         </div>
         <h1 className="mt-2 text-xl font-bold tracking-tight">

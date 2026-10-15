@@ -13,6 +13,9 @@ import { toast } from "sonner";
 import { type Briefing, type BriefingAzione } from "@/lib/home";
 import { puoIgnorare } from "@/lib/briefing-shared";
 import { AscoltaButton } from "@/components/ascolta-button";
+import { AvatarFlusso } from "@/components/home/avatar-flusso";
+import { BenvenutoAssistente } from "@/components/home/benvenuto-assistente";
+import { useModoAvatar } from "@/components/home/use-modo-avatar";
 import { cn } from "@/lib/utils";
 import { statoAzioni } from "@/lib/briefing-azioni";
 
@@ -50,6 +53,7 @@ function useTypewriter(text: string, enabled: boolean) {
 export function MobileBriefing({ briefing }: { briefing: Briefing }) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
+  const { modo, suStato } = useModoAvatar();
 
   // Typewriter solo al primo load del giorno (chiave = data del briefing).
   const [animate, setAnimate] = useState(false);
@@ -103,14 +107,19 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
   return (
     <div className="space-y-5">
       {/* Hero briefing con typewriter */}
+      <BenvenutoAssistente saluto={briefing.saluto} />
       <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-5">
         <div className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-sky-400/15 blur-3xl" />
+        {/* L'assistente (fase L): il flusso in cima, al posto del tondino. */}
+        <div className="relative -mx-5 -mt-5 mb-2 h-32">
+          <AvatarFlusso modo={modo} variante="fascia" className="absolute inset-0" />
+        </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs font-medium text-primary/80">
             <Sparkles className="size-3.5" />
             <span>Il tuo assistente</span>
           </div>
-          <AscoltaButton testo={`${briefing.saluto}. ${briefing.narrativa}`} />
+          <AscoltaButton testo={`${briefing.saluto}. ${briefing.narrativa}`} onStato={suStato} />
         </div>
         <h1 className="mt-2 text-xl font-bold tracking-tight">{briefing.saluto}</h1>
         <p className="mt-3 whitespace-pre-line text-[15px] leading-relaxed text-foreground/90">

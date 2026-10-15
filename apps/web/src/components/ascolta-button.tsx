@@ -10,9 +10,29 @@ import { cn } from "@/lib/utils";
 //     installate sul telefono -> qualita' costante anche da PWA mobile.
 //  2) Fallback: Web Speech del browser (voce di sistema) se l'endpoint non risponde,
 //     cosi' il pulsante non resta mai muto.
-export function AscoltaButton({ testo, className }: { testo: string; className?: string }) {
-  const [stato, setStato] = useState<"idle" | "loading" | "playing">("idle");
+export type StatoAscolta = "idle" | "loading" | "playing";
+
+export function AscoltaButton({
+  testo,
+  className,
+  onStato,
+}: {
+  testo: string;
+  className?: string;
+  /** Chi ascolta lo stato (l'avatar della Home, fase L). `audio` e' l'elemento che suona,
+   *  null se legge la voce di sistema: serve solo a sapere a che punto e' la lettura. */
+  onStato?: (stato: StatoAscolta, audio: HTMLAudioElement | null) => void;
+}) {
+  const [stato, setStato] = useState<StatoAscolta>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const daAudioRef = useRef(false);
+  const onStatoRef = useRef(onStato);
+  useEffect(() => {
+    onStatoRef.current = onStato;
+  }, [onStato]);
+  useEffect(() => {
+    onStatoRef.current?.(stato, daAudioRef.current ? audioRef.current : null);
+  }, [stato]);
 
   // Stop completo (audio HTML + eventuale Web Speech) alla smontatura.
   useEffect(() => {
@@ -23,6 +43,7 @@ export function AscoltaButton({ testo, className }: { testo: string; className?:
       } catch {
         /* no-op */
       }
+      onStatoRef.current?.("idle", null);
     };
   }, []);
 
@@ -41,6 +62,7 @@ export function AscoltaButton({ testo, className }: { testo: string; className?:
 
   // Fallback voce di sistema (qualita' variabile, ma meglio di niente).
   function fallbackWebSpeech() {
+    daAudioRef.current = false;
     try {
       const synth = window.speechSynthesis;
       if (!synth) {
@@ -67,6 +89,7 @@ export function AscoltaButton({ testo, className }: { testo: string; className?:
     try {
       const audio = new Audio(`/api/tts?q=${encodeURIComponent(testo)}`);
       audioRef.current = audio;
+      daAudioRef.current = true;
       // La voce Google Translate legge lenta: acceleriamo del 25%. preservesPitch
       // mantiene il tono naturale (niente effetto "Paperino"). Va impostato anche
       // a 'playing' perche' alcuni browser lo resettano al caricamento.
