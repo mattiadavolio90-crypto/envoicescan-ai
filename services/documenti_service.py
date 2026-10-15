@@ -810,9 +810,11 @@ def get_documenti_scadenziario(
         totale_doc = _to_float_safe(extra.get("totale_documento")) if extra.get("totale_documento") else None
         totale_righe = round(base["totale_documento"], 2)
         totale = totale_doc if totale_doc is not None else totale_righe
-        # Segnala divergenza (riga soft-deleted, ripartizione, ecc.) senza bloccare nulla:
-        # il totale mostrato resta quello autorevole di fatture_documenti.
-        totale_incoerente = totale_doc is not None and abs(totale_doc - totale_righe) > 0.01
+        # Il ripiego sulle righe e' senza IVA, il totale del documento la include:
+        # stessa colonna, due basi. Lo si dice al client invece di tacerlo (audit
+        # di ottobre 2026: 13 documenti su 3.645). Il vecchio `totale_incoerente`
+        # confrontava il lordo con le righe nette ed era vero quasi sempre.
+        totale_senza_iva = totale_doc is None
 
         pagata = bool(extra.get("pagata", False))
         pagata_at = _to_date_iso(extra.get("pagata_at")) if extra else None
@@ -861,7 +863,7 @@ def get_documenti_scadenziario(
             "tipo_documento": tipo_doc,
             "is_nota_credito": is_nota_credito,
             "totale_documento": round(totale, 2),
-            "totale_incoerente": totale_incoerente,
+            "totale_senza_iva": totale_senza_iva,
             "data_documento": base.get("data_documento"),
             "numero_documento": extra.get("numero_documento"),
             "scadenza_effettiva": scadenza_eff,

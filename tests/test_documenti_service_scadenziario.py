@@ -1,7 +1,7 @@
 """Test per get_documenti_scadenziario e get_fatture_cestino (Fase 1 catena/fatture).
 
 Copre:
-- totale autorevole da fatture_documenti (fallback su somma-righe) + warning totale_incoerente
+- totale autorevole da fatture_documenti (fallback su somma-righe, marcato `totale_senza_iva`)
 - piva_fornitore esposta per riga (raggruppamento fornitori lato frontend)
 - get_fatture_cestino con ristorante_id come lista (modalità catena)
 """
@@ -258,7 +258,7 @@ def test_totale_autorevole_da_fatture_documenti(monkeypatch):
     assert len(result) == 1
     doc = result[0]
     assert doc["totale_documento"] == 100.0
-    assert doc["totale_incoerente"] is True
+    assert doc["totale_senza_iva"] is False
     assert doc["piva_fornitore"] == "12345678901"
 
 
@@ -300,7 +300,8 @@ def test_totale_coerente_nessun_warning(monkeypatch):
 
     result = get_documenti_scadenziario(user_id="u1", ristorante_id="rist-1", supabase_client=sb)
 
-    assert result[0]["totale_incoerente"] is False
+    assert result[0]["totale_senza_iva"] is False
+    assert "totale_incoerente" not in result[0]
 
 
 def test_totale_fallback_su_somma_righe_senza_fatture_documenti(monkeypatch):
@@ -325,7 +326,8 @@ def test_totale_fallback_su_somma_righe_senza_fatture_documenti(monkeypatch):
     result = get_documenti_scadenziario(user_id="u1", ristorante_id="rist-1", supabase_client=sb)
 
     assert result[0]["totale_documento"] == 20.0
-    assert result[0]["totale_incoerente"] is False
+    # Il ripiego sulle righe e' senza IVA: il client lo dice accanto all'importo.
+    assert result[0]["totale_senza_iva"] is True
     assert result[0]["piva_fornitore"] is None
 
 

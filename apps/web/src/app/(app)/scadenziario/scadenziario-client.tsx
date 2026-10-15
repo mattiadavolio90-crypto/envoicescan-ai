@@ -227,6 +227,14 @@ function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek, sedeTecni
 
       <div className="text-right flex-shrink-0">
         <p className="font-semibold text-sm tabular-nums">{formatEuro(importoConSegno(doc))}</p>
+        {doc.totale_senza_iva && (
+          <p
+            className="text-[10px] text-muted-foreground"
+            title="Manca il totale della fattura: l'importo è la somma delle righe, senza IVA"
+          >
+            IVA esclusa
+          </p>
+        )}
       </div>
 
       {mostraScadenze && !doc.pagata && (

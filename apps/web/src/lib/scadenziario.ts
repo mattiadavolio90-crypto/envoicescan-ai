@@ -8,7 +8,8 @@ export type Documento = {
   tipo_documento: string;
   is_nota_credito?: boolean;
   totale_documento: number;
-  totale_incoerente?: boolean;
+  /** Manca il totale della fattura: `totale_documento` e' la somma delle righe, senza IVA. */
+  totale_senza_iva?: boolean;
   data_documento: string | null;
   numero_documento: string | null;
   scadenza_effettiva: string | null;

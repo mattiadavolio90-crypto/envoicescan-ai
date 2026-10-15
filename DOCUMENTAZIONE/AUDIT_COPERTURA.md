@@ -2963,6 +2963,17 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   selezioni di nomi e sono stati portati alle chiavi; +5 test con lo stesso file su due
 >   sedi in `tests/test_scadenziario_azione_di_massa_frontend.py`; **10 mutanti, 10
 >   uccisi**.
+>
+> - **15/10/2026 — Fix n. 8 dell'audit di ottobre (K12): l'importo senza IVA si dichiara.**
+>   Senza il totale della fattura (`fatture_documenti`) il worker ripiega sulla somma delle
+>   righe, che e' senza IVA, nella stessa colonna dei totali IVA inclusa: 13 documenti su
+>   3.645, 5.594,99 €. Ora `get_documenti_scadenziario` manda `totale_senza_iva` e la riga
+>   scrive «IVA esclusa» sotto l'importo. Tolto `totale_incoerente`: confrontava il lordo con
+>   le righe nette, era vero su 3.580 documenti su 3.645 e nessuno lo leggeva. Le somme di
+>   card e calendario includono ancora quei 13 importi netti: la base si dichiara, non si
+>   ricostruisce (servirebbe l'IVA per riga nella RPC aggregata). +1 test in
+>   `tests/test_scadenziario_vista_mensile_frontend.py`, 3 riscritti in
+>   `tests/test_documenti_service_scadenziario.py`; **4 mutanti, 4 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

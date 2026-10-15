@@ -271,3 +271,23 @@ def test_intestazione_e_riga_usano_l_importo_con_segno():
     assert re.search(r"\{doc\.is_nota_credito && \(", riga), (
         "la riga del documento non ha piu' l'etichetta «nota di credito»"
     )
+
+
+def test_la_riga_dice_quando_l_importo_e_senza_iva():
+    """Audit di ottobre 2026 (K12): senza il totale della fattura il worker
+    ripiega sulla somma delle righe, che e' senza IVA, e la mette nella stessa
+    colonna dei totali IVA inclusa. Il worker lo marca con `totale_senza_iva`
+    (provato in test_documenti_service_scadenziario.py); qui si guarda che la
+    riga lo dica accanto all'importo."""
+    import pathlib
+    import re
+
+    sorgente = (pathlib.Path(__file__).resolve().parent.parent
+                / "apps/web/src/app/(app)/scadenziario/scadenziario-client.tsx"
+                ).read_text(encoding="utf-8")
+    inizio = sorgente.index("function DocumentoRow(")
+    riga = sorgente[inizio:sorgente.index("\nfunction ", inizio + 1)]
+    assert re.search(
+        r"\{formatEuro\(importoConSegno\(doc\)\)\}</p>\s*\{doc\.totale_senza_iva && \(\s*<p[^>]*>\s*IVA esclusa\s*</p>",
+        riga,
+    ), "la riga non segnala piu' l'importo senza IVA accanto al totale"
