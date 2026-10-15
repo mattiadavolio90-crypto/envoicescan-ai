@@ -3053,6 +3053,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `da_pagare_per_fornitore` (i 10 debiti piu' alti), calcolati su tutte le voci. La
 >   descrizione dice al modello che le cifre da dire sono i totali. +5 test in
 >   `tests/test_chat_query_scadenze.py`; **6 mutanti, 6 uccisi**.
+>
+> - **15/10/2026 — Fix n. 13 dell'audit di ottobre (K26, solo la parte di accesso): /api/tts
+>   verifica la sessione.** La route controllava che il cookie `oneflux_session` esistesse, non
+>   che fosse valido: con un valore inventato era un proxy aperto verso il TTS di Google. Ora
+>   chiama `verifySession` prima di Google (sessione non valida 401, worker irraggiungibile
+>   503, la decisione in `lib/tts-accesso.ts`). **Resta a Mattia**, insieme a K23: Google non
+>   e' fra i sub-responsabili della privacy e riceve il saluto col nome del referente e le
+>   cifre del briefing (dichiararlo, togliere il nome dal testo, o passare alla voce del
+>   dispositivo). +4 test in `tests/test_tts_accesso_frontend.py`; **4 mutanti, 4 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

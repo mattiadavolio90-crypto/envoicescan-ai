@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth";
+import { rifiutoTts } from "@/lib/tts-accesso";
 
 // TTS gratuito server-side via Google Translate (voce "Google italiano"): non
 // dipende dalle voci installate sul dispositivo, quindi suona UGUALE e decente su
@@ -54,6 +55,8 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  const negato = rifiutoTts(await verifySession(token));
+  if (negato) return NextResponse.json({ error: negato.error }, { status: negato.status });
 
   const q = new URL(request.url).searchParams.get("q")?.trim();
   if (!q) return NextResponse.json({ error: "Testo mancante" }, { status: 400 });
