@@ -82,9 +82,13 @@ def test_ordinati_per_risparmio():
 
 def test_il_motore_li_restituisce_accanto_ai_rincari():
     """Un solo `calcola_alert` per rincari e ribassi."""
+    # Il motore misura la freschezza (7 giorni) sulla data VERA di Roma, non su OGGI:
+    # con l'acquisto ancorato a OGGI il test e' diventato rosso il 15/10, una settimana dopo.
+    ieri = (pd.Timestamp.now(tz="Europe/Rome").tz_localize(None).normalize()
+            - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     df_alert = pd.DataFrame([
-        {**_alert("SALMONE", -12, -85, giorni_fa=1), "Categoria": "PESCE"},
-        {**_alert("TONNO", 9, 40, giorni_fa=1), "Categoria": "PESCE"},
+        {**_alert("SALMONE", -12, -85), "Data": ieri, "Categoria": "PESCE"},
+        {**_alert("TONNO", 9, 40), "Data": ieri, "Categoria": "PESCE"},
     ])
     df = pd.DataFrame([{"DataDocumento": pd.Timestamp.now().strftime("%Y-%m-%d"),
                         "Descrizione": "SALMONE", "TotaleRiga": 100, "Categoria": "PESCE"}])

@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 
 // L'avatar dell'assistente (fase L, 15/10/2026): il flusso che ruota su se stesso, accanto
 // al briefing da computer («colonna») e in cima alla Home del telefono («fascia»). Il modo
-// arriva da chi lo usa; il cursore e il tema li legge da solo. Il ciclo si ferma quando il
-// canvas non si vede o la scheda è in secondo piano.
+// arriva da chi lo usa; il cursore e il tema li legge da solo. Quando il canvas non si vede
+// o la scheda è in secondo piano il ciclo non disegna (resta solo il frame vuoto).
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 

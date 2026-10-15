@@ -169,7 +169,9 @@ export class DisegnoFlusso {
           const u = c / (this.campioni - 1), env = Math.pow(Math.sin(Math.PI * u), 0.5);
           const phi = u * 2 * Math.PI * GIRI + s.giro + n.fase;
           const hw = larghezza * n.larg * (0.55 + 0.45 * Math.sin(Math.PI * u));
-          let [sx, sy, dz] = proietta((u - 0.5) * 1.35, centroNastro(u, tt, q, n) + w * hw * Math.cos(phi), w * hw * Math.sin(phi));
+          const proiettato = proietta((u - 0.5) * 1.35, centroNastro(u, tt, q, n) + w * hw * Math.cos(phi), w * hw * Math.sin(phi));
+          let [sx, sy] = proiettato;
+          const dz = proiettato[2];
           let a = 1;
           if (A < 1) {
             const pr = clamp((A - this.ritardo[i]) / 0.6, 0, 1), e = 1 - Math.pow(1 - pr, 3);

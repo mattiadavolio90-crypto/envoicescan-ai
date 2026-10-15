@@ -409,7 +409,7 @@ aver editato un file Python del briefing:
 | `apps/web/src/lib/home.ts` | `fetchBriefing`/`fetchKpi`/... (proxy verso worker) |
 | `apps/web/src/components/home/riquadro-assistente.tsx` | Il riquadro del briefing (Home PV e catena): colonna dell'avatar accanto da computer, fascia sotto lo schermo largo, frase evidenziata durante «Ascolta» |
 | `apps/web/src/lib/avatar-flusso.ts` | L'avatar (fase L): modi, voce simulata, geometria del flusso, frasi da evidenziare, benvenuto una volta al giorno — logica pura, provata da `tests/test_avatar_flusso_frontend.py` |
-| `apps/web/src/components/home/disegno-flusso.ts`, `apps/web/src/components/home/avatar-flusso.tsx`, `apps/web/src/components/home/benvenuto-assistente.tsx` | Il disegno su canvas, il componente che lo anima (si ferma fuori schermo e a scheda nascosta) e il benvenuto dopo il login |
+| `apps/web/src/components/home/disegno-flusso.ts`, `apps/web/src/components/home/avatar-flusso.tsx`, `apps/web/src/components/home/benvenuto-assistente.tsx` | Il disegno su canvas, il componente che lo anima (non disegna fuori schermo né a scheda nascosta; la colonna è sticky e resta accanto mentre la conversazione si allunga) e il benvenuto dopo il login |
 
 ---
 

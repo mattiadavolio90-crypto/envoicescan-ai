@@ -188,3 +188,21 @@ def test_il_benvenuto_parte_una_volta_e_mai_con_meno_animazioni(gia_visto, meno,
 def test_l_opacita_resta_fra_0_e_1():
     assert _chiama("conOpacita", "rgba(1,2,3,", 2) == "rgba(1,2,3,1.000)"
     assert _chiama("conOpacita", "rgba(1,2,3,", -1) == "rgba(1,2,3,0.000)"
+
+
+# ─── quanto e' stato letto ────────────────────────────────────────────────
+
+def test_con_l_audio_conta_la_sua_durata():
+    assert _chiama("frazioneLetta", {"currentTime": 15, "duration": 60}, 999, 300) == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize("durata", [0, None])
+def test_senza_durata_si_stima_dal_tempo(durata):
+    audio = None if durata is None else {"currentTime": 3, "duration": durata}
+    # 15 caratteri al secondo: 4 secondi su 300 caratteri = 0,2
+    assert _chiama("frazioneLetta", audio, 4, 300) == pytest.approx(0.2)
+
+
+def test_la_frazione_resta_fra_0_e_1():
+    assert _chiama("frazioneLetta", None, 999, 10) == 1
+    assert _chiama("frazioneLetta", None, -5, 10) == 0

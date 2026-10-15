@@ -155,6 +155,22 @@ export function carattereNarrativa(testoAscolta: string, narrativa: string, fraz
  *  quando la durata dell'audio non è nota. */
 export const CARATTERI_AL_SECONDO = 15;
 
+/**
+ * Quanto del testo d'«Ascolta» è già stato letto, 0-1. Dall'audio se ne conosce la durata;
+ * altrimenti (voce di sistema, durata non ancora nota) stimato dal tempo trascorso.
+ */
+export function frazioneLetta(
+  audio: { currentTime: number; duration: number } | null,
+  secondiTrascorsi: number,
+  lunghezzaTesto: number,
+): number {
+  const f =
+    audio && Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.currentTime / audio.duration
+      : (Math.max(0, secondiTrascorsi) * CARATTERI_AL_SECONDO) / Math.max(1, lunghezzaTesto);
+  return Math.min(1, Math.max(0, f));
+}
+
 /** Il giorno di Roma, «AAAA-MM-GG»: il benvenuto si mostra una volta al giorno. */
 export function giornoDiRoma(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(d);

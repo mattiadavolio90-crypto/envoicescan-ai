@@ -23,6 +23,9 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
   const saltaRef = useRef<() => void>(() => {});
 
   useEffect(() => {
+    // Una finestra gia' aperta (il consenso privacy al primo accesso) ha la precedenza:
+    // niente benvenuto e niente chiave scritta, ripartira' alla prossima Home.
+    if (document.querySelector('[role="dialog"]')) return;
     let giaVisto = true;
     try {
       const chiave = chiaveBenvenuto(giornoDiRoma(new Date()));
@@ -49,7 +52,7 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
     disegno.assemble = 0;
     disegno.cresce = 0;
     const t0 = performance.now();
-    let ultimo = t0, id = 0, partito = false, chiudi = 0;
+    let ultimo = t0, id = 0, partito = false, chiudi = 0, scritto = false;
 
     const parti = (durata: number) => {
       if (partito) return;
@@ -88,7 +91,10 @@ export function BenvenutoAssistente({ saluto, sottotitolo = "Ecco cosa conta ogg
       if (!partito) {
         disegno.assemble = Math.min(1, e / 1.5);
         disegno.cresce = clamp((e - 1.35) / 0.45, 0, 1);
-        if (e > 1.1) setTesto(true);
+        if (e > 1.1 && !scritto) {
+          scritto = true;
+          setTesto(true);
+        }
         if (e >= DURATA_FORMA) parti(0.95);
       }
       disegno.disegna({

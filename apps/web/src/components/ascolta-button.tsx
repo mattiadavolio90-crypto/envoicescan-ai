@@ -78,6 +78,9 @@ export function AscoltaButton({
       u.onend = () => setStato("idle");
       u.onerror = () => setStato("idle");
       setStato("playing");
+      // Se l'audio e' caduto mentre suonava lo stato resta «playing» e l'effetto non riparte:
+      // chi ascolta va avvisato che ora legge la voce di sistema (niente piu' audio da seguire).
+      onStatoRef.current?.("playing", null);
       synth.speak(u);
     } catch {
       setStato("idle");

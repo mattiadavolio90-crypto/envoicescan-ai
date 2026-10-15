@@ -7,11 +7,11 @@ import { AvatarFlusso } from "@/components/home/avatar-flusso";
 import { BenvenutoAssistente } from "@/components/home/benvenuto-assistente";
 import { useAssistente } from "@/components/home/assistente-provider";
 import {
-  CARATTERI_AL_SECONDO,
   TESTO_MODO,
   carattereNarrativa,
   fraseAl,
   frasi,
+  frazioneLetta,
   modoAvatar,
 } from "@/lib/avatar-flusso";
 import { cn } from "@/lib/utils";
@@ -116,11 +116,7 @@ export function RiquadroAssistente({
     let id = 0;
     const segui = () => {
       id = requestAnimationFrame(segui);
-      const a = audioRef.current;
-      const frazione =
-        a && Number.isFinite(a.duration) && a.duration > 0
-          ? a.currentTime / a.duration
-          : (((performance.now() - inizioRef.current) / 1000) * CARATTERI_AL_SECONDO) / Math.max(1, testoAscolta.length);
+      const frazione = frazioneLetta(audioRef.current, (performance.now() - inizioRef.current) / 1000, testoAscolta.length);
       const n = fraseAl(elenco, carattereNarrativa(testoAscolta, narrativa, frazione));
       setLetta((prima) => (prima === n ? prima : n));
     };
