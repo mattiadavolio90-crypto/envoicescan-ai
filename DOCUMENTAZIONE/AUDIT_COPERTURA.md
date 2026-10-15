@@ -2993,6 +2993,24 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   telefono che apre `/dashboard` prima del rimando a `/m` consuma il benvenuto del giorno.
 >   Corretto anche `tests/test_briefing_prezzi_scesi_fatture.py` (fase F): ancorava l'acquisto a
 >   una data fissa mentre il motore usa la data vera, era rosso dal 15/10.
+>
+> - **15/10/2026 — Code-reviewer sui fix 2-8 dell'audit di ottobre, verdetto rosso, chiuso.**
+>   Il blocco: K15 era chiuso a meta'. `/api/gruppo/prezzi/fattura` risolveva il gruppo senza
+>   la sede tecnica, quindi l'anteprima dei suoi documenti, che lo scadenziario di catena
+>   elenca, dava ancora 404 e «Nessuna riga trovata»: 200 documenti su 570 di una catena. Ora
+>   usa `_resolve_gruppo_con_tecnica`, lo stesso resolver dello scadenziario di gruppo; la sede
+>   tecnica di un altro account resta 404. +1 test `-m sql` in `tests/test_sql_gruppo_prezzi.py`;
+>   **2 mutanti, 2 uccisi**. Il presidio `tests/test_isolamento_per_risorsa.py` (`-m sql`,
+>   fuori dal giro `not sql` del fix 6) ha segnalato `POST /api/cestino/svuota`, che ora prende
+>   `ristorante_id`, senza ricetta: aggiunta. Il mutante che toglie il controllo di
+>   appartenenza sopravvive alla ricetta perche' `svuota_cestino` filtra comunque per
+>   `user_id` (nessuna fuga possibile); il 404 esplicito lo uccide in
+>   `tests/test_cestino_multisede.py`. Non bloccanti, lasciati: «IVA esclusa» non arriva al
+>   CSV, al dettaglio e alla lista del giorno (13 documenti); due chiavi React per sola
+>   `file_origine` (note di credito, lista del giorno), preesistenti. **Ordine di deploy**: un
+>   proxy nuovo con il worker vecchio svuoterebbe la sede di sessione dicendo un'altra sede; il
+>   push va fatto la sera, a catena ferma. Suite `-m "not sql"` sui fix 2-8: 19.677 verdi + 62
+>   skip.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
