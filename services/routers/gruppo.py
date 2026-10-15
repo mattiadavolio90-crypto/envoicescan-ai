@@ -3677,10 +3677,12 @@ def gruppo_prezzi_fattura(
     """L'anteprima del PV (`/api/scadenziario/anteprima`) legge la sede della
     sessione; in catena la fattura e' di un'altra sede (Mattia, 13/10/2026: «le
     fatture voglio che si possano vedere in anteprima come sul punto vendita»).
-    Stessa forma di risposta, sede verificata nel gruppo."""
+    Stessa forma di risposta, sede verificata nel gruppo. La sede tecnica e'
+    compresa: lo scadenziario di gruppo elenca anche i suoi documenti, e da li'
+    se ne apre l'anteprima (audit di ottobre 2026)."""
     from services.db_service import filter_active
 
-    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo_con_tecnica(authorization)
     if ristorante_id not in rid_to_nome:
         raise HTTPException(status_code=404, detail="Punto vendita non trovato")
     file_origine = str(file_origine or "").strip()

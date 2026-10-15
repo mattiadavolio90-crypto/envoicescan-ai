@@ -501,6 +501,45 @@ def test_l_anteprima_della_fattura_di_una_sede_del_gruppo(db_sql, sql, monkeypat
     assert e.value.status_code == 404
 
 
+def test_l_anteprima_apre_anche_le_fatture_della_sede_tecnica(db_sql, sql, monkeypatch):
+    """Lo scadenziario di catena elenca anche i documenti della sede tecnica
+    («Costi comuni di gruppo»): l'anteprima rispondeva 404 e il dialog diceva
+    «Nessuna riga trovata» (audit di ottobre 2026, 200 documenti su una catena).
+    La sede tecnica di un altro account resta 404."""
+    from fastapi import HTTPException
+    from services.routers import gruppo as G
+    from tests.helpers_supabase_sql import ClientSQL
+
+    _semina_sedi(sql)
+    tecnica = "22222222-2222-4222-8222-22222222222f"
+    sql(
+        "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo, sede_tecnica) "
+        "VALUES (%s, %s, 'Costi comuni di gruppo', '01234567891', true, true)",
+        tecnica, UTENTE,
+    )
+    altro_utente = "11111111-1111-4111-8111-11111111111e"
+    altra_tecnica = "22222222-2222-4222-8222-22222222222e"
+    sql(
+        "INSERT INTO public.users (id, email, password_hash, nome_ristorante) "
+        "VALUES (%s, 'altro@oneflux.test', 'x', 'Altro')",
+        altro_utente,
+    )
+    sql(
+        "INSERT INTO public.ristoranti (id, user_id, nome_ristorante, partita_iva, attivo, sede_tecnica) "
+        "VALUES (%s, %s, 'Costi comuni', '09876543210', true, true)",
+        altra_tecnica, altro_utente,
+    )
+    sb = ClientSQL(db_sql)
+    _riga(sql, tecnica, "2026-07-20", "CONSULENZA", "STUDIO", Decimal("300.00"), file="f-comune.xml")
+    monkeypatch.setattr(G, "_resolve_gruppo", lambda auth: (sb, UTENTE, [], "G", {SEDE1: "Centro"}, [SEDE1]))
+
+    esito = G.gruppo_prezzi_fattura(tecnica, "f-comune.xml", authorization="x")
+    assert [r["descrizione"] for r in esito["righe"]] == ["CONSULENZA"]
+    with pytest.raises(HTTPException) as e:
+        G.gruppo_prezzi_fattura(altra_tecnica, "f-comune.xml", authorization="x")
+    assert e.value.status_code == 404
+
+
 def test_lo_storico_aperto_dalla_riga_ha_gli_stessi_acquisti_della_riga(db_sql, sql):
     """La riga porta le chiavi intere (`desc_key`, `forn_key`) e lo storico deve
     trovare ESATTAMENTE gli acquisti che la lista ha raggruppato. Col solo nome a

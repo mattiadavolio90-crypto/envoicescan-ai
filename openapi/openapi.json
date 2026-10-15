@@ -18590,7 +18590,7 @@
           "Catena"
         ],
         "summary": "Righe di una fattura di una sede del gruppo (anteprima dalla lista acquisti della scheda Prezzi)",
-        "description": "L'anteprima del PV (`/api/scadenziario/anteprima`) legge la sede della\nsessione; in catena la fattura e' di un'altra sede (Mattia, 13/10/2026: «le\nfatture voglio che si possano vedere in anteprima come sul punto vendita»).\nStessa forma di risposta, sede verificata nel gruppo.",
+        "description": "L'anteprima del PV (`/api/scadenziario/anteprima`) legge la sede della\nsessione; in catena la fattura e' di un'altra sede (Mattia, 13/10/2026: «le\nfatture voglio che si possano vedere in anteprima come sul punto vendita»).\nStessa forma di risposta, sede verificata nel gruppo. La sede tecnica e'\ncompresa: lo scadenziario di gruppo elenca anche i suoi documenti, e da li'\nse ne apre l'anteprima (audit di ottobre 2026).",
         "operationId": "gruppo_prezzi_fattura_api_gruppo_prezzi_fattura_get",
         "parameters": [
           {

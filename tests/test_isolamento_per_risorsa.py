@@ -528,6 +528,8 @@ RICETTE: List[Ricetta] = [
     # cestino e fatture
     R("POST", "/api/cestino/ripristina", {"file_origine": "$altro.file_cancellato"}),
     R("POST", "/api/cestino/elimina", {"file_origine": "$altro.file_cancellato"}),
+    R("POST", "/api/cestino/svuota", {"ristorante_id": "$altro.sede1"},
+      nota="svuotare il cestino di una sede altrui (catena, dal 15/10/2026)"),
     R("POST", "/api/fatture/elimina", {"file_origine": "$altro.file", "ristorante_id": "$altro.sede1"}),
     R("POST", "/api/fatture/elimina", {"file_origine": "$altro.file"}, nota="senza sede"),
     R("POST", "/api/fatture/oscura", {"file_origine": "$altro.file", "oscurata": True, "ristorante_id": "$altro.sede1"}),
