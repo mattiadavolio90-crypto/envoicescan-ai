@@ -2927,6 +2927,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   ha gia' una: prima usciva dalla card (3 fatture di ottobre, 205,89 €). +20 test in
 >   `tests/test_scadenziario_periodo_in_vista_frontend.py`, +3 in
 >   `tests/test_documenti_service_rid_e_regole.py`; **15 mutanti, 15 uccisi**.
+>
+> - **15/10/2026 — Fix n. 5 dell'audit di ottobre (F4-10): l'esito parziale dell'azione di
+>   massa dice quante sono andate.** Il worker scrive ogni fattura per conto suo e risponde
+>   `ok: false` se anche una fallisce; il client scartava `aggiornate` e mostrava «Errore nel
+>   salvataggio» sopra fatture in parte gia' segnate, e un errore di rete su una sede saltava
+>   le successive. Ora `esitoAzioneDiMassa` in `lib/scadenziario.ts` somma inviate e
+>   aggiornate di ogni richiesta (una per sede, ciascuna nel suo try) e distingue riuscito,
+>   parziale («N segnate; M non riuscite, riprova», toast di avviso, ricarica, selezione
+>   tenuta) ed errore. Platea del caso deterministico ipotizzato dall'audit: 0; resta il
+>   guasto transitorio. Due guardie di `tests/test_scadenziario_azione_di_massa_frontend.py`
+>   fissavano il comportamento vecchio e sono state riscritte, +4 casi; **7 mutanti, 7
+>   uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

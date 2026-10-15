@@ -269,6 +269,31 @@ export function messaggioEsitoAzioneDiMassa(aggiornate: number, pagata: boolean)
     : `${aggiornate} fattur${una ? "a riportata" : "e riportate"} fra quelle da pagare`;
 }
 
+/** Quante fatture una richiesta ha inviato e quante il worker ha aggiornato. */
+export type EsitoGruppo = { inviate: number; aggiornate: number };
+
+/**
+ * L'esito dell'azione di massa, sommato su tutte le richieste (una per sede).
+ * Il worker scrive ogni fattura per conto suo e risponde `ok: false` se anche
+ * una sola fallisce: il toast diceva «Errore nel salvataggio» sopra fatture in
+ * parte gia' segnate (audit di ottobre 2026). Ora le riuscite si contano anche
+ * nelle richieste fallite, e il messaggio dice quante non sono andate.
+ */
+export function esitoAzioneDiMassa(
+  gruppi: EsitoGruppo[],
+  pagata: boolean,
+): { tipo: "ok" | "parziale" | "errore"; messaggio: string } {
+  const aggiornate = gruppi.reduce((s, g) => s + g.aggiornate, 0);
+  const fallite = gruppi.reduce((s, g) => s + g.inviate, 0) - aggiornate;
+  if (fallite <= 0) return { tipo: "ok", messaggio: messaggioEsitoAzioneDiMassa(aggiornate, pagata) };
+  if (aggiornate === 0) return { tipo: "errore", messaggio: "Errore nel salvataggio: nessuna fattura aggiornata" };
+  const una = fallite === 1;
+  return {
+    tipo: "parziale",
+    messaggio: `${messaggioEsitoAzioneDiMassa(aggiornate, pagata)}; ${fallite} non riuscit${una ? "a" : "e"}, riprova`,
+  };
+}
+
 /**
  * L'aggiornamento a video dopo aver segnato pagate o da pagare: cambiano solo le
  * fatture passate. Una gia' pagata finita nella selezione tiene la sua data di

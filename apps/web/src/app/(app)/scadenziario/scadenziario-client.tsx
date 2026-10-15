@@ -26,12 +26,12 @@ import { InfoPopover } from "@/components/ui/info-popover";
 import {
   type Documento, type RegolaPagamento, type SedeCatena,
   type Periodo, type Ordine, type OrdineArchivio, type FornitoreEntry,
-  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, aggregaCalendario, scadenzeDelMese, periodoInVista, pagateDelMese, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
+  computeKpi, bucketizeDocumenti, raggruppaPerMeseFattura, importoConSegno, totaleConSegno, urlAnteprimaFattura, aggregaCalendario, scadenzeDelMese, periodoInVista, pagateDelMese, esitoAzioneDiMassa, type EsitoGruppo, formatEuro, formatEuroCompact, formatDate, parseLocalDate, todayLocalIso, MODALITA_LABELS,
   ordinaDocumenti, ordinaScadute, elencaFornitori, statoDocumento,
   scaduteFuoriDalMese,
   filtraDocumenti, aggregaPerSede, contaDaPagare, documentiSelezionabili,
   chiaviSelezionaTutte, statoSelezioneSezione, pianoAzioneDiMassa, applicaPagataAVideo,
-  messaggioConfermaAzioneDiMassa, messaggioEsitoAzioneDiMassa, motivoAzioneSpenta,
+  messaggioConfermaAzioneDiMassa, motivoAzioneSpenta,
   aperturaSezione, type AperturaSezione, ricercaAttiva,
   inPuntiVendita, alternaPuntoVendita, etichettaPuntiVendita,
 } from "@/lib/scadenziario";
@@ -1841,27 +1841,35 @@ export function ScadenziarioClient({ initialDocumenti, modalitaCatena = false, s
     if (piano.gruppi.length === 0) return;
     setBulkPaying(true);
     try {
-      let aggiornate = 0;
-      let ok = true;
+      const esiti: EsitoGruppo[] = [];
       for (const { ristorante_id, file_origini } of piano.gruppi) {
-        const res = await fetch("/api/scadenziario/pagata", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file_origini, pagata, ristorante_id }),
-        });
-        const data = await res.json().catch(() => ({}));
-        // Il worker risponde 200 anche se una parte fallisce: lo dice `ok`.
-        if (!res.ok || data.ok === false) { ok = false; continue; }
-        aggiornate += data.aggiornate ?? 0;
+        // Il worker risponde 200 anche se una parte fallisce: `aggiornate`
+        // conta le riuscite, e una richiesta caduta non ferma le altre sedi.
+        let aggiornate = 0;
+        try {
+          const res = await fetch("/api/scadenziario/pagata", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file_origini, pagata, ristorante_id }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) aggiornate = data.aggiornate ?? 0;
+        } catch { /* conta come non riuscita */ }
+        esiti.push({ inviate: file_origini.length, aggiornate });
       }
 
-      if (!ok) { toast.error("Errore nel salvataggio"); await loadData(); return; }
-      toast.success(messaggioEsitoAzioneDiMassa(aggiornate, pagata));
+      const esito = esitoAzioneDiMassa(esiti, pagata);
+      if (esito.tipo !== "ok") {
+        // Si ricarica: solo il worker sa quali sono andate. La selezione resta,
+        // e il piano di un nuovo clic contiene solo quelle ancora da cambiare.
+        if (esito.tipo === "parziale") toast.warning(esito.messaggio);
+        else toast.error(esito.messaggio);
+        await loadData();
+        return;
+      }
+      toast.success(esito.messaggio);
       setDocumenti(prev => applicaPagataAVideo(prev, piano.cambiano, pagata, todayLocalIso()));
       setSelectedFileOrigini(new Set());
-    } catch {
-      toast.error("Errore di connessione");
-      await loadData();
     } finally {
       setBulkPaying(false);
     }

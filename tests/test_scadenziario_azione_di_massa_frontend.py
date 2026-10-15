@@ -326,9 +326,12 @@ def test_handle_bulk_paga_manda_solo_il_piano(sorgente: str):
         "l'aggiornamento a video non passa piu' da applicaPagataAVideo: una fattura "
         "gia' pagata nella selezione mostrerebbe la data di oggi"
     )
-    assert "if (!res.ok || data.ok === false) { ok = false; continue; }" in corpo, (
-        "un fallimento parziale (HTTP 200 con ok:false) torna a passare per successo"
-    )
+    # Un fallimento parziale (HTTP 200 con ok:false) non passa per successo:
+    # conta le fatture inviate contro quelle aggiornate, gruppo per gruppo.
+    assert "if (res.ok) aggiornate = data.aggiornate ?? 0;" in corpo
+    assert "esiti.push({ inviate: file_origini.length, aggiornate });" in corpo
+    assert "const esito = esitoAzioneDiMassa(esiti, pagata);" in corpo
+    assert 'if (esito.tipo !== "ok") {' in corpo
 
 
 def test_i_piani_si_ricalcolano_quando_cambia_la_selezione(sorgente: str):
@@ -411,10 +414,35 @@ def test_il_toast_dopo_l_azione_di_massa():
 
 def test_handle_bulk_paga_usa_il_toast_della_lib(sorgente: str):
     corpo = _normalizza(_corpo_funzione(sorgente, "async function handleBulkPaga("))
-    assert "toast.success(messaggioEsitoAzioneDiMassa(aggiornate, pagata));" in corpo
-    assert "aggiornate += data.aggiornate ?? 0;" in corpo, (
-        "il toast non conta piu' le fatture che il worker ha davvero aggiornato"
+    assert 'if (esito.tipo === "parziale") toast.warning(esito.messaggio); else toast.error(esito.messaggio); await loadData(); return;' in corpo
+    assert "toast.success(esito.messaggio);" in corpo
+    assert "Errore di connessione" not in corpo
+
+
+@pytest.mark.parametrize(
+    "gruppi,pagata,atteso",
+    [
+        # Tutto riuscito, su due sedi.
+        ([{"inviate": 2, "aggiornate": 2}, {"inviate": 1, "aggiornate": 1}], True,
+         {"tipo": "ok", "messaggio": "3 fatture segnate come pagate"}),
+        # Il caso dell'audit: una sede risponde ok:false con 1 riuscita su 2.
+        ([{"inviate": 2, "aggiornate": 2}, {"inviate": 2, "aggiornate": 1}], True,
+         {"tipo": "parziale", "messaggio": "3 fatture segnate come pagate; 1 non riuscita, riprova"}),
+        # Una sede irraggiungibile: le altre restano contate.
+        ([{"inviate": 1, "aggiornate": 1}, {"inviate": 3, "aggiornate": 0}], False,
+         {"tipo": "parziale", "messaggio": "1 fattura riportata fra quelle da pagare; 3 non riuscite, riprova"}),
+        ([{"inviate": 2, "aggiornate": 0}], True,
+         {"tipo": "errore", "messaggio": "Errore nel salvataggio: nessuna fattura aggiornata"}),
+    ],
+)
+def test_esito_dell_azione_di_massa(gruppi, pagata, atteso):
+    esito = esegui_ts(
+        MODULO,
+        "emit(m.esitoAzioneDiMassa(input.gruppi, input.pagata));",
+        {"gruppi": gruppi, "pagata": pagata},
+        richiede=["esitoAzioneDiMassa"],
     )
+    assert esito == atteso
 
 
 def test_il_pulsante_della_singola_fattura(sorgente: str):
