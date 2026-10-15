@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Privacy & Cookie Policy</h1>
       <p className="text-xs text-muted-foreground">
-        Ultimo aggiornamento: 3 ottobre 2026 — versione 4.5
+        Ultimo aggiornamento: 15 ottobre 2026 — versione 4.6
       </p>
 
       <h2>Titolare del Trattamento</h2>
@@ -215,6 +215,12 @@ export default function PrivacyPage() {
             "USA",
             "Copia di sicurezza giornaliera, conservata 14 giorni e poi eliminata automaticamente; SCCs UE",
           ],
+          [
+            "Google (servizio di sintesi vocale di Google Translate)",
+            "Lettura ad alta voce del briefing: quando premi «Ascolta», il testo letto viene inviato a Google per ottenere l'audio",
+            "Infrastruttura Google, anche fuori dall'UE",
+            "Usato solo quando premi «Ascolta». Il testo inviato contiene il saluto con il nome di chi ascolta e le cifre del briefing. ONEFLUX non conserva l'audio",
+          ],
         ]}
       />
 
@@ -243,15 +249,24 @@ export default function PrivacyPage() {
           sul documento (fornitore, partite IVA, indirizzi, importi).
         </li>
         <li>
-          <strong>Assistente conversazionale:</strong> per rispondere alle domande vengono
-          trasmessi gli indicatori economici dell&apos;attività (fatturato, food cost, costo del
-          personale, margine), le principali categorie di spesa e i principali fornitori con i
-          relativi importi, oltre al nome dell&apos;attività.
+          <strong>Assistente conversazionale:</strong> i dati sono trasmessi{" "}
+          <strong>in chiaro</strong>, senza sostituire i nomi. Vengono inviati la domanda e i
+          messaggi precedenti della conversazione; il nome di chi scrive e il nome
+          dell&apos;attività o del punto vendita (se il nome dell&apos;attività manca,
+          l&apos;indirizzo email dell&apos;account); gli indicatori economici (fatturato, food
+          cost, costo del personale, spese, margine), le principali categorie di spesa e i
+          principali fornitori con i relativi importi. Quando l&apos;assistente li consulta per
+          rispondere, vengono inviati anche: le righe delle fatture (descrizione del prodotto,
+          fornitore, importo, data), le scadenze di pagamento per fornitore, i prezzi
+          d&apos;acquisto e il loro andamento, gli appuntamenti dell&apos;agenda (titolo e
+          descrizione), le spese annotate, i coperti, il costo del personale in totale (mai per
+          singolo dipendente), i tag, il punteggio dei fornitori e i nomi dei punti vendita.
         </li>
       </ul>
       <p>
-        Il briefing giornaliero è invece elaborato in forma <strong>anonimizzata</strong>: nomi di
-        prodotti e fornitori sono sostituiti prima dell&apos;invio e ripristinati alla ricezione.
+        Per il briefing giornaliero, nei segnali di prezzo i nomi di prodotti e fornitori sono
+        sostituiti prima dell&apos;invio e ripristinati alla ricezione; le altre frasi del
+        briefing (ad esempio i titoli degli appuntamenti) sono trasmesse così come sono.
       </p>
       <p>
         OpenAI opera come responsabile del trattamento: i dati trasmessi tramite API{" "}

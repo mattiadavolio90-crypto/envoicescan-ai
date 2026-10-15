@@ -166,7 +166,7 @@ pagina che gli risponderebbe 403.
 | SSRF | Whitelist host: solo `*.invoicetronic.com/.it` su HTTPS, `redirect: 'error'`, timeout 3s |
 | Upload | Validazione **magic bytes** (non l'estensione) + limiti 100 file/200 MB/50 MB per P7M |
 | Path traversal | `nome_file` e `file_origine` sanificati |
-| Prompt injection | Control char removal + troncamento 300 char prima di OpenAI |
+| Prompt injection | Categorizzazione: control char removal + troncamento 300 char prima di OpenAI (`ai_service.py`). Chat: solo l'istruzione nel prompt di trattare i risultati degli strumenti come «DATO GREZZO», e il tetto di lunghezza dei messaggi |
 | Secrets | Solo env server-side (Railway/Vercel/Supabase). Mai `NEXT_PUBLIC_*`, mai nel repo |
 | Worker | `WORKER_SECRET_KEY` 64 char, **fail-closed**: non si avvia senza (salvo `WORKER_DEV_MODE=1`) |
 | Log | Nessuna PII: email mai in chiaro, password mai loggate |
@@ -188,14 +188,25 @@ Test: 18 test Deno (HMAC + routing), in CI.
 
 ---
 
-## 8. Anonimizzazione prima dell'AI
+## 8. Cosa arriva a OpenAI in chiaro (e cosa no)
 
-Prima di ogni chiamata a OpenAI per briefing e chat:
-- nomi prodotti → `Prodotto_1`, `Prodotto_2`…
-- nomi fornitori → `Fornitore_123`
-- ripristinati **dopo** la risposta
+Fino al 15/10/2026 questa sezione diceva che prodotti e fornitori erano sempre
+anonimizzati, per briefing e chat: non era vero (audit di ottobre, K23). Mattia
+ha scelto di dichiarare il comportamento reale invece di cambiarlo.
 
-I nomi veri non escono mai dall'infrastruttura.
+- **Briefing** (`daily_briefing_service._anonymize_bullets`): solo i segnali di
+  prezzo (bullet 📈 e 🏷) hanno i nomi sostituiti da `<<P1>>`, ripristinati dopo
+  la risposta. Le altre frasi vanno com'erano (es. i titoli degli appuntamenti).
+- **Chat**: niente anonimizzazione. Vanno in chiaro la domanda, il nome di chi
+  scrive, il nome della sede (o l'email se manca), i dati del prompt e ogni
+  risultato degli strumenti (righe fattura, fornitori, agenda, spese extra, tag,
+  nomi delle sedi). L'elenco per categoria e' in `docs/COMPLIANCE_GDPR.md` e
+  nella privacy pubblica.
+- **Voce del briefing** («Ascolta»): il testo letto va al TTS di Google
+  Translate (endpoint pubblico, nessun contratto), dichiarato in privacy.
+
+Chi aggiunge uno strumento alla chat aggiunge la sua categoria alla privacy:
+`tests/test_privacy_policy_veritiera.py` lo fa fallire altrimenti.
 
 ---
 

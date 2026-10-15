@@ -220,6 +220,7 @@ HOST_DA_DICHIARARE = {
     "api.openai.com": "OpenAI",
     "api.brevo.com": "Brevo",
     "supabase.co": "Supabase",
+    "translate.google.com": "Google",
 }
 
 
@@ -419,3 +420,116 @@ def test_la_privacy_dichiara_la_traccia_dell_attivazione() -> None:
     voce = " ".join(_voce(_senza_commenti_jsx(_leggi(PRIVACY_TSX)), "Dati del commercialista").split())
     for dato in ("email o PEC", "data e ora dell&apos;attivazione", "chi l&apos;ha registrata"):
         assert dato in voce, f"La privacy non dichiara: {dato}"
+
+
+# --------------------------------------------------------------------------
+# Audit di ottobre 2026 (K23, K26): cosa esce dalla chat e dalla voce
+# --------------------------------------------------------------------------
+#
+# La privacy diceva «anonimizzato» e SICUREZZA_GDPR §8 «i nomi veri non escono
+# mai»: la chat manda tutto in chiaro e la voce del briefing va a Google, che non
+# era fra i destinatari. Mattia (15/10) ha scelto di dichiarare il comportamento
+# reale. Questi test tengono le due cose legate: uno strumento nuovo della chat
+# senza la sua voce nella privacy, o un host esterno nuovo in app/api, li fa
+# cadere.
+
+API_DIR = ROOT / "apps" / "web" / "src" / "app" / "api"
+HOST_INTERNI = {"worker-production-a552.up.railway.app"}
+
+# Strumento della chat → la frase della privacy che dichiara cosa porta a OpenAI.
+CATEGORIA_PER_STRUMENTO = {
+    "query_costi": "le righe delle fatture",
+    "ultimi_acquisti": "le righe delle fatture",
+    "query_scadenze": "le scadenze di pagamento per fornitore",
+    "confronto_prezzi": "i prezzi d'acquisto e il loro andamento",
+    "trend_prezzo": "i prezzi d'acquisto e il loro andamento",
+    "avvisi_prezzi": "i prezzi d'acquisto e il loro andamento",
+    "query_appuntamenti": "gli appuntamenti dell'agenda (titolo e descrizione)",
+    "query_spese_extra": "le spese annotate",
+    "query_coperti": "i coperti",
+    "query_personale": "il costo del personale in totale (mai per singolo dipendente)",
+    "query_tag": "i tag",
+    "score_fornitori": "il punteggio dei fornitori",
+    "query_margini": "gli indicatori economici",
+    "proponi_spesa": "la domanda e i messaggi precedenti della conversazione",
+    "proponi_incasso": "la domanda e i messaggi precedenti della conversazione",
+    "proponi_personale": "la domanda e i messaggi precedenti della conversazione",
+    "proponi_fatturato_mese": "la domanda e i messaggi precedenti della conversazione",
+    "gruppo_overview": "i nomi dei punti vendita",
+    "gruppo_margini_coperti": "i nomi dei punti vendita",
+    "gruppo_spesa": "i principali fornitori con i relativi importi",
+    "gruppo_segnali": "i nomi dei punti vendita",
+}
+
+
+def _testo_privacy() -> str:
+    testo = _senza_commenti_jsx(_leggi(PRIVACY_TSX)).replace("&apos;", "'").replace('{" "}', " ")
+    return " ".join(re.sub(r"<[^>]+>", "", testo).split())
+
+
+def _destinatari() -> list[str]:
+    """Il primo campo di ogni riga della tabella «Destinatari dei Dati»."""
+    sezione = _leggi(PRIVACY_TSX).split("Destinatari dei Dati", 1)[1]
+    sezione = sezione.split("rows={[", 1)[1].split("\n        ]}", 1)[0]
+    return re.findall(r'\[\s*"([^"]+)",', sezione)
+
+
+def test_ogni_strumento_della_chat_ha_la_sua_voce_nella_privacy() -> None:
+    import services.fastapi_worker as fw
+
+    strumenti = {t["function"]["name"] for t in fw._CHAT_TOOLS_SEDE + fw._CHAT_TOOLS_GRUPPO}
+    assert strumenti, "il test non misura piu' nulla"
+    senza_voce = strumenti - set(CATEGORIA_PER_STRUMENTO)
+    assert not senza_voce, f"strumenti della chat senza categoria dichiarata in privacy: {senza_voce}"
+    testo = _testo_privacy()
+    mancanti = {n: f for n, f in CATEGORIA_PER_STRUMENTO.items() if f not in testo}
+    assert not mancanti, f"la privacy non dichiara: {mancanti}"
+
+
+def test_la_privacy_dice_che_la_chat_e_in_chiaro_come_il_prompt() -> None:
+    from unittest.mock import MagicMock
+    import services.fastapi_worker as fw
+
+    sb = MagicMock()
+    q = MagicMock()
+    sb.table.return_value = q
+    for m in ("select", "eq", "is_", "gte", "lte", "lt", "in_", "single", "limit", "order", "not_"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=[], count=0)
+    user = {"id": "u", "nome_ristorante": "Trattoria Prova", "nome_referente": "Giulia Prova",
+            "email": "t@x.it", "pagine_abilitate": None}
+    vecchio = (fw.home_kpi, fw._chat_top_cat_forn)
+    fw.home_kpi = lambda *a, **k: None
+    fw._chat_top_cat_forn = lambda *a, **k: ([], [{"fornitore": "FORNITORE PROVA SRL", "totale": 10.0}])
+    try:
+        prompt = fw._build_chat_system_prompt(user, sb, None, "r-1", "ristorazione")
+    finally:
+        fw.home_kpi, fw._chat_top_cat_forn = vecchio
+    assert "Giulia Prova" in prompt and "Trattoria Prova" in prompt
+    testo = _testo_privacy()
+    assert "i dati sono trasmessi in chiaro, senza sostituire i nomi" in testo
+    assert "il nome di chi scrive" in testo
+    assert "elaborato in forma anonimizzata" not in testo
+
+
+def test_ogni_host_esterno_delle_route_api_e_dichiarato() -> None:
+    hosts = set()
+    for route in API_DIR.rglob("route.ts"):
+        hosts |= set(re.findall(r"https://([a-zA-Z0-9.-]+)", _leggi(route)))
+    assert "translate.google.com" in hosts, "il test non misura piu' nulla"
+    non_dichiarati = hosts - HOST_INTERNI - set(HOST_DA_DICHIARARE)
+    assert not non_dichiarati, f"host esterni senza riga nella privacy: {non_dichiarati}"
+
+
+def test_google_e_una_riga_dei_destinatari() -> None:
+    righe = _destinatari()
+    assert "OpenAI LP" in righe, "il test non misura piu' nulla"
+    assert any(r.startswith("Google") for r in righe), righe
+
+
+def test_compliance_e_sicurezza_non_promettono_l_anonimizzazione_della_chat() -> None:
+    sicurezza = _leggi(ROOT / "DOCUMENTAZIONE" / "tecnica" / "SICUREZZA_GDPR.md")
+    assert "I nomi veri non escono mai dall'infrastruttura" not in sicurezza
+    compliance = _leggi(COMPLIANCE_MD)
+    assert "in chiaro, nessuna anonimizzazione" in compliance
+    assert "Google (TTS di Google Translate)" in compliance

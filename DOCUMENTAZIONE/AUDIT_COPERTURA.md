@@ -3129,6 +3129,23 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `query_scadenze` non sono validati come date; un 429 senza testo mostra ancora «limite
 >   di crediti per oggi» ma lascia la casella aperta. Suite `-m "not sql"`: 19.735 verdi +
 >   62 skip; `-m sql` mirati (chat, proposte, isolamento): 446 verdi.
+>
+> - **15/10/2026 — Fix n. 18 dell'audit di ottobre (K23 e la parte privacy di K26): i
+>   documenti dicono cosa esce davvero.** La privacy pubblica diceva il briefing
+>   «anonimizzato» e la chat limitata a KPI e fornitori; SICUREZZA_GDPR §8 diceva che i nomi
+>   veri non escono mai; la voce del briefing va a Google, che non era fra i destinatari.
+>   Decisione di Mattia (15/10): dichiarare, non cambiare il codice. Privacy alla versione
+>   4.6: chat **in chiaro** con l'elenco delle categorie (nome di chi scrive, email se manca
+>   il nome dell'attivita', righe fattura, scadenze, prezzi, agenda, spese annotate, coperti,
+>   personale solo in totale, tag, score, nomi delle sedi), briefing pseudonimizzato solo
+>   nei segnali di prezzo, e una riga per Google (TTS di Google Translate). Aggiornati
+>   `docs/COMPLIANCE_GDPR.md` (riga Google senza garanzie: endpoint pubblico, nessun DPA
+>   possibile) e SICUREZZA_GDPR §6 (difesa dal prompt injection della chat: solo il prompt) e
+>   §8. Presidi in `tests/test_privacy_policy_veritiera.py` (+6): ogni strumento della chat
+>   ha una voce nella privacy, ogni host esterno di `app/api` e' fra i destinatari, il
+>   prompt porta davvero nome e sede in chiaro, Google e' una riga della tabella. **5
+>   mutanti, 5 uccisi**, due dopo aver stretto i test (cercavano «Google» e «in chiaro», che
+>   la pagina contiene anche altrove).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

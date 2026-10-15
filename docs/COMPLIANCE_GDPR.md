@@ -43,19 +43,22 @@ su larga scala di categorie particolari, no monitoraggio sistematico su larga sc
 | Railway Corp. | Worker elaborazione + API | USA | SCC UE; nessun dato applicativo persistito (log tecnici con identificativi utente sullo stdout del fornitore) | Disponibile, **non automatico**: da compilare un modulo DocuSign dedicato. [railway.com/legal/dpa](https://railway.com/legal/dpa) |
 
 | GitHub Inc. | Custodia backup cifrati del DB (`pg_dump` giornaliero) | USA | SCC UE; artifact cifrato, retention 14gg poi eliminazione automatica | Incluso nei GitHub Customer Terms (DPA standard Microsoft) — da confermare per l'account in uso |
+| Google (TTS di Google Translate) | Voce del briefing: «Ascolta» manda il testo letto (saluto col nome di chi ascolta, cifre del briefing) a `translate.google.com/translate_tts` dal proxy `apps/web/src/app/api/tts/route.ts` | Infrastruttura Google, anche extra-UE | **Nessuna**: e' l'endpoint pubblico non ufficiale di Google Translate, senza contratto | **Nessun DPA possibile** su questo endpoint. Dichiarato in privacy dal 15/10/2026 (versione 4.6, audit di ottobre K23/K26). L'alternativa senza terzi e' la voce del dispositivo |
 
 I trasferimenti extra-UE (OpenAI, Railway, Vercel, GitHub) sono coperti da
-**Clausole Contrattuali Standard UE (SCC)**. Il database con i dati persistiti
+**Clausole Contrattuali Standard UE (SCC)**; quello verso Google per la voce del
+briefing no (vedi la riga sopra). Il database con i dati persistiti
 resta in UE.
 
-**Cosa esce verso OpenAI, per flusso** (verificato nel codice il 09/09/2026):
+**Cosa esce verso OpenAI, per flusso** (verificato nel codice il 09/09/2026; chat e
+briefing ri-verificati il 15/10/2026, audit di ottobre K23):
 
 | Flusso | Codice | Dati trasmessi |
 |---|---|---|
 | Categorizzazione articoli | `services/ai_service.py` | descrizione riga, nome fornitore, aliquota IVA. Nessun importo |
 | Vision su PDF/scontrini | `services/invoice_service.py` | **immagine integrale del documento** in base64: tutto cio' che vi e' stampato |
-| Chat assistente | `services/fastapi_worker.py` (`_build_chat_system_prompt`) | KPI economici, top categorie e top fornitori con importi, nome attivita' |
-| Briefing giornaliero | `services/daily_briefing_service.py` | **anonimizzato**: prodotti/fornitori sostituiti prima dell'invio e ripristinati dopo |
+| Chat assistente | `services/fastapi_worker.py` (`_build_chat_system_prompt`, `_build_chat_system_prompt_catena`, gli strumenti `_CHAT_TOOLS_SEDE` e `_CHAT_TOOLS_GRUPPO`) | **in chiaro, nessuna anonimizzazione**: domanda e storia della conversazione; nome di chi scrive (`nome_referente`, per un sotto-utente il suo); nome dell'attivita' o della sede (l'email dell'account se manca); KPI, top categorie e top fornitori con importi; appuntamenti di oggi. Dagli strumenti: righe fattura (descrizione, fornitore, importo, data), scadenze per fornitore, prezzi e trend, agenda (titolo e descrizione), spese extra (descrizione libera), coperti, costo del personale in totale (mai per dipendente), tag, score fornitori, nomi delle sedi |
+| Briefing giornaliero | `services/daily_briefing_service.py` (`_anonymize_bullets`) | **anonimizzato solo nei segnali di prezzo** (bullet 📈 e 🏷: nomi sostituiti da `<<P1>>` e ripristinati dopo). Le altre frasi vanno com'erano, ad esempio i titoli degli appuntamenti |
 
 **Telegram** (`services/telegram_service.py`, Edge Functions) riceve gli alert
 operativi. **Non e' un sub-responsabile** perche' non gli vengono trasmessi dati
