@@ -918,7 +918,7 @@ def _voci_spente_per_sede(sb, ids: List[str]) -> Dict[str, set]:
 
 def _salute_indici_batch(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
-    costi_mese: Optional[Dict[str, float]] = None,
+    costi_mese: Optional[Dict[str, Any]] = None,  # sede -> merce ok (bool), da _merce_ok_per_sede
 ) -> Optional[Dict[str, int]]:
     """Indice di salute (0-100) per OGNI sede, stessa formula 4-voci di
     /api/home/salute (fatture del mese chiuso, fatturato, costo personale,
@@ -2197,7 +2197,7 @@ _CHIAVE_MANCA = {
 def _completezza_dati_pv(
     sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
     anno: Optional[int] = None, mese: Optional[int] = None,
-    costi_mese: Optional[Dict[str, float]] = None,
+    costi_mese: Optional[Dict[str, Any]] = None,  # sede -> merce ok (bool), da _merce_ok_per_sede
 ) -> Optional[Dict[str, List[str]]]:
     """Per ogni PV, la lista dei dati BASE mancanti (dict vuoto = tutti completi).
 

@@ -3194,6 +3194,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   aver scritto i test sui collegamenti che i primi avevano lasciato scoperti). **Resta il
 >   secondo passo**: lo stato «in attesa delle fatture di fine mese» per i mesi chiusi senza
 >   merce nel mese dopo.
+>
+> - **16/10/2026 — Code-reviewer sul fix n. 19 (K03, soglia del 15%), verdetto verde.** Nessun
+>   punto rimasto sulla regola vecchia (briefing mese chiuso e buona notizia leggono
+>   `costi_mancanti`; `food_cost_alto` scatta sopra il 33%; i `cfb_dopo > 0` misurano il
+>   consolidato, non la merce; `/m`, catena e `tintContiPV` leggono i campi del worker); mese
+>   in corso esente in tutti i chiamanti; nessuna deviazione per settore; deploy senza ordine
+>   obbligato (il frontend ripiega sulla regola vecchia se il worker non manda `senza_merce`).
+>   Suite `-m "not sql"` sua: 19.761 verdi. Corretti i due rilievi di forma (docstring di
+>   `_mesi_confrontabili`, tipo di `costi_mese` in catena). Lasciati, dichiarati: query in
+>   piu' (`_merce_del_mese` rilegge margini e override che `_briefing_fatture_mancanti` ha gia';
+>   `_merce_ok_per_sede` 1 + N per sede); il fail-open della Salute ora scatta anche se non si
+>   leggono i margini; chi carica a mano puo' vedere giallo il mese appena chiuso nei primi
+>   giorni, finche' le fatture non arrivano.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
