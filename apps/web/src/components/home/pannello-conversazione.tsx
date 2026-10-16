@@ -59,12 +59,21 @@ export function PannelloConversazione({
 
   // In fondo a ogni messaggio, scorrendo la lista (o il riquadro, se ad altezza fissa) e non
   // la pagina: scrollIntoView portava giu' tutta la Home appena si apriva.
+  // Ad altezza fissa il riquadro scende solo quando si chatta (domanda partita o risposta
+  // arrivata), non quando si riapre la Home con una conversazione salvata: li' si vede prima
+  // il briefing di oggi, e la conversazione di ieri si ritrova scorrendo.
+  const attesaPrima = useRef(attesa);
   useEffect(() => {
+    const eraInAttesa = attesaPrima.current !== null;
+    attesaPrima.current = attesa;
     const el = lista.current;
     if (!el) return;
     const riquadro = altezzaFissa ? el.closest<HTMLElement>("[data-scorre-conversazione]") : null;
-    if (riquadro && riquadro.scrollHeight > riquadro.clientHeight) riquadro.scrollTop = riquadro.scrollHeight;
-    else el.scrollTop = el.scrollHeight;
+    if (riquadro) {
+      if (attesa !== null || eraInAttesa) riquadro.scrollTop = riquadro.scrollHeight;
+      return;
+    }
+    el.scrollTop = el.scrollHeight;
   }, [voci.length, attesa, altezzaFissa]);
 
   return (

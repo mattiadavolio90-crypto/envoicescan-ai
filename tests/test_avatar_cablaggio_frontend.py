@@ -1,8 +1,7 @@
 """L'avatar della Home e' collegato dove Mattia l'ha voluto (fase L, 15/10/2026).
 
-La logica (modi, voce, frasi, benvenuto) e' eseguita in `test_avatar_flusso_frontend.py`;
-qui si guarda che le tre Home la usino: senza `onStato` il flusso non saprebbe mai che
-«Ascolta» sta leggendo, 
+La logica (modi, voce, frasi) e' eseguita in `test_avatar_flusso_frontend.py`; qui si guarda
+che le tre Home la usino: senza `onStato` il flusso non saprebbe mai che «Ascolta» sta leggendo.
 Si legge il sorgente senza commenti, cosi' un `onStato` citato in un commento non basta.
 """
 import re
@@ -90,3 +89,11 @@ def test_l_avatar_non_rompe_il_demo_tour(file):
     t = _n(file)
     assert "useAssistenteOpzionale()" in t
     assert "useAssistente()" not in t
+
+
+def test_riaprendo_la_home_si_vede_prima_il_briefing():
+    """Una conversazione salvata (sessionStorage) non deve nascondere il briefing di oggi: il
+    riquadro scende in fondo solo quando si chatta, cioe' con una domanda in attesa o appena
+    risposta (trovato dal revisore il 16/10)."""
+    pannello = _n(_WEB / "components/home/pannello-conversazione.tsx")
+    assert "if(riquadro){if(attesa!==null||eraInAttesa)riquadro.scrollTop=riquadro.scrollHeight;return;}" in pannello

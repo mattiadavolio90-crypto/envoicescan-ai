@@ -173,8 +173,8 @@ export function frazioneLetta(
 
 /** Dove sta la linea del flusso, in frazione dell'altezza: più in basso nella colonna alta,
  *  così i fili di luce la riempiono. */
-export type VarianteAvatar = "colonna" | "fascia" | "palco";
-export const BASE_FLUSSO: Record<VarianteAvatar, number> = { colonna: 0.64, fascia: 0.6, palco: 0.6 };
+export type VarianteAvatar = "colonna" | "fascia";
+export const BASE_FLUSSO: Record<VarianteAvatar, number> = { colonna: 0.64, fascia: 0.6 };
 
 export type Palette = {
   composizione: "source-over" | "lighter";

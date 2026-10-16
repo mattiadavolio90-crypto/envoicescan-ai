@@ -121,7 +121,7 @@ export class DisegnoFlusso {
     const base_y = BASE_FLUSSO[this.variante];
     let vicinoTg = 0, versoTg = 0;
     const pt = ing.puntatore;
-    if (pt && pt.dentro && this.variante !== "palco") {
+    if (pt && pt.dentro) {
       const ux = (pt.x - r.left) / r.width, yb = r.top + r.height * base_y;
       const dy = Math.max(0, Math.abs(pt.y - yb) - r.height * 0.25);
       const dx = Math.max(0, -ux, ux - 1) * r.width;
