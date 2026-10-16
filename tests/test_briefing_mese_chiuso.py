@@ -53,8 +53,11 @@ def _fonti(margini, fb=None, anno=2026):
     )
 
 
-def _mese_chiuso(margini, oggi=INIZIO_OTTOBRE, fb=None, anno=2026):
-    with _fonti(margini, fb, anno):
+def _mese_chiuso(margini, oggi=INIZIO_OTTOBRE, fb=None, anno=2026, coperta=True):
+    """`coperta` = il mese ha una fattura di merce dal quinto giorno prima della
+    fine: dal 16/10/2026 e' il «consolidato» (`_mese_in_attesa`, K03), prima era
+    la merce del mese dopo."""
+    with _fonti(margini, fb, anno), patch.object(fw, "_fine_mese_coperta", return_value=coperta):
         return fw._briefing_mese_chiuso(UID, RID, _sb(), oggi)
 
 
@@ -134,33 +137,36 @@ def test_merce_negativa_tace():
 
 
 def test_mese_non_consolidato_non_regge_il_verde():
-    """Nessuna merce di ottobre ancora: il food cost di settembre puo' essere
-    piu' basso del vero (chi carica a mano), quindi verso negativo anche se e'
-    in norma. Revisore, 8/10: un dato incompleto non regge «tutto in ordine»."""
-    fb = dict(FB)
-    fb[10] = 0.0
-    rec = _mese_chiuso(_margini(), fb=fb)
+    """Nessuna fattura di merce negli ultimi giorni di settembre: il food cost
+    puo' essere piu' basso del vero (chi carica a mano), quindi verso negativo
+    anche se e' in norma. Revisore, 8/10: un dato incompleto non regge «tutto in
+    ordine»."""
+    rec = _mese_chiuso(_margini(), coperta=False)
     assert rec["payload"]["food_cost_pct"] == 28.8
     assert rec["severity"] == "warning"
 
 
-def _dicembre(fb_gennaio):
+def _dicembre(coperta):
     margini = {12: {"altri_ricavi_noiva": 30000.0, "costo_dipendenti": 8000.0}}
     for m in range(6, 12):
         margini[m] = {"altri_ricavi_noiva": 30000.0}
-    fonti = {2026: (margini, {12: 9000.0}), 2027: ({}, fb_gennaio)}
+    fonti = {2026: (margini, {12: 9000.0})}
+    chiesti = []
     with patch.multiple(
         "services.margine_service",
         carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: fonti.get(a, ({}, {}))[0]),
         calcola_costi_automatici_per_anno_sql=MagicMock(
             side_effect=lambda _u, _r, a: (fonti.get(a, ({}, {}))[1], {})),
-    ):
-        return fw._briefing_mese_chiuso(UID, RID, _sb(), date(2027, 1, 5))
+    ), patch.object(fw, "_fine_mese_coperta",
+                    side_effect=lambda _sb, _r, a, m: chiesti.append((a, m)) or coperta):
+        rec = fw._briefing_mese_chiuso(UID, RID, _sb(), date(2027, 1, 5))
+    return rec, chiesti
 
 
-def test_dicembre_si_consolida_con_la_merce_di_gennaio_dell_anno_dopo():
-    assert _dicembre({1: 4000.0})["severity"] == "success"
-    assert _dicembre({})["severity"] == "warning"
+def test_a_gennaio_il_consolidato_e_quello_di_dicembre_dell_anno_prima():
+    rec, chiesti = _dicembre(True)
+    assert rec["severity"] == "success" and chiesti == [(2026, 12)]
+    assert _dicembre(False)[0]["severity"] == "warning"
 
 
 def test_sopra_la_norma_ma_sotto_il_critico_e_negativo():

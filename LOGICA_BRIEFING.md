@@ -99,9 +99,9 @@ contano per il "tutto a posto".
      vicini, la regola della fase E §4-bis): settembre «molto meglio» di un agosto
      chiuso misura la chiusura, e la card «I tuoi conti» in quel caso dice
      «nessun confronto con agosto». Dal 16/10/2026 il mese chiuso non dev'essere
-     **in attesa delle fatture di fine mese** (fatture di merce ma nessuna negli
-     ultimi 5 giorni del mese, `services/completezza_mese.py`): lì il MOL non si
-     festeggia;
+     **in attesa delle fatture di fine mese** (fatture di merce ma nessuna dal
+     quinto giorno prima della fine del mese, `services/completezza_mese.py`):
+     lì il MOL non si festeggia;
   2. altrimenti **perdita in calo** (in rosso ma meno del mese prima), con la
      stessa condizione sui due mesi e la stessa «attesa». Fino al 23/9/2026 diceva «la perdita è
      scesa a € 9.380» su due mesi **senza incassi**: la "perdita" era la somma
@@ -142,8 +142,9 @@ nella versione completa (§2), non in quella rapida.
 - **Food cost alto**: **solo a cavallo fra un mese e l'altro** (l'ultimo giorno
   del mese e i primi 7 del successivo), e sul mese di **due mesi prima**:
   l'ultimo mese caricato è quasi sempre parziale (fatture ancora in arrivo) e
-  darebbe un food cost falsamente basso. Serve che il mese dopo abbia già
-  fatture di food & beverage, o tace. Parla se il food cost supera il **33%**
+  darebbe un food cost falsamente basso. Serve che il mese non sia in attesa
+  delle fatture di fine mese (dal 16/10/2026: una fattura di merce dal quinto
+  giorno prima della fine del mese), o tace. Parla se il food cost supera il **33%**
   (norma del settore 28-33%), dice "soglia critica" oltre il **38%**, e
   aggiunge quanti euro di acquisti in più rappresenta rispetto al 33%. Mai per
   i negozi. **Tace su un mese di ferie** (dall'8/10/2026, decisione di Mattia):
@@ -173,7 +174,7 @@ nella versione completa (§2), non in quella rapida.
   di **ferie**; senza personale dice solo il food cost. Se la buona notizia parla
   già del MOL di quel mese, la riga tiene solo il food cost (§5.1). Il "tutto a
   posto" resta acceso solo con food cost fino al 33%, MOL non negativo **e** il
-  mese già consolidato (è arrivata merce del mese dopo): un food cost ancora
+  mese già consolidato (non in attesa delle fatture di fine mese): un food cost ancora
   incompleto non regge un verde. Mai per i negozi.
   Solo nel punto vendita: catena ed email settimanale non la ricevono.
   *Come suona* (cifre di esempio): «📅 Settembre, con le fatture arrivate

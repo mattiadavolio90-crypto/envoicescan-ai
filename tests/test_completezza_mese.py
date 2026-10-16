@@ -101,7 +101,7 @@ def test_home_kpi_sul_mese_in_corso_non_applica_la_percentuale():
 def _sb(margini_rows=None):
     q = MagicMock()
     q.table.return_value = q
-    for m in ("select", "eq", "neq", "or_", "in_", "limit", "lt", "gte", "lte", "order", "is_", "not_", "single"):
+    for m in ("select", "eq", "neq", "or_", "in_", "limit", "lt", "gt", "gte", "lte", "order", "is_", "not_", "single"):
         getattr(q, m).return_value = q
     q.execute.return_value = MagicMock(data=margini_rows or [])
     return q
@@ -458,10 +458,99 @@ def test_il_caricamento_dei_costi_riconosce_la_fine_mese():
         {"categoria": "PESCE", "totale_riga": 90.0, "data_documento": "2026-07-27", "data_competenza": None},
     ]
     q = MagicMock()
-    for m in ("table", "select", "eq", "neq", "or_", "is_", "range", "not_", "in_"):
+    for m in ("table", "select", "eq", "neq", "or_", "is_", "range", "order", "not_", "in_"):
         getattr(q, m).return_value = q
     q.execute.return_value = MagicMock(data=righe)
     fine = {}
     costi = fw._calcola_costi_auto_per_periodo(q, "r", [(2026, 7), (2026, 8), (2026, 9)], fine_mese=fine)
     assert fine == {(2026, 9): True, (2026, 7): True}
     assert costi[(2026, 8)] == (100.0, 300.0)
+
+
+# ── I rilievi del revisore sulla regola rivista ─────────────────────────────
+
+def test_home_kpi_non_dice_in_attesa_su_un_mese_vecchio():
+    """La card ripiega su giugno a ottobre (luglio-settembre vuoti): l'attesa
+    vale solo sul mese appena chiuso, giugno non resta grigio per sempre."""
+    giugno = {6: {"fatturato_iva10": 110000.0, "costo_dipendenti": 20000.0}}
+    kpi = _home_kpi_con(giugno, {6: 25000.0}, coperta=False)
+    assert kpi.periodo_label == "Giugno" and kpi.in_attesa is False
+
+
+def test_home_e_briefing_chiedono_la_data_del_mese_giusto():
+    chiesti = []
+    fw._HOME_KPI_CACHE.clear()
+    try:
+        with patch.multiple(
+            "services.margine_service",
+            carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: SETTEMBRE_PIENO if a == 2026 else {}),
+            calcola_costi_automatici_per_anno_sql=MagicMock(
+                side_effect=lambda _u, _r, a: ({9: 25000.0}, {}) if a == 2026 else ({}, {})),
+        ), patch.object(fw, "_resolve_user_from_token", return_value={"id": "u"}), \
+             patch.object(fw, "_get_supabase_client", return_value=_sb()), \
+             patch.object(fw, "_resolve_ristorante_id", return_value="r"), \
+             patch.object(fw, "_fine_mese_coperta", side_effect=lambda _sb, _r, a, m: chiesti.append((a, m)) or True), \
+             patch.object(fw, "_oggi_rome", return_value=date(2026, 10, 15)):
+            fw.home_kpi(authorization="Bearer t")
+    finally:
+        fw._HOME_KPI_CACHE.clear()
+    assert chiesti == [(2026, 9)]
+
+
+def test_la_data_si_chiede_solo_quando_serve():
+    """Sotto soglia, senza incasso o senza fatture di merce la risposta e' gia'
+    no: niente query (la chat ne farebbe fino a sei per domanda)."""
+    with patch.object(fw, "_fine_mese_coperta", side_effect=AssertionError("query inutile")):
+        assert fw._mese_in_attesa({"netto": 100000.0, "merce": 10000.0, "costi_mancanti": True},
+                                  10000.0, None, "r", 2026, 9) is False
+        assert fw._mese_in_attesa({"netto": 0.0, "merce": 0.0}, 0.0, None, "r", 2026, 9) is False
+        assert fw._mese_in_attesa({"netto": 100000.0, "merce": 25000.0}, 0.0, None, "r", 2026, 9) is False
+    with patch.object(fw, "_fine_mese_coperta", return_value=False):
+        assert fw._mese_in_attesa({"netto": 100000.0, "merce": 25000.0}, 25000.0, None, "r", 2026, 9) is True
+
+
+def test_fine_mese_coperta_applica_i_filtri_dei_costi():
+    sb = _sb([{"categoria": "CARNE", "totale_riga": 120.0}])
+    fw._fine_mese_coperta(sb, "r", 2026, 9)
+    sb.eq.assert_any_call("ristorante_id", "r")
+    sb.eq.assert_any_call("oscurata", False)
+    sb.is_.assert_any_call("deleted_at", "null")
+    sb.neq.assert_any_call("categoria", "Da Classificare")
+    sb.neq.assert_any_call("ripartita_su_gruppo", True)
+    sb.gt.assert_any_call("totale_riga", 0)
+    filtro = sb.or_.call_args.args[0]
+    assert "data_competenza.gte.2026-09-01" in filtro and "data_competenza.lte.2026-09-30" in filtro
+    assert "data_competenza.is.null,data_documento.lte.2026-09-30" in filtro
+
+
+def test_il_caricamento_dei_costi_pagina_con_un_ordine_fisso():
+    q = MagicMock()
+    for m in ("table", "select", "eq", "neq", "or_", "is_", "range", "order", "not_", "in_"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=[])
+    fw._calcola_costi_auto_per_periodo(q, "r", [(2026, 9)])
+    q.order.assert_any_call("id")
+
+
+def test_la_chat_dice_l_attesa_solo_sul_mese_appena_chiuso():
+    margini = {m: {"fatturato_iva10": 110000.0, "costo_dipendenti": 20000.0} for m in (7, 8, 9)}
+    with patch.multiple(
+        "services.margine_service",
+        carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: margini if a == 2026 else {}),
+        calcola_costi_automatici_per_anno_sql=MagicMock(
+            side_effect=lambda _u, _r, a: ({7: 25000.0, 8: 25000.0, 9: 25000.0}, {}) if a == 2026 else ({}, {})),
+    ), patch.object(fw, "_oggi_rome", return_value=date(2026, 10, 15)), \
+         patch.object(fw, "_fine_mese_coperta", return_value=False):
+        mesi = {r["mese"]: r for r in fw._chat_query_margini({"id": "u"}, _sb(), None, ristorante_id="r")["mesi"]}
+    assert mesi["settembre 2026"].get("in_attesa") is True
+    assert "in_attesa" not in mesi["agosto 2026"] and "in_attesa" not in mesi["luglio 2026"]
+
+
+@pytest.mark.parametrize("oggi,anno,mese,atteso", [
+    (date(2027, 1, 5), 2026, 12, True),     # a gennaio il mese chiuso e' dicembre dell'anno prima
+    (date(2027, 1, 5), 2027, 12, False),
+    (date(2026, 10, 15), 2026, 9, True),
+    (date(2026, 10, 15), 2026, 8, False),
+])
+def test_ultimo_mese_chiuso(oggi, anno, mese, atteso):
+    assert fw._e_l_ultimo_mese_chiuso(anno, mese, oggi) is atteso

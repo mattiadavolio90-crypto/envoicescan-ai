@@ -173,14 +173,16 @@ def test_preferenze_del_pv_illeggibili_non_spengono_nulla(ambiente, monkeypatch)
 
 @pytest.fixture
 def food_cost_alto(monkeypatch):
-    """Agosto a food cost 45,8% su 10.000 € di netto, settembre gia' arrivato:
+    """Agosto a food cost 45,8% su 10.000 € di netto, consolidato (dal 16/10/2026:
+    una fattura di merce dal quinto giorno prima della fine, `_fine_mese_coperta`):
     i dati che `_briefing_food_cost_alto` legge, finti a livello di sorgente."""
     monkeypatch.setattr("services.margine_service.carica_margini_anno", lambda *a, **k: {})
     monkeypatch.setattr(fw, "_merge_override_mensile", lambda m, *a, **k: m)
     monkeypatch.setattr("services.margine_service.calcola_costi_automatici_per_anno_sql",
                         lambda *a, **k: ({8: 4580.0, 9: 100.0}, {}))
     monkeypatch.setattr(fw, "_kpi_periodo",
-                        lambda *a, **k: {"food_cost_pct": 45.8, "netto": 10000.0})
+                        lambda *a, **k: {"food_cost_pct": 45.8, "netto": 10000.0, "merce": 4580.0})
+    monkeypatch.setattr(fw, "_fine_mese_coperta", lambda *a, **k: True)
 
 
 def test_nella_finestra_il_food_cost_alto_ha_la_sua_riga(ambiente, food_cost_alto):

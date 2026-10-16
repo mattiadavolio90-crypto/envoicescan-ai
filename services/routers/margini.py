@@ -1353,10 +1353,11 @@ def get_margini_analisi(
             quote_riparto_spese=round(q_spese, 2),
             senza_merce=merce_insufficiente(
                 netto, fb_tot, in_corso=(y, m) >= (oggi.year, oggi.month)),
-            in_attesa=in_attesa_fine_mese(
+            # Solo il mese appena chiuso puo' essere in attesa: uno di mesi fa
+            # senza fatture negli ultimi giorni non resta grigio per sempre.
+            in_attesa=_fw()._e_l_ultimo_mese_chiuso(y, m, oggi) and in_attesa_fine_mese(
                 netto, fb_tot, merce_fatture=fb_auto,
-                fine_mese_coperta=fine_mese_coperta.get((y, m), False),
-                in_corso=(y, m) >= (oggi.year, oggi.month)),
+                fine_mese_coperta=fine_mese_coperta.get((y, m), False)),
         ))
 
     # Totali periodo

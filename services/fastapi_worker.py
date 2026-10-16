@@ -5398,9 +5398,8 @@ def _chat_query_margini(
                 risultati[-1]["dati_incompleti"] = (
                     "ci sono costi ma nessun incasso registrato: il MOL negativo non e' "
                     "una perdita, mancano i ricavi del mese")
-            elif (mm != oggi.month or aa != oggi.year) and in_attesa_fine_mese(
-                k["netto"], k["merce"], merce_fatture=float(fb.get(mm) or 0),
-                fine_mese_coperta=_fine_mese_coperta(supabase_client, ristorante_id, aa, mm),
+            elif _e_l_ultimo_mese_chiuso(aa, mm, oggi) and _mese_in_attesa(
+                k, float(fb.get(mm) or 0), supabase_client, ristorante_id, aa, mm,
             ):
                 risultati[-1]["in_attesa"] = True
                 risultati[-1]["nota_attesa"] = (
@@ -7041,12 +7040,9 @@ def _buona_notizia_principale(
                 # (3) NON festeggiamo un mese ancora in attesa delle fatture di
                 # fine mese (nessuna fattura di merce negli ultimi 5 giorni): la
                 # crescita puo' essere solo merce non ancora arrivata (K03).
-                in_attesa = in_attesa_fine_mese(
-                    kpi["netto"], kpi["merce"],
-                    merce_fatture=float(_dati(anno_usato)[1].get(mese_usato) or 0),
-                    fine_mese_coperta=_fine_mese_coperta(
-                        supabase_client, ristorante_id, anno_usato, mese_usato),
-                )
+                in_attesa = _mese_in_attesa(
+                    kpi, float(_dati(anno_usato)[1].get(mese_usato) or 0),
+                    supabase_client, ristorante_id, anno_usato, mese_usato)
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
                         and _mesi_confrontabili(kpi, kpi_prec)
                         and not in_attesa
@@ -7467,9 +7463,10 @@ def _briefing_food_cost_alto(
     """Food cost di un mese consolidato, se sopra la fascia di norma del settore.
 
     Le soglie sono quelle di KPI_SOGLIE (le stesse della pagina Margini e del
-    prompt della chat), sul NETTO come `_kpi_periodo`. "Consolidato" = sono gia'
-    arrivate fatture di merce del mese dopo: le fatture di fine mese arrivano col
-    mese successivo. Mai per i negozi: per il retail un benchmark non esiste (lo
+    prompt della chat), sul NETTO come `_kpi_periodo`. "Consolidato" = non in
+    attesa delle fatture di fine mese (`_mese_in_attesa`, la regola unica di
+    services/completezza_mese.py dal 16/10/2026; prima era «arrivata merce del
+    mese dopo»). Mai per i negozi: per il retail un benchmark non esiste (lo
     esclude chi chiama, via _TOPIC_OFF_PER_SETTORE).
     """
     from config.constants import KPI_SOGLIE
@@ -7480,17 +7477,14 @@ def _briefing_food_cost_alto(
     if target is None:
         return None
     mese, anno = target
-    mese_dopo, anno_dopo = (1, anno + 1) if mese == 12 else (mese + 1, anno)
 
     margini = carica_margini_anno(user_id, ristorante_id, anno)
     margini = _merge_override_mensile(margini, supabase_client, ristorante_id, anno)
     cfb, csp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, anno)
-    cfb_dopo = cfb if anno_dopo == anno else calcola_costi_automatici_per_anno_sql(
-        user_id, ristorante_id, anno_dopo)[0]
-    if float(cfb_dopo.get(mese_dopo) or 0) <= 0:
-        return None
 
     kpi = _kpi_periodo(margini, cfb, csp, mese)
+    if _mese_in_attesa(kpi, float(cfb.get(mese) or 0), supabase_client, ristorante_id, anno, mese):
+        return None
     # None senza incassi (netto 0); 0 senza merce (costi_mancanti): in entrambi i
     # casi il mese non e' detto. KPI_SOGLIE['food_cost'] e' ordinata (28
     # eccellente, 33 norma, 38 sopra la media, 100 critico) e `_valuta_soglia`
@@ -7550,9 +7544,10 @@ def _briefing_mese_chiuso(
     personale inserito: senza e' gonfiato, e la riga dei dati mancanti lo chiede.
     Il verso (severity) e' quello che legge il verde: food cost oltre la norma,
     MOL negativo o mese non ancora consolidato = warning. Consolidato come per
-    `_briefing_food_cost_alto`: e' gia' arrivata merce del mese dopo. Senza, il
-    food cost di chi carica a mano e' piu' basso del vero e reggerebbe un «tutto
-    in ordine» su un dato incompleto (revisore, 8/10).
+    `_briefing_food_cost_alto`: non in attesa delle fatture di fine mese
+    (`_mese_in_attesa`, dal 16/10/2026). Senza, il food cost di chi carica a mano
+    e' piu' basso del vero e reggerebbe un «tutto in ordine» su un dato
+    incompleto (revisore, 8/10).
     """
     from config.constants import KPI_SOGLIE
     from services.margine_service import calcola_costi_automatici_per_anno_sql
@@ -7569,9 +7564,8 @@ def _briefing_mese_chiuso(
                                  anno, mese, oggi, {anno: margini}) is True:
         return None
     soglia_norma = [s for (s, _e, _c) in KPI_SOGLIE["food_cost"]][1]
-    cfb_dopo = cfb if oggi.year == anno else calcola_costi_automatici_per_anno_sql(
-        user_id, ristorante_id, oggi.year)[0]
-    consolidato = float(cfb_dopo.get(oggi.month) or 0) > 0
+    consolidato = not _mese_in_attesa(
+        kpi, float(cfb.get(mese) or 0), supabase_client, ristorante_id, anno, mese)
     payload: Dict[str, Any] = {
         "mese": _MESI_IT_BRIEFING[mese],
         "anno": anno,
@@ -10019,6 +10013,7 @@ def _fine_mese_coperta(supabase_client, ristorante_id: str, anno: int, mese: int
             .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
             .neq("ripartita_su_gruppo", True)
             .gte("data_documento", inizio_fine_mese(anno, mese).isoformat())
+            .gt("totale_riga", 0)
             .or_(
                 f"and(data_competenza.gte.{da},data_competenza.lte.{a}),"
                 f"and(data_competenza.is.null,data_documento.lte.{a})"
@@ -10036,6 +10031,31 @@ def _fine_mese_coperta(supabase_client, ristorante_id: str, anno: int, mese: int
         and float(r.get("totale_riga") or 0) > 0
         for r in righe
     )
+
+
+def _mese_in_attesa(
+    kpi: Dict[str, Any], merce_fatture: float, supabase_client,
+    ristorante_id: str, anno: int, mese: int,
+) -> bool:
+    """Il mese chiuso di `kpi` (da `_kpi_periodo`) e' in attesa delle fatture di
+    fine mese? Regola unica (services/completezza_mese.py); la query sulle date
+    parte solo se serve: con merce sotto soglia, senza incasso o senza fatture di
+    merce la risposta e' gia' no."""
+    if (float(merce_fatture or 0) <= 0 or kpi.get("costi_mancanti")
+            or float(kpi.get("netto") or 0) <= 0):
+        return False
+    return in_attesa_fine_mese(
+        kpi["netto"], kpi["merce"], merce_fatture=merce_fatture,
+        fine_mese_coperta=_fine_mese_coperta(supabase_client, ristorante_id, anno, mese),
+    )
+
+
+def _e_l_ultimo_mese_chiuso(anno: int, mese: int, oggi) -> bool:
+    """L'attesa si dice solo sul mese appena chiuso: e' l'unico per cui le
+    fatture di fine mese possono ancora arrivare. Un mese di mesi fa senza
+    fatture negli ultimi giorni (chiuso per ferie dal 10, o caricato a meta' e
+    mai finito) non resta grigio per sempre: li' decide la soglia."""
+    return (anno, mese) == ((oggi.year - 1, 12) if oggi.month == 1 else (oggi.year, oggi.month - 1))
 
 
 def _pct_su_netto(kpi: dict) -> Dict[str, Optional[float]]:
@@ -10130,8 +10150,8 @@ def _kpi_periodo(
         # del 20% del netto in un mese chiuso, nessuna merce nel mese in corso).
         # Il mese in corso lo dichiara il chiamante: qui non si sa che giorno e'.
         "costi_mancanti": fatturato > 0 and merce_insufficiente(netto, fb, in_corso=in_corso),
-        # La merce del mese (fatture + a mano + quote): serve al mese PRIMA per
-        # sapere se e' consolidato (`in_attesa_fine_mese`).
+        # La merce del mese (fatture + a mano + quote): la soglia dell'attesa
+        # (`in_attesa_fine_mese`) la confronta col netto.
         "merce": round(fb, 2),
         "has_data": fatturato > 0 or fb > 0 or spese > 0 or personale > 0,
     }
@@ -10239,13 +10259,12 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     if kpi is None:
         return _vuoto
 
-    in_attesa = False
-    if not mese_in_corso:
-        in_attesa = in_attesa_fine_mese(
-            kpi["netto"], kpi["merce"],
-            merce_fatture=float(_anno(anno_usato)[1].get(mese_usato) or 0),
-            fine_mese_coperta=_fine_mese_coperta(sb, ristorante_id, anno_usato, mese_usato),
-        )
+    in_attesa = (
+        not mese_in_corso
+        and _e_l_ultimo_mese_chiuso(anno_usato, mese_usato, oggi)
+        and _mese_in_attesa(kpi, float(_anno(anno_usato)[1].get(mese_usato) or 0),
+                            sb, ristorante_id, anno_usato, mese_usato)
+    )
 
     # ── Confronto col mese precedente a quello mostrato ──
     def _delta_pct(curr: float, prev: float) -> Optional[float]:
@@ -11257,6 +11276,9 @@ def _calcola_costi_auto_per_periodo(
         )
         resp = (
             escludi_da_verificare_margini(_q)
+            # Senza un ordine fisso le pagine possono saltare o ripetere righe:
+            # i totali e le date di fine mese (K03) ne dipendono.
+            .order("id")
             .range(page * page_size, (page + 1) * page_size - 1)
             .execute()
         )

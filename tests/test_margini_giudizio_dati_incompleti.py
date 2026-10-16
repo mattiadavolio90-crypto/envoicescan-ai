@@ -363,3 +363,14 @@ def test_il_pivot_non_mette_in_attesa_un_mese_di_sola_merce_a_mano():
     a_mano = dict(_mese(2026, 9, 110000.0), altri_costi_fb=25000.0)
     resp = _pivot_endpoint([a_mano], {}, "2026-09-01", "2026-09-30", date(2026, 10, 15))
     assert resp.mesi[0].in_attesa is False and resp.mesi[0].senza_merce is False
+
+
+def test_il_pivot_dice_l_attesa_solo_sul_mese_appena_chiuso():
+    """Agosto senza fatture di fine mese (chiuso per ferie dal 10?) non resta
+    grigio per sempre: a ottobre l'attesa vale solo per settembre."""
+    resp = _pivot_endpoint(
+        [_mese(2026, 8, 110000.0), _mese(2026, 9, 110000.0)],
+        {(2026, 8): (25000.0, 5000.0), (2026, 9): (25000.0, 5000.0)},
+        "2026-08-01", "2026-09-30", date(2026, 10, 15), fine_coperta=set(),
+    )
+    assert {p.mese: p.in_attesa for p in resp.mesi} == {8: False, 9: True}

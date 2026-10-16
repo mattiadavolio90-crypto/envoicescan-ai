@@ -221,8 +221,8 @@ il fast-path che la Home aspetta non le calcola (E7).
 | topic | Quando | Regola |
 |---|---|---|
 | `andamento_incasso` | **Solo il martedì** | Incasso delle ultime 4 settimane lun-dom contro le 4 prima; ≥ 20 giorni con incasso in **ciascuna** finestra; parla da ±10%. Coperti e scontrino medio solo se inseriti ≥ 20 giorni per finestra; sotto ±3% si dicono «stabili» |
-| `food_cost_alto` | Finestra MOL (ultimo giorno + primi 7) | Mese di **due mesi prima** del mese di riferimento, solo se **consolidato** (fatture di merce del mese dopo già arrivate), food cost > 33% (`KPI_SOGLIE`, `<=` 33 è norma), «critico» oltre 38. Dice anche gli euro sopra il 33%. **Mai per i negozi** (`_TOPIC_OFF_PER_SETTORE`) |
-| `mese_chiuso` | Giorni 1-15 (`_MESE_CHIUSO_ULTIMO_GIORNO`) | Fase F, 8/10/2026. Mese appena chiuso: food cost e, col personale, MOL. Tace senza incasso, senza merce (`costi_mancanti`) o con `_incasso_fuori_norma_sede` True. `warning` oltre il 33%, con MOL negativo o con il mese non consolidato (nessuna merce del mese dopo, come `food_cost_alto`), altrimenti `success`. Se la buona notizia è `mol_mese`/`perdita_in_calo` sullo stesso mese, `_build_snapshot` toglie il MOL dalla riga. Prodotta da `_briefing_osservazioni_pv`, **solo PV**: `_briefing_osservazioni` è chiamata anche da catena ed email settimanale. Mai per i negozi |
+| `food_cost_alto` | Finestra MOL (ultimo giorno + primi 7) | Mese di **due mesi prima** del mese di riferimento, solo se **consolidato** (non in attesa delle fatture di fine mese: dal 16/10/2026 una fattura di merce dal quinto giorno prima della fine del mese, `_mese_in_attesa`), food cost > 33% (`KPI_SOGLIE`, `<=` 33 è norma), «critico» oltre 38. Dice anche gli euro sopra il 33%. **Mai per i negozi** (`_TOPIC_OFF_PER_SETTORE`) |
+| `mese_chiuso` | Giorni 1-15 (`_MESE_CHIUSO_ULTIMO_GIORNO`) | Fase F, 8/10/2026. Mese appena chiuso: food cost e, col personale, MOL. Tace senza incasso, senza merce (`costi_mancanti`) o con `_incasso_fuori_norma_sede` True. `warning` oltre il 33%, con MOL negativo o con il mese non consolidato (in attesa delle fatture di fine mese, come `food_cost_alto`), altrimenti `success`. Se la buona notizia è `mol_mese`/`perdita_in_calo` sullo stesso mese, `_build_snapshot` toglie il MOL dalla riga. Prodotta da `_briefing_osservazioni_pv`, **solo PV**: `_briefing_osservazioni` è chiamata anche da catena ed email settimanale. Mai per i negozi |
 | `prezzo_sceso` | Percorso completo (async) | Fase F, 8/10/2026. `price_impact_service._ribassi_prodotti`: specchio di `_alert_prodotti` sullo stesso `calcola_alert` (un solo calcolo), `Aumento_Perc <= -soglia del cliente`, `Impatto_Stimato < 0`, filtro Pareto o preferiti, acquisto negli ultimi `_RIBASSI_GIORNI_FRESCHI` (7) giorni; il briefing dice il primo (risparmio maggiore). Il motore gira se serve `price_alert` **o** `prezzo_sceso`, ognuno col suo interruttore. Nomi fra «» anonimizzati per l'AI (`_anonymize_bullets`). `success` |
 
 **Perché proprio queste due** — misura sul DB live del 24/9, prima del codice.
@@ -241,8 +241,10 @@ nel 28%** dei casi (22 su 78), il martedì nel 15%.
 **Perché due mesi fa e «consolidato»**: l'ultimo mese caricato è
 sistematicamente parziale (merce −27/−38% rispetto alla media sulle sedi che
 caricano a mano): un food cost lì direbbe «ottimo» su un mese mezzo vuoto. Il
-consolidamento guarda **solo la merce** del mese dopo: una sede con sole
-utenze a settembre non consolida agosto.
+consolidamento guarda **solo la merce**: dal 16/10/2026 un mese e' consolidato
+se ha una fattura di merce dal quinto giorno prima della fine del mese (regola
+unica di `services/completezza_mese.py`); prima guardava la merce del mese dopo,
+e una sede con sole utenze a settembre non consolidava agosto.
 
 **La narrativa AI non può perderle.** Il riscrittore riceve i bullet (📊, 🍽️) e
 una regola apposita (3-ter-bis), ma un prompt non è una garanzia: il validatore

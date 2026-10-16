@@ -6,7 +6,8 @@ piano solo due tacevano abbastanza da essere notizie.
 - `andamento_incasso`: il martedi', incasso delle ultime 4 settimane complete
   contro le 4 prima, oltre il 10%. Misurato: 7 volte su 73 da giugno.
 - `food_cost_alto`: nella finestra del MOL, il food cost del mese di due mesi fa,
-  solo se consolidato (sono arrivate fatture del mese dopo), sopra il 33%.
+  solo se consolidato (dal 16/10/2026: una fattura di merce dal quinto giorno
+  prima della fine del mese; prima: arrivate fatture del mese dopo), sopra il 33%.
 
 Ogni topic ha il caso che lo fa SCATTARE su dati reali (serie di incasso vere,
 anonimizzate: solo date e importi) e i casi che lo tengono ZITTO. Le soglie sono
@@ -328,18 +329,32 @@ def _sb_vuoto():
 
 
 def _patch_costi(netto_agosto, fb_agosto, fb_settembre, anno=2026, extra=None):
-    """Agosto con `netto_agosto` di ricavi (senza IVA) e `fb_agosto` di merce."""
+    """Agosto con `netto_agosto` di ricavi (senza IVA) e `fb_agosto` di merce.
+
+    `fb_settembre` > 0 = agosto consolidato. Dal 16/10/2026 il consolidato non e'
+    piu' «arrivata merce del mese dopo» ma «una fattura di merce dal quinto
+    giorno prima della fine del mese» (`_fine_mese_coperta`, regola unica di
+    services/completezza_mese.py): il terzo argomento si traduce in quello."""
+    from contextlib import ExitStack, contextmanager
     margini = {m: {} for m in range(1, 13)}
     margini[8] = {"altri_ricavi_noiva": netto_agosto}
     cfb = {8: fb_agosto, 9: fb_settembre}
     per_anno = {anno: (cfb, {})}
     per_anno.update(extra or {})
     calc = MagicMock(side_effect=lambda _u, _r, a: per_anno.get(a, ({}, {})))
-    return patch.multiple(
-        "services.margine_service",
-        carica_margini_anno=MagicMock(return_value=margini),
-        calcola_costi_automatici_per_anno_sql=calc,
-    ), calc
+
+    @contextmanager
+    def _insieme():
+        with ExitStack() as stack:
+            stack.enter_context(patch.multiple(
+                "services.margine_service",
+                carica_margini_anno=MagicMock(return_value=margini),
+                calcola_costi_automatici_per_anno_sql=calc,
+            ))
+            stack.enter_context(patch.object(fw, "_fine_mese_coperta", return_value=fb_settembre > 0))
+            yield
+
+    return _insieme(), calc
 
 
 INIZIO_OTTOBRE = date(2026, 10, 2)
@@ -373,7 +388,8 @@ def test_food_cost_legge_il_fatturato_inserito_come_totale_mensile():
         "services.margine_service",
         carica_margini_anno=MagicMock(return_value=margini),
         calcola_costi_automatici_per_anno_sql=calc,
-    ), patch.object(fw, "_load_mensile_overrides", return_value=ov):
+    ), patch.object(fw, "_load_mensile_overrides", return_value=ov), \
+         patch.object(fw, "_fine_mese_coperta", return_value=True):
         rec = fw._briefing_food_cost_alto(UID, RID, _sb_vuoto(), INIZIO_OTTOBRE)
     assert rec is not None and rec["payload"]["food_cost_pct"] == 45.8
 
@@ -397,8 +413,9 @@ def test_food_cost_sopra_norma_ma_non_critico():
 
 
 def test_food_cost_tace_se_il_mese_non_e_consolidato():
-    """Nessuna fattura di merce del mese dopo: le fatture di fine agosto possono
-    ancora arrivare, e l'ultimo mese caricato e' sistematicamente parziale."""
+    """Nessuna fattura di merce negli ultimi giorni di agosto: quelle di fine
+    mese possono ancora arrivare, e l'ultimo mese caricato e' sistematicamente
+    parziale."""
     p_costi, _ = _patch_costi(4540.0, 2079.32, 0.0)
     with p_costi:
         assert fw._briefing_food_cost_alto(UID, RID, _sb_vuoto(), INIZIO_OTTOBRE) is None
@@ -429,26 +446,24 @@ def test_food_cost_mese_giusto_nei_bordi_della_finestra():
     assert fw._mese_food_cost_da_dire(date(2026, 2, 3)) == (12, 2025)
 
 
-def test_food_cost_di_dicembre_si_consolida_con_gennaio_dell_anno_dopo():
+def test_food_cost_di_dicembre_si_consolida_con_le_sue_fatture_di_fine_mese():
+    """Il 3 febbraio il mese da dire e' dicembre dell'anno prima: il consolidato
+    si chiede per (2025, 12), non per un mese dell'anno nuovo."""
     margini = {m: {} for m in range(1, 13)}
     margini[12] = {"altri_ricavi_noiva": 10000.0}
-    per_anno = {2025: ({12: 4000.0}, {}), 2026: ({1: 200.0}, {})}
+    per_anno = {2025: ({12: 4000.0}, {})}
     calc = MagicMock(side_effect=lambda _u, _r, a: per_anno.get(a, ({}, {})))
-    with patch.multiple(
-        "services.margine_service",
-        carica_margini_anno=MagicMock(return_value=margini),
-        calcola_costi_automatici_per_anno_sql=calc,
-    ):
-        rec = fw._briefing_food_cost_alto(UID, RID, _sb_vuoto(), date(2026, 2, 3))
-    assert rec is not None and rec["payload"]["mese"] == "dicembre"
-    assert {c.args[2] for c in calc.call_args_list} == {2025, 2026}
-    per_anno[2026] = ({}, {})
-    with patch.multiple(
-        "services.margine_service",
-        carica_margini_anno=MagicMock(return_value=margini),
-        calcola_costi_automatici_per_anno_sql=calc,
-    ):
-        assert fw._briefing_food_cost_alto(UID, RID, _sb_vuoto(), date(2026, 2, 3)) is None
+    for coperta in (True, False):
+        chiesti = []
+        with patch.multiple(
+            "services.margine_service",
+            carica_margini_anno=MagicMock(return_value=margini),
+            calcola_costi_automatici_per_anno_sql=calc,
+        ), patch.object(fw, "_fine_mese_coperta",
+                        side_effect=lambda _sb, _r, a, m: chiesti.append((a, m)) or coperta):
+            rec = fw._briefing_food_cost_alto(UID, RID, _sb_vuoto(), date(2026, 2, 3))
+        assert chiesti == [(2025, 12)]
+        assert (rec is not None and rec["payload"]["mese"] == "dicembre") is coperta
 
 
 # ── Raccolta: settore, configuratore, solo path asincrono ────────────────────

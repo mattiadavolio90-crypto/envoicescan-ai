@@ -266,9 +266,9 @@ export function meseSenzaCosti(m: MesePivot): boolean {
   return (m.costi_fb_totali ?? 0) <= 0;
 }
 
-// Il colore di UNA cella: neutro anche quando il mese e' chiuso ma del mese
-// dopo non e' arrivata merce (`in_attesa`, K03 16/10/2026), perche' le fatture
-// di fine mese possono ancora abbassarlo — ma solo se il valore e' positivo: un
+// Il colore di UNA cella: neutro anche quando il mese appena chiuso non ha
+// fatture di merce negli ultimi giorni (`in_attesa`, K03 16/10/2026), perche'
+// quelle di fine mese possono ancora abbassarlo — ma solo se il valore e' positivo: un
 // MOL negativo resta rosso, come in Home (`tintContiPV`), altra merce lo
 // abbassa ancora. Il giudizio del periodo resta su `meseSenzaCosti`, o l'ultimo
 // mese chiuso lo spegnerebbe ogni inizio mese.

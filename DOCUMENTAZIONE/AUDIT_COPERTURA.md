@@ -3312,6 +3312,31 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `tests/test_da_classificare_fonte_unica.py` (i punti legati alla costante diventano 9:
 >   `_fine_mese_coperta` esclude le righe non classificate). Suite `-m "not sql"`: 19.846
 >   verdi prima di questi due allineamenti, 13 verdi i due file dopo.
+>
+> - **16/10/2026 sera — Code-reviewer sul fix n. 21 (K03, 20% e fine mese), verdetto rosso, i
+>   due blocchi chiusi.** (1) Il briefing usava ancora «merce del mese dopo» come
+>   consolidato (`_briefing_food_cost_alto`, `_briefing_mese_chiuso`) e contraddiceva la
+>   Home: ora entrambi leggono `_mese_in_attesa`, la stessa attesa della Home (BRIEFING_HOME.md
+>   e LOGICA_BRIEFING.md allineati). (2) Avevo tolto senza dichiararlo la guardia «niente
+>   attesa su un mese vecchio» e il suo test: ripristinati, e la guardia vale ora ovunque
+>   (`_e_l_ultimo_mese_chiuso`: Home, pivot di Margini, chat). Solo il mese appena chiuso
+>   puo' essere in attesa: un agosto chiuso per ferie dal 10, o un mese mai finito, non resta
+>   grigio per sempre. Rilievi minori chiusi: la query `_fine_mese_coperta` filtra anche
+>   `totale_riga > 0` lato server e parte solo se serve (`_mese_in_attesa`: con merce sotto
+>   soglia, senza incasso o senza fatture non interroga); i suoi filtri hanno un test che li
+>   legge; `_calcola_costi_auto_per_periodo` pagina con `.order("id")` (senza ordine le pagine
+>   potevano saltare o ripetere righe: valeva anche per i totali di Margini, preesistente).
+>   Sul «5 giorni»: conta dal quinto giorno prima della fine (dal 25 per un mese di 30
+>   giorni, sei date in tutto), come detto da Mattia; le diciture sono state precisate.
+>   Restano senza ordine, preesistenti e fuori da questo lavoro, gli altri tre caricamenti
+>   paginati del worker vicini a `_calcola_costi_auto_per_periodo`. +10 test in
+>   `tests/test_completezza_mese.py`, +1 in `tests/test_margini_giudizio_dati_incompleti.py`,
+>   riscritti i test del consolidato in `tests/test_briefing_osservazioni_consulente.py` e
+>   `tests/test_briefing_mese_chiuso.py`; **12 mutanti, 12 uccisi** (uno dopo il test sul
+>   cambio d'anno di gennaio).
+>   Allineata anche la fixture `food_cost_alto` di `tests/test_catena_osservazioni.py`. Famiglie
+>   toccate (briefing, Home, Margini, catena, chat, ricavi) `-m "not sql"`: 2.788 verdi prima di
+>   quell'allineamento, il file dopo 31 verdi.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

@@ -11,10 +11,14 @@ Decisione di Mattia (16/10/2026, sera), sui 73 mesi chiusi misurati quel giorno:
   inserita a mano + quote di riparto del gruppo sono meno del **20%** dell'incasso
   netto. Il costo noto: un bar reale sta al 17,8-19,3% con mesi pieni di fatture,
   e quei mesi diventano gialli;
-- un mese chiuso sopra soglia e' **in attesa delle fatture di fine mese** (grigio,
-  ne' verde ne' giallo) se ha fatture di merce ma nessuna datata negli ultimi
-  **5 giorni** del mese. Al posto del criterio «merce arrivata nel mese dopo»,
-  che teneva grigia ogni Home per i primi 5-7 giorni del mese nuovo.
+- il mese **appena chiuso**, sopra soglia, e' **in attesa delle fatture di fine
+  mese** (grigio, ne' verde ne' giallo) se ha fatture di merce ma nessuna datata
+  dal quinto giorno prima della fine del mese (`inizio_fine_mese`: dal 25 per un
+  mese di 30 giorni). Al posto del criterio «merce arrivata nel mese dopo», che
+  teneva grigia ogni Home per i primi 5-7 giorni del mese nuovo. Un mese piu'
+  vecchio non resta grigio per sempre (chiuso per ferie dal 10, o mai finito):
+  li' decide la soglia. Briefing (food cost alto, mese chiuso, buona notizia)
+  usa la stessa attesa come «consolidato».
 
 Il mese in corso resta su «nessuna merce»: a meta' mese la merce arriva in
 ritardo sull'incasso, e la percentuale lo farebbe giallo tre settimane al mese.
