@@ -3360,6 +3360,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   lo manda e `toneMol` (lib/kpi-margini-tab.ts) tiene neutro il MOL positivo di un periodo con
 >   un mese senza merce; il negativo resta rosso. Schema OpenAPI rigenerato (solo il campo
 >   nuovo). +9 test in `tests/test_completezza_mese.py`; **5 mutanti, 5 uccisi**.
+>
+> - **16/10/2026 sera — Fix n. 23 dell'audit di ottobre (K13): la Home di una sede ferma non
+>   mostra un mese di sole spese.** `home_kpi` sceglieva il primo mese con un dato qualsiasi:
+>   per una sede con giugno pieno e a luglio 89 EUR di spese (nessun incasso) mostrava
+>   «Luglio, MOL -89», la freccia delle spese -97,9% in verde e una linea del MOL a -100,3%.
+>   Ora preferisce, nei sei mesi, un mese con incasso; se nessuno ne ha (una sede che non ha
+>   mai inserito ricavi) mostra il primo con dati dichiarato `incasso_mancante`: niente
+>   variazioni, MOL giallo (`tintContiPV`) e la riga «Manca l'incasso di agosto: il MOL qui
+>   sopra e' solo la somma dei costi». La linea del MOL salta i mesi senza incasso. Schema
+>   OpenAPI rigenerato (solo il campo nuovo). Due sedi toccate oggi (86300227, 09011cdd). +6
+>   test in `tests/test_completezza_mese.py`; **8 mutanti, 8 uccisi**. Famiglie Home, briefing,
+>   catena `-m "not sql"`: 1.116 verdi.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

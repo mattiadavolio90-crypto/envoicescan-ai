@@ -2673,6 +2673,9 @@ class HomeKpiResponse(BaseModel):
     # i conti possono cambiare (services/completezza_mese.py). Il MOL non si dice
     # verde.
     in_attesa: bool = False
+    # Mese chiuso mostrato senza incasso (nei sei mesi nessuno ne ha): il MOL e'
+    # solo i costi col segno meno. Niente variazioni, MOL giallo, la card lo dice.
+    incasso_mancante: bool = False
     personale_pct: Optional[float] = None
     spese_pct: Optional[float] = None
     mol_pct: Optional[float] = None
@@ -10251,15 +10254,24 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     mm, aa = oggi.month - 1, oggi.year
     if mm == 0:
         mm, aa = 12, oggi.year - 1
+    # Si preferisce un mese CON incasso: un mese di sole spese (89 EUR a luglio
+    # su una sede ferma) faceva da «ultima fotografia» con MOL -89 e un falso
+    # crollo del 100% contro giugno (audit di ottobre 2026, K13). Se nei sei mesi
+    # nessuno ha incasso si mostra il primo con dati, dichiarato `incasso_mancante`.
+    primo_con_dati = None
     for _ in range(6):
         margini, costi_fb, costi_spese = _anno(aa)
         cand = _kpi_periodo(margini, costi_fb, costi_spese, mm)
-        if cand["has_data"]:
+        if cand["has_data"] and primo_con_dati is None:
+            primo_con_dati = (cand, mm, aa)
+        if cand["has_data"] and cand["fatturato"] > 0:
             kpi, mese_usato, anno_usato = cand, mm, aa
             break
         mm -= 1
         if mm == 0:
             mm, aa = 12, aa - 1
+    if kpi is None and primo_con_dati is not None:
+        kpi, mese_usato, anno_usato = primo_con_dati
 
     # Fallback: nessun mese COMPLETO passato ha dati, ma il MESE IN CORSO sì
     # (tipico del cliente appena partito: ha caricato le prime fatture del mese
@@ -10317,6 +10329,11 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         mol_delta = None
         food_cost_delta = None
         spese_delta = None
+    # Mese chiuso senza incasso: il MOL e' la somma dei costi con il segno meno,
+    # nessuna variazione dice qualcosa di vero.
+    incasso_mancante = (not mese_in_corso) and kpi["fatturato"] <= 0
+    if incasso_mancante:
+        fatturato_delta = food_cost_delta = personale_delta = spese_delta = mol_delta = None
 
     # ── Sparkline: MOL mese per mese dell'anno mostrato, da gennaio al mese
     #    mostrato. Solo i mesi con dati (un mese senza dati non e' uno zero reale,
@@ -10327,7 +10344,9 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     mol_mensile: List[MolMensilePoint] = []
     for m in range(1, mese_usato + 1):
         p = _kpi_periodo(spark_margini, spark_fb, spark_spese, m)
-        if p["has_data"]:
+        # Un mese senza incasso non e' un margine: anche lui spezzerebbe la linea
+        # con un falso crollo (K13).
+        if p["has_data"] and p["fatturato"] > 0:
             mol_mensile.append(MolMensilePoint(mese=m, mol=p["mol"]))
     if len(mol_mensile) < 2:
         mol_mensile = []
@@ -10376,6 +10395,7 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         mol_mensile_anno=anno_usato if mol_mensile else None,
         netto=kpi["netto"],
         in_attesa=in_attesa,
+        incasso_mancante=incasso_mancante,
         **_pct_su_netto(kpi),
     )
     # Eviction opportunistica delle entry scadute: la chiave include anno:mese,

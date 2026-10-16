@@ -371,8 +371,12 @@ export function tintContiPV(kpi: {
   costi_mancanti?: boolean;
   incasso_fuori_norma?: boolean;
   in_attesa?: boolean;
+  incasso_mancante?: boolean;
 }): "verde" | "rosso" | "giallo" | "grigio" {
   if (kpi.costi_mancanti) return "giallo";
+  // Mese senza incasso (K13): il MOL negativo e' la somma dei costi, non una
+  // perdita. Giallo come i costi mancanti: manca un dato, non va male.
+  if (kpi.incasso_mancante === true) return "giallo";
   // Mese di ferie (8/10/2026): il MOL e' in perdita perche' il locale era
   // chiuso, non perche' va male. Decisione di Mattia: nessun allarme.
   if (kpi.incasso_fuori_norma === true) return "giallo";

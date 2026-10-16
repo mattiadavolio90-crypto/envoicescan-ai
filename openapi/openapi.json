@@ -25054,6 +25054,11 @@
             "title": "In Attesa",
             "default": false
           },
+          "incasso_mancante": {
+            "type": "boolean",
+            "title": "Incasso Mancante",
+            "default": false
+          },
           "personale_pct": {
             "anyOf": [
               {

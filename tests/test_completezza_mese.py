@@ -634,3 +634,62 @@ def test_l_endpoint_dei_kpi_manda_i_mesi_senza_merce():
     ):
         resp = margini.get_margini_kpi("2026-09-01", "2026-09-30", authorization="Bearer t")
     assert resp.mesi_senza_merce == 1
+
+
+# ── K13: la Home di una sede ferma ──────────────────────────────────────────
+
+def _home_kpi_spese(margini, fb, spese, oggi=date(2026, 10, 15)):
+    fw._HOME_KPI_CACHE.clear()
+    try:
+        with patch.multiple(
+            "services.margine_service",
+            carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: margini if a == 2026 else {}),
+            calcola_costi_automatici_per_anno_sql=MagicMock(
+                side_effect=lambda _u, _r, a: (fb, spese) if a == 2026 else ({}, {})),
+        ), patch.object(fw, "_resolve_user_from_token", return_value={"id": "u"}), \
+             patch.object(fw, "_get_supabase_client", return_value=_sb()), \
+             patch.object(fw, "_resolve_ristorante_id", return_value="r"), \
+             patch.object(fw, "_fine_mese_coperta", return_value=True), \
+             patch.object(fw, "_oggi_rome", return_value=oggi):
+            return fw.home_kpi(authorization="Bearer t")
+    finally:
+        fw._HOME_KPI_CACHE.clear()
+
+
+def test_un_mese_di_sole_spese_non_fa_da_ultima_fotografia():
+    """Il caso misurato: giugno pieno, luglio solo 89 EUR di spese, agosto e
+    settembre vuoti. La card mostra giugno, non «Luglio, MOL -89»."""
+    margini = {6: {"fatturato_iva10": 80655.0, "costo_dipendenti": 20080.0}}
+    kpi = _home_kpi_spese(margini, {6: 13058.88}, {6: 4180.61, 7: 89.08})
+    assert kpi.periodo_label == "Giugno" and kpi.incasso_mancante is False
+    assert kpi.mol > 0
+
+
+def test_senza_incasso_in_sei_mesi_lo_dichiara():
+    """La sede che non ha mai inserito incassi: si mostra agosto, ma dichiarato,
+    senza variazioni (con luglio di sole spese la freccia direbbe -97,9% verde)."""
+    kpi = _home_kpi_spese({}, {8: 234.33}, {7: 4000.0, 8: 460.43})
+    assert kpi.periodo_label == "Agosto" and kpi.incasso_mancante is True
+    assert all(getattr(kpi, k) is None for k in (
+        "fatturato_delta_pct", "food_cost_delta_pp", "personale_delta_pct",
+        "spese_delta_pct", "mol_delta_pct"))
+
+
+def test_la_linea_del_mol_salta_i_mesi_senza_incasso():
+    margini = {m: {"fatturato_iva10": 55000.0, "costo_dipendenti": 15000.0} for m in (1, 2, 4)}
+    fb = {1: 14000.0, 2: 14000.0, 4: 14000.0}
+    kpi = _home_kpi_spese(margini, fb, {3: 89.0}, oggi=date(2026, 5, 10))
+    assert [p.mese for p in kpi.mol_mensile] == [1, 2, 4]
+
+
+def test_tinta_della_home_senza_incasso_e_gialla():
+    out = esegui_ts("lib/catena-confronti", "emit(m.tintContiPV(input));",
+                    {"mol": -694.76, "incasso_mancante": True}, richiede=["tintContiPV"])
+    assert out == "giallo"
+
+
+def test_la_card_della_home_dice_che_manca_l_incasso():
+    from pathlib import Path
+    s = (Path(__file__).resolve().parent.parent / "apps/web/src/app/(app)/dashboard/kpi-block.tsx").read_text(encoding="utf-8")
+    assert "{kpi.incasso_mancante && (" in s
+    assert "il MOL qui sopra è solo la" in s

@@ -120,6 +120,8 @@ export type HomeKpi = {
   // true = mese chiuso con la merce, ma nessuna fattura di merce negli ultimi 5
   // giorni: i conti possono cambiare, il MOL non si dice verde.
   in_attesa?: boolean;
+  // true = mese chiuso mostrato senza incasso: il MOL e' solo i costi.
+  incasso_mancante?: boolean;
   // Mese di ferie: il mese mostrato (incasso_fuori_norma) o quello di confronto
   // (confronto_escluso, es. "agosto") ha incassato molto meno dei vicini. Le
   // variazioni arrivano a null; la card dice perche'.

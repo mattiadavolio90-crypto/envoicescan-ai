@@ -112,6 +112,19 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
         </Link>
       )}
 
+      {kpi.incasso_mancante && (
+        <Link
+          href="/margini"
+          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors hover:border-incerto/60"
+        >
+          <TriangleAlert className="mt-px size-3.5 shrink-0" />
+          <span>
+            Manca l&apos;incasso di {kpi.periodo_label.toLowerCase()}: il MOL qui sopra è solo la
+            somma dei costi. Si aggiorna da solo appena inserisci i ricavi.
+          </span>
+        </Link>
+      )}
+
       {!kpi.costi_mancanti && kpi.in_attesa && (
         <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           <Clock className="mt-px size-3.5 shrink-0" />
