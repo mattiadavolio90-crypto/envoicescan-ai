@@ -680,7 +680,9 @@ def _gennaio_2027(dicembre_di_ferie):
         _mese_chiuso_ma_in_utile(m26, fb26, 12)
     m27 = {1: {"altri_ricavi_noiva": 30000.0, "costo_dipendenti": 9000.0,
                "altri_costi_spese": 2500.0}}
-    fonti = {2026: (m26, fb26), 2027: (m27, {1: 5000.0})}
+    # Il 3 febbraio e' gia' arrivata merce di febbraio: gennaio e' consolidato,
+    # non «in attesa» (K03, 16/10/2026), e decide solo il dicembre di confronto.
+    fonti = {2026: (m26, fb26), 2027: (m27, {1: 5000.0, 2: 400.0})}
     with patch.multiple(
         "services.margine_service",
         carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: fonti.get(a, ({}, {}))[0]),

@@ -107,7 +107,8 @@ def _norm(t: str) -> str:
 
 
 def test_il_trend_del_mol_non_e_mai_verde_se_in_perdita_o_con_costi_mancanti():
-    assert "neutro={!molPos||!molAttendibile}" in _norm(_testo(_PV_CONTI))
+    # dal 16/10/2026 anche il mese «in attesa delle fatture di fine mese» (K03)
+    assert "neutro={!molPos||!molAttendibile||kpi.in_attesa===true}" in _norm(_testo(_PV_CONTI))
     assert "constmolAttendibile=!kpi.costi_mancanti;" in _norm(_testo(_PV_CONTI))
 
 

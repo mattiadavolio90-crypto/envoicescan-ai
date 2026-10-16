@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Minus, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowUp, Clock, Minus, TriangleAlert } from "lucide-react";
 import { type HomeKpi } from "@/lib/home";
 import { tintContiPV } from "@/lib/catena-confronti";
 import { formatEuro } from "@/lib/format";
@@ -89,7 +89,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
             {/* MOL negativo -> trend neutro (mai verde): "meno in perdita" non e'
                 una vittoria. Stessa cosa coi costi mancanti: il delta confronta
                 un margine gonfiato con uno vero. */}
-            <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos || !molAttendibile} />
+            <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos || !molAttendibile || kpi.in_attesa === true} />
           </span>
         </Link>
         <AndamentoMargine punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} affidabile={molAttendibile} />
@@ -110,6 +110,16 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
             margine non è reale. Si aggiorna da solo appena arrivano.
           </span>
         </Link>
+      )}
+
+      {!kpi.costi_mancanti && kpi.in_attesa && (
+        <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <Clock className="mt-px size-3.5 shrink-0" />
+          <span>
+            In attesa delle fatture di fine mese: i conti di{" "}
+            {kpi.periodo_label.toLowerCase()} possono ancora cambiare.
+          </span>
+        </p>
       )}
 
       {avvisoFerie && (

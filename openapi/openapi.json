@@ -24876,6 +24876,11 @@
             "title": "Netto",
             "default": 0.0
           },
+          "in_attesa": {
+            "type": "boolean",
+            "title": "In Attesa",
+            "default": false
+          },
           "personale_pct": {
             "anyOf": [
               {
@@ -25815,6 +25820,11 @@
           "senza_merce": {
             "type": "boolean",
             "title": "Senza Merce",
+            "default": false
+          },
+          "in_attesa": {
+            "type": "boolean",
+            "title": "In Attesa",
             "default": false
           }
         },

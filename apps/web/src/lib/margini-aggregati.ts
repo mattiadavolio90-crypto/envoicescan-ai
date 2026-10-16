@@ -69,6 +69,7 @@ export type MesePivot = {
   quote_riparto_fb: number;
   quote_riparto_spese: number;
   senza_merce?: boolean;
+  in_attesa?: boolean;
 };
 
 // Le 2 righe virtuali di ROWS. Restano qui e non nel .tsx perche' `costi_fb_auto`
@@ -263,6 +264,15 @@ export function meseSenzaCosti(m: MesePivot): boolean {
   if ((m.fatturato_netto ?? 0) <= 0) return false;
   if (typeof m.senza_merce === "boolean") return m.senza_merce;
   return (m.costi_fb_totali ?? 0) <= 0;
+}
+
+// Il colore del MOL di UN mese: neutro anche quando il mese e' chiuso ma del
+// mese dopo non e' arrivata merce (`in_attesa`, K03 16/10/2026), perche' le
+// fatture di fine mese possono ancora abbassarlo. Solo il colore della cella:
+// il giudizio del periodo resta su `meseSenzaCosti`, o l'ultimo mese chiuso lo
+// spegnerebbe ogni inizio mese.
+export function meseSenzaGiudizio(m: MesePivot): boolean {
+  return meseSenzaCosti(m) || m.in_attesa === true;
 }
 
 /* ─── analisi-tab.tsx + carica-ricavi-dialog.tsx: elenco mesi del periodo ─── */

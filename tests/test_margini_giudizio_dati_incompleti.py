@@ -310,8 +310,12 @@ def _pivot_endpoint(mesi_saved, costi_auto, data_da, data_a, oggi):
         _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
         _get_supabase_client=MagicMock(return_value=client),
         _resolve_ristorante_id=MagicMock(return_value="rist-1"),
-    ), patch.object(margini, "_calcola_costi_auto_per_periodo", MagicMock(return_value=costi_auto)), \
-         patch.object(margini, "_load_mensile_overrides", MagicMock(return_value={})), \
+    ), patch.object(
+        margini, "_calcola_costi_auto_per_periodo",
+        # Come la funzione vera: solo i mesi chiesti. Senza, il mese dopo il
+        # periodo arriverebbe anche se il codice non lo chiedesse.
+        MagicMock(side_effect=lambda _sb, _rid, mesi: {k: v for k, v in costi_auto.items() if k in mesi}),
+    ), patch.object(margini, "_load_mensile_overrides", MagicMock(return_value={})), \
          patch.object(fw, "_oggi_rome", return_value=oggi), \
          patch("services.settore_service.settore_utente", return_value="ristorazione"):
         return margini.get_margini_analisi(data_da, data_a, authorization="Bearer x")
@@ -325,3 +329,32 @@ def test_il_pivot_porta_senza_merce_e_il_mese_in_corso_resta_sulla_merce_assente
     )
     per_mese = {p.mese: p.senza_merce for p in resp.mesi}
     assert per_mese == {9: True, 10: False}
+
+
+def test_il_pivot_mette_in_attesa_l_ultimo_mese_chiuso_senza_merce_dopo():
+    """Agosto e settembre chiusi con la merce; a ottobre (in corso) nessuna merce
+    ancora: settembre e' in attesa, agosto no (settembre ha merce), ottobre no."""
+    resp = _pivot_endpoint(
+        [_mese(2026, 8, 110000.0), _mese(2026, 9, 110000.0), _mese(2026, 10, 110000.0)],
+        {(2026, 8): (25000.0, 5000.0), (2026, 9): (25000.0, 5000.0)},
+        "2026-08-01", "2026-10-31", date(2026, 10, 15),
+    )
+    assert {p.mese: p.in_attesa for p in resp.mesi} == {8: False, 9: True, 10: False}
+
+
+def test_il_pivot_guarda_il_mese_dopo_anche_fuori_dal_periodo():
+    """Periodo che finisce ad agosto: se settembre ha merce, agosto e' consolidato."""
+    resp = _pivot_endpoint(
+        [_mese(2026, 8, 110000.0)],
+        {(2026, 8): (25000.0, 5000.0), (2026, 9): (300.0, 0.0)},
+        "2026-08-01", "2026-08-31", date(2026, 10, 15),
+    )
+    assert resp.mesi[0].in_attesa is False
+    resp = _pivot_endpoint(
+        [_mese(2026, 8, 110000.0)],
+        {(2026, 8): (25000.0, 5000.0)},
+        "2026-08-01", "2026-08-31", date(2026, 10, 15),
+    )
+    assert resp.mesi[0].in_attesa is True
+    # il giudizio del periodo resta acceso
+    assert not resp.mesi[0].senza_merce

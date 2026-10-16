@@ -3209,6 +3209,29 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `_merce_ok_per_sede` 1 + N per sede); il fail-open della Salute ora scatta anche se non si
 >   leggono i margini; chi carica a mano puo' vedere giallo il mese appena chiuso nei primi
 >   giorni, finche' le fatture non arrivano.
+>
+> - **16/10/2026 — Fix n. 20 dell'audit di ottobre (K03, secondo passo): lo stato «in attesa
+>   delle fatture di fine mese».** La soglia del 15% da sola lasciava verdi quattro mesi al
+>   23-28% che valgono il 65-75% del normale della propria sede, tutti senza merce nel mese
+>   dopo: l'ultimo mese caricato a meta'. Decisione di Mattia (16/10): verde solo se nel mese
+>   dopo e' arrivata merce (lo stesso «consolidato» del briefing), altrimenti «in attesa», ne'
+>   verde ne' giallo. `in_attesa_fine_mese` in `services/completezza_mese.py`; `_kpi_periodo`
+>   espone `merce`. Home: `HomeKpiResponse.in_attesa`, MOL positivo grigio (`tintContiPV`; il
+>   negativo resta rosso), freccia neutra e la riga «In attesa delle fatture di fine mese».
+>   Margini: `MesiPivot.in_attesa` (i costi si leggono anche per il mese dopo il periodo), la
+>   cella del mese non si colora (`meseSenzaGiudizio`) ma il giudizio del periodo resta su
+>   `meseSenzaCosti`, o ogni inizio mese si spegnerebbe. Briefing: niente buona notizia sul MOL
+>   di un mese in attesa. Chat: `query_margini` lo dichiara con una nota. Merce del mese dopo
+>   non letta = nessuna attesa inventata. Schema OpenAPI rigenerato. +14 test in
+>   `tests/test_completezza_mese.py`, +2 in `tests/test_margini_giudizio_dati_incompleti.py`;
+>   **12 mutanti, 12 uccisi** (uno dopo aver reso onesto il finto `_calcola_costi_auto_per_periodo`,
+>   che restituiva i costi di ogni mese anche non chiesti). **Non fatto, dichiarato**: la
+>   catena non ha ancora lo stato in attesa (completezza e `livello_dati` restano su
+>   completo/incompleto).
+>   Allineati 3 test che fissavano il comportamento di prima: la buona notizia di gennaio
+>   2027 non aveva merce di febbraio (ora e' consolidata e decide solo il dicembre di
+>   confronto), la guardia sulla freccia della card, il valutatore del colore di Margini.
+>   Suite `-m "not sql"`: 19.774 verdi prima dei tre allineamenti, 137 verdi i tre file dopo.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

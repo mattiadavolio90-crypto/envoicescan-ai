@@ -277,3 +277,113 @@ def test_margine_calo_esclude_il_mese_chiuso_con_poca_merce():
     costi = {mc.ANNO: {"a": ({mc.M1: 1000.0, mc.M2: 6000.0, mc.M3: 6000.0, mc.M4: 6140.0}, {})}}
     ovr = {"a": {m: {"iva10": 11000.0, "iva22": 0.0, "altri": 0.0} for m in mc.MESI}}
     assert mc._segnali(righe, costi, overrides=ovr) == []
+
+
+# ── Secondo passo: «in attesa delle fatture di fine mese» ───────────────────
+
+from services.completezza_mese import in_attesa_fine_mese
+
+
+@pytest.mark.parametrize("netto,merce,dopo,in_corso,atteso", [
+    (100000.0, 25000.0, 0.0, False, True),       # chiuso, merce giusta, niente dopo
+    (100000.0, 25000.0, 300.0, False, False),    # e' arrivata merce del mese dopo
+    (100000.0, 25000.0, None, False, False),     # non so: niente stato inventato
+    (100000.0, 25000.0, 0.0, True, False),       # mese in corso: e' un altro caso
+    (100000.0, 10000.0, 0.0, False, False),      # senza merce: e' giallo, non attesa
+    (0.0, 25000.0, 0.0, False, False),           # senza incasso
+])
+def test_in_attesa(netto, merce, dopo, in_corso, atteso):
+    assert in_attesa_fine_mese(netto, merce, dopo, in_corso=in_corso) is atteso
+
+
+def _home_kpi_con(margini, fb, oggi=date(2026, 10, 15)):
+    fw._HOME_KPI_CACHE.clear()
+    try:
+        with patch.multiple(
+            "services.margine_service",
+            carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: margini if a == 2026 else {}),
+            calcola_costi_automatici_per_anno_sql=MagicMock(
+                side_effect=lambda _u, _r, a: (fb, {}) if a == 2026 else ({}, {})),
+        ), patch.object(fw, "_resolve_user_from_token", return_value={"id": "u"}), \
+             patch.object(fw, "_get_supabase_client", return_value=_sb()), \
+             patch.object(fw, "_resolve_ristorante_id", return_value="r"), \
+             patch.object(fw, "_oggi_rome", return_value=oggi):
+            return fw.home_kpi(authorization="Bearer t")
+    finally:
+        fw._HOME_KPI_CACHE.clear()
+
+
+SETTEMBRE_PIENO = {9: {"fatturato_iva10": 110000.0, "costo_dipendenti": 20000.0}}
+
+
+def test_home_kpi_mese_chiuso_senza_merce_dopo_e_in_attesa():
+    kpi = _home_kpi_con(SETTEMBRE_PIENO, {9: 25000.0})
+    assert kpi.periodo_label == "Settembre"
+    assert kpi.in_attesa is True and kpi.costi_mancanti is False
+
+
+def test_home_kpi_mese_consolidato_non_e_in_attesa():
+    kpi = _home_kpi_con(SETTEMBRE_PIENO, {9: 25000.0, 10: 800.0})
+    assert kpi.in_attesa is False
+
+
+def test_buona_notizia_tace_sul_mese_in_attesa():
+    import tests.test_briefing_onesta_fatturato_zero as bo
+    margini = {m: {"altri_ricavi_noiva": 40000.0 + m * 1000, "costo_dipendenti": 8000.0} for m in range(1, 13)}
+    csp = {m: 1000.0 for m in range(1, 13)}
+    consolidato = {m: 12000.0 for m in range(1, 13)}
+    in_attesa = {m: 12000.0 for m in range(1, 9)}   # settembre (il mese dopo agosto) senza merce
+    for cfb, attesa in ((consolidato, False), (in_attesa, True)):
+        with bo._DENTRO_FINESTRA_MOL, bo._patch_loaders(margini, cfb, csp), patch(
+            "services.fastapi_worker._salute_indice_rosso", return_value=False
+        ):
+            out = fw._briefing_buona_notizia(bo.UID, bo.RID, bo._sb_senza_incasso())
+        assert (out is None) is attesa, (attesa, out)
+
+
+def test_chat_query_margini_dichiara_il_mese_in_attesa():
+    with patch.multiple(
+        "services.margine_service",
+        carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: SETTEMBRE_PIENO if a == 2026 else {}),
+        calcola_costi_automatici_per_anno_sql=MagicMock(
+            side_effect=lambda _u, _r, a: ({9: 25000.0}, {}) if a == 2026 else ({}, {})),
+    ), patch.object(fw, "_oggi_rome", return_value=date(2026, 10, 15)):
+        mesi = {r["mese"]: r for r in fw._chat_query_margini({"id": "u"}, _sb(), None, ristorante_id="r")["mesi"]}
+    assert mesi["settembre 2026"]["in_attesa"] is True
+    assert "possono cambiare" in mesi["settembre 2026"]["nota_attesa"]
+
+
+def test_tinta_della_home_in_attesa_e_neutra():
+    casi = [
+        {"mol": 5000, "in_attesa": True},
+        {"mol": 5000, "in_attesa": False},
+        {"mol": -5000, "in_attesa": True},
+        {"mol": 5000, "in_attesa": True, "costi_mancanti": True},
+    ]
+    out = esegui_ts("lib/catena-confronti", "emit(input.map(k => m.tintContiPV(k)));", casi,
+                    richiede=["tintContiPV"])
+    assert out == ["grigio", "verde", "rosso", "giallo"]
+
+
+def test_cella_del_mese_in_attesa_senza_colore_ma_il_periodo_resta_giudicato():
+    out = esegui_ts(
+        "lib/margini-aggregati",
+        "emit([m.meseSenzaGiudizio(input), m.meseSenzaCosti(input)]);",
+        _pivot(senza_merce=False, in_attesa=True), richiede=["meseSenzaGiudizio", "meseSenzaCosti"])
+    assert out == [True, False]
+
+
+def test_la_card_della_home_mostra_l_attesa():
+    from pathlib import Path
+    s = (Path(__file__).resolve().parent.parent / "apps/web/src/app/(app)/dashboard/kpi-block.tsx").read_text(encoding="utf-8")
+    assert "{!kpi.costi_mancanti && kpi.in_attesa && (" in s
+    assert "In attesa delle fatture di fine mese" in s
+    assert "neutro={!molPos || !molAttendibile || kpi.in_attesa === true}" in s
+
+
+def test_la_tabella_di_margini_colora_con_il_mese_senza_giudizio():
+    from pathlib import Path
+    s = (Path(__file__).resolve().parent.parent / "apps/web/src/app/(app)/margini/calcolo-tab.tsx").read_text(encoding="utf-8")
+    assert "const colorCls = valueColorCls(row.valueColor, raw, meseSenzaGiudizio(mese));" in s
+    assert "const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaGiudizio(current);" in s
+    assert "() => mesiVisibili.some(meseSenzaCosti)," in s

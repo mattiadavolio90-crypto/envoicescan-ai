@@ -12,7 +12,7 @@ import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
 import {
-  meseSenzaCosti, pctIncidenza, pctIncidenzaRiga, pivotMedia, rowVal, scrollDaNodi,
+  meseSenzaCosti, meseSenzaGiudizio, pctIncidenza, pctIncidenzaRiga, pivotMedia, rowVal, scrollDaNodi,
   coloreBarraRisultato, RIGHE_MARGINI, righeVisibili, separatoreSopra, rigaPiede,
   gruppiEspansiIniziali, alternaGruppo, apreCostoPersonale,
   type MesePivot, type RigaMargini, type ChiaveRigaMargini, type GruppoMargini,
@@ -631,7 +631,7 @@ function Cell({
 }) {
   const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
-  const colorCls = valueColorCls(row.valueColor, raw, meseSenzaCosti(mese));
+  const colorCls = valueColorCls(row.valueColor, raw, meseSenzaGiudizio(mese));
   const pct = pctIncidenzaRiga(row.key, raw, mese.fatturato_netto);
   const display = raw === 0 ? "—" : formatEuro(raw);
 
@@ -856,7 +856,7 @@ function MobileMeseView({
   const current = isTotal ? totali : mesi[Math.min(selIdx, mesi.length - 1)];
   // Sul totale vale la regola del periodo (un solo mese scoperto lo rende
   // incompleto); sul singolo mese vale quel mese. Vedi TotalCell.
-  const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaCosti(current);
+  const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaGiudizio(current);
 
   return (
     <div className="space-y-3">

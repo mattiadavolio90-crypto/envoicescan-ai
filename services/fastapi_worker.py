@@ -2669,6 +2669,10 @@ class HomeKpiResponse(BaseModel):
     # Base delle percentuali della pagina Margini (IVA esclusa) e le percentuali
     # gia' calcolate, per la chat: il modello non deve dividere per il lordo.
     netto: float = 0.0
+    # Mese chiuso con la merce, ma del mese dopo non e' arrivata ancora nessuna
+    # fattura: i conti possono cambiare (services/completezza_mese.py). Il MOL non
+    # si dice verde.
+    in_attesa: bool = False
     personale_pct: Optional[float] = None
     spese_pct: Optional[float] = None
     mol_pct: Optional[float] = None
@@ -5394,6 +5398,19 @@ def _chat_query_margini(
                 risultati[-1]["dati_incompleti"] = (
                     "ci sono costi ma nessun incasso registrato: il MOL negativo non e' "
                     "una perdita, mancano i ricavi del mese")
+            elif mm != oggi.month or aa != oggi.year:
+                nm, na = (1, aa + 1) if mm == 12 else (mm + 1, aa)
+                try:
+                    n_margini, n_fb, n_sp = _anno(na)
+                    merce_dopo = _kpi_periodo(n_margini, n_fb, n_sp, nm)["merce"]
+                except Exception as exc:
+                    logger.warning("chat query_margini: merce del mese dopo non letta: %s", exc)
+                    merce_dopo = None
+                if in_attesa_fine_mese(k["netto"], k["merce"], merce_dopo):
+                    risultati[-1]["in_attesa"] = True
+                    risultati[-1]["nota_attesa"] = (
+                        "del mese dopo non e' arrivata ancora nessuna fattura della merce: "
+                        "i conti di questo mese possono cambiare, dillo se ne parli")
             if "dati_incompleti" in risultati[-1]:
                 risultati[-1]["mol_pct"] = None
         mm -= 1
@@ -7026,8 +7043,16 @@ def _buona_notizia_principale(
                 # perche' la regola valga per costruzione in entrambi i rami,
                 # non perche' un test la difenda. Il gate che difende il difetto
                 # reale e' quello del ramo "perdita in calo", sotto.
+                # (3) NON festeggiamo un mese ancora in attesa delle fatture di
+                # fine mese (nessuna merce del mese dopo): la crescita puo' essere
+                # solo merce non ancora arrivata (K03, 16/10/2026).
+                nm, na = (1, anno_usato + 1) if mese_usato == 12 else (mese_usato + 1, anno_usato)
+                n_margini, n_fb, n_sp = _dati(na)
+                in_attesa = in_attesa_fine_mese(
+                    kpi["netto"], kpi["merce"], _kpi_periodo(n_margini, n_fb, n_sp, nm)["merce"])
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
                         and _mesi_confrontabili(kpi, kpi_prec)
+                        and not in_attesa
                         and not _salute_indice_rosso(ristorante_id, supabase_client)
                         and not _un_mese_di_ferie()):
                     delta_pct = round((mol_curr - mol_prec) / abs(mol_prec) * 100, 1)
@@ -9968,7 +9993,7 @@ def _merge_override_mensile(margini_anno: dict, sb, ristorante_id: str, anno: in
     return margini_anno
 
 
-from services.completezza_mese import merce_insufficiente  # noqa: E402
+from services.completezza_mese import in_attesa_fine_mese, merce_insufficiente  # noqa: E402
 
 
 def _pct_su_netto(kpi: dict) -> Dict[str, Optional[float]]:
@@ -10063,6 +10088,9 @@ def _kpi_periodo(
         # del 15% del netto in un mese chiuso, nessuna merce nel mese in corso).
         # Il mese in corso lo dichiara il chiamante: qui non si sa che giorno e'.
         "costi_mancanti": fatturato > 0 and merce_insufficiente(netto, fb, in_corso=in_corso),
+        # La merce del mese (fatture + a mano + quote): serve al mese PRIMA per
+        # sapere se e' consolidato (`in_attesa_fine_mese`).
+        "merce": round(fb, 2),
         "has_data": fatturato > 0 or fb > 0 or spese > 0 or personale > 0,
     }
 
@@ -10169,6 +10197,17 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     if kpi is None:
         return _vuoto
 
+    in_attesa = False
+    if not mese_in_corso:
+        nm, na = (1, anno_usato + 1) if mese_usato == 12 else (mese_usato + 1, anno_usato)
+        try:
+            n_margini, n_fb, n_spese = _anno(na)
+            merce_dopo = _kpi_periodo(n_margini, n_fb, n_spese, nm)["merce"]
+        except Exception as exc:
+            logger.warning("home_kpi: merce del mese dopo non letta: %s", exc)
+            merce_dopo = None
+        in_attesa = in_attesa_fine_mese(kpi["netto"], kpi["merce"], merce_dopo)
+
     # ── Confronto col mese precedente a quello mostrato ──
     def _delta_pct(curr: float, prev: float) -> Optional[float]:
         if prev and prev != 0:
@@ -10261,6 +10300,7 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         mol_mensile=mol_mensile,
         mol_mensile_anno=anno_usato if mol_mensile else None,
         netto=kpi["netto"],
+        in_attesa=in_attesa,
         **_pct_su_netto(kpi),
     )
     # Eviction opportunistica delle entry scadute: la chiave include anno:mese,

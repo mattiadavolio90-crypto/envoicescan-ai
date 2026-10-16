@@ -37,3 +37,22 @@ def merce_insufficiente(netto: float, merce: float, *, in_corso: bool = False) -
     if in_corso:
         return merce <= 0
     return merce < SOGLIA_MERCE_SU_NETTO * netto
+
+
+def in_attesa_fine_mese(
+    netto: float, merce: float, merce_mese_dopo: float | None, *, in_corso: bool = False,
+) -> bool:
+    """True = mese chiuso con abbastanza merce, ma del mese dopo non e' ancora
+    arrivata nessuna merce: le fatture degli ultimi giorni possono mancare.
+
+    Secondo passo della decisione del 16/10/2026: un mese al 23-28% che vale il
+    65-75% del normale della sede, con zero merce nel mese dopo, e' l'ultimo
+    caricato a meta' (quattro casi sul live), non un mese da dire «verde». Non e'
+    giallo: e' «in attesa». E' lo stesso criterio del «consolidato» del briefing.
+    `merce_mese_dopo` None (non letta) non mette in attesa: niente stato inventato.
+    """
+    if in_corso or merce_mese_dopo is None:
+        return False
+    if float(netto or 0) <= 0 or merce_insufficiente(netto, merce):
+        return False
+    return float(merce_mese_dopo or 0) <= 0

@@ -1013,6 +1013,10 @@ class MesiPivot(BaseModel):
     # (services/completezza_mese.py). Lo decide il worker, una volta sola: il
     # frontend lo legge (`meseSenzaCosti`) invece di ricopiare la soglia.
     senza_merce: bool = False
+    # Mese chiuso con la merce, ma senza merce nel mese dopo: le fatture di fine
+    # mese possono mancare. Il frontend non colora il suo MOL (`meseSenzaGiudizio`)
+    # e il giudizio del periodo resta.
+    in_attesa: bool = False
 
 
 class MarginiAnalisiResponse(BaseModel):
@@ -1276,8 +1280,14 @@ def get_margini_analisi(
             y += 1
             m = 1
 
+    # Il mese dopo l'ultimo del periodo: serve a sapere se l'ultimo e' gia'
+    # consolidato (merce arrivata dopo) o «in attesa» (K03, 16/10/2026).
+    _uy, _um = mesi_target[-1] if mesi_target else (d_a.year, d_a.month)
+    mese_dopo_periodo = (_uy + 1, 1) if _um == 12 else (_uy, _um + 1)
+    mesi_costi = mesi_target + [mese_dopo_periodo]
+
     # Carica margini_mensili (manuali + ricavi sincronizzati)
-    annos = sorted({y for y, _ in mesi_target})
+    annos = sorted({y for y, _ in mesi_costi})
     margini_resp = (
         sb.table("margini_mensili")
         .select("*")
@@ -1290,10 +1300,18 @@ def get_margini_analisi(
 
     # Costi auto F&B/Spese di tutti i mesi in UNA passata (era N+1: 1 scansione
     # fatture per mese -> 12 round-trip per un anno).
-    costi_auto_map = _calcola_costi_auto_per_periodo(sb, ristorante_id, mesi_target)
+    costi_auto_map = _calcola_costi_auto_per_periodo(sb, ristorante_id, mesi_costi)
 
-    from services.completezza_mese import merce_insufficiente
+    from services.completezza_mese import in_attesa_fine_mese, merce_insufficiente
     oggi = _fw()._oggi_rome()
+
+    def _merce_mese(y: int, m: int) -> float:
+        r = margini_map.get((y, m), {})
+        return (
+            float(costi_auto_map.get((y, m), (0.0, 0.0))[0] or 0)
+            + float(r.get("altri_costi_fb") or 0)
+            + float(r.get("quote_riparto_fb") or 0)
+        )
     mesi_pivot: List[MesiPivot] = []
     for (y, m) in mesi_target:
         r = margini_map.get((y, m), {})
@@ -1345,6 +1363,9 @@ def get_margini_analisi(
             quote_riparto_spese=round(q_spese, 2),
             senza_merce=merce_insufficiente(
                 netto, fb_tot, in_corso=(y, m) >= (oggi.year, oggi.month)),
+            in_attesa=in_attesa_fine_mese(
+                netto, fb_tot, _merce_mese(*((y + 1, 1) if m == 12 else (y, m + 1))),
+                in_corso=(y, m) >= (oggi.year, oggi.month)),
         ))
 
     # Totali periodo

@@ -236,10 +236,12 @@ def _valuta_flag(espressione: str, senza_costi: bool) -> bool:
     )
     return esegui_ts(
         _MODULO,
-        "const { meseSenzaCosti } = m;\n"
+        # meseSenzaGiudizio (16/10/2026) = meseSenzaCosti o «in attesa»: senza
+        # `in_attesa` nel mese da' lo stesso esito, ed e' quello che si misura qui.
+        "const { meseSenzaCosti, meseSenzaGiudizio } = m;\n"
         f"const mese = input;\nemit(Boolean({espressione}));",
         argomento=mese,
-        richiede=["meseSenzaCosti"],
+        richiede=["meseSenzaCosti", "meseSenzaGiudizio"],
     )
 
 

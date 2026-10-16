@@ -370,12 +370,17 @@ export function tintContiPV(kpi: {
   mol: number;
   costi_mancanti?: boolean;
   incasso_fuori_norma?: boolean;
-}): "verde" | "rosso" | "giallo" {
+  in_attesa?: boolean;
+}): "verde" | "rosso" | "giallo" | "grigio" {
   if (kpi.costi_mancanti) return "giallo";
   // Mese di ferie (8/10/2026): il MOL e' in perdita perche' il locale era
   // chiuso, non perche' va male. Decisione di Mattia: nessun allarme.
   if (kpi.incasso_fuori_norma === true) return "giallo";
-  return kpi.mol >= 0 ? "verde" : "rosso";
+  if (kpi.mol < 0) return "rosso";
+  // In attesa delle fatture di fine mese (K03, 16/10/2026): il MOL positivo puo'
+  // ancora scendere, non si dice verde. Neutro, non giallo: non manca niente di
+  // certo. Un MOL negativo resta rosso: altra merce lo abbassa ancora.
+  return kpi.in_attesa === true ? "grigio" : "verde";
 }
 
 // ─── Metrica principale della card "I conti del gruppo" ───────────────────

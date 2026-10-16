@@ -117,6 +117,9 @@ export type HomeKpi = {
   // true = il mese ha ricavi ma zero costi (food + spese): MOL e food cost non
   // sono reali. La card lo spiega e nasconde le variazioni "in meglio".
   costi_mancanti?: boolean;
+  // true = mese chiuso con la merce, ma del mese dopo non e' arrivata ancora
+  // nessuna fattura: i conti possono cambiare, il MOL non si dice verde.
+  in_attesa?: boolean;
   // Mese di ferie: il mese mostrato (incasso_fuori_norma) o quello di confronto
   // (confronto_escluso, es. "agosto") ha incassato molto meno dei vicini. Le
   // variazioni arrivano a null; la card dice perche'.
