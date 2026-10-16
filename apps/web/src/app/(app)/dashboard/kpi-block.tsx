@@ -96,7 +96,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
       </div>
 
       {/* Costi mancanti: il mese ha ricavi ma troppa poca merce (regola unica,
-          services/completezza_mese.py: meno del 15% del netto). Il MOL e'
+          services/completezza_mese.py: meno del 20% del netto). Il MOL e'
           gonfiato — lo diciamo chiaro invece di mostrare un margine finto. */}
       {kpi.costi_mancanti && (
         <Link

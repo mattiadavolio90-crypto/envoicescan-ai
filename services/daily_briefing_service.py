@@ -188,11 +188,12 @@ logger = get_logger('daily_briefing')
 #   39 (14/10): negli avvisi prezzi un acquisto e' una fattura (le righe dello
 #               stesso prodotto nella stessa fattura si fondono): spariscono gli
 #               avvisi nati dentro una fattura, ne compaiono di nascosti.
-#   40 (16/10): un mese chiuso e' «senza merce» sotto il 15% dell'incasso netto
+#   40 (16/10): un mese chiuso e' «senza merce» sotto il 20% dell'incasso netto
 #               (services/completezza_mese.py, K03), non piu' solo a merce zero:
 #               nasce l'avviso «mancano le fatture costo» su mesi che prima
 #               passavano, e il testo non dice piu' «risulta 0». Nello stesso
-#               push: niente buona notizia su un mese senza merce del mese dopo.
+#               push: niente buona notizia su un mese senza fatture di merce
+#               negli ultimi 5 giorni.
 _BRIEFING_CODE_VERSION = 40
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se

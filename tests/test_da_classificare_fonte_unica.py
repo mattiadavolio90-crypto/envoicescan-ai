@@ -81,21 +81,23 @@ def test_il_file_importa_la_fonte_unica(relativo):
     )
 
 
-def test_le_otto_occorrenze_sono_tutte_legate():
+def test_le_nove_occorrenze_sono_tutte_legate():
     """Il conto, così un'aggiunta silenziosa si vede.
 
     7 filtri `.neq(...)` + 1 dentro la stringa PostgREST del queue-worker.
     L'ottava è del 3/9 (Fase 4bis): `_card_da_classificare` conta le righe
     dubbie ESCLUDENDO le 'Da Classificare' già contate a parte — usa la
-    costante come gli altri punti.
+    costante come gli altri punti. La nona è del 16/10/2026 (K03):
+    `_fine_mese_coperta` cerca la merce degli ultimi 5 giorni con gli stessi
+    filtri dei costi, quindi senza le righe non classificate.
     """
     trovate = 0
     for relativo in _CON_FILTRO:
         vivo = _codice_vivo(_ROOT / relativo)
         trovate += len(re.findall(r"\.neq\(\s*[\"']categoria[\"']\s*,\s*CATEGORIA_NON_CLASSIFICATA", vivo))
         trovate += len(re.findall(r"categoria\.eq\.\{CATEGORIA_NON_CLASSIFICATA\}", vivo))
-    assert trovate == 8, (
-        f"i punti legati alla fonte unica sono {trovate}, non 8. Se ne hai "
+    assert trovate == 9, (
+        f"i punti legati alla fonte unica sono {trovate}, non 9. Se ne hai "
         "aggiunto uno aggiorna il numero; se ne è sparito uno, quel punto è "
         "tornato a decidere da solo se una riga entra nel MOL"
     )

@@ -15,6 +15,17 @@ from unittest.mock import MagicMock, patch
 
 from services.fastapi_worker import _briefing_buona_notizia
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _fine_mese_coperta(monkeypatch):
+    """Questi test parlano del gate della Salute, non dello stato «in attesa
+    delle fatture di fine mese» (K03, 16/10/2026): i loro dati non hanno date di
+    fattura. L'attesa ha i suoi test in tests/test_completezza_mese.py."""
+    import services.fastapi_worker as _fw
+    monkeypatch.setattr(_fw, "_fine_mese_coperta", lambda *a, **k: True)
+
 UID = "user-aaa"
 RID = "rist-bbb"
 

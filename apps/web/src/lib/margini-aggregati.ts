@@ -257,7 +257,7 @@ export function pctIncidenzaRiga(key: ChiaveRigaMargini, raw: number, netto: num
 // essere dichiarato buono.
 //
 // Dal 16/10/2026 la soglia la decide il worker (`senza_merce`, regola unica in
-// services/completezza_mese.py: meno del 15% del netto in un mese chiuso): qui
+// services/completezza_mese.py: meno del 20% del netto in un mese chiuso): qui
 // si legge e basta. Il ripiego su «nessuna merce» vale solo per un worker che
 // non manda ancora il campo (la finestra fra i due deploy).
 export function meseSenzaCosti(m: MesePivot): boolean {

@@ -2669,9 +2669,9 @@ class HomeKpiResponse(BaseModel):
     # Base delle percentuali della pagina Margini (IVA esclusa) e le percentuali
     # gia' calcolate, per la chat: il modello non deve dividere per il lordo.
     netto: float = 0.0
-    # Mese chiuso con la merce, ma del mese dopo non e' arrivata ancora nessuna
-    # fattura: i conti possono cambiare (services/completezza_mese.py). Il MOL non
-    # si dice verde.
+    # Mese chiuso con la merce, ma nessuna fattura di merce negli ultimi 5 giorni:
+    # i conti possono cambiare (services/completezza_mese.py). Il MOL non si dice
+    # verde.
     in_attesa: bool = False
     personale_pct: Optional[float] = None
     spese_pct: Optional[float] = None
@@ -5398,19 +5398,14 @@ def _chat_query_margini(
                 risultati[-1]["dati_incompleti"] = (
                     "ci sono costi ma nessun incasso registrato: il MOL negativo non e' "
                     "una perdita, mancano i ricavi del mese")
-            elif mm != oggi.month or aa != oggi.year:
-                nm, na = (1, aa + 1) if mm == 12 else (mm + 1, aa)
-                try:
-                    n_margini, n_fb, n_sp = _anno(na)
-                    merce_dopo = _kpi_periodo(n_margini, n_fb, n_sp, nm)["merce"]
-                except Exception as exc:
-                    logger.warning("chat query_margini: merce del mese dopo non letta: %s", exc)
-                    merce_dopo = None
-                if in_attesa_fine_mese(k["netto"], k["merce"], merce_dopo):
-                    risultati[-1]["in_attesa"] = True
-                    risultati[-1]["nota_attesa"] = (
-                        "del mese dopo non e' arrivata ancora nessuna fattura della merce: "
-                        "i conti di questo mese possono cambiare, dillo se ne parli")
+            elif (mm != oggi.month or aa != oggi.year) and in_attesa_fine_mese(
+                k["netto"], k["merce"], merce_fatture=float(fb.get(mm) or 0),
+                fine_mese_coperta=_fine_mese_coperta(supabase_client, ristorante_id, aa, mm),
+            ):
+                risultati[-1]["in_attesa"] = True
+                risultati[-1]["nota_attesa"] = (
+                    "nessuna fattura della merce negli ultimi giorni del mese: possono "
+                    "mancare quelle di fine mese, i conti possono cambiare, dillo se ne parli")
             if "dati_incompleti" in risultati[-1]:
                 risultati[-1]["mol_pct"] = None
         mm -= 1
@@ -7044,12 +7039,14 @@ def _buona_notizia_principale(
                 # non perche' un test la difenda. Il gate che difende il difetto
                 # reale e' quello del ramo "perdita in calo", sotto.
                 # (3) NON festeggiamo un mese ancora in attesa delle fatture di
-                # fine mese (nessuna merce del mese dopo): la crescita puo' essere
-                # solo merce non ancora arrivata (K03, 16/10/2026).
-                nm, na = (1, anno_usato + 1) if mese_usato == 12 else (mese_usato + 1, anno_usato)
-                n_margini, n_fb, n_sp = _dati(na)
+                # fine mese (nessuna fattura di merce negli ultimi 5 giorni): la
+                # crescita puo' essere solo merce non ancora arrivata (K03).
                 in_attesa = in_attesa_fine_mese(
-                    kpi["netto"], kpi["merce"], _kpi_periodo(n_margini, n_fb, n_sp, nm)["merce"])
+                    kpi["netto"], kpi["merce"],
+                    merce_fatture=float(_dati(anno_usato)[1].get(mese_usato) or 0),
+                    fine_mese_coperta=_fine_mese_coperta(
+                        supabase_client, ristorante_id, anno_usato, mese_usato),
+                )
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
                         and _mesi_confrontabili(kpi, kpi_prec)
                         and not in_attesa
@@ -9994,7 +9991,51 @@ def _merge_override_mensile(margini_anno: dict, sb, ristorante_id: str, anno: in
     return margini_anno
 
 
-from services.completezza_mese import in_attesa_fine_mese, merce_insufficiente  # noqa: E402
+from services.completezza_mese import (  # noqa: E402
+    in_attesa_fine_mese, inizio_fine_mese, merce_insufficiente,
+)
+
+
+def _fine_mese_coperta(supabase_client, ristorante_id: str, anno: int, mese: int) -> Optional[bool]:
+    """C'e' almeno una fattura di merce del mese datata negli ultimi giorni
+    (`inizio_fine_mese`, regola unica di services/completezza_mese.py)?
+
+    Le righe del mese sono quelle dei costi (competenza, altrimenti documento,
+    stessi filtri di `_calcola_costi_auto_per_periodo`); conta la data del
+    documento, cosi' una fattura differita di inizio mese dopo con competenza nel
+    mese vale come merce di fine mese. None se la lettura fallisce.
+    """
+    from calendar import monthrange
+    from services.db_service import escludi_da_verificare_margini
+    da = f"{anno}-{mese:02d}-01"
+    a = f"{anno}-{mese:02d}-{monthrange(anno, mese)[1]:02d}"
+    try:
+        q = (
+            supabase_client.table("fatture")
+            .select("categoria,totale_riga")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .eq("oscurata", False)
+            .neq("categoria", CATEGORIA_NON_CLASSIFICATA)
+            .neq("ripartita_su_gruppo", True)
+            .gte("data_documento", inizio_fine_mese(anno, mese).isoformat())
+            .or_(
+                f"and(data_competenza.gte.{da},data_competenza.lte.{a}),"
+                f"and(data_competenza.is.null,data_documento.lte.{a})"
+            )
+            .limit(500)
+        )
+        righe = escludi_da_verificare_margini(q).execute().data or []
+    except Exception as exc:
+        logger.warning("fine mese coperta: lettura fallita: %s", exc)
+        return None
+    spese = set(_CATEGORIE_SPESE_GENERALI)
+    return any(
+        (r.get("categoria") or "") not in spese
+        and (r.get("categoria") or "") not in CATEGORIE_NOTE_WORKER
+        and float(r.get("totale_riga") or 0) > 0
+        for r in righe
+    )
 
 
 def _pct_su_netto(kpi: dict) -> Dict[str, Optional[float]]:
@@ -10086,7 +10127,7 @@ def _kpi_periodo(
         # reale, e' un mese a dati incompleti (il briefing non deve dire «+172%!»
         # su costi mancanti). La regola e' una sola per tutta l'app
         # (services/completezza_mese.py, decisione di Mattia del 16/10/2026: meno
-        # del 15% del netto in un mese chiuso, nessuna merce nel mese in corso).
+        # del 20% del netto in un mese chiuso, nessuna merce nel mese in corso).
         # Il mese in corso lo dichiara il chiamante: qui non si sa che giorno e'.
         "costi_mancanti": fatturato > 0 and merce_insufficiente(netto, fb, in_corso=in_corso),
         # La merce del mese (fatture + a mano + quote): serve al mese PRIMA per
@@ -10199,18 +10240,12 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         return _vuoto
 
     in_attesa = False
-    nm, na = (1, anno_usato + 1) if mese_usato == 12 else (mese_usato + 1, anno_usato)
-    # Solo sull'ultimo mese chiuso: se la card ripiega su un mese di mesi fa (i
-    # mesi dopo sono vuoti), «in attesa delle fatture di fine giugno» a ottobre
-    # non dice niente di vero. Li' manca ben altro, e lo dice la Salute.
-    if not mese_in_corso and (na, nm) == (oggi.year, oggi.month):
-        try:
-            n_margini, n_fb, n_spese = _anno(na)
-            merce_dopo = _kpi_periodo(n_margini, n_fb, n_spese, nm)["merce"]
-        except Exception as exc:
-            logger.warning("home_kpi: merce del mese dopo non letta: %s", exc)
-            merce_dopo = None
-        in_attesa = in_attesa_fine_mese(kpi["netto"], kpi["merce"], merce_dopo)
+    if not mese_in_corso:
+        in_attesa = in_attesa_fine_mese(
+            kpi["netto"], kpi["merce"],
+            merce_fatture=float(_anno(anno_usato)[1].get(mese_usato) or 0),
+            fine_mese_coperta=_fine_mese_coperta(sb, ristorante_id, anno_usato, mese_usato),
+        )
 
     # ── Confronto col mese precedente a quello mostrato ──
     def _delta_pct(curr: float, prev: float) -> Optional[float]:
@@ -11173,13 +11208,19 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
     return round(fb_tot, 2), round(spese_tot, 2)
 
 
-def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -> dict:
+def _calcola_costi_auto_per_periodo(
+    sb, ristorante_id: str, mesi_target: list, fine_mese: Optional[dict] = None,
+) -> dict:
     """Aggrega costi auto F&B/Spese per TUTTI i mesi del periodo in UNA passata.
 
     Prima get_margini_analisi chiamava _calcola_costi_auto_per_mese mese-per-mese:
     12 scansioni della tabella fatture per un anno. Qui carichiamo le righe
     dell'intero range una volta sola e raggruppiamo per (anno, mese) in Python.
     Ritorna {(anno, mese): (fb_tot, spese_tot)}.
+
+    `fine_mese`, se passato, si riempie con {(anno, mese): True} per i mesi con
+    una fattura di merce datata negli ultimi giorni (`inizio_fine_mese`, regola
+    di services/completezza_mese.py): le righe sono gia' qui, niente query in piu'.
     """
     from calendar import monthrange
     if not mesi_target:
@@ -11241,6 +11282,10 @@ def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -
                 bucket[1] += tot
             elif cat and cat not in CATEGORIE_NOTE_WORKER:
                 bucket[0] += tot
+                if (fine_mese is not None and tot > 0
+                        and str(r.get("data_documento") or "")[:10]
+                        >= inizio_fine_mese(yy, mm).isoformat()):
+                    fine_mese[(yy, mm)] = True
         if len(rows) < page_size:
             break
         page += 1

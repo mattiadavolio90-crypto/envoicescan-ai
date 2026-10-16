@@ -3283,6 +3283,31 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   mese appena chiuso resta grigio in Home i primi 5-7 giorni del mese, e la buona notizia sul
 >   MOL quasi sempre tace nei giorni 1-3; chi carica le fatture a mano resta grigio finche' non
 >   carica il mese dopo. La catena non ha ancora lo stato in attesa.
+>
+> - **16/10/2026 sera — Fix n. 21 dell'audit di ottobre (K03, la regola rivista da Mattia):
+>   soglia al 20% e fattura negli ultimi 5 giorni.** Visto l'effetto del criterio «merce
+>   arrivata nel mese dopo» (Home grigia i primi 5-7 giorni di ogni mese per i clienti SDI),
+>   Mattia ha deciso: **giallo** sotto il 20% dell'incasso netto (era 15%); **grigio «in
+>   attesa»** se il mese ha fatture di merce ma nessuna datata negli ultimi 5 giorni
+>   (`inizio_fine_mese`: il 25 per un mese di 30 giorni, il 26 per uno di 31, il 23 a
+>   febbraio), al posto del «mese dopo». Un mese di sola merce a mano o di sole quote non va
+>   mai in attesa (non ha una data); conta la data del documento, cosi' una fattura differita
+>   di inizio ottobre con competenza a settembre copre settembre. Margini ricava la data dalle
+>   righe che gia' carica (`_calcola_costi_auto_per_periodo`, nuovo `fine_mese`); Home,
+>   briefing e chat con una query piccola (`_fine_mese_coperta`, solo le righe degli ultimi 5
+>   giorni, None se fallisce = nessuna attesa). **Sul live, mesi chiusi** (misura in sola
+>   lettura): diventano gialli 10 mesi, di cui 6 davvero incompleti (i tre marzo di
+>   ingresso della catena, il settembre dei 100 EUR, due mesi dell'account demo) e **4 pieni
+>   di fatture** del bar al 17,8-19,3% (gennaio, aprile, maggio, giugno): e' il costo noto del
+>   20%, accettato. Grigi oggi: zero. Riscritti i test della soglia (15% -> 20%) e
+>   dell'attesa; nei due file di test del briefing che non parlano di attesa la fine mese e'
+>   dichiarata coperta da una fixture; alzata a 7.000 EUR (24%) la merce di agosto in un test
+>   della perdita in calo, che con i 5.541 EUR veri (19%) e' ora senza merce. **17 mutanti, 17
+>   uccisi** (uno dopo il test sul mese di sola merce a mano nel pivot).
+>   Allineati anche `tests/test_briefing_buona_notizia_salute_gate.py` (stessa fixture) e
+>   `tests/test_da_classificare_fonte_unica.py` (i punti legati alla costante diventano 9:
+>   `_fine_mese_coperta` esclude le righe non classificate). Suite `-m "not sql"`: 19.846
+>   verdi prima di questi due allineamenti, 13 verdi i due file dopo.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

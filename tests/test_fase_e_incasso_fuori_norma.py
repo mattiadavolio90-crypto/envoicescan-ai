@@ -18,6 +18,16 @@ import pytest
 import services.fastapi_worker as fw
 from services.routers import gruppo
 
+
+@pytest.fixture(autouse=True)
+def _fine_mese_coperta(monkeypatch):
+    """Questi test non parlano dello stato «in attesa delle fatture di fine mese»
+    (K03, 16/10/2026): i loro dati non hanno date di fattura, e senza questa
+    dichiarazione ogni mese risulterebbe in attesa. L'attesa ha i suoi test in
+    tests/test_completezza_mese.py."""
+    import services.fastapi_worker as _fw
+    monkeypatch.setattr(_fw, "_fine_mese_coperta", lambda *a, **k: True)
+
 UID, RID = "u-e", "r-e"
 OGGI = date(2026, 10, 8)
 
@@ -627,7 +637,9 @@ def test_buona_notizia_perdita_in_calo_su_mesi_normali_resta():
     margini = _margini_mol(agosto_netto=29000.0)
     margini[7]["costo_dipendenti"] = 40000.0
     margini[8]["costo_dipendenti"] = 30000.0
-    out = _buona_notizia(INIZIO_SETTEMBRE, margini)
+    # 7.000 EUR di merce su 29.000 (24%): con i 5.541 veri (19%) agosto e' senza
+    # merce dal 16/10/2026 (soglia del 20%) e il confronto non si fa.
+    out = _buona_notizia(INIZIO_SETTEMBRE, margini, {**FB_OVERTIME, 8: 7000.0})
     assert out is not None and out["payload"]["tipo"] == "perdita_in_calo"
 
 
@@ -667,7 +679,7 @@ def test_buona_notizia_senza_storia_resta_come_prima():
 
 
 def _gennaio_2027(dicembre_di_ferie):
-    """Gennaio 2027 (MOL 13.500) contro dicembre 2026: il mese di confronto sta
+    """Gennaio 2027 (MOL 12.000) contro dicembre 2026: il mese di confronto sta
     nell'anno prima. Senza questo caso giudicare (2027, 12) invece di
     (2026, 12) restava verde (revisore, 8/10)."""
     m26 = _margini_mol(agosto_netto=29000.0)
@@ -680,9 +692,7 @@ def _gennaio_2027(dicembre_di_ferie):
         _mese_chiuso_ma_in_utile(m26, fb26, 12)
     m27 = {1: {"altri_ricavi_noiva": 30000.0, "costo_dipendenti": 9000.0,
                "altri_costi_spese": 2500.0}}
-    # Il 3 febbraio e' gia' arrivata merce di febbraio: gennaio e' consolidato,
-    # non «in attesa» (K03, 16/10/2026), e decide solo il dicembre di confronto.
-    fonti = {2026: (m26, fb26), 2027: (m27, {1: 5000.0, 2: 400.0})}
+    fonti = {2026: (m26, fb26), 2027: (m27, {1: 6500.0})}
     with patch.multiple(
         "services.margine_service",
         carica_margini_anno=MagicMock(side_effect=lambda _u, _r, a: fonti.get(a, ({}, {}))[0]),

@@ -2052,7 +2052,7 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # 7 = 10/10/2026 (fase K): SHOP → RIVENDITA, via SUSHI VARIE, nasce RAPPRESENTANZA.
 # I segnali per categoria di uno snapshot v6 nominerebbero le categorie vecchie.
 # 8 = 16/10/2026 (audit di ottobre, K03): un mese chiuso e' «senza merce» sotto il
-# 15% dell'incasso netto (services/completezza_mese.py). `dati_mancanti` e
+# 20% dell'incasso netto (services/completezza_mese.py). `dati_mancanti` e
 # `margine_calo` cambiano sulle sedi con poca merce; uno snapshot v7 no.
 _SEGNALI_CODE_VERSION = 8
 

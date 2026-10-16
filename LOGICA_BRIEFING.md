@@ -72,7 +72,7 @@ contraddicono mai. Scattano a queste condizioni:
 | **Costo personale mancante** | un mese chiuso non ha costi del personale. Il mese **appena chiuso** si chiede solo **dal 15** (la busta paga arriva a metà mese: prima, 5 sedi su 5 risultavano "in ritardo"); i mesi più vecchi subito |
 | **Incasso di ieri mancante** | ieri non risulta nessun incasso. Si dice **solo il giovedì** (guarda il mercoledì), cioè una volta a settimana, e solo se la sede ha già inserito incassi in passato; saltato in "modalità mensile". Se nelle impostazioni del locale ci sono N giorni di chiusura a settimana, basta un incasso negli ultimi N+1 giorni (come per i ricavi automatici): chi è chiuso il mercoledì non riceve l'avviso il giovedì. La card non ha il bottone «Ignora», quindi l'unico modo per non ripeterlo è non dirlo: quando usciva tutti i giorni veniva ignorato 25 volte su 35 |
 | **Righe da classificare** | ci sono prodotti da controllare **caricati negli ultimi 7 giorni**; l'arretrato più vecchio non fa card ma viene citato nel testo se supera 20 voci |
-| **Fatture costo mancanti** | mese chiuso con ricavi ma merce (fatture + inserita a mano + quote di gruppo) **sotto il 15% dell'incasso netto** (`services/completezza_mese.py`, dal 16/10/2026), oppure nessuna fattura caricata da **7 giorni** |
+| **Fatture costo mancanti** | mese chiuso con ricavi ma merce (fatture + inserita a mano + quote di gruppo) **sotto il 20% dell'incasso netto** (`services/completezza_mese.py`, dal 16/10/2026), oppure nessuna fattura caricata da **7 giorni** |
 | **Ricavi automatici assenti** | cliente collegato ai ricavi automatici ma nessun ricavo da più giorni dei suoi giorni di chiusura + 1 |
 | **Alert prezzi** | un prodotto/categoria è rincarato oltre la soglia automatica |
 | **Anomalia coperti** | i coperti di ieri si scostano ≥20% dal solito (servono almeno 4 giorni con coperti nel periodo di riferimento) |
@@ -98,12 +98,12 @@ contano per il "tutto a posto".
      dei due mesi può essere un mese di **ferie** (incasso sotto i 3/4 dei mesi
      vicini, la regola della fase E §4-bis): settembre «molto meglio» di un agosto
      chiuso misura la chiusura, e la card «I tuoi conti» in quel caso dice
-     «nessun confronto con agosto». Dal 16/10/2026 il mese chiuso dev'essere
-     anche **consolidato**: senza merce arrivata nel mese dopo è «in attesa
-     delle fatture di fine mese» (`services/completezza_mese.py`) e il MOL non
-     si festeggia — nei primi giorni del mese capita quasi sempre;
+     «nessun confronto con agosto». Dal 16/10/2026 il mese chiuso non dev'essere
+     **in attesa delle fatture di fine mese** (fatture di merce ma nessuna negli
+     ultimi 5 giorni del mese, `services/completezza_mese.py`): lì il MOL non si
+     festeggia;
   2. altrimenti **perdita in calo** (in rosso ma meno del mese prima), con la
-     stessa condizione sui due mesi e lo stesso «consolidato». Fino al 23/9/2026 diceva «la perdita è
+     stessa condizione sui due mesi e la stessa «attesa». Fino al 23/9/2026 diceva «la perdita è
      scesa a € 9.380» su due mesi **senza incassi**: la "perdita" era la somma
      dei costi, e il "miglioramento" era che ne erano stati inseriti meno. Anche
      qui niente mesi di ferie: un agosto chiuso «perde meno» perché costa meno;

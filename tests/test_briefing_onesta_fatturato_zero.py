@@ -19,7 +19,19 @@ dichiara solo se ENTRAMBI i mesi hanno fatturato > 0.
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from services.fastapi_worker import _briefing_buona_notizia, _mesi_confrontabili
+
+
+@pytest.fixture(autouse=True)
+def _fine_mese_coperta(monkeypatch):
+    """Questi test non parlano dello stato «in attesa delle fatture di fine mese»
+    (K03, 16/10/2026): i loro dati non hanno date di fattura, e senza questa
+    dichiarazione ogni mese risulterebbe in attesa. L'attesa ha i suoi test in
+    tests/test_completezza_mese.py."""
+    import services.fastapi_worker as _fw
+    monkeypatch.setattr(_fw, "_fine_mese_coperta", lambda *a, **k: True)
 
 UID = "user-aaa"
 RID = "rist-bbb"
