@@ -61,3 +61,13 @@ def test_dimensione_fornitore_usa_il_fornitore_della_quota():
     out = _call(rpc_rows, quote, dimensione="fornitore")
     riga = next(r for r in out.rows if r.dim_val == "FASTWEB S.P.A")
     assert riga.per_pv["pv-a"] == 362.0
+
+
+def test_una_quota_negativa_scala_come_le_righe_proprie():
+    """Dal 16/10/2026 la Spesa per PV sottrae note di credito e sconti, come
+    Analisi Fatture (decisione di Mattia, audit #17): anche una quota negativa di
+    una nota di credito ripartita scala la colonna del PV."""
+    rpc_rows = [{"ristorante_id": "pv-a", "dim_val": "UTENZE E LOCALI", "totale": 1000.0}]
+    quote = {"pv-a": [{"categoria": "UTENZE E LOCALI", "totale_riga": -40.0}]}
+    out = _call(rpc_rows, quote)
+    assert out.totali_pv["pv-a"] == 960.0

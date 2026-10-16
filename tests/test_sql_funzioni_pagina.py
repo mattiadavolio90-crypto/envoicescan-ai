@@ -162,7 +162,8 @@ def _riga(db_sql, *, sede=SEDE, descrizione="SALMONE 5-6", fornitore="ADC SRL",
 # gruppo_spesa_pivot — il pivot di spesa del gruppo (sede x categoria/fornitore)
 #
 # Alimenta la pagina Catena. Filtra `Da Classificare` (regola di dominio #1),
-# il soft delete, e `totale_riga > 0`: le note di credito NON entrano.
+# il soft delete e le fatture ripartite sul gruppo (entrano come quote). Dal
+# 16/10/2026 le note di credito scalano la spesa, come in Analisi Fatture.
 # ---------------------------------------------------------------------------
 
 def _pivot(sql, *, sedi=(SEDE,), dimensione="categoria", da="2026-01-01",
@@ -216,20 +217,30 @@ def test_pivot_esclude_le_righe_cancellate(db_sql, sql):
     assert valori["PESCE"] == Decimal("100.00"), "una riga soft-deleted e' entrata"
 
 
-def test_pivot_ignora_le_note_di_credito(db_sql, sql):
-    """`totale_riga > 0` e' nel corpo: una nota di credito NON scala la spesa.
-
-    Non e' un bug per definizione — sul percorso catena i tag hanno il
-    comportamento opposto (vedi gruppo_tag_*) — ma e' una divergenza reale fra
-    due numeri della stessa pagina, e finche' resta va documentata da un test
-    che la misura, non dedotta dal codice.
-    """
+def test_pivot_sottrae_le_note_di_credito(db_sql, sql):
+    """Fino al 16/10/2026 `totale_riga > 0` scartava note di credito e sconti, che
+    Analisi Fatture invece sottrae: catena 3.543.394 EUR contro 3.432.058 EUR
+    sommando le sedi (audit di ottobre). Decisione di Mattia: si sottraggono."""
     _semina_utente_e_sedi(db_sql)
     _riga(db_sql, categoria="PESCE", totale=Decimal("100.00"))
     _riga(db_sql, categoria="PESCE", totale=Decimal("-30.00"))
 
     valori = {r[1]: r[2] for r in _pivot(sql)}
-    assert valori["PESCE"] == Decimal("100.00")
+    assert valori["PESCE"] == Decimal("70.00")
+
+
+def test_pivot_esclude_le_fatture_ripartite_sul_gruppo(db_sql, sql):
+    """Una fattura ripartita che vive su un PV entra nel pivot come quote
+    (`_righe_quote_gruppo`): contarla anche intera la raddoppiava (456,30 EUR a
+    gennaio 2026 su una catena, audit F1a-02)."""
+    _semina_utente_e_sedi(db_sql)
+    _riga(db_sql, categoria="UTENZE E LOCALI", totale=Decimal("200.00"))
+    rid = _riga(db_sql, categoria="UTENZE E LOCALI", totale=Decimal("451.30"))
+    with db_sql.cursor() as cur:
+        cur.execute("UPDATE public.fatture SET ripartita_su_gruppo = true WHERE id = %s", (rid,))
+
+    valori = {r[1]: r[2] for r in _pivot(sql)}
+    assert valori["UTENZE E LOCALI"] == Decimal("200.00")
 
 
 def test_pivot_usa_data_competenza_quando_c_e(db_sql, sql):

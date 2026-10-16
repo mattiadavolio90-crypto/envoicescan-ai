@@ -8690,7 +8690,7 @@ def _merce_del_mese(
     }
 
 
-def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str:
+def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int, senza_categoria: int = 0) -> str:
     """Il testo della voce "Righe classificate" della card Salute.
 
     NB sull'unita' di misura, che qui e' DOPPIA di proposito: la PERCENTUALE della
@@ -8715,6 +8715,13 @@ def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str
         # Lasciare "righe" faceva leggere "112 righe" a chi ne ha 187 — la stessa
         # frase che era gia' stata corretta una volta perche' mentiva.
         voce = "prodotto" if da_controllare == 1 else "prodotti"
+        # Quanti di questi sono «Da Classificare», cioe' fuori dai margini (audit
+        # di ottobre 2026, #34): «89 prodotti da controllare» accanto a «582 EUR
+        # esclusi dai margini» e al filtro «Solo da verificare» erano tre gruppi
+        # diversi con nomi vicini, e la frase non diceva quale.
+        if senza_categoria:
+            return (f"{da_controllare} {voce} da controllare, di cui {senza_categoria} "
+                    "senza categoria (fuori dai margini)")
         return f"{da_controllare} {voce} da controllare"
     if righe_totali:
         return "Tutti i prodotti sono classificati"
@@ -9785,10 +9792,11 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     # costi di gruppo. Il commento diceva gia' "deve combaciare col briefing", ma
     # l'unita' di misura era un'altra.
     da_controllare = 0
+    senza_categoria = 0
     try:
         _rev_righe = fetch_all(
             sb.table("fatture")
-            .select("descrizione")
+            .select("descrizione,categoria")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .eq("oscurata", False)
@@ -9798,6 +9806,12 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             (r.get("descrizione") or "").strip()
             for r in (_rev_righe or [])
             if (r.get("descrizione") or "").strip()
+        })
+        senza_categoria = len({
+            (r.get("descrizione") or "").strip()
+            for r in (_rev_righe or [])
+            if (r.get("descrizione") or "").strip()
+            and r.get("categoria") == CATEGORIA_NON_CLASSIFICATA
         })
     except Exception as exc:
         logger.warning("home_salute: conteggio prodotti da controllare fallito: %s", exc)
@@ -9883,7 +9897,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             key="classificate",
             label="Righe classificate",
             ok=classificate_ok,
-            dettaglio=_dettaglio_righe_classificate(da_controllare, righe_totali_sede),
+            dettaglio=_dettaglio_righe_classificate(da_controllare, righe_totali_sede, senza_categoria),
             conseguenza=_conseguenza_righe_classificate(da_controllare),
             # Deep-link al tab Articoli gia' filtrato sulle righe da controllare,
             # quando ce ne sono; pagina liscia altrimenti.
@@ -10776,7 +10790,8 @@ def _build_fatture_base_query(supabase_client, ristorante_id: str):
         .select(
             "id,file_origine,numero_riga,data_documento,fornitore,descrizione,"
             "quantita,unita_misura,prezzo_unitario,totale_riga,categoria,"
-            "needs_review,tipo_documento,data_competenza,piva_cedente,created_at"
+            "needs_review,tipo_documento,data_competenza,piva_cedente,created_at,"
+            "ripartita_su_gruppo"
         )
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
@@ -10981,7 +10996,11 @@ def _fetch_fatture_rows(
                         or term in (r.get("fornitore") or "").lower()
                         or term in (r.get("categoria") or "").lower()
                     ]
-            all_rows = all_rows + proiettate
+            # La fattura ripartita che vive su questo PV entra con la sua quota: le
+            # righe intere si tolgono, o la sede la conta due volte (456,30 EUR
+            # intere + 114,08 di quota a gennaio 2026, audit F1a-02). Come i costi
+            # di Margini e la Spesa per PV della catena.
+            all_rows = [r for r in all_rows if not r.get("ripartita_su_gruppo")] + proiettate
         except Exception:
             logger.exception("Proiezione righe ripartite fallita per %s", ristorante_id)
 

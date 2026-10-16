@@ -70,7 +70,20 @@ def test_soglie_esportate_dal_modulo():
         MODULO,
         "emit([m.SOGLIA_MARGINE_VERDE, m.SOGLIA_MARGINE_GIALLO, m.MIN_VALORI_CONFRONTO]);",
     )
-    assert v == [15, 8, 2]
+    # Dal 16/10/2026 le fasce MOL di KPI_SOGLIE (audit #18): 12 «nella norma», 5 «critico».
+    assert v == [12, 5, 2]
+
+
+@pytest.mark.parametrize("perc", [20.1, 12.0, 11.9, 5.0, 4.9, 0.0, -3.0])
+def test_pallino_della_catena_e_ranking_del_worker_dicono_lo_stesso(perc):
+    """Una sola scala fra pagina di catena (margineDot) e ranking del worker
+    (_colore_margine, usato da /m), e i due bordi sono quelli di KPI_SOGLIE."""
+    from services.routers import gruppo
+    tsx = _chiama("margineDot", [perc, False])
+    py = gruppo._colore_margine(perc)
+    assert {"bg-positivo": "verde", "bg-incerto": "giallo", "bg-negativo": "rosso"}[tsx] == py
+    atteso = "verde" if perc >= 12 else "giallo" if perc >= 5 else "rosso"
+    assert py == atteso
 
 
 # ─── margineDot: la distinzione null/0 fatta BENE ──────────────────────────
@@ -79,11 +92,11 @@ def test_soglie_esportate_dal_modulo():
 @pytest.mark.parametrize(
     "perc,atteso",
     [
-        (15, "bg-positivo"),
-        (15.1, "bg-positivo"),
-        (14.9, "bg-incerto"),
-        (8, "bg-incerto"),
-        (7.9, "bg-negativo"),
+        (12, "bg-positivo"),
+        (12.1, "bg-positivo"),
+        (11.9, "bg-incerto"),
+        (5, "bg-incerto"),
+        (4.9, "bg-negativo"),
         (0, "bg-negativo"),
         (-12, "bg-negativo"),
     ],

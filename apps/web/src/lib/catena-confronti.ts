@@ -18,11 +18,13 @@ import type { MarginiCopertiPV, SpesaPivotRow, SprecoCategoriaRiga } from "@/lib
 
 /* ─── catena/analisi/scheda-margini-coperti.tsx: heatmap, soglie, ordinamento */
 
-// Soglie del pallino salute — le stesse del ranking calcolato dal worker.
-// Esportate perche' un test possa verificare la coerenza senza riscrivere i
-// letterali: se il backend cambia idea, qui si vede.
-export const SOGLIA_MARGINE_VERDE = 15;
-export const SOGLIA_MARGINE_GIALLO = 8;
+// Soglie del pallino salute — le fasce MOL di KPI_SOGLIE (config/constants.py),
+// la scala della pagina Margini e della chat, come il ranking del worker
+// (`_colore_margine`): verde da «nella norma» (12) in su, giallo per «basso»
+// (5-12), rosso per «critico». Fino al 16/10/2026 erano 15/8 (audit #18).
+// tests/test_catena_confronti_frontend.py le confronta con il worker.
+export const SOGLIA_MARGINE_VERDE = 12;
+export const SOGLIA_MARGINE_GIALLO = 5;
 
 // Servono almeno 2 valori per parlare di "migliore" e "peggiore": con un solo PV
 // il confronto non esiste e l'evidenza sarebbe rumore. La stessa soglia compare
@@ -48,7 +50,7 @@ export function heatStyle(v: number | null, max: number): Record<string, string>
   return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
 }
 
-// Pallino salute dal margine % — stesse soglie del ranking (≥15 verde, ≥8 giallo).
+// Pallino salute dal margine % — stesse soglie del ranking (≥12 verde, ≥5 giallo).
 // Nota: `perc = 0` da' rosso, `perc = null` da' grigio. Qui la distinzione
 // null/0 e' fatta BENE (0% e' un dato, null e' "non lo so"): il test la protegge.
 export function margineDot(perc: number | null, incompleti: boolean): string {

@@ -326,17 +326,28 @@ def _aggrega_sedi_mensili(
     return out
 
 
-def _colore_margine(mol_perc: Optional[float]) -> str:
-    """Pallino ranking dal margine %: stesse soglie di lettura dei conti PV.
+def _soglie_mol_catena() -> tuple:
+    """(verde da, giallo da) dalle fasce MOL di KPI_SOGLIE, la scala della pagina
+    Margini e della chat: verde da «nella norma» (12) in su, giallo per «basso»
+    (5-12), rosso per «critico». Fino al 16/10/2026 la catena aveva una scala sua
+    (15/8): un MOL del 18% era «nella norma» in Margini e verde qui solo per caso,
+    uno del 13% norma la' e giallo qui (audit di ottobre 2026, #18)."""
+    from config.constants import KPI_SOGLIE
+    critico, basso = KPI_SOGLIE["mol"][0][0], KPI_SOGLIE["mol"][1][0]
+    return basso, critico
 
-    grigio = dati incompleti (nessun ricavo). Le soglie verde/giallo/rosso
-    riprendono lo spirito del KPI MOL (≥15 buono, ≥8 ok, sotto critico).
+
+def _colore_margine(mol_perc: Optional[float]) -> str:
+    """Pallino ranking dal margine %: la scala MOL di KPI_SOGLIE (`_soglie_mol_catena`).
+
+    grigio = dati incompleti (nessun ricavo).
     """
     if mol_perc is None:
         return "grigio"
-    if mol_perc >= 15:
+    verde_da, giallo_da = _soglie_mol_catena()
+    if mol_perc >= verde_da:
         return "verde"
-    if mol_perc >= 8:
+    if mol_perc >= giallo_da:
         return "giallo"
     return "rosso"
 
@@ -1503,7 +1514,9 @@ def gruppo_spesa_pivot(
     # l'app usa un criterio solo. Costo contenuto: ~15 categorie × N PV, non un full-load.
     for rid in ids:
         for riga in _righe_quote_gruppo(sb, rid, da, a):
-            if float(riga.get("totale_riga") or 0) <= 0:
+            # Le quote negative (note di credito ripartite) scalano, come le righe
+            # proprie nella RPC dal 16/10/2026: stesso numero di Analisi Fatture.
+            if float(riga.get("totale_riga") or 0) == 0:
                 continue
             if dimensione == "fornitore":
                 dim_val = (riga.get("fornitore") or "").strip() or "N/D"

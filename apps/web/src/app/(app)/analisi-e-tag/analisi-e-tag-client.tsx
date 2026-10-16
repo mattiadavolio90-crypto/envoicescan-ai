@@ -203,7 +203,7 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground">
-        Media periodo: <span className="font-semibold text-foreground">{fmtEuro(media)}</span>
+        Media dei prezzi giornalieri: <span className="font-semibold text-foreground">{fmtEuro(media)}</span>
       </p>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={data} margin={{ top: 8, right: 46, bottom: 4, left: 8 }}>

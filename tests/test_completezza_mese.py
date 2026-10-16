@@ -693,3 +693,74 @@ def test_la_card_della_home_dice_che_manca_l_incasso():
     s = (Path(__file__).resolve().parent.parent / "apps/web/src/app/(app)/dashboard/kpi-block.tsx").read_text(encoding="utf-8")
     assert "{kpi.incasso_mancante && (" in s
     assert "il MOL qui sopra è solo la" in s
+
+
+# ── F1a-02: la fattura ripartita nella sede che la ospita ───────────────────
+
+def test_analisi_fatture_toglie_la_fattura_intera_quando_c_e_la_sua_quota():
+    """La sede che ospita una fattura ripartita la riceve come quota: le righe
+    intere non restano accanto (456,30 + 114,08 a gennaio 2026, audit F1a-02)."""
+    righe = [
+        {"id": 1, "file_origine": "a.xml", "categoria": "CARNE", "totale_riga": 100.0, "ripartita_su_gruppo": False},
+        {"id": 2, "file_origine": "rip.xml", "categoria": "UTENZE E LOCALI", "totale_riga": 451.3, "ripartita_su_gruppo": True},
+    ]
+    quota = [{"id": "q1", "file_origine": "rip.xml", "categoria": "UTENZE E LOCALI", "totale_riga": 112.83}]
+    q = MagicMock()
+    for m in ("table", "select", "eq", "is_", "gte", "lte", "or_", "order", "range"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=righe)
+    fw._FATTURE_ROWS_CACHE.clear()
+    try:
+        with patch.object(fw, "_ristorante_quote_meta", return_value=("u", True)), \
+             patch("services.riparto_service.righe_ripartite_proiettate", return_value=quota):
+            out = fw._fetch_fatture_rows(q, "pv-1", "2026-01-01", "2026-01-31")
+    finally:
+        fw._FATTURE_ROWS_CACHE.clear()
+    assert sorted(str(r["id"]) for r in out) == ["1", "q1"]
+
+
+def test_senza_quote_la_fattura_ripartita_resta():
+    righe = [{"id": 2, "file_origine": "rip.xml", "categoria": "UTENZE E LOCALI", "totale_riga": 451.3, "ripartita_su_gruppo": True}]
+    q = MagicMock()
+    for m in ("table", "select", "eq", "is_", "gte", "lte", "or_", "order", "range"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = MagicMock(data=righe)
+    fw._FATTURE_ROWS_CACHE.clear()
+    try:
+        with patch.object(fw, "_ristorante_quote_meta", return_value=("u", False)):
+            out = fw._fetch_fatture_rows(q, "pv-1", "2026-01-01", "2026-01-31")
+    finally:
+        fw._FATTURE_ROWS_CACHE.clear()
+    assert [r["id"] for r in out] == [2]
+
+
+# ── Etichette che dicevano due cose con una parola (audit #16, #34, #35, #39) ─
+
+def test_salute_dice_quanti_prodotti_sono_fuori_dai_margini():
+    assert fw._dettaglio_righe_classificate(89, 6743, 37) == (
+        "89 prodotti da controllare, di cui 37 senza categoria (fuori dai margini)")
+    assert fw._dettaglio_righe_classificate(89, 6743) == "89 prodotti da controllare"
+
+
+def test_home_salute_conta_i_prodotti_senza_categoria(monkeypatch):
+    import tests.test_salute_percentuale_non_troncata as sp
+    monkeypatch.setattr(fw, "_merce_del_mese", lambda *a, **k: None)
+    resp = sp._chiama_home_salute(monkeypatch, sp._fake_sb_con_cap(sp._righe(40, 12)))
+    voce = next(v for v in resp.voci if v.key == "classificate")
+    # Il finto client non filtra `needs_review`: tutte e 40 le voci contano come da
+    # controllare, le 12 «Da Classificare» sono quelle senza categoria.
+    assert voce.dettaglio == "40 prodotti da controllare, di cui 12 senza categoria (fuori dai margini)"
+
+
+@pytest.mark.parametrize("percorso,deve,non_deve", [
+    ("apps/web/src/app/(app)/dashboard/kpi-block.tsx", 'label="Fatturato (IVA incl.)"', 'label="Fatturato"'),
+    ("apps/web/src/app/(app)/analisi-e-tag/analisi-e-tag-client.tsx", "Media dei prezzi giornalieri:", "Media periodo:"),
+    ("apps/web/src/app/(app)/analisi-fatture/kpi-bar.tsx",
+     "Per data della fattura. Non comprende i costi inseriti a mano in Margini.", None),
+])
+def test_le_etichette_dicono_la_base(percorso, deve, non_deve):
+    from pathlib import Path
+    s = (Path(__file__).resolve().parent.parent / percorso).read_text(encoding="utf-8")
+    assert deve in s
+    if non_deve:
+        assert non_deve not in s

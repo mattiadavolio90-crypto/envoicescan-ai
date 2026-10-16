@@ -70,6 +70,12 @@ export function KpiBar({ kpi }: Props) {
     <div className="grid grid-cols-2 gap-3">
       <KpiCard tone="blu"    label="Spesa totale"  numeric={kpi.totale}        format={formatEuro} animate={animate} />
       <KpiCard tone="neutro" label="Media al mese" numeric={kpi.media_mensile} format={formatEuro} animate={animate} />
+      {/* La base del numero, perche' non coincide con i costi di Margini dello
+          stesso periodo (audit di ottobre 2026, #39): qui conta la data della
+          fattura e non ci sono i costi inseriti a mano. */}
+      <p className="col-span-2 text-[11px] text-muted-foreground">
+        Per data della fattura. Non comprende i costi inseriti a mano in Margini.
+      </p>
     </div>
   );
 }

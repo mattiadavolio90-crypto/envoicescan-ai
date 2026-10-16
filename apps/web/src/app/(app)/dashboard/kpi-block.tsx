@@ -144,7 +144,9 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
 
       <div className="grid grid-cols-2 gap-2">
         <TesseraVoce
-          label="Fatturato"
+          // IVA inclusa: e' il lordo, mentre il MOL qui sopra e la pagina Margini
+          // stanno sul netto (audit di ottobre 2026, #16). Il netto lo dice la chat.
+          label="Fatturato (IVA incl.)"
           valore={formatEuro(kpi.fatturato)}
           extra={<Trend delta={kpi.fatturato_delta_pct} suffix="%" buonoSeSu sopprimi={kpi.fatturato === 0} />}
           href="/margini"

@@ -3383,6 +3383,33 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   una scrittura sui dati, fuori da questo fix. +2 test in
 >   `tests/test_fatture_mesi_disponibili.py`; **3 mutanti, 3 uccisi**. File di test sulle
 >   fatture: 492 verdi; `-m sql` dei sotto-utenti: 27 verdi.
+>
+> - **16/10/2026 notte — Fix n. 25 dell'audit di ottobre (F1a-02, #17, #18, #16, #34, #35, #39):
+>   il resto del gruppo Margini e Home, su decisione di Mattia.**
+>   - **Spesa per PV della catena** (F1a-02, #17): nuova migration
+>     `20261016213000_gruppo_spesa_pivot_netta_senza_ripartite.sql`. `gruppo_spesa_pivot`
+>     esclude le fatture ripartite sul gruppo (entrano come quote: una che viveva su un PV era
+>     contata intera e come quote, 456,30 EUR doppi) e dal 16/10 sottrae note di credito e
+>     sconti (`totale_riga <> 0`), come Analisi Fatture: la catena dava 3.543.394 EUR contro
+>     3.432.058 EUR sommando le sedi. Anche le quote negative scalano (`gruppo_spesa_pivot`
+>     in gruppo.py). `gruppo_peso_categoria` riceve solo il filtro sulle ripartite. Analisi
+>     Fatture della sede che ospita la fattura ripartita non mostra piu' la fattura intera
+>     accanto alla sua quota (`_fetch_fatture_rows`).
+>   - **Una sola scala del MOL** (#18, scelta di Mattia delegata): la catena usa le fasce di
+>     `KPI_SOGLIE` come Margini e la chat (verde da 12%, «nella norma»; giallo 5-12, «basso»;
+>     rosso sotto 5, «critico»), sia nel pallino della pagina (`margineDot`) sia nel ranking
+>     del worker usato da /m (`_colore_margine`), che erano a 15/8.
+>   - **Etichette**: «Fatturato (IVA incl.)» nella card della Home (#16); la voce della Salute
+>     dice quanti prodotti da controllare sono senza categoria, cioe' fuori dai margini (#34);
+>     «Media dei prezzi giornalieri» in Analisi e Tag al posto di «Media periodo», che accanto
+>     al prezzo medio ponderato era un'altra formula con un nome simile (#35); sotto la Spesa
+>     totale di Analisi Fatture «Per data della fattura. Non comprende i costi inseriti a mano
+>     in Margini» (#39).
+>   Riscritto `test_pivot_ignora_le_note_di_credito` (fissava il comportamento vecchio) e
+>   allineati i test della scala in `tests/test_catena_confronti_frontend.py`; +2 test `-m sql`
+>   in `tests/test_sql_funzioni_pagina.py`, +1 in `tests/test_gruppo_spesa_pivot_quote.py`,
+>   +7 in `tests/test_catena_confronti_frontend.py`, +8 in `tests/test_completezza_mese.py`;
+>   **8 mutanti, 8 uccisi** (due sul file della migration, eseguita sul Postgres dei test).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
