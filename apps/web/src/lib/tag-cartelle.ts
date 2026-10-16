@@ -30,6 +30,12 @@ function perNome(a: TagOrganizzabile, b: TagOrganizzabile): number {
   return a.nome.localeCompare(b.nome, "it", { sensitivity: "base" }) || a.id - b.id;
 }
 
+// Dentro una cartella: la posizione scelta trascinando, poi il nome. Un gruppo
+// mai riordinato ha tutti 0 e resta alfabetico (migration 20261016141417).
+function perPosizione(a: TagOrganizzabile, b: TagOrganizzabile): number {
+  return (a.ordine ?? 0) - (b.ordine ?? 0) || perNome(a, b);
+}
+
 export function ordinaCartelle(cartelle: CartellaTag[]): CartellaTag[] {
   return [...cartelle].sort((a, b) => a.ordine - b.ordine || a.id - b.id);
 }
@@ -55,10 +61,10 @@ export function raggruppa<T extends TagOrganizzabile>(
   }
   const righe: RigaCartella<T>[] = ordinate.map(c => ({
     cartella: c,
-    tags: (perCartella.get(c.id) ?? []).sort(perNome),
+    tags: (perCartella.get(c.id) ?? []).sort(perPosizione),
   }));
   if (senza.length > 0 || opzioni.mostraSenzaCartella) {
-    righe.push({ cartella: null, tags: senza.sort(perNome) });
+    righe.push({ cartella: null, tags: senza.sort(perPosizione) });
   }
   return righe;
 }
@@ -88,6 +94,51 @@ export function applicaOrdine(cartelle: CartellaTag[], ids: number[]): CartellaT
 export function stessoOrdine(cartelle: CartellaTag[], ids: number[]): boolean {
   const correnti = ordinaCartelle(cartelle).map(c => c.id);
   return correnti.length === ids.length && correnti.every((id, i) => id === ids[i]);
+}
+
+/**
+ * Il gruppo di destinazione dopo aver lasciato `tagId`, dall'alto, cioe' il
+ * corpo di PUT .../ordine; null se non cambia niente.
+ * - `sopraTagId`: il tag su cui e' stato lasciato (prende il suo posto); null =
+ *   lasciato sulla cartella e non su un tag.
+ * - Nello stesso gruppo, lasciato sulla cartella o su se stesso: niente.
+ * - Da un altro gruppo, sulla cartella: in fondo.
+ */
+export function gruppoDopoIlRilascio<T extends TagOrganizzabile>(
+  righe: RigaCartella<T>[],
+  tagId: number,
+  destinazione: number | null,
+  sopraTagId: number | null,
+): number[] | null {
+  const gruppo = righe.find(r => (r.cartella?.id ?? null) === destinazione);
+  if (!gruppo && destinazione !== null) return null;
+  const ids = (gruppo?.tags ?? []).map(t => t.id);
+  if (ids.includes(tagId)) {
+    if (sopraTagId == null || sopraTagId === tagId || !ids.includes(sopraTagId)) return null;
+    return riordina(ids, tagId, sopraTagId);
+  }
+  const posto = sopraTagId == null ? -1 : ids.indexOf(sopraTagId);
+  const nuovi = [...ids];
+  nuovi.splice(posto < 0 ? ids.length : posto, 0, tagId);
+  return nuovi;
+}
+
+/** I tag di `ids` nella cartella data, con `ordine` = posizione; gli altri intatti. */
+export function applicaOrdineTag<T extends TagOrganizzabile>(tags: T[], cartellaId: number | null, ids: number[]): T[] {
+  const posizione = new Map(ids.map((id, i) => [id, i]));
+  return tags.map(t => {
+    const p = posizione.get(t.id);
+    return p === undefined ? t : { ...t, cartella_id: cartellaId, ordine: p };
+  });
+}
+
+/** Vero se a video il gruppo e' ancora quello di `ids` (per tornare indietro solo se nessuno l'ha cambiato). */
+export function ordineTagApplicato(tags: TagOrganizzabile[], cartellaId: number | null, ids: number[]): boolean {
+  const perId = new Map(tags.map(t => [t.id, t]));
+  return ids.every((id, i) => {
+    const t = perId.get(id);
+    return t !== undefined && (t.cartella_id ?? null) === cartellaId && (t.ordine ?? 0) === i;
+  });
 }
 
 /** Il tag con `cartella_id` cambiato, gli altri intatti. */

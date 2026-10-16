@@ -213,6 +213,7 @@ export type GruppoTag = {
   // e senza stella.
   cartella_id?: number | null;
   preferito?: boolean;
+  ordine?: number;
 };
 
 export type GruppoTagDescrizione = {

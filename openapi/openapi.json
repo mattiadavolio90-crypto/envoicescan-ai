@@ -1820,6 +1820,79 @@
         }
       }
     },
+    "/api/tag/ordine": {
+      "put": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Riordina Tag Endpoint",
+        "operationId": "riordina_tag_endpoint_api_tag_ordine_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiordinaTagRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tag/{tag_id}": {
       "put": {
         "tags": [
@@ -17361,6 +17434,79 @@
         }
       }
     },
+    "/api/gruppo/tag/ordine": {
+      "put": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Riordina",
+        "operationId": "gruppo_tag_riordina_api_gruppo_tag_ordine_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GruppoRiordinaTagRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/tag/cartelle/{cartella_id}": {
       "put": {
         "tags": [
@@ -24470,6 +24616,33 @@
         ],
         "title": "GruppoRiordinaCartelleRequest"
       },
+      "GruppoRiordinaTagRequest": {
+        "properties": {
+          "cartella_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cartella Id"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "GruppoRiordinaTagRequest"
+      },
       "GruppoScadenziarioResponse": {
         "properties": {
           "nome_gruppo": {
@@ -28454,6 +28627,33 @@
           "ids"
         ],
         "title": "RiordinaCartelleRequest"
+      },
+      "RiordinaTagRequest": {
+        "properties": {
+          "cartella_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cartella Id"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "RiordinaTagRequest"
       },
       "RipartoDaCodaBody": {
         "properties": {

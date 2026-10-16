@@ -3025,6 +3025,11 @@ class GruppoRiordinaCartelleRequest(BaseModel):
     ids: List[int]
 
 
+class GruppoRiordinaTagRequest(BaseModel):
+    cartella_id: Optional[int] = None
+    ids: List[int]
+
+
 class GruppoModificaProdottiRequest(BaseModel):
     aggiungi: List[GruppoTagAssocItem] = []
     togli: List[str] = []
@@ -3079,6 +3084,14 @@ def gruppo_tag_cartelle_riordina(body: GruppoRiordinaCartelleRequest, authorizat
     from services.tag_organizza_service import AMBITO_CATENA, riordina_cartelle_in
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     _organizza_catena(riordina_cartelle_in, AMBITO_CATENA, {"user_id": user_id}, body.ids)
+    return {"ok": True}
+
+
+@router.put("/api/gruppo/tag/ordine", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_riordina(body: GruppoRiordinaTagRequest, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import AMBITO_CATENA, riordina_tag_in
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _organizza_catena(riordina_tag_in, AMBITO_CATENA, {"user_id": user_id}, body.cartella_id, body.ids)
     return {"ok": True}
 
 

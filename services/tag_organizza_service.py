@@ -182,7 +182,7 @@ def applica_modifiche_prodotti(
 # (gruppo_tags, chiave user_id). In tutti e due la FK composta tag -> cartella
 # fa da seconda rete. Le firme pubbliche senza ambito sono quelle della sede.
 
-CAMPI_TAG = "id,nome,emoji,colore,created_at,cartella_id,preferito"
+CAMPI_TAG = "id,nome,emoji,colore,created_at,cartella_id,preferito,ordine"
 CAMPI_CARTELLA = "id,nome,ordine,created_at"
 CAMPI_TAG_MODIFICABILI = ("nome", "emoji", "colore", "cartella_id", "preferito")
 # Stesso tetto del campo nel browser (`maxLength={60}` in pannello-tag.tsx):
@@ -252,6 +252,7 @@ def _tag_normalizzato(riga: Dict[str, Any]) -> Dict[str, Any]:
     cartella = out.get("cartella_id")
     out["cartella_id"] = int(cartella) if cartella is not None else None
     out["preferito"] = bool(out.get("preferito"))
+    out["ordine"] = int(out.get("ordine") or 0)
     return out
 
 
@@ -309,14 +310,19 @@ AMBITO_CATENA = Ambito(
 
 
 def lista_tag_organizzati_in(ambito: Ambito, chiave: Dict[str, str]) -> List[Dict[str, Any]]:
-    """I tag dell'ambito con cartella e stella, in ordine di nome.
+    """I tag dell'ambito con cartella, stella e posizione, in ordine (ordine, nome).
 
     Per la sede non passa da `db_service.get_custom_tags` (cachata, select senza
     le colonne nuove). Un errore di lettura sale: una lista vuota direbbe
     «nessun tag».
     """
     chiave = _chiave(ambito, chiave)
-    response = _filtra(_client().table(ambito.tabella_tag).select(CAMPI_TAG), chiave).order("nome").execute()
+    response = (
+        _filtra(_client().table(ambito.tabella_tag).select(CAMPI_TAG), chiave)
+        .order("ordine")
+        .order("nome")
+        .execute()
+    )
     return [_tag_normalizzato(r) for r in (response.data or [])]
 
 
@@ -429,6 +435,71 @@ def riordina_cartelle_in(ambito: Ambito, chiave: Dict[str, str], ids: List[int])
         ambito.svuota_cache()
 
 
+def _posizioni_tag(sb, ambito: Ambito, chiave: Dict[str, str]) -> Dict[int, Tuple[Optional[int], int]]:
+    """{id: (cartella_id, ordine)} di tutti i tag dell'ambito."""
+    response = _filtra(sb.table(ambito.tabella_tag).select("id,cartella_id,ordine"), chiave).execute()
+    out: Dict[int, Tuple[Optional[int], int]] = {}
+    for r in response.data or []:
+        cartella = r.get("cartella_id")
+        out[int(r["id"])] = (int(cartella) if cartella is not None else None, int(r.get("ordine") or 0))
+    return out
+
+
+def _in_fondo(posizioni: Dict[int, Tuple[Optional[int], int]], cartella_id: Optional[int], escludi: int) -> int:
+    """La posizione dopo l'ultimo tag del gruppo (stesso criterio del trigger sull'INSERT)."""
+    nel_gruppo = [o for i, (c, o) in posizioni.items() if c == cartella_id and i != escludi]
+    return max(nel_gruppo, default=-1) + 1
+
+
+def riordina_tag_in(
+    ambito: Ambito, chiave: Dict[str, str], cartella_id: Optional[int], ids: List[int]
+) -> None:
+    """Riscrive l'ordine dei tag di UN gruppo (una cartella o «Senza cartella»).
+
+    `ids` e' il gruppo come deve risultare, dall'alto: tutti i tag che oggi ci
+    sono, piu' quelli che ci arrivano da un'altra cartella (spostati qui con la
+    loro posizione, in una chiamata sola). Prima si controlla, poi si scrive: un
+    id o una cartella che non sono dell'ambito (NonTrovato), un doppione o un
+    tag del gruppo che manca dall'elenco (Conflitto: un'altra scheda ha
+    cambiato il gruppo) non scrivono niente.
+
+    Un UPDATE per tag che cambia posto o cartella, non una transazione: se uno
+    fallisce a meta' sale ScritturaParziale e il client ricarica, come per il
+    riordino delle cartelle. Il gruppo di partenza di un tag spostato resta con
+    un buco nella numerazione: l'ordine relativo non cambia.
+    """
+    chiave = _chiave(ambito, chiave)
+    richiesti = [int(i) for i in ids]
+    if len(richiesti) > MAX_ELEMENTI_PER_LISTA:
+        raise ValueError(f"Troppi tag in un solo riordino (massimo {MAX_ELEMENTI_PER_LISTA})")
+    sb = _client()
+    destinazione = int(cartella_id) if cartella_id is not None else None
+    if destinazione is not None and not ambito.cartella_propria(sb, destinazione, chiave):
+        raise NonTrovato("Cartella non trovata")
+    posizioni = _posizioni_tag(sb, ambito, chiave)
+    if any(i not in posizioni for i in richiesti):
+        raise NonTrovato("Tag non trovato")
+    del_gruppo = {i for i, (c, _) in posizioni.items() if c == destinazione}
+    if len(richiesti) != len(set(richiesti)) or not del_gruppo.issubset(richiesti):
+        raise Conflitto("Elenco dei tag non aggiornato: ricarica la pagina")
+    try:
+        for posizione, tag_id in enumerate(richiesti):
+            cartella_attuale, ordine_attuale = posizioni[tag_id]
+            payload: Dict[str, Any] = {}
+            if ordine_attuale != posizione:
+                payload["ordine"] = posizione
+            if cartella_attuale != destinazione:
+                payload["cartella_id"] = destinazione
+            if not payload:
+                continue
+            try:
+                _filtra(sb.table(ambito.tabella_tag).update(payload).eq("id", tag_id), chiave).execute()
+            except Exception as e:
+                raise ScritturaParziale("Riordino salvato solo in parte: ricarica la pagina") from e
+    finally:
+        ambito.svuota_cache()
+
+
 def _leggi_tag(sb, ambito: Ambito, tag_id: int, chiave: Dict[str, str]) -> Dict[str, Any]:
     response = (
         _filtra(sb.table(ambito.tabella_tag).select(CAMPI_TAG).eq("id", int(tag_id)), chiave)
@@ -447,7 +518,8 @@ def aggiorna_tag_parziale_in(
     """Aggiorna SOLO i campi presenti in `campi` (le chiavi inviate nel body).
 
     `cartella_id: None` = «Senza cartella». Una cartella che non e' dell'ambito
-    e' NonTrovato, prima di scrivere; la FK composta rifiuterebbe comunque.
+    e' NonTrovato, prima di scrivere; la FK composta rifiuterebbe comunque. Un
+    tag che cambia cartella va in fondo a quella nuova.
     """
     chiave = _chiave(ambito, chiave)
     sb = _client()
@@ -467,6 +539,9 @@ def aggiorna_tag_parziale_in(
         if cartella_id is not None and not ambito.cartella_propria(sb, cartella_id, chiave):
             raise NonTrovato("Cartella non trovata")
         payload["cartella_id"] = int(cartella_id) if cartella_id is not None else None
+        posizioni = _posizioni_tag(sb, ambito, chiave)
+        if int(tag_id) in posizioni and posizioni[int(tag_id)][0] != payload["cartella_id"]:
+            payload["ordine"] = _in_fondo(posizioni, payload["cartella_id"], int(tag_id))
 
     if not payload:
         return _leggi_tag(sb, ambito, tag_id, chiave)
@@ -516,6 +591,10 @@ def elimina_cartella(cartella_id: int, user_id: str, ristorante_id: str) -> None
 
 def riordina_cartelle(user_id: str, ristorante_id: str, ids: List[int]) -> None:
     riordina_cartelle_in(AMBITO_SEDE, _sede(user_id, ristorante_id), ids)
+
+
+def riordina_tag(user_id: str, ristorante_id: str, cartella_id: Optional[int], ids: List[int]) -> None:
+    riordina_tag_in(AMBITO_SEDE, _sede(user_id, ristorante_id), cartella_id, ids)
 
 
 def aggiorna_tag_parziale(tag_id: int, user_id: str, ristorante_id: str, campi: Dict[str, Any]) -> Dict[str, Any]:

@@ -7,7 +7,7 @@ import {
 import { toast } from "sonner";
 import {
   DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor,
-  closestCenter, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors,
+  closestCenter, pointerWithin, rectIntersection, useDroppable, useSensor, useSensors,
   type Announcements, type CollisionDetection, type DragEndEvent, type DragStartEvent, type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
@@ -27,8 +27,9 @@ import type { CartellaTag, TagOrganizzabile } from "@/lib/tag";
 import type { SorgenteTag } from "@/lib/tag-sorgenti";
 import {
   type RigaCartella, type VistaTag,
-  alternaChiusa, applicaOrdine, cartellaDaIdRiga, idRiga, idTagTrascinabile, messaggioErroreCartella,
-  nomeCartellaGiaUsato, ordinaCartelle, raggruppa, riordina, soloPreferiti, spostaTag, stessoOrdine, tagDaIdTrascinabile,
+  alternaChiusa, applicaOrdine, applicaOrdineTag, cartellaDaIdRiga, gruppoDopoIlRilascio, idRiga, idTagTrascinabile,
+  messaggioErroreCartella, nomeCartellaGiaUsato, ordinaCartelle, ordineTagApplicato, raggruppa, riordina, soloPreferiti,
+  stessoOrdine, tagDaIdTrascinabile,
 } from "@/lib/tag-cartelle";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -69,16 +70,30 @@ function RigaTag({ tag, attivo, onClick }: { tag: TagOrganizzabile; attivo: bool
 // Il trascinamento della riga parte solo col puntatore e col dito: Invio e
 // Spazio devono continuare a selezionare il tag. Da tastiera la cartella di un
 // tag si cambia dal campo «Cartella» di «Modifica tag».
-function RigaTagTrascinabile({ tag, attivo, onClick }: { tag: TagOrganizzabile; attivo: boolean; onClick: () => void }) {
-  const { setNodeRef, listeners, isDragging } = useDraggable({
+// Ogni tag e' anche un bersaglio: lasciato su un altro tag ne prende il posto,
+// nella stessa cartella o in un'altra (Mattia, 16/10/2026).
+function RigaTagTrascinabile({
+  tag, cartellaId, attivo, onClick,
+}: {
+  tag: TagOrganizzabile;
+  cartellaId: number | null;
+  attivo: boolean;
+  onClick: () => void;
+}) {
+  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
     id: idTagTrascinabile(tag.id),
-    data: { tipo: "tag" },
+    data: { tipo: "tag", cartella: cartellaId },
   });
   const soloPuntatore = Object.fromEntries(
     Object.entries(listeners ?? {}).filter(([evento]) => evento !== "onKeyDown"),
   );
   return (
-    <div ref={setNodeRef} {...soloPuntatore} className={cn("touch-manipulation", isDragging && "opacity-40")}>
+    <div
+      ref={setNodeRef}
+      {...soloPuntatore}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn("touch-manipulation", isDragging && "opacity-40")}
+    >
       <RigaTag tag={tag} attivo={attivo} onClick={onClick} />
     </div>
   );
@@ -91,12 +106,19 @@ function TagDellaRiga({
   selectedTagId: number | null;
   onSeleziona: (id: number) => void;
 }) {
+  const cartellaId = riga.cartella?.id ?? null;
   return (
-    <>
+    <SortableContext items={riga.tags.map(t => idTagTrascinabile(t.id))} strategy={verticalListSortingStrategy}>
       {riga.tags.map(t => (
-        <RigaTagTrascinabile key={t.id} tag={t} attivo={t.id === selectedTagId} onClick={() => onSeleziona(t.id)} />
+        <RigaTagTrascinabile
+          key={t.id}
+          tag={t}
+          cartellaId={cartellaId}
+          attivo={t.id === selectedTagId}
+          onClick={() => onSeleziona(t.id)}
+        />
       ))}
-    </>
+    </SortableContext>
   );
 }
 
@@ -350,10 +372,23 @@ export function PannelloTag<T extends TagOrganizzabile>({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Un tag cerca prima la cartella sotto il puntatore, poi il tag piu' vicino
+  // DENTRO quella cartella: il posto che prendera'. Una cartella chiusa o vuota
+  // non ha tag e vale lei stessa (in fondo).
   const collisione: CollisionDetection = args => {
     if (args.active.data.current?.tipo === "tag") {
-      const sotto = pointerWithin(args);
-      return sotto.length > 0 ? sotto : rectIntersection(args);
+      const sotto = pointerWithin(args).filter(c => cartellaDaIdRiga(c.id) !== undefined);
+      const righeSotto = sotto.length > 0
+        ? sotto
+        : rectIntersection(args).filter(c => cartellaDaIdRiga(c.id) !== undefined);
+      if (righeSotto.length === 0) return [];
+      const riga = righeSotto[0];
+      const cartella = cartellaDaIdRiga(riga.id);
+      const tagDellaRiga = args.droppableContainers.filter(
+        c => c.data.current?.tipo === "tag" && (c.data.current?.cartella ?? null) === cartella,
+      );
+      if (tagDellaRiga.length === 0) return [riga];
+      return closestCenter({ ...args, droppableContainers: tagDellaRiga });
     }
     return closestCenter({
       ...args,
@@ -393,8 +428,11 @@ export function PannelloTag<T extends TagOrganizzabile>({
     if (!over) return;
     const tagId = tagDaIdTrascinabile(active.id);
     if (tagId !== undefined) {
-      const destinazione = cartellaDaIdRiga(over.id);
-      if (destinazione !== undefined) spostaInCartella(tagId, destinazione);
+      const sopraTag = tagDaIdTrascinabile(over.id);
+      const destinazione = sopraTag !== undefined
+        ? ((over.data.current?.cartella ?? null) as number | null)
+        : cartellaDaIdRiga(over.id);
+      if (destinazione !== undefined) rilasciaTag(tagId, destinazione, sopraTag ?? null);
       return;
     }
     const da = cartellaDaIdRiga(active.id);
@@ -402,29 +440,47 @@ export function PannelloTag<T extends TagOrganizzabile>({
     if (typeof da === "number" && typeof a === "number" && da !== a) riordinaCartelle(da, a);
   }
 
-  async function spostaInCartella(tagId: number, destinazione: number | null) {
-    const tag = tags.find(t => t.id === tagId);
-    if (!tag) return;
-    const nota = tag.cartella_id != null && cartelle.some(c => c.id === tag.cartella_id);
-    const attuale = nota ? (tag.cartella_id as number) : null;
-    if (attuale === destinazione) return;
-    setTags(ts => spostaTag(ts, tagId, destinazione));
+  // Riordino e spostamento sono la stessa chiamata: il gruppo d'arrivo intero,
+  // dall'alto. In coda come i riordini delle cartelle.
+  function rilasciaTag(tagId: number, destinazione: number | null, sopraTagId: number | null) {
+    const ids = gruppoDopoIlRilascio(righe, tagId, destinazione, sopraTagId);
+    if (!ids) return;
+    const precedenti = new Map(
+      tags.filter(t => ids.includes(t.id)).map(t => [t.id, { cartella_id: t.cartella_id ?? null, ordine: t.ordine ?? 0 }]),
+    );
+    setTags(ts => applicaOrdineTag(ts, destinazione, ids));
+    codaRiordini.current = codaRiordini.current.then(() => salvaOrdineTag(destinazione, ids, precedenti));
+  }
+
+  async function salvaOrdineTag(
+    destinazione: number | null,
+    ids: number[],
+    precedenti: Map<number, { cartella_id: number | null; ordine: number }>,
+  ) {
     try {
-      const res = await fetch(`${sorgente.base}/${tagId}`, {
-        method: "PATCH",
+      const res = await fetch(`${sorgente.base}/ordine`, {
+        method: "PUT",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ cartella_id: destinazione }),
+        body: JSON.stringify({ cartella_id: destinazione, ids }),
       });
       if (res.ok) return;
-      if (res.status === 404) {
-        toast.error("Il tag o la cartella non esistono più: ho ricaricato l'elenco");
+      const detail = await dettaglio(res);
+      if (res.status === 409 || res.status === 404) {
+        toast.error("I tag erano cambiati nel frattempo: ho ricaricato l'elenco");
         onRicarica();
         return;
       }
-      throw new Error(messaggioErroreCartella(res.status, await dettaglio(res)));
+      if (res.status === 502 && detail) {
+        toast.error(detail);
+        onRicarica();
+        return;
+      }
+      throw new Error(messaggioErroreCartella(res.status, detail));
     } catch (e) {
-      // Indietro solo se nessun altro spostamento ha gia' cambiato il tag nel frattempo.
-      setTags(ts => ts.map(t => (t.id === tagId && t.cartella_id === destinazione ? { ...t, cartella_id: attuale } : t)));
+      // Indietro solo se a video c'e' ancora l'ordine di questo tentativo.
+      setTags(ts => (ordineTagApplicato(ts, destinazione, ids)
+        ? ts.map(t => { const p = precedenti.get(t.id); return p ? { ...t, ...p } : t; })
+        : ts));
       toast.error(`Non sono riuscito a spostare il tag${e instanceof Error && e.message ? `: ${e.message}` : ""}`);
     }
   }

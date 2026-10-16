@@ -82,6 +82,12 @@ class RiordinaCartelleRequest(BaseModel):
     ids: list[int]
 
 
+class RiordinaTagRequest(BaseModel):
+    # Il gruppo da riordinare: una cartella, o None = «Senza cartella».
+    cartella_id: Optional[int] = None
+    ids: list[int]
+
+
 class AssociazioneItem(BaseModel):
     descrizione: str
     descrizione_key: Optional[str] = None
@@ -220,6 +226,19 @@ def elimina_cartella_endpoint(cartella_id: int, authorization: Optional[str] = H
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     _organizza_http(elimina_cartella, int(cartella_id), str(user["id"]), ristorante_id)
+    return {"ok": True}
+
+
+# Prima di PUT /api/tag/{tag_id}: «ordine» non deve finire nel parametro.
+@router.put("/api/tag/ordine", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
+def riordina_tag_endpoint(body: RiordinaTagRequest, authorization: Optional[str] = Header(None)):
+    from services.tag_organizza_service import riordina_tag
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    _organizza_http(riordina_tag, str(user["id"]), ristorante_id, body.cartella_id, body.ids)
     return {"ok": True}
 
 

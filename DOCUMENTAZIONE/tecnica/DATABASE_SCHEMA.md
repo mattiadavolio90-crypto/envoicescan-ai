@@ -685,6 +685,7 @@ Logica: se `briefing_date = oggi` E `notif_fingerprint` invariato → restituisc
 | created_at | TIMESTAMPTZ | |
 | cartella_id | BIGINT (nullable) | Cartella della barra di Analisi e Tag; NULL = «Senza cartella». FK composta `(cartella_id, user_id, ristorante_id)` → `custom_tag_cartelle`, `ON DELETE SET NULL (cartella_id)`: la cartella è sempre della stessa sede, eliminarla lascia il tag |
 | preferito | BOOLEAN NOT NULL DEFAULT false | Stella della vista «Preferiti». Pura visualizzazione, fuori da analisi/briefing/margini |
+| ordine | INTEGER NOT NULL DEFAULT 0 | Posizione nella cartella (o in «Senza cartella»), scelta trascinando (`20261016141417_tag_ordine.sql`). La lista va per (ordine, nome, id): tutti a 0 = alfabetico. Il trigger `trg_custom_tags_in_fondo` mette un tag nuovo in fondo al suo gruppo (stesso utente, sede e cartella); `PUT /api/tag/ordine` riscrive un gruppo intero; lo spostamento dal riquadro «Modifica tag» lo mette in fondo alla cartella nuova. Pura visualizzazione |
 
 ### `custom_tag_cartelle` — Cartelle dei tag di sede
 
@@ -722,6 +723,7 @@ Scollegati dai tag di sede: vivono a livello account (`user_id`, niente `ristora
 | created_at | TIMESTAMPTZ | |
 | cartella_id | BIGINT (nullable) | NULL = «Senza cartella». FK composta `(cartella_id, user_id)` → `gruppo_tag_cartelle`, `ON DELETE SET NULL (cartella_id)` (`20261013141040_gruppo_tag_cartelle_preferiti.sql`) |
 | preferito | BOOLEAN NOT NULL DEFAULT false | Stella della vista «Preferiti». Pura visualizzazione, fuori dall'analisi per punto vendita |
+| ordine | INTEGER NOT NULL DEFAULT 0 | Come `custom_tags.ordine`, per account: trigger `trg_gruppo_tags_in_fondo`, `PUT /api/gruppo/tag/ordine` |
 
 ### `gruppo_tag_cartelle` — Cartelle dei tag di catena
 

@@ -341,7 +341,7 @@ def test_patch_risponde_solo_i_campi_del_contratto(ctx):
 
     out = _patch(9, preferito=False)
 
-    assert set(out["tag"]) == {"id", "nome", "emoji", "colore", "created_at", "cartella_id", "preferito"}
+    assert set(out["tag"]) == {"id", "nome", "emoji", "colore", "created_at", "cartella_id", "preferito", "ordine"}
 
 
 @pytest.mark.parametrize("cartella_id", [3, 8, 5, 424242],

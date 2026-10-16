@@ -18,6 +18,8 @@ export type CustomTag = {
   // delle cartelle non li portano. Assente = «Senza cartella» e senza stella.
   cartella_id?: number | null;
   preferito?: boolean;
+  /** Posizione nella cartella (o in «Senza cartella»); assente = 0, cioe' alfabetico. */
+  ordine?: number;
 };
 
 // Quello che serve a lista, cartelle e stella: hanno questa forma sia i tag di
@@ -28,6 +30,7 @@ export type TagOrganizzabile = {
   emoji: string | null;
   cartella_id?: number | null;
   preferito?: boolean;
+  ordine?: number;
 };
 
 // Solo per organizzare la barra dei tag: non entra in nessuna analisi.

@@ -2569,6 +2569,31 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   si azzera al cambio di tag, in catena il componente si rimonta per tag. «Esporta» resta fuori dal titolo. `tsc` ed eslint puliti, 4.093
 >   test `*frontend*` verdi (presidi di bottoni, colori, troncamenti compresi). **Non provato** nella
 >   pagina vera: e' stato e rendering, che i test non vedono.
+> - **16/10/2026 — Tag ordinabili a mano dentro la cartella, in punto vendita e in catena (Opus),
+>   NON pushato, migration `20261016141417_tag_ordine.sql` da applicare al live PRIMA del push
+>   (il worker seleziona la colonna nuova).** Richiesta di Mattia: i tag dentro le cartelle
+>   «ordinabili a piacimento trascinandoli come per le cartelle»; la vista «Preferiti» resta
+>   alfabetica (sua scelta). **DB:** `ordine` su `custom_tags` e `gruppo_tags`, DEFAULT 0 senza
+>   numerare gli esistenti: la lista va per (ordine, nome, id), quindi finche' nessuno trascina
+>   a schermo non cambia niente. Trigger BEFORE INSERT che mette un tag nuovo in fondo al suo
+>   gruppo (stesso utente, sede/account e cartella), per ogni strada che crea tag. **Worker:**
+>   `riordina_tag_in` (servizio comune ai due ambiti) dietro `PUT /api/tag/ordine` e
+>   `PUT /api/gruppo/tag/ordine`, body `{cartella_id, ids}`: il gruppo d'arrivo intero, cosi'
+>   riordino e spostamento in un'altra cartella sono una chiamata sola; 404 per tag o cartella
+>   non propri, 409 se manca un tag del gruppo o c'e' un doppione, 502 se interrotto a meta'.
+>   La rotta della sede sta PRIMA di `PUT /api/tag/{tag_id}`. Lo spostamento dal riquadro
+>   «Modifica tag» mette il tag in fondo alla cartella nuova. Rotte in `permessi_rotte.py`,
+>   proxy `api/tag/ordine` (la catena passa dal catch-all), OpenAPI. **Frontend:** ogni tag e'
+>   un elemento ordinabile dentro la sua cartella; la collisione cerca la cartella sotto il
+>   puntatore e poi il tag piu' vicino in quella; aggiornamento ottimista con ritorno indietro
+>   solo se nessuno ha cambiato il gruppo nel frattempo. **Test:** `tests/test_tag_ordine.py`
+>   (42, sede e catena negli stessi casi), `tests/test_sql_tag_ordine.py` (10 `-m sql`: trigger
+>   per gruppo, utente, sede e account, giro dalle rotte, tag altrui), `tests/test_tag_ordine_frontend.py`
+>   (13), 4 ricette nuove in `test_isolamento_per_risorsa.py`. **Mutanti 15 su 15 uccisi** dopo
+>   aver rafforzato tre casi (ritorno indietro che cambiava anche la posizione; nessun tag
+>   dell'altro account in «Senza cartella»; nessun tag di un altro utente nella stessa sede).
+>   **Non provato** il trascinamento nella pagina vera: e' rendering, e serve la migration sul
+>   live.
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e
