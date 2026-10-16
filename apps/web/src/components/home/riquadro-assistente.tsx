@@ -141,7 +141,7 @@ export function RiquadroAssistente({
   // Una card sola (Mattia, 15/10): il flusso a sinistra fa parte del riquadro. Da computer
   // l'altezza e' fissa e la conversazione scorre dentro, invece di allungare la pagina.
   return (
-    <div className={cn("relative isolate overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background lg:grid lg:min-h-[440px] lg:grid-cols-[minmax(240px,30%)_minmax(0,1fr)]", children && "lg:h-[min(560px,calc(100vh-8rem))]")}>
+    <div className={cn("relative isolate overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/[0.04] to-background lg:grid lg:min-h-[400px] lg:grid-cols-[minmax(240px,30%)_minmax(0,1fr)]", children && "lg:h-[min(480px,calc(100vh-9rem))]")}>
       {/* Gli aloni stanno SOTTO il contenuto (-z-10 dentro isolate): sopra sbiadivano
           «Ascolta» e la fine delle prime righe. */}
       <div className="pointer-events-none absolute -right-16 -top-16 -z-10 size-56 rounded-full bg-accent blur-3xl" />
