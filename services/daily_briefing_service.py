@@ -191,7 +191,8 @@ logger = get_logger('daily_briefing')
 #   40 (16/10): un mese chiuso e' «senza merce» sotto il 15% dell'incasso netto
 #               (services/completezza_mese.py, K03), non piu' solo a merce zero:
 #               nasce l'avviso «mancano le fatture costo» su mesi che prima
-#               passavano, e il testo non dice piu' «risulta 0».
+#               passavano, e il testo non dice piu' «risulta 0». Nello stesso
+#               push: niente buona notizia su un mese senza merce del mese dopo.
 _BRIEFING_CODE_VERSION = 40
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se

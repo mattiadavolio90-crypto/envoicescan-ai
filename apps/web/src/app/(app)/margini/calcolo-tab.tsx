@@ -631,7 +631,7 @@ function Cell({
 }) {
   const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
-  const colorCls = valueColorCls(row.valueColor, raw, meseSenzaGiudizio(mese));
+  const colorCls = valueColorCls(row.valueColor, raw, meseSenzaGiudizio(mese, raw));
   const pct = pctIncidenzaRiga(row.key, raw, mese.fatturato_netto);
   const display = raw === 0 ? "—" : formatEuro(raw);
 
@@ -856,7 +856,7 @@ function MobileMeseView({
   const current = isTotal ? totali : mesi[Math.min(selIdx, mesi.length - 1)];
   // Sul totale vale la regola del periodo (un solo mese scoperto lo rende
   // incompleto); sul singolo mese vale quel mese. Vedi TotalCell.
-  const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaGiudizio(current);
+  const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaCosti(current);
 
   return (
     <div className="space-y-3">
@@ -882,7 +882,7 @@ function MobileMeseView({
           const isPersonale = apreCostoPersonale(row);
           const isSpesa = row.type === "input-editable" && (row.field === "altri_costi_fb" || row.field === "altri_costi_spese");
           const tipoSpesa: TipoSpesaCella | null = row.field === "altri_costi_fb" ? "fb" : row.field === "altri_costi_spese" ? "generale" : null;
-          const colorCls = valueColorCls(row.valueColor, raw, incompleto);
+          const colorCls = valueColorCls(row.valueColor, raw, incompleto || (!isTotal && meseSenzaGiudizio(current, raw)));
           const pct = pctIncidenzaRiga(row.key, raw, current.fatturato_netto);
 
           return (

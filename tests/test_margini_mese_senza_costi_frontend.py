@@ -238,8 +238,12 @@ def _valuta_flag(espressione: str, senza_costi: bool) -> bool:
         _MODULO,
         # meseSenzaGiudizio (16/10/2026) = meseSenzaCosti o «in attesa»: senza
         # `in_attesa` nel mese da' lo stesso esito, ed e' quello che si misura qui.
+        # La card mobile (16/10/2026) calcola il flag riga per riga: valore
+        # positivo, mese singolo, `incompleto` del mese come nel componente.
         "const { meseSenzaCosti, meseSenzaGiudizio } = m;\n"
-        f"const mese = input;\nemit(Boolean({espressione}));",
+        "const mese = input; const current = mese; const raw = 1; const isTotal = false;\n"
+        "const incompleto = meseSenzaCosti(mese);\n"
+        f"emit(Boolean({espressione}));",
         argomento=mese,
         richiede=["meseSenzaCosti", "meseSenzaGiudizio"],
     )
@@ -294,9 +298,12 @@ def test_tutti_e_tre_i_punti_passano_il_flag():
     # Chi lo riceve dall'alto (colonna Totale, card mobile): il valore lo decide
     # il chiamante, quindi si verifica che la prop esista e sia alimentata dal
     # calcolo sui mesi visibili — un letterale `false` qui rimetterebbe il difetto.
-    assert len(flag_da_prop) == 2, (
-        f"attese 2 chiamate che ricevono il flag come prop, trovate {len(flag_da_prop)}"
+    # Dal 16/10/2026 la card mobile calcola il flag riga per riga (il MOL
+    # negativo di un mese «in attesa» resta rosso): riceve dall'alto solo il Totale.
+    assert len(flag_da_prop) == 1, (
+        f"attesa 1 chiamata che riceve il flag come prop, trovate {len(flag_da_prop)}"
     )
+    assert len(flag_calcolati) == 2, flag_calcolati
 
     # Ogni consumatore si verifica PER NOME, uno alla volta. Cercare la sola
     # stringa `incompleto={periodoIncompleto}` non bastava: le occorrenze sono

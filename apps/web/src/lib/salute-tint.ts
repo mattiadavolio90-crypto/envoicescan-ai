@@ -11,8 +11,8 @@
  * numero e sull'anello.
  *
  * `grigio` = "non lo so" (indice non determinabile, lettura fallita): lo usa la
- * catena; il PV oggi non lo emette ma la chiave e' qui perche' se un giorno lo
- * emettera' avra' gia' il suo colore, non un crash su una chiave assente.
+ * catena, e dal 16/10/2026 il MOL positivo della Home di un mese «in attesa
+ * delle fatture di fine mese» (`tintContiPV`).
  */
 /**
  * La parola con cui il prodotto dice "i dati di questa sede non sono completi".

@@ -3257,6 +3257,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   2027 non aveva merce di febbraio (ora e' consolidata e decide solo il dicembre di
 >   confronto), la guardia sulla freccia della card, il valutatore del colore di Margini.
 >   Suite `-m "not sql"`: 19.774 verdi prima dei tre allineamenti, 137 verdi i tre file dopo.
+>
+> - **16/10/2026 — Code-reviewer sul fix n. 20 (K03, «in attesa»), verdetto verde, e i suoi
+>   rilievi corretti.** Nessun blocco; inerenze a posto (`tintContiPV` un chiamante,
+>   `KpiBlock` tre: dashboard, `/m/briefing`, demo; la demo resta verde). Corretti: (1) un MOL
+>   negativo «in attesa» era rosso in Home e grigio in Margini: ora la cella si spegne solo sui
+>   valori positivi (`meseSenzaGiudizio(m, valore)`), anche nella vista mobile; (2) la «perdita
+>   in calo» del briefing non aveva il gate dell'attesa: ora ce l'ha, come il MOL in crescita;
+>   (3) se la Home ripiega su un mese di mesi fa non dice piu' «in attesa delle fatture di fine
+>   giugno» a ottobre: l'attesa vale solo sull'ultimo mese chiuso. Correzione al verbale del fix
+>   n. 20: «merce del mese dopo non letta = nessuna attesa» vale per la chat; in Home e nel
+>   briefing una lettura fallita da' merce 0, quindi attesa (il verso prudente: grigio o
+>   silenzio, mai un verde falso). LOGICA_BRIEFING.md, il commento di `salute-tint.ts` e quello
+>   della versione 40 del briefing allineati. +3 test in `tests/test_completezza_mese.py`,
+>   riscritto il valutatore di `tests/test_margini_mese_senza_costi_frontend.py` (la card
+>   mobile ora calcola il flag riga per riga); **5 mutanti, 5 uccisi**. **Effetto misurato dal
+>   revisore sul live, da sapere**: la merce del mese nuovo non arriva mai il giorno 1 (0 sedi
+>   su 12, luglio-settembre), di solito fra il 5 e il 7. Quindi per i clienti SDI il MOL del
+>   mese appena chiuso resta grigio in Home i primi 5-7 giorni del mese, e la buona notizia sul
+>   MOL quasi sempre tace nei giorni 1-3; chi carica le fatture a mano resta grigio finche' non
+>   carica il mese dopo. La catena non ha ancora lo stato in attesa.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

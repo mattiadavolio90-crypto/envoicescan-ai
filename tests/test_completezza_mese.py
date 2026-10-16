@@ -368,9 +368,34 @@ def test_tinta_della_home_in_attesa_e_neutra():
 def test_cella_del_mese_in_attesa_senza_colore_ma_il_periodo_resta_giudicato():
     out = esegui_ts(
         "lib/margini-aggregati",
-        "emit([m.meseSenzaGiudizio(input), m.meseSenzaCosti(input)]);",
+        "emit([m.meseSenzaGiudizio(input, 5000), m.meseSenzaGiudizio(input, -5000), m.meseSenzaCosti(input)]);",
         _pivot(senza_merce=False, in_attesa=True), richiede=["meseSenzaGiudizio", "meseSenzaCosti"])
-    assert out == [True, False]
+    # positivo: neutro; negativo: resta rosso come in Home; il periodo resta giudicato
+    assert out == [True, False, False]
+
+
+def test_home_kpi_non_dice_in_attesa_su_un_mese_vecchio():
+    """La card ripiega su giugno a ottobre (luglio-settembre vuoti): «in attesa
+    delle fatture di fine giugno» non dice niente di vero."""
+    giugno = {6: {"fatturato_iva10": 110000.0, "costo_dipendenti": 20000.0}}
+    kpi = _home_kpi_con(giugno, {6: 25000.0})
+    assert kpi.periodo_label == "Giugno" and kpi.in_attesa is False
+
+
+def test_la_perdita_in_calo_tace_sul_mese_in_attesa():
+    import tests.test_briefing_onesta_fatturato_zero as bo
+    margini = {m: {"altri_ricavi_noiva": 40000.0, "costo_dipendenti": 30000.0 - m * 500} for m in range(1, 13)}
+    csp = {m: 1000.0 for m in range(1, 13)}
+    consolidato = {m: 14000.0 for m in range(1, 13)}
+    in_attesa = {m: 14000.0 for m in range(1, 9)}
+    esiti = {}
+    for nome, cfb in (("consolidato", consolidato), ("in_attesa", in_attesa)):
+        with bo._DENTRO_FINESTRA_MOL, bo._patch_loaders(margini, cfb, csp), patch(
+            "services.fastapi_worker._salute_indice_rosso", return_value=False
+        ):
+            esiti[nome] = fw._briefing_buona_notizia(bo.UID, bo.RID, bo._sb_senza_incasso())
+    assert esiti["consolidato"] is not None and esiti["consolidato"]["payload"]["tipo"] == "perdita_in_calo"
+    assert esiti["in_attesa"] is None
 
 
 def test_la_card_della_home_mostra_l_attesa():
@@ -384,6 +409,7 @@ def test_la_card_della_home_mostra_l_attesa():
 def test_la_tabella_di_margini_colora_con_il_mese_senza_giudizio():
     from pathlib import Path
     s = (Path(__file__).resolve().parent.parent / "apps/web/src/app/(app)/margini/calcolo-tab.tsx").read_text(encoding="utf-8")
-    assert "const colorCls = valueColorCls(row.valueColor, raw, meseSenzaGiudizio(mese));" in s
-    assert "const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaGiudizio(current);" in s
+    assert "const colorCls = valueColorCls(row.valueColor, raw, meseSenzaGiudizio(mese, raw));" in s
+    assert "const incompleto = isTotal ? mesi.some(meseSenzaCosti) : meseSenzaCosti(current);" in s
+    assert "valueColorCls(row.valueColor, raw, incompleto || (!isTotal && meseSenzaGiudizio(current, raw)))" in s
     assert "() => mesiVisibili.some(meseSenzaCosti)," in s

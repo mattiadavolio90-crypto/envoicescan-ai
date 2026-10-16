@@ -98,9 +98,12 @@ contano per il "tutto a posto".
      dei due mesi può essere un mese di **ferie** (incasso sotto i 3/4 dei mesi
      vicini, la regola della fase E §4-bis): settembre «molto meglio» di un agosto
      chiuso misura la chiusura, e la card «I tuoi conti» in quel caso dice
-     «nessun confronto con agosto»;
+     «nessun confronto con agosto». Dal 16/10/2026 il mese chiuso dev'essere
+     anche **consolidato**: senza merce arrivata nel mese dopo è «in attesa
+     delle fatture di fine mese» (`services/completezza_mese.py`) e il MOL non
+     si festeggia — nei primi giorni del mese capita quasi sempre;
   2. altrimenti **perdita in calo** (in rosso ma meno del mese prima), con la
-     stessa condizione sui due mesi. Fino al 23/9/2026 diceva «la perdita è
+     stessa condizione sui due mesi e lo stesso «consolidato». Fino al 23/9/2026 diceva «la perdita è
      scesa a € 9.380» su due mesi **senza incassi**: la "perdita" era la somma
      dei costi, e il "miglioramento" era che ne erano stati inseriti meno. Anche
      qui niente mesi di ferie: un agosto chiuso «perde meno» perché costa meno;

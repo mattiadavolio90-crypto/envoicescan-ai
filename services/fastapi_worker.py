@@ -7079,6 +7079,7 @@ def _buona_notizia_principale(
                 # vada bene. Decisione Mattia: segnalarlo come spinta.
                 if (mol_curr < 0 and mol_prec < 0 and mol_curr > mol_prec
                         and _mesi_confrontabili(kpi, kpi_prec)
+                        and not in_attesa
                         and not _salute_indice_rosso(ristorante_id, supabase_client)
                         and not _un_mese_di_ferie()):
                     return {
@@ -10198,8 +10199,11 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         return _vuoto
 
     in_attesa = False
-    if not mese_in_corso:
-        nm, na = (1, anno_usato + 1) if mese_usato == 12 else (mese_usato + 1, anno_usato)
+    nm, na = (1, anno_usato + 1) if mese_usato == 12 else (mese_usato + 1, anno_usato)
+    # Solo sull'ultimo mese chiuso: se la card ripiega su un mese di mesi fa (i
+    # mesi dopo sono vuoti), «in attesa delle fatture di fine giugno» a ottobre
+    # non dice niente di vero. Li' manca ben altro, e lo dice la Salute.
+    if not mese_in_corso and (na, nm) == (oggi.year, oggi.month):
         try:
             n_margini, n_fb, n_spese = _anno(na)
             merce_dopo = _kpi_periodo(n_margini, n_fb, n_spese, nm)["merce"]
