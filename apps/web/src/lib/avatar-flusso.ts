@@ -171,20 +171,6 @@ export function frazioneLetta(
   return Math.min(1, Math.max(0, f));
 }
 
-/** Il giorno di Roma, «AAAA-MM-GG»: il benvenuto si mostra una volta al giorno. */
-export function giornoDiRoma(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(d);
-}
-
-export function chiaveBenvenuto(giorno: string): string {
-  return `oneflux:benvenuto:${giorno}`;
-}
-
-/** Il benvenuto parte se oggi non è ancora stato visto e il sistema non chiede meno animazioni. */
-export function mostraBenvenuto(s: { gia_visto: boolean; meno_animazioni: boolean }): boolean {
-  return !s.gia_visto && !s.meno_animazioni;
-}
-
 /** Dove sta la linea del flusso, in frazione dell'altezza: più in basso nella colonna alta,
  *  così i fili di luce la riempiono. */
 export type VarianteAvatar = "colonna" | "fascia" | "palco";

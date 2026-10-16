@@ -3005,6 +3005,9 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   (copriva la barra del tour e consumava quello del giorno di un cliente; presidio con mutante
 >   ucciso) e il tour allinea dall'alto un elemento più alto dello schermo (al passo 1 il riquadro
 >   finiva fuori vista in alto). Verificati entrambi aprendo il tour in locale.
+>   **16/10: il benvenuto è tolto del tutto** (Mattia: «al login non ci deve essere questo effetto,
+>   solo quando entri lo trovi vicino al briefing»): via `benvenuto-assistente.tsx` e le sue
+>   funzioni e test; un presidio verifica che nessuna Home lo rimonti.
 >
 > - **15/10/2026 — Code-reviewer sui fix 2-8 dell'audit di ottobre, verdetto rosso, chiuso.**
 >   Il blocco: K15 era chiuso a meta'. `/api/gruppo/prezzi/fattura` risolveva il gruppo senza

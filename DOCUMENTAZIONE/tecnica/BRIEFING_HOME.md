@@ -408,8 +408,8 @@ aver editato un file Python del briefing:
 | `apps/web/src/app/(app)/dashboard/page.tsx` | Render Home (BriefingBlock, KpiBlock, ecc.) |
 | `apps/web/src/lib/home.ts` | `fetchBriefing`/`fetchKpi`/... (proxy verso worker) |
 | `apps/web/src/components/home/riquadro-assistente.tsx` | Il riquadro del briefing (Home PV e catena): da computer una card sola, ad altezza fissa quando c'è la conversazione, col flusso dell'avatar dentro a sinistra e la conversazione che scorre dentro (`ConversazioneAltezzaFissa` in `pannello-conversazione.tsx`); fascia sotto lo schermo largo, frase evidenziata durante «Ascolta» |
-| `apps/web/src/lib/avatar-flusso.ts` | L'avatar (fase L): modi, voce simulata, geometria del flusso, frasi da evidenziare, benvenuto una volta al giorno — logica pura, provata da `tests/test_avatar_flusso_frontend.py` |
-| `apps/web/src/components/home/disegno-flusso.ts`, `apps/web/src/components/home/avatar-flusso.tsx`, `apps/web/src/components/home/benvenuto-assistente.tsx` | Il disegno su canvas, il componente che lo anima (non disegna fuori schermo né a scheda nascosta) e il benvenuto dopo il login |
+| `apps/web/src/lib/avatar-flusso.ts` | L'avatar (fase L): modi, voce simulata, geometria del flusso, frasi da evidenziare — logica pura, provata da `tests/test_avatar_flusso_frontend.py` |
+| `apps/web/src/components/home/disegno-flusso.ts`, `apps/web/src/components/home/avatar-flusso.tsx` | Il disegno su canvas e il componente che lo anima (non disegna fuori schermo né a scheda nascosta) |
 
 ---
 
@@ -460,8 +460,8 @@ frontend lo chiama, tenuto per compat OpenAPI).
 - **15/10/2026 (fase L «assistente consulente»: l'avatar)** — nel riquadro del briefing un flusso
   astratto (tre nastri che si attorcigliano mentre scorrono, fili di luce che salgono), con
   quattro modi: riposo, ti ascolta (chat a fuoco), pensa (risposta in arrivo), parla («Ascolta»,
-  con la frase letta evidenziata). Benvenuto una volta al giorno di Roma, saltabile, spento per
-  chi chiede meno animazioni. Sul telefono una fascia in cima. La voce del flusso è simulata:
+  con la frase letta evidenziata). Niente animazione al login (tolta il 16/10 su richiesta di
+  Mattia): entrando il flusso è già accanto al briefing. Sul telefono una fascia in cima. La voce del flusso è simulata:
   agganciarsi all'audio con Web Audio rischiava di ammutolire «Ascolta». Nessun cambio al
   worker né al testo del briefing: `_BRIEFING_CODE_VERSION` invariata.
 - **24/9/2026 (fase 4 «assistente consulente»)** — due osservazioni calcolate

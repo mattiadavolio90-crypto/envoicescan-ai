@@ -14,7 +14,6 @@ import { type Briefing, type BriefingAzione } from "@/lib/home";
 import { puoIgnorare } from "@/lib/briefing-shared";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { AvatarFlusso } from "@/components/home/avatar-flusso";
-import { BenvenutoAssistente } from "@/components/home/benvenuto-assistente";
 import { useModoAvatar } from "@/components/home/use-modo-avatar";
 import { cn } from "@/lib/utils";
 import { statoAzioni } from "@/lib/briefing-azioni";
@@ -107,7 +106,6 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
   return (
     <div className="space-y-5">
       {/* Hero briefing con typewriter */}
-      <BenvenutoAssistente saluto={briefing.saluto} />
       <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-5">
         <div className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-sky-400/15 blur-3xl" />
         {/* L'assistente (fase L): il flusso in cima, al posto del tondino. */}

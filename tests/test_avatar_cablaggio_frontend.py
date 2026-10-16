@@ -2,7 +2,7 @@
 
 La logica (modi, voce, frasi, benvenuto) e' eseguita in `test_avatar_flusso_frontend.py`;
 qui si guarda che le tre Home la usino: senza `onStato` il flusso non saprebbe mai che
-«Ascolta» sta leggendo, senza il benvenuto il saluto dopo il login sparirebbe in silenzio.
+«Ascolta» sta leggendo, 
 Si legge il sorgente senza commenti, cosi' un `onStato` citato in un commento non basta.
 """
 import re
@@ -34,10 +34,11 @@ def test_ascolta_avvisa_l_avatar(file):
 
 
 @pytest.mark.parametrize("file", [_RIQUADRO, _M_PV, _M_CATENA], ids=lambda p: p.name)
-def test_ogni_home_ha_il_flusso_e_il_benvenuto(file):
+def test_ogni_home_ha_il_flusso_e_nessun_benvenuto(file):
+    """Niente animazione al login (Mattia, 16/10): entrando il flusso e' gia' accanto al briefing."""
     t = _n(file)
     assert "<AvatarFlussomodo={modo}" in t, f"{file.name}: manca il flusso"
-    assert "<BenvenutoAssistente" in t, f"{file.name}: manca il benvenuto"
+    assert "Benvenuto" not in t, f"{file.name}: il benvenuto e' stato tolto il 16/10"
 
 
 def test_da_computer_colonna_e_fascia_sotto_lo_schermo_largo():
@@ -84,11 +85,3 @@ def test_l_avatar_non_rompe_il_demo_tour(file):
     t = _n(file)
     assert "useAssistenteOpzionale()" in t
     assert "useAssistente()" not in t
-
-
-def test_il_benvenuto_non_parte_nel_demo_tour():
-    """La demo non ha AssistenteProvider: senza questo controllo il benvenuto coprirebbe la barra
-    del tour e consumerebbe quello del giorno a chi apre la demo dallo stesso browser."""
-    t = _n(_WEB / "components/home/benvenuto-assistente.tsx")
-    assert "constnellApp=useAssistenteOpzionale()!==null;" in t
-    assert "useEffect(()=>{if(!nellApp)return;" in t

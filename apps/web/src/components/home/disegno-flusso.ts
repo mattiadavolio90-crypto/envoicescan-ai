@@ -1,6 +1,6 @@
 // Il disegno del flusso su un <canvas> 2D (fase L). Porta nell'app il mockup approvato da
 // Mattia il 15/10/2026 (versione 9): stessa geometria, stessi colori, stessi movimenti.
-// Niente React qui dentro: lo guidano AvatarFlusso (Home) e BenvenutoAssistente.
+// Niente React qui dentro: lo guida AvatarFlusso.
 import {
   BASE_FLUSSO,
   GIRI,
@@ -42,7 +42,8 @@ type Luce = { x: number; y: number; r: number; f: number; v: number };
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 export class DisegnoFlusso {
-  /** 0 → 1 durante il benvenuto: i punti arrivano da ogni parte e formano i nastri. */
+  /** 0 → 1: i punti arrivano da ogni parte e formano i nastri. Oggi resta sempre 1: l'entrata
+   *  animata al login (benvenuto) è stata tolta il 16/10 su richiesta di Mattia. */
   assemble = 1;
   /** 0 → 1: i fili di luce cominciano a nascere solo quando il flusso è formato. */
   cresce = 1;

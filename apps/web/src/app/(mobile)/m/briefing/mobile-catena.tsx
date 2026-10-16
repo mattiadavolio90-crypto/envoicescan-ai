@@ -7,7 +7,6 @@ import { Sparkles, AlertTriangle, ChevronRight, ClipboardList } from "lucide-rea
 import { cn } from "@/lib/utils";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { AvatarFlusso } from "@/components/home/avatar-flusso";
-import { BenvenutoAssistente } from "@/components/home/benvenuto-assistente";
 import { useModoAvatar } from "@/components/home/use-modo-avatar";
 import type { GruppoOverview } from "@/lib/gruppo";
 import { messaggioFattureDaCollocare, metricaPrincipaleConti } from "@/lib/catena-confronti";
@@ -81,7 +80,6 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
   return (
     <div className="space-y-4">
       {/* Briefing di gruppo */}
-      <BenvenutoAssistente saluto={`${overview.briefing.saluto}, ${overview.nome_gruppo}`} />
       <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.05] to-background p-5">
         {/* L'assistente (fase L): il flusso in cima, come nella Home del locale. */}
         <div className="relative -mx-5 -mt-5 mb-2 h-32">
