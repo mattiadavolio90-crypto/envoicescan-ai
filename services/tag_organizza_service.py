@@ -310,7 +310,7 @@ AMBITO_CATENA = Ambito(
 
 
 def lista_tag_organizzati_in(ambito: Ambito, chiave: Dict[str, str]) -> List[Dict[str, Any]]:
-    """I tag dell'ambito con cartella, stella e posizione, in ordine (ordine, nome).
+    """I tag dell'ambito con cartella, stella e posizione, in ordine (ordine, nome, id).
 
     Per la sede non passa da `db_service.get_custom_tags` (cachata, select senza
     le colonne nuove). Un errore di lettura sale: una lista vuota direbbe
@@ -321,6 +321,7 @@ def lista_tag_organizzati_in(ambito: Ambito, chiave: Dict[str, str]) -> List[Dic
         _filtra(_client().table(ambito.tabella_tag).select(CAMPI_TAG), chiave)
         .order("ordine")
         .order("nome")
+        .order("id")
         .execute()
     )
     return [_tag_normalizzato(r) for r in (response.data or [])]

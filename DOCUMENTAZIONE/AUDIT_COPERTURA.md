@@ -2593,7 +2593,13 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   aver rafforzato tre casi (ritorno indietro che cambiava anche la posizione; nessun tag
 >   dell'altro account in «Senza cartella»; nessun tag di un altro utente nella stessa sede).
 >   **Non provato** il trascinamento nella pagina vera: e' rendering, e serve la migration sul
->   live.
+>   live. **Dal `code-reviewer` (🟢, due difetti d'interfaccia corretti subito):** da una cartella
+>   all'altra il bersaglio e' un tag, quindi la cartella non si illuminava piu' e i tag d'arrivo
+>   non si scostano (dnd-kit sposta solo dentro la stessa lista): ora la cartella si illumina e
+>   una linea sopra il tag dice dove arrivera'; mentre si trascina una cartella i tag non sono
+>   bersagli (con le frecce si avanzava un tag alla volta). Il worker ordina anche per id, come
+>   dice la migration. I tag nuovi vanno in fondo anche in un gruppo mai riordinato: scelta
+>   approvata da Mattia.
 > - **13/10/2026 — Prezzi di catena con la grafica e le parole dell'Osservatorio del PV (Opus),
 >   NON pushato, nessuna migration.** Da screenshot di Mattia: tema chiaro piatto, filtri non
 >   distinguibili, badge «Solo questo PV su 4» oscuro, rumore nei divari (limoni), «saltati» e

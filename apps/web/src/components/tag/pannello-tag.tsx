@@ -7,7 +7,7 @@ import {
 import { toast } from "sonner";
 import {
   DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor,
-  closestCenter, pointerWithin, rectIntersection, useDroppable, useSensor, useSensors,
+  closestCenter, pointerWithin, rectIntersection, useDndContext, useDroppable, useSensor, useSensors,
   type Announcements, type CollisionDetection, type DragEndEvent, type DragStartEvent, type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
@@ -80,19 +80,32 @@ function RigaTagTrascinabile({
   attivo: boolean;
   onClick: () => void;
 }) {
-  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
+  // Mentre si trascina una cartella i tag non sono bersagli: con le frecce si
+  // avanzerebbe un tag alla volta invece che una cartella alla volta.
+  const { active } = useDndContext();
+  const trascinaCartella = active?.data.current?.tipo === "cartella";
+  const { setNodeRef, listeners, transform, transition, isDragging, isOver } = useSortable({
     id: idTagTrascinabile(tag.id),
     data: { tipo: "tag", cartella: cartellaId },
+    disabled: { draggable: false, droppable: trascinaCartella },
   });
   const soloPuntatore = Object.fromEntries(
     Object.entries(listeners ?? {}).filter(([evento]) => evento !== "onKeyDown"),
   );
+  // Da un'altra cartella i tag non si scostano (dnd-kit sposta solo dentro la
+  // stessa lista): una linea sopra il tag dice dove arrivera'.
+  const arrivaQui = isOver && active?.data.current?.tipo === "tag"
+    && (active.data.current?.cartella ?? null) !== cartellaId;
   return (
     <div
       ref={setNodeRef}
       {...soloPuntatore}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn("touch-manipulation", isDragging && "opacity-40")}
+      className={cn(
+        "relative touch-manipulation",
+        isDragging && "opacity-40",
+        arrivaQui && "before:absolute before:inset-x-1 before:-top-0.5 before:h-0.5 before:rounded-full before:bg-primary",
+      )}
     >
       <RigaTag tag={tag} attivo={attivo} onClick={onClick} />
     </div>
@@ -122,6 +135,19 @@ function TagDellaRiga({
   );
 }
 
+// Il bersaglio di un tag e' quasi sempre un altro tag, non la riga: la cartella
+// si illumina se il tag che si sta trascinando arriva da un'altra cartella e
+// sta per finire su uno dei suoi.
+function arrivaDaFuori(
+  { active, over }: { active: { data: { current?: Record<string, unknown> } } | null; over: { data: { current?: Record<string, unknown> } } | null },
+  cartellaId: number | null,
+): boolean {
+  const da = active?.data.current;
+  const su = over?.data.current;
+  return da?.tipo === "tag" && su?.tipo === "tag"
+    && (su.cartella ?? null) === cartellaId && (da.cartella ?? null) !== cartellaId;
+}
+
 /* ── Una cartella: ordinabile con la maniglia, bersaglio per i tag ── */
 function CartellaOrdinabile({
   riga, cartella, chiusa, onAlterna, evidenzia, selectedTagId, onSeleziona, onRinomina, onElimina,
@@ -139,7 +165,8 @@ function CartellaOrdinabile({
   const {
     attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging, isOver,
   } = useSortable({ id: idRiga(cartella.id), data: { tipo: "cartella" } });
-  const sopra = isOver && evidenzia;
+  const dnd = useDndContext();
+  const sopra = evidenzia && (isOver || arrivaDaFuori(dnd, cartella.id));
   return (
     <div
       ref={setNodeRef}
@@ -232,7 +259,8 @@ function GruppoSenzaCartella({
   onSeleziona: (id: number) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: idRiga(null), disabled: !attiva });
-  const sopra = isOver && evidenzia;
+  const dnd = useDndContext();
+  const sopra = evidenzia && (isOver || arrivaDaFuori(dnd, null));
   return (
     <div
       ref={setNodeRef}
