@@ -5367,7 +5367,7 @@ def _chat_query_margini(
             logger.warning("chat query_margini: margini %s non leggibili: %s", aa, exc)
             return {"errore": "dato non leggibile in questo momento: non dire che non c'e', "
                               "di' che non riesci a leggerlo e rimanda alla pagina Margini"}
-        k = _kpi_periodo(margini, fb, sp, mm)
+        k = _kpi_periodo(margini, fb, sp, mm, in_corso=(mm == oggi.month and aa == oggi.year))
         if k["has_data"]:
             visti.append((aa, mm))
             risultati.append({
@@ -8233,10 +8233,8 @@ def _briefing_fatture_mancanti(
         logger.warning("briefing fatture mancanti: lettura override mensile fallita: %s", exc)
 
     if fatturato_mese > 0:
-        costi_mese = _costi_automatici_mese(
-            ristorante_id, mc_anno, mc_mese, supabase_client, user_id_r
-        )
-        if costi_mese is not None and costi_mese <= 0:
+        merce_mese = _merce_del_mese(ristorante_id, mc_anno, mc_mese, supabase_client, user_id_r)
+        if merce_mese is not None and merce_mese["insufficiente"]:
             mese_lbl = _MESI_IT_BRIEFING[mc_mese]
             return {
                 "id": f"fatture-mancanti-live-{ristorante_id}",
@@ -8587,14 +8585,10 @@ def _costi_automatici_mese(
     ristorante.
 
     Dal 23/09/2026 somma i soli costi F&B, non piu' F&B + spese (decisione di
-    Mattia). Tutti e tre i chiamanti — l'avviso 'mancano le fatture costo' e le
-    due voci 'Fatture caricate' della Salute — chiedono se e' arrivata la MERCE
-    di quel mese, e con la somma rispondevano di si' per una sola bolletta:
-    misurato lo stesso giorno, SUSHILAND gennaio 2026 aveva 114 EUR di utenze,
-    zero merce, food cost 0% e nessun avviso. Gemella della soglia del colore
-    (`_mesi_senza_costi` in services/routers/margini.py e `meseSenzaCosti` in
-    apps/web/src/lib/margini-aggregati.ts): le tre devono restare allineate, o
-    la tabella colora di verde un mese per cui la Salute tace.
+    Mattia): con la somma una sola bolletta (SUSHILAND gennaio 2026, 114 EUR di
+    utenze, zero merce) bastava a dire che la merce c'era. Dal 16/10/2026 non
+    decide piu' niente da sola: e' la parte «fatture» di `_merce_del_mese`, che
+    applica la regola unica (services/completezza_mese.py).
     """
     try:
         if not user_id:
@@ -8614,6 +8608,65 @@ def _costi_automatici_mese(
     except Exception as exc:
         logger.warning("costi automatici mese fallito: %s", exc)
         return None
+
+
+def _fatture_del_mese_ok(merce_mese: Dict[str, Any]) -> bool:
+    """Voce «Fatture caricate» della Salute. Con incasso: la regola unica. Senza
+    incasso non c'e' niente da confrontare: basta che la merce ci sia, come prima."""
+    if merce_mese["netto"] > 0:
+        return not merce_mese["insufficiente"]
+    return merce_mese["merce"] > 0
+
+
+def _merce_del_mese(
+    ristorante_id: str, anno: int, mese: int, supabase_client,
+    user_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """La merce di un mese CHIUSO contro il suo incasso, con la regola unica.
+
+    Ritorna {"netto", "merce", "insufficiente"} oppure None se non si sa (la
+    lettura dei costi e' fallita: il chiamante sceglie il ripiego prudente).
+    `merce` = fatture (`_costi_automatici_mese`) + `altri_costi_fb` + quote di
+    riparto F&B; `netto` dall'override mensile se c'e', come la card KPI.
+
+    Prima la Salute e l'avviso «mancano le fatture costo» guardavano le sole
+    fatture e chiedevano «> 0»: 100 EUR a mano non bastavano a loro ma bastavano
+    al KPI, e un mese al 7% di merce era «registrato» per entrambi (audit di
+    ottobre 2026, K03). Ora tutti leggono services/completezza_mese.py.
+    """
+    auto = _costi_automatici_mese(ristorante_id, anno, mese, supabase_client, user_id)
+    if auto is None:
+        return None
+    iva10 = iva22 = altri = manuale = quote = 0.0
+    try:
+        resp = (
+            supabase_client.table("margini_mensili")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,altri_costi_fb,quote_riparto_fb")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", anno)
+            .eq("mese", mese)
+            .execute()
+        )
+        for r in (resp.data or []):
+            iva10 += float(r.get("fatturato_iva10") or 0)
+            iva22 += float(r.get("fatturato_iva22") or 0)
+            altri += float(r.get("altri_ricavi_noiva") or 0)
+            manuale += float(r.get("altri_costi_fb") or 0)
+            quote += float(r.get("quote_riparto_fb") or 0)
+        ov = _load_mensile_overrides(supabase_client, ristorante_id, [anno]).get((anno, mese))
+        if ov:
+            iva10, iva22, altri = ov.get("iva10", 0), ov.get("iva22", 0), ov.get("altri", 0)
+    except Exception as exc:
+        logger.warning("merce del mese: lettura margini fallita: %s", exc)
+        return None
+    from config.constants import IVA_DIVISORE_10, IVA_DIVISORE_22
+    netto = (iva10 / IVA_DIVISORE_10) + (iva22 / IVA_DIVISORE_22) + altri
+    merce = float(auto) + manuale + quote
+    return {
+        "netto": round(netto, 2),
+        "merce": round(merce, 2),
+        "insufficiente": merce_insufficiente(netto, merce),
+    }
 
 
 def _dettaglio_righe_classificate(da_controllare: int, righe_totali: int) -> str:
@@ -8804,8 +8857,8 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
         # Voce 1: fatture COSTO del mese analizzato (stessa fonte della card KPI),
         # non un caricamento recente qualsiasi. Se la fonte non e' disponibile,
         # ripiego sul caricamento recente (fail-open, niente rosso ingiusto).
-        costi_mese = _costi_automatici_mese(ristorante_id, mc_anno, mc_mese, supabase_client)
-        fatture_ok = (costi_mese > 0) if costi_mese is not None else (tot_righe > 0)
+        merce_mese = _merce_del_mese(ristorante_id, mc_anno, mc_mese, supabase_client)
+        fatture_ok = _fatture_del_mese_ok(merce_mese) if merce_mese is not None else (tot_righe > 0)
 
         # Voci 2 + 3: fatturato + costo personale dell'ultimo mese completo.
         fatturato_ok = False
@@ -9631,13 +9684,13 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     # non un caricamento recente qualsiasi. Cosi' una sede con maggio a food cost
     # 0% vede la voce ROSSA, non un falso verde da fatture di marzo caricate ieri.
     # Se la fonte RPC non e' disponibile, ripiego sul caricamento recente.
-    costi_mese = _costi_automatici_mese(ristorante_id, mc_anno, mc_mese, sb, user_id)
-    if costi_mese is None:
+    merce_mese = _merce_del_mese(ristorante_id, mc_anno, mc_mese, sb, user_id)
+    if merce_mese is None:
         fatture_ok = len(righe_mese) > 0
         fatture_dett = ("Fatture recenti registrate" if fatture_ok
                         else "Nessuna fattura recente")
     else:
-        fatture_ok = costi_mese > 0
+        fatture_ok = _fatture_del_mese_ok(merce_mese)
         fatture_dett = (f"{mese_completo_label.capitalize()} registrate" if fatture_ok
                         else f"Mancano le fatture di {mese_completo_label}")
 
@@ -9914,6 +9967,9 @@ def _merge_override_mensile(margini_anno: dict, sb, ristorante_id: str, anno: in
     return margini_anno
 
 
+from services.completezza_mese import merce_insufficiente  # noqa: E402
+
+
 def _pct_su_netto(kpi: dict) -> Dict[str, Optional[float]]:
     """Personale, spese e MOL in % del fatturato NETTO, come la pagina Margini
     (routers/margini.py: `*_perc` su netto). La chat dava al modello il solo
@@ -9943,7 +9999,9 @@ def _pct_testo(v: Any) -> str:
     return f" ({v:.1f}% del netto)".replace(".", ",")
 
 
-def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: int) -> dict:
+def _kpi_periodo(
+    margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: int, *, in_corso: bool = False,
+) -> dict:
     """Compone i 4 KPI per un mese di calendario.
 
     Fonte universale: margini_mensili (+ override modalità mensile, già fusi dal
@@ -9997,19 +10055,13 @@ def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: in
         "costo_personale": round(personale, 2),
         "spese_generali": round(spese, 2),
         "mol": round(mol, 2),
-        # Mese con ricavi ma SENZA fatture della merce (F&B = 0): il MOL e'
-        # fatturato - personale - spese, non un margine reale. Un ristorante ha
-        # sempre food cost -> e' un mese a dati incompleti, non una buona notizia
-        # da festeggiare (il briefing non deve dire "+172%!" su costi mancanti).
-        #
-        # Guarda i soli costi F&B dal 23/09/2026 (decisione di Mattia): con
-        # `fb <= 0 and spese <= 0` bastavano 114 EUR di utenze a dichiarare
-        # completo un mese senza una sola bolla di merce. Quarta gemella della
-        # stessa soglia, con `_mesi_senza_costi` (services/routers/margini.py),
-        # `_costi_automatici_mese` (qui sopra) e `meseSenzaCosti`
-        # (apps/web/src/lib/margini-aggregati.ts): vanno mosse insieme, o KPI,
-        # tabella, Salute e briefing si contraddicono sulla stessa pagina.
-        "costi_mancanti": fatturato > 0 and fb <= 0,
+        # Mese con ricavi ma senza abbastanza merce: il MOL non e' un margine
+        # reale, e' un mese a dati incompleti (il briefing non deve dire «+172%!»
+        # su costi mancanti). La regola e' una sola per tutta l'app
+        # (services/completezza_mese.py, decisione di Mattia del 16/10/2026: meno
+        # del 15% del netto in un mese chiuso, nessuna merce nel mese in corso).
+        # Il mese in corso lo dichiara il chiamante: qui non si sa che giorno e'.
+        "costi_mancanti": fatturato > 0 and merce_insufficiente(netto, fb, in_corso=in_corso),
         "has_data": fatturato > 0 or fb > 0 or spese > 0 or personale > 0,
     }
 
@@ -10108,7 +10160,7 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     # parziale e senza confronto (un mese a metà non si confronta col precedente).
     if kpi is None:
         margini_c, fb_c, spese_c = _anno(oggi.year)
-        cand = _kpi_periodo(margini_c, fb_c, spese_c, oggi.month)
+        cand = _kpi_periodo(margini_c, fb_c, spese_c, oggi.month, in_corso=True)
         if cand["has_data"]:
             kpi, mese_usato, anno_usato = cand, oggi.month, oggi.year
             mese_in_corso = True

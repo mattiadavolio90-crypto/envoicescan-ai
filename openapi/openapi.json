@@ -25811,6 +25811,11 @@
             "type": "number",
             "title": "Quote Riparto Spese",
             "default": 0.0
+          },
+          "senza_merce": {
+            "type": "boolean",
+            "title": "Senza Merce",
+            "default": false
           }
         },
         "type": "object",

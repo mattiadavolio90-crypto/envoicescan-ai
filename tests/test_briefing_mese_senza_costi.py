@@ -83,9 +83,22 @@ def test_kpi_costi_mancanti_true_con_ricavi_e_zero_costi():
     assert _kpi_periodo(margini, {}, {}, 5)["costi_mancanti"] is True
 
 
-def test_kpi_costi_mancanti_false_con_food_presente():
+def test_kpi_pochi_euro_di_merce_non_completano_il_mese():
+    """1.000 EUR di merce su 469.229 EUR netti (0,2%) non sono «la merce c'e'».
+
+    Fino al 16/10/2026 bastava un euro: audit di ottobre, K03 (100 EUR inseriti a
+    mano su 386.000 EUR davano MOL verde e food cost 0%). Regola unica in
+    services/completezza_mese.py: meno del 15% del netto in un mese chiuso."""
     margini = {5: {"fatturato_iva10": 516152, "mol": 280924}}
-    assert _kpi_periodo(margini, {5: 1000.0}, {}, 5)["costi_mancanti"] is False
+    assert _kpi_periodo(margini, {5: 1000.0}, {}, 5)["costi_mancanti"] is True
+
+
+def test_kpi_mese_in_corso_resta_sulla_merce_assente():
+    """Nel mese in corso la merce arriva in ritardo sull'incasso: lo stesso
+    1.000 EUR non lo fa giallo, lo zero si'."""
+    margini = {5: {"fatturato_iva10": 516152, "mol": 280924}}
+    assert _kpi_periodo(margini, {5: 1000.0}, {}, 5, in_corso=True)["costi_mancanti"] is False
+    assert _kpi_periodo(margini, {}, {}, 5, in_corso=True)["costi_mancanti"] is True
 
 
 def test_kpi_costi_mancanti_true_con_le_sole_spese():
@@ -126,9 +139,16 @@ def test_mese_con_ricavi_senza_costi_genera_avviso(monkeypatch):
 
 
 def test_mese_con_ricavi_e_costi_nessun_avviso(monkeypatch):
-    monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: 1234.0)
-    # Costi presenti + fatture recenti -> nessun buco.
+    monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: 120000.0)
+    # Merce presente (25% del netto) + fatture recenti -> nessun buco.
     assert _briefing_fatture_mancanti(RID, _sb_multi(fatturato=516152, fatture_count=5)) is None
+
+
+def test_mese_con_poca_merce_ha_l_avviso(monkeypatch):
+    """1.234 EUR di merce su 516.152 EUR di incasso: prima nessun avviso (K03)."""
+    monkeypatch.setattr(fw, "_costi_automatici_mese", lambda *a, **k: 1234.0)
+    out = _briefing_fatture_mancanti(RID, _sb_multi(fatturato=516152, fatture_count=5))
+    assert out is not None and out["payload"]["tipo"] == "mese_senza_costi"
 
 
 def test_mese_vuoto_non_chiama_rpc_costi(monkeypatch):
@@ -262,7 +282,8 @@ def test_narrativa_mese_senza_costi():
     bullet = _bullet_for(notif)
     frase = _narrative_phrase_for(notif)
     assert "maggio" in bullet
-    assert "food cost" in frase.lower()
+    assert "troppo poca" in frase.lower() and "non è reale" in frase
+    assert "risulta 0" not in frase and "risulta 0" not in bullet
     assert "maggio" in frase
 
 

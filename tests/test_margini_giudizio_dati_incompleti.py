@@ -32,33 +32,44 @@ from services.routers.margini import (
 
 
 class _Mese:
-    """Il minimo che `_mesi_senza_costi` legge da un MesiPivot."""
+    """Il minimo che `_mesi_senza_costi` legge da un MesiPivot.
 
-    def __init__(self, fb=0.0, spese=0.0):
+    Dal 16/10/2026 `_mesi_senza_costi` legge `senza_merce`, deciso da
+    `get_margini_analisi` con la regola unica: qui si calcola allo stesso modo,
+    con un incasso netto di 400.000 EUR (le spese non contano)."""
+
+    def __init__(self, fb=0.0, spese=0.0, netto=400000.0):
+        from services.completezza_mese import merce_insufficiente
         self.costi_fb_totali = fb
         self.costi_spese_totali = spese
+        self.fatturato_netto = netto
+        self.senza_merce = merce_insufficiente(netto, fb)
 
 
 # Il caso reale, coi valori letti a DB: 9 mesi attivi, 4 senza fatture merce
 # (gen, feb, ago, set). Gennaio E' fra questi dal 23/09/2026: i suoi 114,08 EUR
 # sono una quota di riparto SPESE, e con la soglia nuova (solo F&B) un mese di
 # sole spese resta scoperto — vedi docstring.
+#
+# Dal 16/10/2026 i mesi senza merce sono 5: anche marzo, 37.777 EUR su 405.016
+# netti (9,3%), il mese in cui la sede e' entrata (prima fattura il 7 marzo).
+# Netti del 16/10 (cc016821, regola unica in services/completezza_mese.py).
 CASO_REALE = [
-    _Mese(fb=0, spese=114.08),     # gen: sola quota di riparto di gruppo
-    _Mese(fb=0, spese=0),          # feb
-    _Mese(fb=37777, spese=1734),   # mar
-    _Mese(fb=133473, spese=41800), # apr
-    _Mese(fb=153429, spese=25932), # mag
-    _Mese(fb=128889, spese=39179), # giu
-    _Mese(fb=86404, spese=42452),  # lug
-    _Mese(fb=0, spese=0),          # ago
-    _Mese(fb=0, spese=0),          # set
+    _Mese(fb=0, spese=114.08, netto=392806),     # gen: sola quota di riparto di gruppo
+    _Mese(fb=0, spese=0, netto=358677),          # feb
+    _Mese(fb=37777, spese=1734, netto=405016),   # mar: 9,3%
+    _Mese(fb=133473, spese=41800, netto=361181), # apr
+    _Mese(fb=153429, spese=25932, netto=393422), # mag
+    _Mese(fb=128889, spese=39179, netto=375963), # giu
+    _Mese(fb=86404, spese=42452, netto=373626),  # lug: 23,1%
+    _Mese(fb=0, spese=0, netto=416798),          # ago
+    _Mese(fb=0, spese=0, netto=357950),          # set
 ]
 
 
 def test_conta_i_mesi_senza_fatture_merce():
-    """Quattro, non tre: dal 23/09/2026 anche gennaio (sole spese) e' scoperto."""
-    assert _mesi_senza_costi(CASO_REALE) == 4
+    """Cinque: dal 23/09/2026 gennaio (sole spese), dal 16/10/2026 marzo (9,3%)."""
+    assert _mesi_senza_costi(CASO_REALE) == 5
 
 
 def test_una_quota_di_riparto_spese_non_basta_a_completare_il_mese():
@@ -76,13 +87,13 @@ def test_una_quota_di_riparto_spese_non_basta_a_completare_il_mese():
     coerenza fra i due e' voluta.
     """
     assert _mesi_senza_costi([_Mese(fb=0, spese=114.08)]) == 1
-    assert _mesi_senza_costi([_Mese(fb=114.08, spese=0)]) == 0
+    assert _mesi_senza_costi([_Mese(fb=114.08, spese=0, netto=700.0)]) == 0
     assert _mesi_senza_costi([_Mese(fb=0, spese=0)]) == 1
 
 
 def test_un_periodo_tutto_completo_non_ha_mesi_da_segnalare():
     """Il contrario: se contasse sempre qualcosa, spegnerebbe i giudizi ovunque."""
-    assert _mesi_senza_costi([_Mese(fb=100, spese=50), _Mese(fb=200, spese=80)]) == 0
+    assert _mesi_senza_costi([_Mese(fb=100, spese=50, netto=500), _Mese(fb=200, spese=80, netto=900)]) == 0
 
 
 def test_un_mese_con_le_sole_spese_resta_senza_costi():
@@ -97,7 +108,7 @@ def test_un_mese_con_le_sole_spese_resta_senza_costi():
 
 
 def test_un_mese_con_il_solo_food_non_e_senza_costi():
-    assert _mesi_senza_costi([_Mese(fb=1200, spese=0)]) == 0
+    assert _mesi_senza_costi([_Mese(fb=1200, spese=0, netto=6000)]) == 0
 
 
 def test_periodo_vuoto():
@@ -256,3 +267,61 @@ def test_la_spiegazione_sta_su_una_voce_che_il_frontend_mostra():
     assert con_cifre[0] != "Costo del Lavoro", (
         "la spiegazione e' sull'unica voce senza gauge: il cliente non la vede"
     )
+
+
+# ── La soglia del 15% (audit di ottobre 2026, K03) ─────────────────────────
+#
+# 110.000 EUR al 10% = 100.000 netti: 14.000 EUR di merce (14%) e' un mese senza
+# merce, 16.000 (16%) no. La decisione e' del worker (`senza_merce` in MesiPivot,
+# regola unica in services/completezza_mese.py), il frontend la legge.
+
+def test_endpoint_un_mese_al_14_per_cento_spegne_il_giudizio():
+    c = _commenti_endpoint(
+        [_mese(2026, 1, 110000.0), _mese(2026, 2, 110000.0)],
+        {(2026, 1): (16000.0, 5000.0), (2026, 2): (14000.0, 5000.0)},
+        "2026-01-01", "2026-02-28",
+    )
+    assert c["MOL"].emoji == "ℹ️", c["MOL"].commento
+    assert "1 mese su 2 mesi" in " ".join(x.commento for x in c.values())
+
+
+def test_endpoint_due_mesi_al_16_per_cento_restano_giudicati():
+    c = _commenti_endpoint(
+        [_mese(2026, 1, 110000.0), _mese(2026, 2, 110000.0)],
+        {(2026, 1): (16000.0, 5000.0), (2026, 2): (16000.0, 5000.0)},
+        "2026-01-01", "2026-02-28",
+    )
+    assert c["MOL"].emoji != "ℹ️", c["MOL"].commento
+
+
+from datetime import date  # noqa: E402
+
+
+def _pivot_endpoint(mesi_saved, costi_auto, data_da, data_a, oggi):
+    q = MagicMock()
+    for m in ("select", "eq", "in_", "gte", "lte"):
+        getattr(q, m).return_value = q
+    q.execute.return_value = SimpleNamespace(data=mesi_saved)
+    client = MagicMock()
+    client.table.return_value = q
+    import services.fastapi_worker as fw
+    with patch.multiple(
+        margini,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=client),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
+    ), patch.object(margini, "_calcola_costi_auto_per_periodo", MagicMock(return_value=costi_auto)), \
+         patch.object(margini, "_load_mensile_overrides", MagicMock(return_value={})), \
+         patch.object(fw, "_oggi_rome", return_value=oggi), \
+         patch("services.settore_service.settore_utente", return_value="ristorazione"):
+        return margini.get_margini_analisi(data_da, data_a, authorization="Bearer x")
+
+
+def test_il_pivot_porta_senza_merce_e_il_mese_in_corso_resta_sulla_merce_assente():
+    resp = _pivot_endpoint(
+        [_mese(2026, 9, 110000.0), _mese(2026, 10, 110000.0)],
+        {(2026, 9): (14000.0, 5000.0), (2026, 10): (2000.0, 500.0)},
+        "2026-09-01", "2026-10-31", date(2026, 10, 15),
+    )
+    per_mese = {p.mese: p.senza_merce for p in resp.mesi}
+    assert per_mese == {9: True, 10: False}

@@ -100,7 +100,9 @@ def test_mol_in_crescita_scatta_quando_entrambi_i_mesi_hanno_incassi():
         m: {"altri_ricavi_noiva": 40000.0 + m * 1000, "costo_dipendenti": 8000.0}
         for m in range(1, 13)
     }
-    cfb = {m: 5000.0 for m in range(1, 13)}
+    # 12.000 EUR di merce su 41-52.000 di incasso (23-29%): mesi veri. Con 5.000
+    # (10-12%) dal 16/10/2026 sono mesi senza merce (services/completezza_mese.py).
+    cfb = {m: 12000.0 for m in range(1, 13)}
     csp = {m: 1000.0 for m in range(1, 13)}
     sb = _sb_senza_incasso()
     with _DENTRO_FINESTRA_MOL, _patch_loaders(margini, cfb, csp), patch(

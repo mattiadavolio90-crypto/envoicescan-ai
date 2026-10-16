@@ -26,6 +26,7 @@ from config.logger_setup import get_logger
 from utils.supabase_paging import fetch_all
 from services import sotto_utenti_service as _su
 from services.permessi_rotte import notifica_visibile
+from services.completezza_mese import merce_insufficiente
 from utils.voci_prezzo import salto_da_controllare, togli_numero_ordine
 from services.routers.prezzi import (
     _CATEGORIE_SPESE_PREZZI,
@@ -784,8 +785,8 @@ def _costi_mese_per_sede(
     dichiarare "completo" un mese senza una sola bolla di merce: misurato lo
     stesso giorno su SUSHILAND gennaio 2026, la Salute di gruppo dava il verde e
     metteva la sede a indice pieno mentre il PV della stessa sede diceva
-    «mancano le fatture costo». Il valore e' letto solo come `> 0` (righe 820 e
-    1952), mai come importo.
+    «mancano le fatture costo». Dal 16/10/2026 non decide da sola: e' la parte
+    «fatture» di `_merce_ok_per_sede`, che applica la regola unica.
 
     Stessa fonte del PV (`_costi_automatici_mese` -> RPC costi_automatici_mensili):
     qui si usa la variante di gruppo, gia' calcolata da gruppo_overview
@@ -825,6 +826,61 @@ def _costi_mese_per_sede(
     for rid in ids:
         food, spese = (costi_auto or {}).get(str(rid)) or ({}, {})
         out[str(rid)] = float((food or {}).get(mese) or 0)
+    return out
+
+
+def _merce_ok_per_sede(
+    sb, user_id: Optional[str], ids: List[str], anno: int, mese: int,
+    costi_auto: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, bool]]:
+    """Per sede: il mese ha la merce che serve a giudicarne i conti?
+
+    La regola unica (services/completezza_mese.py) sugli stessi numeri del PV:
+    fatture (`_costi_mese_per_sede`) + `altri_costi_fb` + quote di riparto F&B,
+    contro il netto scorporato con l'override mensile (`_aggrega_sedi_mensili`).
+    Fino al 16/10/2026 la catena guardava le sole fatture `> 0`: una sede con le
+    sole quote di gruppo era incompleta qui e completa nel PV, e un mese al 7%
+    di merce era completo per entrambi (audit di ottobre 2026, K03).
+
+    Senza incasso basta che la merce ci sia, come la voce della Salute del PV.
+    None se le fatture del mese non si leggono; se si leggono le fatture ma non i
+    margini si resta sul criterio delle sole fatture, dichiarato nel log.
+    """
+    auto = _costi_mese_per_sede(user_id, ids, anno, mese, costi_auto=costi_auto)
+    if auto is None:
+        return None
+    oggi = _oggi_rome()
+    in_corso = (anno, mese) >= (oggi.year, oggi.month)
+    try:
+        righe = (
+            sb.table("margini_mensili")
+            .select("ristorante_id,mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
+                    "altri_costi_fb,quote_riparto_fb,altri_costi_spese,quote_riparto_spese,"
+                    "costo_dipendenti,costo_personale_extra,costo_personale_chiamata")
+            .in_("ristorante_id", list(ids))
+            .eq("anno", anno)
+            .eq("mese", mese)
+            .execute()
+        ).data or []
+        overrides = {str(rid): _overrides_mese_sede(sb, str(rid), anno) for rid in ids}
+        agg = _aggrega_sedi_mensili(
+            ids=[str(r) for r in ids],
+            righe_mm=righe,
+            costi_auto={rid: ({mese: v}, {}) for rid, v in auto.items()},
+            overrides=overrides,
+            mesi=[mese],
+        )
+    except Exception as exc:
+        logger.warning("catena: margini del mese non letti, completezza sulle sole fatture: %s", exc)
+        return {rid: v > 0 for rid, v in auto.items()}
+    out: Dict[str, bool] = {}
+    for rid in ids:
+        a = agg.get(str(rid)) or {}
+        netto = float(a.get("netto") or 0)
+        merce = float(a.get("fb") or 0)
+        out[str(rid)] = (
+            not merce_insufficiente(netto, merce, in_corso=in_corso) if netto > 0 else merce > 0
+        )
     return out
 
 
@@ -914,7 +970,7 @@ def _salute_indici_batch(
         if costi_mese is None:
             fatture_ok = n_fatture > 0
         else:
-            fatture_ok = float(costi_mese.get(rid) or 0) > 0
+            fatture_ok = bool(costi_mese.get(rid))
         # La % di righe classificate resta sulla finestra di caricamento: misura
         # la qualita' di cio' che e' entrato, non la competenza del mese.
         pct_classificate = round((n_fatture - n_needs) / n_fatture * 100) if n_fatture > 0 else 0
@@ -1184,8 +1240,8 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # Voce "fatture" = EURO del mese chiuso (come il PV), non righe caricate di
     # recente. `costi_auto_gruppo` e' gia' in memoria: nessuna query in piu'.
     _mc_anno, _mc_mese = (anno, mese_corr - 1) if mese_corr > 1 else (anno - 1, 12)
-    costi_mese_map = _costi_mese_per_sede(
-        user_id, ids, _mc_anno, _mc_mese,
+    costi_mese_map = _merce_ok_per_sede(
+        sb, user_id, ids, _mc_anno, _mc_mese,
         costi_auto=costi_auto_gruppo if _mc_anno == anno else None,
     )
     # Un errore qui NON diventa "tutto a posto" (9/9/2026): prima l'except
@@ -1583,8 +1639,8 @@ def gruppo_margini_coperti(
                 # Solo su mese singolo: sulla vista anno "i costi del mese" non
                 # sono definiti, e si resta sul criterio per righe.
                 costi_mese=(
-                    _costi_mese_per_sede(user_id, ids, anno, mese_sel,
-                                         costi_auto=costi_auto_gruppo)
+                    _merce_ok_per_sede(sb, user_id, ids, anno, mese_sel,
+                                       costi_auto=costi_auto_gruppo)
                     if mese_sel else None
                 ),
             )
@@ -1754,8 +1810,8 @@ def gruppo_spreco_categorie(
                 # Solo su mese singolo: sulla vista anno "i costi del mese" non
                 # sono definiti, e si resta sul criterio per righe.
                 costi_mese=(
-                    _costi_mese_per_sede(user_id, ids, anno, mese_sel,
-                                         costi_auto=None)
+                    _merce_ok_per_sede(sb, user_id, ids, anno, mese_sel,
+                                       costi_auto=None)
                     if mese_sel else None
                 ),
             )
@@ -1995,7 +2051,10 @@ def gruppo_cestino(authorization: Optional[str] = Header(None)) -> GruppoCestino
 # sede che dice lo stesso.
 # 7 = 10/10/2026 (fase K): SHOP → RIVENDITA, via SUSHI VARIE, nasce RAPPRESENTANZA.
 # I segnali per categoria di uno snapshot v6 nominerebbero le categorie vecchie.
-_SEGNALI_CODE_VERSION = 7
+# 8 = 16/10/2026 (audit di ottobre, K03): un mese chiuso e' «senza merce» sotto il
+# 15% dell'incasso netto (services/completezza_mese.py). `dati_mancanti` e
+# `margine_calo` cambiano sulle sedi con poca merce; uno snapshot v7 no.
+_SEGNALI_CODE_VERSION = 8
 
 # Soglie v1 confermate da Mattia.
 _SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
@@ -2177,7 +2236,7 @@ def _completezza_dati_pv(
         if costi_mese is None:
             fatture_ok = int(r.get("n_fatture") or 0) > 0
         else:
-            fatture_ok = float(costi_mese.get(rid) or 0) > 0
+            fatture_ok = bool(costi_mese.get(rid))
         if not fatture_ok:
             manca.append("le fatture costo")
         if float(r.get("personale") or 0) <= 0:
@@ -2245,7 +2304,7 @@ def _completezza_viva(
     mc_anno, mc_mese = _mese_chiuso(oggi)
     try:
         return _completezza_dati_pv(
-            sb, rids, costi_mese=_costi_mese_per_sede(user_id, rids, mc_anno, mc_mese),
+            sb, rids, costi_mese=_merce_ok_per_sede(sb, user_id, rids, mc_anno, mc_mese),
         )
     except Exception as exc:
         logger.warning("catena: completezza dei dati mancanti non riletta: %s", exc)
@@ -2369,7 +2428,7 @@ def _calcola_segnali(
             )
             comp = _completezza_dati_pv(
                 sb, ids,
-                costi_mese=_costi_mese_per_sede(user_id, ids, _mc_anno, _mc_mese),
+                costi_mese=_merce_ok_per_sede(sb, user_id, ids, _mc_anno, _mc_mese),
             )
             if comp is None:
                 raise RuntimeError("completezza PV non determinabile")
@@ -2476,9 +2535,16 @@ def _calcola_segnali(
                     for rid in ids:
                         a = agg_m.get(rid) or {}
                         netto = float(a.get("netto") or 0)
-                        # Mese incompleto: niente ricavi, niente costi merce o
-                        # niente personale → il margine non è confrontabile.
-                        if netto <= 0 or float(a.get("fb") or 0) <= 0 or float(a.get("pers") or 0) <= 0:
+                        # Mese incompleto: niente ricavi, merce sotto la regola
+                        # unica (services/completezza_mese.py) o niente personale
+                        # → il margine non è confrontabile.
+                        if (
+                            netto <= 0
+                            or merce_insufficiente(
+                                netto, float(a.get("fb") or 0),
+                                in_corso=(anno_i, m) == (oggi.year, oggi.month))
+                            or float(a.get("pers") or 0) <= 0
+                        ):
                             continue
                         per_pv_mesi[rid][(anno_i, m)] = float(a.get("mol") or 0) / netto * 100
             except Exception as exc:

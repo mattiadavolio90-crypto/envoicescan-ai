@@ -3166,6 +3166,34 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   grezzo. **3 mutanti, 3 uccisi**. Restano a Mattia: Google sta in una tabella intitolata
 >   «sub-responsabili» senza contratto; il testo del TTS viaggia nella query string di
 >   `/api/tts` e puo' finire nei log di Vercel.
+>
+> - **16/10/2026 — Fix n. 19 dell'audit di ottobre (K03, primo passo): una sola regola per il
+>   mese «senza merce», al 15% dell'incasso netto.** Bastavano 100 EUR inseriti a mano su
+>   386.300 EUR netti a dichiarare completo un mese senza fatture (Home verde, food cost 0%),
+>   e la regola «merce > 0» era ricopiata in sette punti, uno dei quali (la catena, sole
+>   fatture) gia' diceva il contrario del PV. Decisione di Mattia, misurata in sola lettura
+>   sui 73 mesi chiusi del live e contestata da due verificatori (DB e codice, Fable) e da un
+>   critico: un mese chiuso e' senza merce se fatture + merce a mano + quote di gruppo sono
+>   meno del 15% del netto; il mese in corso resta su «nessuna merce». Il 15% e non il 20%:
+>   un bar reale sta stabilmente al 17,8-19,3% con mesi pieni (al 20% due falsi gialli
+>   certi); niente criterio sulla data dell'ultima fattura (51 mesi completi su 54 hanno una
+>   fattura dell'ultimo giorno; resterebbero gialli per sempre i mesi di sole quote o di
+>   merce a mano). Oggi diventano gialli 5 mesi, tutti veri: i tre marzo della catena
+>   appena entrata (7-10%), il settembre dei 100 EUR, un febbraio dell'account demo.
+>   Nuovo `services/completezza_mese.py` (`merce_insufficiente`), usato da `_kpi_periodo`
+>   (con `in_corso`), dal pivot di Margini (`senza_merce` in `MesiPivot`, che
+>   `meseSenzaCosti` ora legge invece di ricopiare la soglia; schema OpenAPI rigenerato),
+>   da `_merce_del_mese` (Salute e avviso «mancano le fatture costo», ora con merce a mano,
+>   quote e override, sul netto e non sul lordo), da `_merce_ok_per_sede` in catena
+>   (completezza, indice di salute, dialog margini e spreco, dati mancanti) e da
+>   `margine_calo`. Tolto «risulta 0» dai testi del briefing e della Home;
+>   `_BRIEFING_CODE_VERSION` 40, `_SEGNALI_CODE_VERSION` 8; corretta la riga di
+>   LOGICA_BRIEFING.md. Riscritti 9 test che fissavano la regola vecchia (1.000 EUR su
+>   516.000 «completo»). +39 test in `tests/test_completezza_mese.py`, +3 in
+>   `tests/test_margini_giudizio_dati_incompleti.py`; **20 mutanti, 20 uccisi** (6 dopo
+>   aver scritto i test sui collegamenti che i primi avevano lasciato scoperti). **Resta il
+>   secondo passo**: lo stato «in attesa delle fatture di fine mese» per i mesi chiusi senza
+>   merce nel mese dopo.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

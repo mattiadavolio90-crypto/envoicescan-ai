@@ -903,9 +903,8 @@ _TESTO_SENZA_SOGLIA_RETAIL = (
 # sola quota di riparto SPESE su 393.000 EUR di ricavi resta quindi "senza
 # costi" — prima contava come "con costi", e il MOL usciva verde all'86% con
 # food cost 0%. Le quote di riparto F&B invece lo completano: e' merce comprata
-# dal gruppo. E' la stessa soglia di `costi_mancanti` (fastapi_worker.
-# _kpi_periodo) e di `_costi_mese_per_sede` (routers/gruppo.py): la coerenza fra
-# le quattro e' voluta.
+# dal gruppo. Dal 16/10/2026 la soglia e' una sola per tutta l'app,
+# services/completezza_mese.py (meno del 15% del netto in un mese chiuso).
 #
 # Misurato il 16/09/2026 su una sede reale, anno in corso: 3 mesi su 9 senza alcun
 # costo e 3 senza personale portavano la media del MOL al 68%, con il giudizio
@@ -919,21 +918,15 @@ _TESTO_SENZA_SOGLIA_RETAIL = (
 # mappa gia' su colore neutro (`coloreDaCommento`, calcolo-tab.tsx), riga che resta
 # al suo posto e dice il valore invece di valutarlo.
 def _mesi_senza_costi(mesi_attivi: list) -> int:
-    """Quanti mesi con fatturato non hanno NESSUNA fattura della merce (F&B).
+    """Quanti mesi con fatturato non hanno abbastanza merce per un giudizio.
 
-    Guarda i soli costi F&B, non piu' «F&B E spese entrambi a zero» (decisione
-    di Mattia, 23/09/2026). Con l'AND bastavano 114 EUR di utenze a dichiarare
-    completo un mese senza una sola bolla di merce: SUSHILAND gennaio 2026
-    mostrava un MOL verde all'86% su 444.000 EUR di ricavi e zero food cost.
-
-    Gemella di `meseSenzaCosti` (apps/web/src/lib/margini-aggregati.ts): le due
-    devono restare uguali, o la tabella colora di verde i mesi per cui questa
-    funzione dichiara di non avere un giudizio.
+    Legge `senza_merce`, deciso mese per mese dalla regola unica
+    (services/completezza_mese.py): dal 16/10/2026 meno del 15% del netto in un
+    mese chiuso, nessuna merce nel mese in corso. Prima qui c'era «F&B <= 0», e
+    100 EUR inseriti a mano su 386.000 EUR bastavano a un giudizio verde. Il
+    frontend legge lo stesso campo (`meseSenzaCosti`).
     """
-    return sum(
-        1 for p in mesi_attivi
-        if (p.costi_fb_totali or 0) <= 0
-    )
+    return sum(1 for p in mesi_attivi if p.senza_merce)
 
 
 # Il rimando per le voci successive alla prima: dice perche' non c'e' un giudizio
@@ -1016,6 +1009,10 @@ class MesiPivot(BaseModel):
     # con le voci elencate sopra.
     quote_riparto_fb: float = 0.0
     quote_riparto_spese: float = 0.0
+    # Il mese ha incasso ma non abbastanza merce per giudicarne i conti
+    # (services/completezza_mese.py). Lo decide il worker, una volta sola: il
+    # frontend lo legge (`meseSenzaCosti`) invece di ricopiare la soglia.
+    senza_merce: bool = False
 
 
 class MarginiAnalisiResponse(BaseModel):
@@ -1295,6 +1292,8 @@ def get_margini_analisi(
     # fatture per mese -> 12 round-trip per un anno).
     costi_auto_map = _calcola_costi_auto_per_periodo(sb, ristorante_id, mesi_target)
 
+    from services.completezza_mese import merce_insufficiente
+    oggi = _fw()._oggi_rome()
     mesi_pivot: List[MesiPivot] = []
     for (y, m) in mesi_target:
         r = margini_map.get((y, m), {})
@@ -1344,6 +1343,8 @@ def get_margini_analisi(
             mol=round(mol_v, 2),
             quote_riparto_fb=round(q_fb, 2),
             quote_riparto_spese=round(q_spese, 2),
+            senza_merce=merce_insufficiente(
+                netto, fb_tot, in_corso=(y, m) >= (oggi.year, oggi.month)),
         ))
 
     # Totali periodo

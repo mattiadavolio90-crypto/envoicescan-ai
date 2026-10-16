@@ -188,7 +188,11 @@ logger = get_logger('daily_briefing')
 #   39 (14/10): negli avvisi prezzi un acquisto e' una fattura (le righe dello
 #               stesso prodotto nella stessa fattura si fondono): spariscono gli
 #               avvisi nati dentro una fattura, ne compaiono di nascosti.
-_BRIEFING_CODE_VERSION = 39
+#   40 (16/10): un mese chiuso e' «senza merce» sotto il 15% dell'incasso netto
+#               (services/completezza_mese.py, K03), non piu' solo a merce zero:
+#               nasce l'avviso «mancano le fatture costo» su mesi che prima
+#               passavano, e il testo non dice piu' «risulta 0».
+_BRIEFING_CODE_VERSION = 40
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
 # nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
@@ -838,8 +842,8 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
             mese = payload.get('mese')
             coda = f"di {mese} " if mese else ""
             return (
-                f"\U0001F4C4 Mancano le fatture costo {coda}\u2014 il food cost di "
-                f"quel mese risulta 0 e il margine non \u00e8 reale."
+                f"\U0001F4C4 Mancano le fatture costo {coda}\u2014 la merce di "
+                f"quel mese \u00e8 troppo poca e il margine non \u00e8 reale."
             )
         if str(payload.get('fase') or '') == 'onboarding':
             if str(payload.get('canale') or '') == 'sdi':
@@ -1107,8 +1111,8 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
             mese = payload.get('mese')
             coda = f"di {mese} " if mese else ""
             return (
-                f"Mancano le fatture costo {coda}: il food cost di quel mese "
-                "risulta 0, quindi il margine che vedi non è reale. Appena "
+                f"Mancano le fatture costo {coda}: la merce di quel mese è "
+                "troppo poca, quindi il margine che vedi non è reale. Appena "
                 "arrivano i conti tornano veri."
             )
         if str(payload.get('fase') or '') == 'onboarding':

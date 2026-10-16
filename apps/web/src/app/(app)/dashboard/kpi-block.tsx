@@ -95,9 +95,9 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
         <AndamentoMargine punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} affidabile={molAttendibile} />
       </div>
 
-      {/* Costi mancanti: il mese ha ricavi ma zero fatture costo (food cost 0%).
-          Il MOL e' gonfiato — lo diciamo chiaro invece di mostrare un margine
-          finto. Coerente con la card della completezza e il briefing. */}
+      {/* Costi mancanti: il mese ha ricavi ma troppa poca merce (regola unica,
+          services/completezza_mese.py: meno del 15% del netto). Il MOL e'
+          gonfiato — lo diciamo chiaro invece di mostrare un margine finto. */}
       {kpi.costi_mancanti && (
         <Link
           href="/analisi-fatture"
@@ -106,8 +106,8 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
           <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
             Mancano le fatture costo di {kpi.periodo_label.toLowerCase()}: il{" "}
-            {costoMerceLabel(settore).toLowerCase()} risulta 0 e questo margine non è reale.
-            Si aggiorna da solo appena arrivano.
+            {costoMerceLabel(settore).toLowerCase()} è troppo basso per essere vero e questo
+            margine non è reale. Si aggiorna da solo appena arrivano.
           </span>
         </Link>
       )}
