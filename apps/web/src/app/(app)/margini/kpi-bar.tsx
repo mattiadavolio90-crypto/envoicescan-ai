@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatEuro } from "./periodi";
 import { puntiSparkline } from "@/lib/sparkline-punti";
 import { kpiNonDisponibile } from "@/lib/esito-caricamento";
-import { colonneGriglia, selezionaKpi } from "@/lib/kpi-margini-tab";
+import { colonneGriglia, selezionaKpi, toneMol } from "@/lib/kpi-margini-tab";
 
 export type KpiData = {
   fatturato_lordo: number;
@@ -26,6 +26,8 @@ export type KpiData = {
   delta_personale_pct: number | null;
   delta_mol_pct: number | null;
   confronto_label: string;
+  /** Mesi del periodo senza abbastanza merce: la card MOL non e' verde. */
+  mesi_senza_merce?: number;
   /**
    * true quando i numeri NON arrivano dal worker: timeout, risposta non ok o
    * sessione assente. Senza questo flag il ripiego a zeri era indistinguibile
@@ -205,7 +207,7 @@ function useCountUp(target: number, enabled: boolean): number {
 }
 
 export function KpiBar({ kpi, tab }: { kpi: KpiData; tab?: string | null }) {
-  const molTone: Tone = kpi.mol >= 0 ? "positivo" : "negativo";
+  const molTone: Tone = toneMol(kpi);
 
   const [animate, setAnimate] = useState(false);
   useEffect(() => {

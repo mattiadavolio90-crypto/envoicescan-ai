@@ -11355,9 +11355,10 @@ def _aggrega_mensili_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
     mensile_overrides = _load_mensile_overrides(sb, ristorante_id, annos)
 
     tot = {"lordo": 0.0, "netto": 0.0, "fb": 0.0, "pm": 0.0,
-           "spese": 0.0, "pers": 0.0, "mol": 0.0, "mesi_attivi": 0,
+           "spese": 0.0, "pers": 0.0, "mol": 0.0, "mesi_attivi": 0, "mesi_senza_merce": 0,
            "spark_lordo": [], "spark_fb": [], "spark_margine": [],
            "spark_spese": [], "spark_personale": [], "spark_mol": []}
+    oggi = _oggi_rome()
     for (yy, mm) in mesi_target:
         r = margini_map.get((yy, mm), {})
         fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, yy, mm)
@@ -11387,6 +11388,11 @@ def _aggrega_mensili_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
         tot["mol"] += mol_v
         if netto > 0:
             tot["mesi_attivi"] += 1
+        # La regola unica (services/completezza_mese.py): la card MOL di Margini
+        # non si dice verde sopra un periodo che il giudizio dichiara incompleto
+        # (audit di ottobre 2026, K10).
+        if merce_insufficiente(netto, fb_tot, in_corso=(yy, mm) >= (oggi.year, oggi.month)):
+            tot["mesi_senza_merce"] += 1
         tot["spark_lordo"].append(round(lordo, 2))
         tot["spark_fb"].append(round(fb_tot, 2))
         tot["spark_margine"].append(round(pm, 2))

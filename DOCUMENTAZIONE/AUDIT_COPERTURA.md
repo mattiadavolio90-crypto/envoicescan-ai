@@ -3351,6 +3351,15 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   senza ordine in `_fine_mese_coperta`, rischio basso col filtro sui positivi. +2 test in
 >   `tests/test_completezza_mese.py`; **3 mutanti, 3 uccisi** (uno dopo il test sulla buona
 >   notizia col «non so»).
+>
+> - **16/10/2026 sera — Fix n. 22 dell'audit di ottobre (K10): la card MOL di Margini non e'
+>   verde sopra «Nessun giudizio».** La KpiBar colorava il MOL `>= 0` di verde anche quando il
+>   gauge sotto, nello stesso tab, diceva «Nessun giudizio: mancano costi» (6 sedi con almeno
+>   un mese senza merce nel 2026). Ora `_aggrega_mensili_margini` conta `mesi_senza_merce` con
+>   la regola unica (services/completezza_mese.py, mese in corso escluso), `MarginiKpiResponse`
+>   lo manda e `toneMol` (lib/kpi-margini-tab.ts) tiene neutro il MOL positivo di un periodo con
+>   un mese senza merce; il negativo resta rosso. Schema OpenAPI rigenerato (solo il campo
+>   nuovo). +9 test in `tests/test_completezza_mese.py`; **5 mutanti, 5 uccisi**.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

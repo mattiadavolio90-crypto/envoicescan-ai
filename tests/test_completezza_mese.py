@@ -575,3 +575,62 @@ def test_la_buona_notizia_tace_se_la_data_non_si_legge():
     csp = {m: 1000.0 for m in range(1, 13)}
     cfb = {m: 12000.0 for m in range(1, 13)}
     assert _buona_notizia(margini, cfb, csp, coperta=None) is None
+
+
+# ── K10: la card MOL di Margini ─────────────────────────────────────────────
+
+def test_l_aggregato_dei_kpi_conta_i_mesi_senza_merce():
+    """Gennaio al 24,8% di merce, febbraio al 4%: un mese senza merce nel periodo.
+    Il mese in corso con poca merce non conta (resta su «nessuna merce»)."""
+    import tests.test_aggrega_margini_periodo as am
+    fatture = [
+        am._fattura(am.CAT_FB, 3000.0, "2026-01-10", competenza=None),
+        am._fattura(am.CAT_FB, 500.0, "2026-02-10", competenza=None),
+        am._fattura(am.CAT_FB, 200.0, "2026-10-03", competenza=None),
+    ]
+    margini = [am._margini(2026, 1, i10=13310.0), am._margini(2026, 2, i10=13310.0),
+               am._margini(2026, 10, i10=13310.0)]
+    with patch.object(fw, "_oggi_rome", return_value=date(2026, 10, 15)):
+        tot = fw._aggrega_mensili_margini(
+            am._FakeSB(fatture=fatture, margini=margini, modalita=[]), am.RID,
+            date(2026, 1, 1), date(2026, 2, 28))
+        tot_con_ottobre = fw._aggrega_mensili_margini(
+            am._FakeSB(fatture=fatture, margini=margini, modalita=[]), am.RID,
+            date(2026, 10, 1), date(2026, 10, 31))
+    assert tot["mesi_senza_merce"] == 1
+    assert tot_con_ottobre["mesi_senza_merce"] == 0
+
+
+@pytest.mark.parametrize("kpi,atteso", [
+    ({"mol": 5000, "mesi_senza_merce": 0}, "positivo"),
+    ({"mol": 5000, "mesi_senza_merce": 2}, "neutro"),
+    ({"mol": -5000, "mesi_senza_merce": 2}, "negativo"),
+    ({"mol": 5000}, "positivo"),          # worker vecchio: come prima
+])
+def test_tono_della_card_mol(kpi, atteso):
+    out = esegui_ts("lib/kpi-margini-tab", "emit(m.toneMol(input));", kpi, richiede=["toneMol"])
+    assert out == atteso
+
+
+def test_la_card_mol_usa_il_tono_della_regola():
+    from pathlib import Path
+    s = (Path(__file__).resolve().parent.parent / "apps/web/src/app/(app)/margini/kpi-bar.tsx").read_text(encoding="utf-8")
+    assert "const molTone: Tone = toneMol(kpi);" in s
+    assert "kpi.mol >= 0 ? \"positivo\"" not in s
+
+
+def test_l_endpoint_dei_kpi_manda_i_mesi_senza_merce():
+    from services.routers import margini
+    cur = {"lordo": 100.0, "netto": 100.0, "fb": 1.0, "pm": 99.0, "spese": 0.0, "pers": 0.0,
+           "mol": 99.0, "mesi_attivi": 1, "mesi_senza_merce": 1,
+           **{k: [] for k in ("spark_lordo", "spark_fb", "spark_margine", "spark_spese",
+                              "spark_personale", "spark_mol")}}
+    with patch.multiple(
+        margini,
+        _resolve_user_from_token=MagicMock(return_value={"id": "u"}),
+        _get_supabase_client=MagicMock(return_value=_sb()),
+        _resolve_ristorante_id=MagicMock(return_value="r"),
+        _aggrega_mensili_margini=MagicMock(return_value=cur),
+    ):
+        resp = margini.get_margini_kpi("2026-09-01", "2026-09-30", authorization="Bearer t")
+    assert resp.mesi_senza_merce == 1

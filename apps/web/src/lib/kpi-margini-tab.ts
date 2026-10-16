@@ -17,6 +17,15 @@
 
 export type TabMargini = "calcolo" | "coperti" | "analisi";
 
+// Il colore della card MOL. Fino al 16/10/2026 era «>= 0 verde», anche sopra un
+// periodo con un mese senza merce, mentre il gauge sotto diceva «Nessun
+// giudizio» e la Home lo stesso mese era gialla (audit di ottobre 2026, K10).
+// Un MOL negativo resta rosso: altra merce lo abbassa ancora.
+export function toneMol(kpi: { mol: number; mesi_senza_merce?: number }): "positivo" | "negativo" | "neutro" {
+  if (kpi.mol < 0) return "negativo";
+  return (kpi.mesi_senza_merce ?? 0) > 0 ? "neutro" : "positivo";
+}
+
 // Le chiavi sono quelle delle card in `margini/kpi-bar.tsx`: cambiare una label
 // li' senza cambiarla qui fa sparire la tessera invece di rinominarla. Sono
 // asserite da tests/test_kpi_margini_tab_frontend.py, che confronta le due liste.

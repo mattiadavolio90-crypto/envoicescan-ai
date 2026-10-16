@@ -1500,6 +1500,9 @@ class MarginiKpiResponse(BaseModel):
     spark_spese: List[float] = []
     spark_personale: List[float] = []
     spark_mol: List[float] = []
+    # Mesi del periodo senza abbastanza merce (regola unica,
+    # services/completezza_mese.py): la card MOL non e' verde se ce n'e' uno.
+    mesi_senza_merce: int = 0
 
 
 @router.get("/api/margini/kpi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
@@ -1546,4 +1549,5 @@ def get_margini_kpi(
         spark_spese=cur["spark_spese"],
         spark_personale=cur["spark_personale"],
         spark_mol=cur["spark_mol"],
+        mesi_senza_merce=int(cur.get("mesi_senza_merce") or 0),
     )

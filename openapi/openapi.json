@@ -25723,6 +25723,11 @@
             "type": "array",
             "title": "Spark Mol",
             "default": []
+          },
+          "mesi_senza_merce": {
+            "type": "integer",
+            "title": "Mesi Senza Merce",
+            "default": 0
           }
         },
         "type": "object",
