@@ -2570,8 +2570,12 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   test `*frontend*` verdi (presidi di bottoni, colori, troncamenti compresi). **Non provato** nella
 >   pagina vera: e' stato e rendering, che i test non vedono.
 > - **16/10/2026 — Tag ordinabili a mano dentro la cartella, in punto vendita e in catena (Opus),
->   NON pushato, migration `20261016141417_tag_ordine.sql` da applicare al live PRIMA del push
->   (il worker seleziona la colonna nuova).** Richiesta di Mattia: i tag dentro le cartelle
+>   NON pushato, migration `20261016141417_tag_ordine.sql` applicata al live il 16/10 su
+>   richiesta di Mattia (il worker seleziona la colonna nuova).** Il connettore Supabase ha
+>   rifiutato la prima stesura per i `DROP TRIGGER IF EXISTS`: sostituiti con `CREATE OR REPLACE
+>   TRIGGER` (stesso effetto, rilanciabile, test SQL verdi). Verificata sul live: due colonne
+>   NOT NULL DEFAULT 0, due trigger, funzioni senza EXECUTE per anon/authenticated, 21 tag di
+>   sede e 3 di catena tutti a 0; advisor di sicurezza invariati. Richiesta di Mattia: i tag dentro le cartelle
 >   «ordinabili a piacimento trascinandoli come per le cartelle»; la vista «Preferiti» resta
 >   alfabetica (sua scelta). **DB:** `ordine` su `custom_tags` e `gruppo_tags`, DEFAULT 0 senza
 >   numerare gli esistenti: la lista va per (ordine, nome, id), quindi finche' nessuno trascina

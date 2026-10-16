@@ -53,13 +53,11 @@ $function$;
 REVOKE ALL ON FUNCTION public.custom_tags_in_fondo() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.gruppo_tags_in_fondo() FROM PUBLIC, anon, authenticated;
 
-DROP TRIGGER IF EXISTS trg_custom_tags_in_fondo ON public.custom_tags;
-CREATE TRIGGER trg_custom_tags_in_fondo
+CREATE OR REPLACE TRIGGER trg_custom_tags_in_fondo
   BEFORE INSERT ON public.custom_tags
   FOR EACH ROW EXECUTE FUNCTION public.custom_tags_in_fondo();
 
-DROP TRIGGER IF EXISTS trg_gruppo_tags_in_fondo ON public.gruppo_tags;
-CREATE TRIGGER trg_gruppo_tags_in_fondo
+CREATE OR REPLACE TRIGGER trg_gruppo_tags_in_fondo
   BEFORE INSERT ON public.gruppo_tags
   FOR EACH ROW EXECUTE FUNCTION public.gruppo_tags_in_fondo();
 
