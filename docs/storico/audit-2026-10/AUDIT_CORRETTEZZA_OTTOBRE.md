@@ -1806,6 +1806,55 @@ Sei volte due agenti della fase Trova avevano detto cose diverse sullo stesso pu
 
 Totale: **40 difetti confermati** (1 alta, 17 media, 22 bassa), 8 falsi allarmi, 2 incerti.
 
+## Stato delle correzioni (16/10/2026, notte)
+
+I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), ognuno con la sua prova per mutazione.
+
+| # | Stato |
+|---|---|
+| 1 | fix n. 1 |
+| 2 | fix n. 25 (migration da applicare al live prima del push) |
+| 3 | fix n. 24 |
+| 4 | fix n. 19-21 e le due revisioni (regola rivista: 20% e fine mese) |
+| 5 | fix n. 22 |
+| 6 | fix n. 23 |
+| 7 | fix n. 2 + revisore |
+| 8 | fix n. 9 |
+| 9 | fix n. 10 |
+| 10 | fix n. 11 |
+| 11 | fix n. 12 |
+| 12 | fix n. 18 (documenti allineati al codice, decisione di Mattia) |
+| 13 | fix n. 13 (accesso) + n. 18 (privacy) |
+| 14 | fix n. 14 |
+| 15 | fix n. 15 |
+| 16 | fix n. 25 |
+| 17 | fix n. 25 |
+| 18 | fix n. 25 |
+| 19 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 20 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 21 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 22 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 23 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 24 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 25 | fix n. 4 |
+| 26 | fix n. 5 |
+| 27 | fix n. 6 |
+| 28 | fix n. 3 |
+| 29 | fix n. 7 |
+| 30 | fix n. 16 (storno su guasto di OpenAI non fatto, dichiarato) |
+| 31 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 32 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 33 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 34 | fix n. 25 |
+| 35 | fix n. 25 |
+| 36 | fix n. 8 |
+| 37 | fix n. 4 |
+| 38 | fix n. 4 |
+| 39 | fix n. 25 |
+| 40 | fix n. 17 |
+
+Aperti: 9 su 40, tutti del filone sotto-utenti (#19-24, #31-33). Oggi in produzione non c'e' nessun sotto-utente.
+
 ## Conferma
 
 **Durante le fasi Trova e Verifica: zero scritture sul DB, zero modifiche al codice, zero commit.** Ogni query è stata eseguita in una transazione `READ ONLY`. Lo stato del repo è stato confrontato con un'impronta presa prima di partire: identico alla fine di entrambe le fasi. I file di lavoro degli agenti stanno nello scratchpad della sessione, fuori dal repo.
