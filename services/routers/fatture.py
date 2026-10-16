@@ -336,18 +336,26 @@ def get_mesi_disponibili(
     supabase_client = _get_supabase_client()
     # Costruisce l'elenco dei mesi selezionabili: se tronca, al cliente
     # spariscono mesi dal filtro senza alcun errore visibile.
+    #
+    # Dalle RIGHE, non da `fatture_documenti`: 19 testate di dicembre 2025 senza
+    # nessuna riga facevano comparire «Dicembre 2025 (19 fatture)», e scegliendolo
+    # KPI e articoli (che leggono le righe) restavano vuoti (audit di ottobre 2026,
+    # F1a-04). Stessi filtri della pagina (`_build_fatture_base_query`): un mese
+    # c'e' se scegliendolo si vede qualcosa; il conto e' dei documenti distinti.
     rows = fetch_all(
-        supabase_client.table("fatture_documenti")
-        .select("data_documento")
+        supabase_client.table("fatture")
+        .select("file_origine,data_documento")
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
+        .eq("oscurata", False)
         .not_.is_("data_documento", "null")
     )
-    counts: Dict[str, int] = {}
+    documenti: Dict[str, set] = {}
     for r in rows:
         d = r.get("data_documento")
         if d and len(d) >= 7:
-            counts[d[:7]] = counts.get(d[:7], 0) + 1
+            documenti.setdefault(d[:7], set()).add(r.get("file_origine"))
+    counts: Dict[str, int] = {ym: len(f) for ym, f in documenti.items()}
 
     mesi = []
     for ym in sorted(counts.keys(), reverse=True):

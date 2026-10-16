@@ -3372,6 +3372,17 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   OpenAPI rigenerato (solo il campo nuovo). Due sedi toccate oggi (86300227, 09011cdd). +6
 >   test in `tests/test_completezza_mese.py`; **8 mutanti, 8 uccisi**. Famiglie Home, briefing,
 >   catena `-m "not sql"`: 1.116 verdi.
+>
+> - **16/10/2026 sera — Fix n. 24 dell'audit di ottobre (F1a-04): il filtro periodo di Analisi
+>   Fatture elenca solo i mesi con righe.** `/api/fatture/mesi-disponibili` contava le testate
+>   di `fatture_documenti`: 19 testate di dicembre 2025 senza nessuna riga (59.368 EUR, una
+>   sede) facevano comparire «Dicembre 2025 (19 fatture)», e scegliendolo KPI e articoli
+>   restavano vuoti. Ora i mesi si contano dalle righe con i filtri della pagina (non
+>   cestinate, non escluse), come documenti distinti. **Resta**: capire perche' esistono 19
+>   testate senza righe (upload interrotto dopo la testata?) ed eventualmente pulirle, che e'
+>   una scrittura sui dati, fuori da questo fix. +2 test in
+>   `tests/test_fatture_mesi_disponibili.py`; **3 mutanti, 3 uccisi**. File di test sulle
+>   fatture: 492 verdi; `-m sql` dei sotto-utenti: 27 verdi.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
