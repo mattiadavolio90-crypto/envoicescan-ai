@@ -554,3 +554,24 @@ def test_la_chat_dice_l_attesa_solo_sul_mese_appena_chiuso():
 ])
 def test_ultimo_mese_chiuso(oggi, anno, mese, atteso):
     assert fw._e_l_ultimo_mese_chiuso(anno, mese, oggi) is atteso
+
+
+def test_il_briefing_non_festeggia_un_dato_non_letto():
+    """Lettura delle date fallita (None): la Home non mostra un grigio inventato,
+    il briefing non da' il verde."""
+    kpi = {"netto": 100000.0, "merce": 25000.0}
+    with patch.object(fw, "_fine_mese_coperta", return_value=None):
+        assert fw._mese_in_attesa(kpi, 25000.0, None, "r", 2026, 9) is False
+        assert fw._mese_consolidato(kpi, 25000.0, None, "r", 2026, 9) is False
+    with patch.object(fw, "_fine_mese_coperta", return_value=True):
+        assert fw._mese_consolidato(kpi, 25000.0, None, "r", 2026, 9) is True
+    with patch.object(fw, "_fine_mese_coperta", side_effect=AssertionError("query inutile")):
+        assert fw._mese_consolidato(kpi, 0.0, None, "r", 2026, 9) is True      # merce a mano
+        assert fw._mese_consolidato({"netto": 100000.0, "merce": 10000.0}, 10000.0, None, "r", 2026, 9) is True
+
+
+def test_la_buona_notizia_tace_se_la_data_non_si_legge():
+    margini = {m: {"altri_ricavi_noiva": 40000.0 + m * 1000, "costo_dipendenti": 8000.0} for m in range(1, 13)}
+    csp = {m: 1000.0 for m in range(1, 13)}
+    cfb = {m: 12000.0 for m in range(1, 13)}
+    assert _buona_notizia(margini, cfb, csp, coperta=None) is None

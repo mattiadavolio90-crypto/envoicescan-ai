@@ -3337,6 +3337,20 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   Allineata anche la fixture `food_cost_alto` di `tests/test_catena_osservazioni.py`. Famiglie
 >   toccate (briefing, Home, Margini, catena, chat, ricavi) `-m "not sql"`: 2.788 verdi prima di
 >   quell'allineamento, il file dopo 31 verdi.
+>
+> - **16/10/2026 sera — Code-reviewer, seconda passata su K03, verdetto verde: K03 completo.**
+>   I due blocchi della prima passata sono chiusi (nessun «mese dopo» rimasto come criterio;
+>   guardia dell'ultimo mese chiuso con i suoi test). Corretto il suo rilievo principale: con
+>   la data delle fatture di fine mese non letta (`_fine_mese_coperta` None) il briefing dava
+>   il verde; ora food cost alto, mese chiuso e buona notizia usano `_mese_consolidato`, che sul
+>   «non so» risponde no (la Home invece non mostra un grigio inventato: li' None = nessuna
+>   attesa). Dichiarata l'asimmetria: la guardia dell'ultimo mese chiuso vale per Home, pivot
+>   di Margini e chat; il briefing non ce l'ha, ed e' il verso prudente (food cost alto guarda
+>   due mesi fa: con la guardia il consolidato sparirebbe; senza, il peggio e' il silenzio).
+>   Il commento della versione 40 del briefing ora dice anche questo. Resta, preesistente: `limit(500)`
+>   senza ordine in `_fine_mese_coperta`, rischio basso col filtro sui positivi. +2 test in
+>   `tests/test_completezza_mese.py`; **3 mutanti, 3 uccisi** (uno dopo il test sulla buona
+>   notizia col «non so»).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

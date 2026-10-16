@@ -7040,7 +7040,7 @@ def _buona_notizia_principale(
                 # (3) NON festeggiamo un mese ancora in attesa delle fatture di
                 # fine mese (nessuna fattura di merce negli ultimi 5 giorni): la
                 # crescita puo' essere solo merce non ancora arrivata (K03).
-                in_attesa = _mese_in_attesa(
+                in_attesa = not _mese_consolidato(
                     kpi, float(_dati(anno_usato)[1].get(mese_usato) or 0),
                     supabase_client, ristorante_id, anno_usato, mese_usato)
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
@@ -7483,7 +7483,7 @@ def _briefing_food_cost_alto(
     cfb, csp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, anno)
 
     kpi = _kpi_periodo(margini, cfb, csp, mese)
-    if _mese_in_attesa(kpi, float(cfb.get(mese) or 0), supabase_client, ristorante_id, anno, mese):
+    if not _mese_consolidato(kpi, float(cfb.get(mese) or 0), supabase_client, ristorante_id, anno, mese):
         return None
     # None senza incassi (netto 0); 0 senza merce (costi_mancanti): in entrambi i
     # casi il mese non e' detto. KPI_SOGLIE['food_cost'] e' ordinata (28
@@ -7564,7 +7564,7 @@ def _briefing_mese_chiuso(
                                  anno, mese, oggi, {anno: margini}) is True:
         return None
     soglia_norma = [s for (s, _e, _c) in KPI_SOGLIE["food_cost"]][1]
-    consolidato = not _mese_in_attesa(
+    consolidato = _mese_consolidato(
         kpi, float(cfb.get(mese) or 0), supabase_client, ristorante_id, anno, mese)
     payload: Dict[str, Any] = {
         "mese": _MESI_IT_BRIEFING[mese],
@@ -10048,6 +10048,23 @@ def _mese_in_attesa(
         kpi["netto"], kpi["merce"], merce_fatture=merce_fatture,
         fine_mese_coperta=_fine_mese_coperta(supabase_client, ristorante_id, anno, mese),
     )
+
+
+def _mese_consolidato(
+    kpi: Dict[str, Any], merce_fatture: float, supabase_client,
+    ristorante_id: str, anno: int, mese: int,
+) -> bool:
+    """Per il VERDE del briefing (food cost alto, mese chiuso, buona notizia):
+    come `_mese_in_attesa` ma senza fidarsi del «non so». Se la data delle
+    fatture di fine mese non si legge, il mese non e' consolidato: la Home in quel
+    caso non mostra un grigio inventato, il briefing non festeggia un dato non
+    letto (revisore, 16/10/2026)."""
+    if (float(merce_fatture or 0) <= 0 or kpi.get("costi_mancanti")
+            or float(kpi.get("netto") or 0) <= 0):
+        return True
+    if merce_insufficiente(kpi["netto"], kpi["merce"]):
+        return True
+    return _fine_mese_coperta(supabase_client, ristorante_id, anno, mese) is True
 
 
 def _e_l_ultimo_mese_chiuso(anno: int, mese: int, oggi) -> bool:

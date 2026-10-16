@@ -193,7 +193,8 @@ logger = get_logger('daily_briefing')
 #               nasce l'avviso «mancano le fatture costo» su mesi che prima
 #               passavano, e il testo non dice piu' «risulta 0». Nello stesso
 #               push: niente buona notizia su un mese senza fatture di merce
-#               negli ultimi 5 giorni.
+#               dal quinto giorno prima della fine, e il «consolidato» di
+#               food_cost_alto e mese_chiuso diventa lo stesso criterio.
 _BRIEFING_CODE_VERSION = 40
 
 # Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
