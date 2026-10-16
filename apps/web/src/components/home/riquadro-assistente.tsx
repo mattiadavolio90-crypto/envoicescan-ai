@@ -127,15 +127,16 @@ export function RiquadroAssistente({
 
   const scritta = mostrata.length >= narrativa.length;
 
-  // Da computer la narrativa puo' scorrere dentro il riquadro: la frase letta va tenuta in vista.
+  // Da computer il riquadro scorre tutto insieme (briefing e chat): con «Ascolta» la frase letta
+  // va riportata in vista, sopra la casella che resta ferma in fondo.
   const narrativaRef = useRef<HTMLParagraphElement>(null);
+  const scorreRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const p = narrativaRef.current;
-    const frase = letta >= 0 ? (p?.children[letta] as HTMLElement | undefined) : undefined;
-    if (!p || !frase || p.scrollHeight <= p.clientHeight) return;
-    const sopra = frase.offsetTop < p.scrollTop;
-    const sotto = frase.offsetTop + frase.offsetHeight > p.scrollTop + p.clientHeight;
-    if (sopra || sotto) p.scrollTo({ top: Math.max(0, frase.offsetTop - 8), behavior: "smooth" });
+    const c = scorreRef.current;
+    const frase = letta >= 0 ? (narrativaRef.current?.children[letta] as HTMLElement | undefined) : undefined;
+    if (!c || !frase || c.scrollHeight <= c.clientHeight) return;
+    const rc = c.getBoundingClientRect(), rf = frase.getBoundingClientRect();
+    if (rf.top < rc.top || rf.bottom > rc.bottom - 96) c.scrollBy({ top: rf.top - rc.top - 16, behavior: "smooth" });
   }, [letta]);
 
   // Una card sola (Mattia, 15/10): il flusso a sinistra fa parte del riquadro. Da computer
@@ -162,7 +163,11 @@ export function RiquadroAssistente({
           </span>
         </div>
       </div>
-      <div className="flex min-h-0 min-w-0 flex-col p-5 sm:p-6 lg:pl-2">
+      <div
+        ref={scorreRef}
+        data-scorre-conversazione
+        className={cn("flex min-h-0 min-w-0 flex-col p-5 sm:p-6 lg:overflow-y-auto lg:pl-2", children && "lg:pb-0")}
+      >
         <div className="relative -mx-5 -mt-5 mb-2 h-28 sm:-mx-6 sm:-mt-6 lg:hidden">
           <AvatarFlusso modo={modo} variante="fascia" className="absolute inset-0" />
         </div>
@@ -176,7 +181,7 @@ export function RiquadroAssistente({
         <h1 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">{saluto}</h1>
         <p
           ref={narrativaRef}
-          className={cn("relative mt-3 max-w-none shrink-0 whitespace-pre-line text-base leading-relaxed text-foreground/90", children && "lg:max-h-[45%] lg:overflow-y-auto")}
+          className="relative mt-3 max-w-none shrink-0 whitespace-pre-line text-base leading-relaxed text-foreground/90"
         >
           {parla && scritta
             ? elenco.map((f, i) => (
@@ -194,7 +199,7 @@ export function RiquadroAssistente({
         </p>
         <ConversazioneAltezzaFissa.Provider value={true}>
           <div
-            className="flex min-h-0 flex-1 flex-col"
+            className="flex flex-1 flex-col"
             onFocusCapture={(e) => {
               if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) setAscolta(true);
             }}

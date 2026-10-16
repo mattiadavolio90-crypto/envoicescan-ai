@@ -66,11 +66,16 @@ def test_ascolta_avvisa_quando_passa_alla_voce_di_sistema():
     assert 'setStato("playing");onStatoRef.current?.("playing",null);' in corpo
 
 
-def test_da_computer_la_conversazione_scorre_dentro_il_riquadro():
+def test_da_computer_briefing_e_chat_scorrono_insieme_con_la_casella_ferma():
+    """Mattia (16/10): chattando il briefing sale e lascia spazio ai messaggi; la casella resta
+    in fondo. Scorre il riquadro intero, non la lista, e la casella e' sticky."""
     t = _n(_RIQUADRO)
     assert "<ConversazioneAltezzaFissa.Providervalue={true}>" in t
+    assert "data-scorre-conversazione" in t and "lg:overflow-y-auto" in t
     pannello = _n(_WEB / "components/home/pannello-conversazione.tsx")
-    assert 'altezzaFissa&&"lg:max-h-nonelg:min-h-0lg:flex-1"' in pannello
+    assert 'altezzaFissa&&"lg:max-h-nonelg:overflow-visible"' in pannello
+    assert "lg:stickylg:bottom-0" in pannello
+    assert 'closest<HTMLElement>("[data-scorre-conversazione]")' in pannello
 
 
 @pytest.mark.parametrize(

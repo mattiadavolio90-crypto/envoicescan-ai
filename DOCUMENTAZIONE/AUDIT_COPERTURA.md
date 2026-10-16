@@ -3008,6 +3008,8 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   **16/10: il benvenuto è tolto del tutto** (Mattia: «al login non ci deve essere questo effetto,
 >   solo quando entri lo trovi vicino al briefing»): via `benvenuto-assistente.tsx` e le sue
 >   funzioni e test; un presidio verifica che nessuna Home lo rimonti.
+>   Stesso giorno: riquadro più compatto (480 px) e **briefing e chat scorrono insieme**, con la
+>   casella ferma in fondo (lo spazio della chat era troppo piccolo); verificato a schermo.
 >
 > - **15/10/2026 — Code-reviewer sui fix 2-8 dell'audit di ottobre, verdetto rosso, chiuso.**
 >   Il blocco: K15 era chiuso a meta'. `/api/gruppo/prezzi/fattura` risolveva il gruppo senza

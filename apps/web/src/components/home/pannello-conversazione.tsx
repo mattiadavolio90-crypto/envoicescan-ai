@@ -11,10 +11,11 @@ import { CardCifraDettata } from "./card-cifra";
 // la Home vera (ConversazioneAssistente) e il Demo Tour (DemoConversazione),
 // cosi' la demo non puo' mostrare un prodotto diverso da quello vero.
 
-/** Dentro il riquadro dell'assistente da computer (fase L, 15/10/2026) il riquadro ha
- *  un'altezza fissa: la conversazione riempie lo spazio che resta e scorre dentro, invece di
- *  allungare la pagina. Vale anche nel Demo Tour, che usa lo stesso riquadro; sotto `lg` e
- *  fuori dal riquadro resta com'era. */
+/** Dentro il riquadro dell'assistente da computer (fase L, 15-16/10/2026) il riquadro ha
+ *  un'altezza fissa e scorre tutto insieme, briefing e conversazione: chattando il briefing sale
+ *  e lascia spazio ai messaggi, la casella resta ferma in fondo. Lo scorrimento e' del contenitore
+ *  `[data-scorre-conversazione]` del riquadro, non della lista. Vale anche nel Demo Tour, che usa
+ *  lo stesso riquadro; sotto `lg` e fuori dal riquadro resta com'era. */
 export const ConversazioneAltezzaFissa = createContext(false);
 
 export function PannelloConversazione({
@@ -56,19 +57,22 @@ export function PannelloConversazione({
   const lista = useRef<HTMLDivElement>(null);
   const altezzaFissa = useContext(ConversazioneAltezzaFissa);
 
-  // In fondo alla lista a ogni messaggio, scorrendo la lista e non la pagina:
-  // scrollIntoView portava giu' tutta la Home appena si apriva.
+  // In fondo a ogni messaggio, scorrendo la lista (o il riquadro, se ad altezza fissa) e non
+  // la pagina: scrollIntoView portava giu' tutta la Home appena si apriva.
   useEffect(() => {
     const el = lista.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [voci.length, attesa]);
+    if (!el) return;
+    const riquadro = altezzaFissa ? el.closest<HTMLElement>("[data-scorre-conversazione]") : null;
+    if (riquadro && riquadro.scrollHeight > riquadro.clientHeight) riquadro.scrollTop = riquadro.scrollHeight;
+    else el.scrollTop = el.scrollHeight;
+  }, [voci.length, attesa, altezzaFissa]);
 
   return (
     <div
       data-demo-anchor={ancoraDemo}
       className={cn(
         "relative mt-5 space-y-3 border-t border-primary/15 pt-4",
-        altezzaFissa && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:[&>*:first-child]:mt-auto",
+        altezzaFissa && "lg:flex lg:flex-1 lg:flex-col lg:[&>*:first-child]:mt-auto",
       )}
     >
       {(voci.length > 0 || attesa) && (
@@ -76,7 +80,7 @@ export function PannelloConversazione({
           ref={lista}
           className={cn(
             "max-h-[26rem] space-y-2.5 overflow-y-auto pr-1",
-            altezzaFissa && "lg:max-h-none lg:min-h-0 lg:flex-1",
+            altezzaFissa && "lg:max-h-none lg:overflow-visible",
           )}
           aria-live="polite"
         >
@@ -130,47 +134,56 @@ export function PannelloConversazione({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
-        <textarea
-          value={valore}
-          onChange={(e) => onCambia?.(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onInvia?.();
-            }
-          }}
-          readOnly={!onCambia}
-          rows={1}
-          aria-label="Scrivi una domanda all'assistente"
-          placeholder={placeholder}
-          disabled={bloccato}
-          className="max-h-24 flex-1 resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
-        />
-        <Button
-          size="icon"
-          className="size-9 shrink-0"
-          disabled={bloccato || !valore.trim()}
-          onClick={() => onInvia?.()}
-          aria-label="Invia la domanda"
-        >
-          <Send className="size-4" />
-        </Button>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className={statoAvviso ? "text-incerto" : "text-muted-foreground"}>{stato}</span>
-        {onNuova && voci.length > 0 && (
-          <button
-            type="button"
-            onClick={onNuova}
-            disabled={attesa !== null}
-            className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-          >
-            <SquarePen className="size-3.5" />
-            Nuova conversazione
-          </button>
+      {/* Casella e contatore insieme: ad altezza fissa restano fermi in fondo mentre sopra
+          scorrono briefing e messaggi. */}
+      <div
+        className={cn(
+          "space-y-3",
+          altezzaFissa && "lg:sticky lg:bottom-0 lg:z-10 lg:bg-background lg:pb-5 lg:pt-3",
         )}
+      >
+        <div className="flex items-end gap-2">
+          <textarea
+            value={valore}
+            onChange={(e) => onCambia?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                onInvia?.();
+              }
+            }}
+            readOnly={!onCambia}
+            rows={1}
+            aria-label="Scrivi una domanda all'assistente"
+            placeholder={placeholder}
+            disabled={bloccato}
+            className="max-h-24 flex-1 resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+          />
+          <Button
+            size="icon"
+            className="size-9 shrink-0"
+            disabled={bloccato || !valore.trim()}
+            onClick={() => onInvia?.()}
+            aria-label="Invia la domanda"
+          >
+            <Send className="size-4" />
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          <span className={statoAvviso ? "text-incerto" : "text-muted-foreground"}>{stato}</span>
+          {onNuova && voci.length > 0 && (
+            <button
+              type="button"
+              onClick={onNuova}
+              disabled={attesa !== null}
+              className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            >
+              <SquarePen className="size-3.5" />
+              Nuova conversazione
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
