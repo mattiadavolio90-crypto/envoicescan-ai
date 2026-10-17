@@ -288,6 +288,7 @@ def _make_query_chain(execute_return):
     query.neq.return_value = query
     query.limit.return_value = query
     query.is_.return_value = query
+    query.in_.return_value = query
     query.execute.return_value = MagicMock(data=execute_return)
     return query
 
@@ -306,9 +307,16 @@ def test_guardia_duplicato_blocca_stesso_documento_nome_file_diverso():
     fatture_documenti_table = MagicMock()
     fatture_documenti_table.select.return_value = fatture_documenti_query
 
+    # La fattura gia' caricata ha le sue righe: una testata senza righe non e'
+    # un doppione (backfill del 12/5/2026).
+    fatture_query = _make_query_chain([{"file_origine": "IT02355260981_ecVtT.xml.p7m"}])
+    fatture_table = MagicMock()
+    fatture_table.select.return_value = fatture_query
+
     supabase = MagicMock()
     supabase.table.side_effect = lambda name: {
         "fatture_documenti": fatture_documenti_table,
+        "fatture": fatture_table,
     }.get(name, MagicMock())
 
     row = {
@@ -344,9 +352,10 @@ def test_guardia_duplicato_blocca_stesso_documento_nome_file_diverso():
     assert result["success"] is False
     assert result["error"] == "duplicate_document"
     assert result["duplicate_of"] == "IT02355260981_ecVtT.xml.p7m"
-    # Non deve mai arrivare a toccare la tabella fatture (righe), solo fatture_documenti.
-    tabelle_toccate = {c.args[0] for c in supabase.table.call_args_list if c.args}
-    assert "fatture" not in tabelle_toccate
+    # Sulla tabella fatture la guardia legge soltanto: nessuna riga scritta o cancellata.
+    fatture_table.upsert.assert_not_called()
+    fatture_table.insert.assert_not_called()
+    fatture_table.delete.assert_not_called()
 
 
 def test_guardia_duplicato_non_blocca_se_identita_incompleta():

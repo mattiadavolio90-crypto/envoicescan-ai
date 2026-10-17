@@ -3558,6 +3558,33 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   dei crediti quando OpenAI fallisce dopo la RPC (K17); `_fine_mese_coperta` con
 >   `limit(500)` e il filtro sulle categorie in Python; la catena senza lo stato «in attesa
 >   delle fatture di fine mese».
+>
+> - **17/10/2026 — Fix n. 36 (residuo del fix n. 24): una testata senza righe non e' una
+>   fattura.** Le 19 testate di dicembre 2025 (LAND DEI SAPORI, 59.368 EUR) le ha create il
+>   12/5/2026, in 40 secondi, `scripts/backfill_documenti_da_cartella.py`, che scriveva una
+>   testata per ogni file della cartella, anche per file mai entrati: la sede ha righe solo
+>   dal 1/1/2026, e 11 di quei file erano falliti al parsing il 12/3. Non comparivano piu' da
+>   nessuna parte (lo scadenziario parte dalle righe), ma la guardia anti-doppione per
+>   identita' (`_trova_documento_duplicato_per_identita`) leggeva solo `fatture_documenti`:
+>   caricando una di quelle fatture con un nome file diverso l'avrebbe rifiutata come «gia'
+>   caricata». Il controllo su tutto il DB ha trovato un 20° caso, di natura diversa:
+>   1 testata OVERTIME (187 EUR, SDI, 17/7) con le righe in OFFSIDE, causa non ricostruita
+>   (`sposta_fattura_a_sede` sposta anche le testate). Ora la guardia conta una testata solo
+>   se il suo file ha righe attive nella stessa sede (le escluse dai conti restano un
+>   doppione); se quella lettura fallisce blocca come prima. Lo script salta i file senza
+>   righe attive nella sede indicata. +7 test `-m sql` in
+>   `tests/test_sql_doppione_testata_senza_righe.py` (guardia e script su un Postgres vero),
+>   +2 nel finto di `tests/test_invoice_salvataggio_supabase.py`, dove ogni testata ora ha le
+>   sue righe, cosi' i test dei filtri gia' esistenti non passano solo per l'assenza di righe.
+>   **8 mutanti, 7 uccisi**; sopravvive il filtro `user_id` sulle righe, ridondante con
+>   `ristorante_id` (una sede e' di un solo cliente), tenuto come gli altri filtri tenant.
+>   La lettura nuova su `fatture` e' dichiarata in `tests/test_oscurate_choke_point.py`
+>   (non conta soldi). Suite `python -m pytest tests/ -m "not sql" -q -p no:randomly`:
+>   19.944 verdi + 1 rosso, il presidio delle oscurate, poi dichiarato (3 verdi), 63 skip.
+>   **Dati**: archiviare le 19 testate e spostare la 20ª in OFFSIDE e' una scrittura sul DB
+>   di produzione, negata dai permessi della sessione: lo script e' consegnato a Mattia per
+>   l'SQL Editor, con i conteggi attesi in una transazione che si annulla da sola. Verificato
+>   anche: il repo GitHub e' pubblico (API e pagina rispondono 200 senza login).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

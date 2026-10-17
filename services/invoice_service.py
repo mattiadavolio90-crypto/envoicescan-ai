@@ -1948,11 +1948,34 @@ def _trova_documento_duplicato_per_identita(
                 .eq("tipo_documento", tipo_doc)
             )
             .neq("file_origine", nome_file)
-            .limit(1)
+            .limit(5)
             .execute()
         )
-        rows = resp.data or []
-        return rows[0] if rows else None
+        candidati = resp.data or []
+        if not candidati:
+            return None
+        # Una testata senza righe attive in questa sede non e' un documento caricato
+        # (backfill da cartella del 12/5/2026: 19 testate di file mai entrati) e non
+        # deve rifiutare il caricamento vero. Se questa lettura fallisce si blocca
+        # come prima: il doppione e' il danno peggiore.
+        try:
+            con_righe = {
+                r.get("file_origine")
+                for r in (
+                    filter_active(
+                        supabase_client.table("fatture")
+                        .select("file_origine")
+                        .eq("user_id", user_id)
+                        .eq("ristorante_id", ristorante_id)
+                        .in_("file_origine", [c.get("file_origine") for c in candidati])
+                    ).execute().data
+                    or []
+                )
+            }
+        except Exception as exc:
+            logger.warning("Guardia duplicato: righe non verificabili per %s: %s", nome_file, exc)
+            return candidati[0]
+        return next((c for c in candidati if c.get("file_origine") in con_righe), None)
     except Exception as exc:
         logger.warning(
             "Guardia duplicato documento fallita (non bloccante) per %s: %s", nome_file, exc

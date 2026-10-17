@@ -12,6 +12,9 @@ Uso:
 Note:
 - In dry-run non scrive nulla su DB.
 - Se user_id / ristorante_id non sono passati, prova auto-rilevamento via tabella `fatture`.
+- Scrive la testata SOLO per i file che hanno righe attive nella sede: il 12/5/2026
+  ne ha create 19 per file di dicembre 2025 mai entrati, e una testata senza righe
+  e' una fattura fantasma.
 """
 
 from __future__ import annotations
@@ -111,6 +114,22 @@ def _build_db_file_map_and_tenant(sb, local_files: List[Path]) -> Tuple[Dict[str
     return db_file_map, None, pair_counter
 
 
+def _file_con_righe(sb, user_id: str, ristorante_id: str, nomi: List[str]) -> set:
+    trovati: set = set()
+    for chunk in _chunked(sorted(set(nomi)), 200):
+        resp = (
+            sb.table("fatture")
+            .select("file_origine")
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .in_("file_origine", chunk)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        trovati.update(str(r.get("file_origine")) for r in (resp.data or []))
+    return trovati
+
+
 def _resolve_file_origine(local_name: str, db_file_map: Dict[str, str]) -> str:
     low = local_name.lower().strip()
     if low in db_file_map:
@@ -189,7 +208,17 @@ def main() -> int:
     found_numero = 0
     found_scadenza = 0
 
+    con_righe = _file_con_righe(
+        sb, user_id, ristorante_id,
+        [_resolve_file_origine(p.name, db_file_map) for p in local_files],
+    )
+    senza_righe = 0
+
     for idx, fpath in enumerate(local_files, start=1):
+        if _resolve_file_origine(fpath.name, db_file_map) not in con_righe:
+            senza_righe += 1
+            print(f"[{idx}/{len(local_files)}] ⏭️ senza righe nella sede, salto: {fpath.name}")
+            continue
         try:
             rows = _extract_rows_from_file(fpath, user_id=user_id)
             if not rows:
@@ -247,6 +276,7 @@ def main() -> int:
     print("\n===== RISULTATO =====")
     print(f"✅ Parsing OK: {parsed_ok}")
     print(f"⚠️ Parsing KO/vuoto: {parse_fail}")
+    print(f"⏭️ Saltati senza righe: {senza_righe}")
     print(f"✅ {'Upsert' if args.apply else 'Simulazioni'} OK: {upsert_ok}")
     if args.apply:
         print(f"❌ Upsert KO: {upsert_fail}")

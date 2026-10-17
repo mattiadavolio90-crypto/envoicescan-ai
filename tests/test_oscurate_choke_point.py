@@ -71,6 +71,7 @@ ELENCO_SENZA_FILTRO = {
     # ── Ingestione: decidono se un file e' gia' stato caricato. Una fattura
     # esclusa E' stata caricata: ignorarla creerebbe duplicati veri.
     ("invoice_service.py", "salva_fattura_processata"): "scrittura righe in ingestione",
+    ("invoice_service.py", "_trova_documento_duplicato_per_identita"): "presenza righe per la guardia anti-doppione: una fattura esclusa dai conti resta un doppione",
     ("upload_handler.py", "handle_uploaded_files"): "dedup upload",
     ("upload_handler.py", "_find_active_exact_files_for_targets"): "dedup upload",
     ("upload_handler.py", "_find_active_existing_files"): "dedup upload",

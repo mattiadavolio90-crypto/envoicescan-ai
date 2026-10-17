@@ -393,6 +393,41 @@ class TestGuardiaDuplicati:
             "created_at": "2026-03-31T10:00:00Z", "deleted_at": deleted_at,
         }
 
+    def _client(self, documenti, righe=True):
+        """Ogni testata ha le sue righe ATTIVE nella sua sede, anche quella
+        cestinata: cosi' a escluderla resta solo il filtro sulla testata che il
+        test vuole misurare, non il controllo «ha righe» (17/10/2026)."""
+        fatture = [
+            _riga(1, user_id=d["user_id"], ristorante_id=d["ristorante_id"],
+                  file_origine=d["file_origine"])
+            for d in documenti
+        ] if righe else []
+        return _FakeClient(fatture=fatture, documenti=documenti)
+
+    def test_testata_senza_righe_non_blocca(self, salva):
+        """Le 19 testate del backfill da cartella (12/5/2026): file mai entrati,
+        nessuna riga. Rifiutare il caricamento vero come «gia' caricato»
+        lascerebbe la fattura fuori per sempre."""
+        client = self._client([self._documento()], righe=False)
+        res, _ = salva(client, dati=_dati(3))
+        assert res["success"] is True
+
+    def test_righe_non_verificabili_bloccano_come_prima(self, salva):
+        """Se la lettura delle righe fallisce, la testata trovata vale ancora
+        come doppione: meglio un caricamento rifiutato che una fattura doppia."""
+        client = self._client([self._documento()])
+        vero = _FakeQuery.execute
+
+        def execute(q):
+            if q._table == "fatture" and q._mode == "select":
+                raise RuntimeError("PostgREST down")
+            return vero(q)
+
+        with patch.object(_FakeQuery, "execute", execute):
+            res, _ = salva(client, dati=_dati(3))
+        assert res["error"] == "duplicate_document"
+        assert res["duplicate_of"] == "altro_nome.xml"
+
     def _vicini(self):
         """Documenti che NON devono mai far scattare la guardia.
 
@@ -414,7 +449,7 @@ class TestGuardiaDuplicati:
         ]
 
     def test_stesso_documento_altro_nome_file_e_bloccato(self, salva):
-        client = _FakeClient(documenti=[self._documento()])
+        client = self._client([self._documento()])
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is False
         assert res["error"] == "duplicate_document"
@@ -424,14 +459,14 @@ class TestGuardiaDuplicati:
     def test_stesso_file_non_e_un_duplicato(self, salva):
         """M10 — senza `.neq(file_origine)` la guardia bloccherebbe il normale
         re-upload dello stesso file, che invece deve essere idempotente."""
-        client = _FakeClient(documenti=[self._documento(file_origine=FILE)])
+        client = self._client([self._documento(file_origine=FILE)])
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is True
 
     def test_documento_di_un_altra_sede_non_blocca(self, salva):
         """M11 — senza `.eq(ristorante_id)` una sede impedirebbe a un'altra di
         caricare la propria copia dello stesso documento."""
-        client = _FakeClient(documenti=[self._documento(ristorante_id="rist-2")])
+        client = self._client([self._documento(ristorante_id="rist-2")])
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is True
 
@@ -453,7 +488,7 @@ class TestGuardiaDuplicati:
             "numero_documento": dict(numero=""),
             "Data_Documento": dict(data=None),
         }[campo]
-        client = _FakeClient(documenti=[
+        client = self._client([
             self._documento(file_origine="gemello_incompleto.xml", **gemello),
         ])
         res, _ = salva(client, dati=_dati(3, **{campo: valore}))
@@ -464,7 +499,7 @@ class TestGuardiaDuplicati:
         stesso giorno sono normali (consegne multiple): a distinguerle e' solo
         il numero. Senza quel filtro la seconda verrebbe rifiutata come
         duplicato della prima."""
-        client = _FakeClient(documenti=[
+        client = self._client([
             self._documento(file_origine="stesso_giorno.xml", numero="F-999")])
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is True
@@ -474,14 +509,14 @@ class TestGuardiaDuplicati:
         indipendente: "F-100 del 31/03" esiste per molti di loro. Senza il
         filtro sulla P.IVA il documento di un fornitore bloccherebbe quello di
         un altro. Sul DB live ci sono 239 fornitori distinti."""
-        client = _FakeClient(documenti=[
+        client = self._client([
             self._documento(file_origine="altro_fornitore.xml", piva="09876543210")])
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is True
 
     def test_altra_data_stesso_numero_non_blocca(self, salva):
         """`eq(data_documento)` — stesso numero su anni/date diverse."""
-        client = _FakeClient(documenti=[
+        client = self._client([
             self._documento(file_origine="altra_data.xml", data="2025-03-31")])
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is True
@@ -492,7 +527,7 @@ class TestGuardiaDuplicati:
         stessa identita'. Sul DB live: 334 documenti cestinati, e 1 caso reale
         di ri-upload con file_origine diverso dopo cestinamento.
         """
-        client = _FakeClient(documenti=[
+        client = self._client([
             self._documento(file_origine="cestinato.xml",
                             deleted_at="2026-07-01T00:00:00Z")])
         res, _ = salva(client, dati=_dati(3))
@@ -503,7 +538,7 @@ class TestGuardiaDuplicati:
         rifiutare il caricamento a un altro cliente. Sul DB live esistono 4
         identita' naturali condivise fra utenti diversi: perdita di isolamento
         multi-tenant in lettura."""
-        client = _FakeClient(documenti=[
+        client = self._client([
             self._documento(file_origine="altro_utente.xml", user_id="user-2")])
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is True
@@ -511,11 +546,11 @@ class TestGuardiaDuplicati:
     def test_vicini_non_bloccano_e_il_duplicato_vero_si(self, salva):
         """Tutti i vicini insieme + il duplicato vero: la guardia deve
         distinguere, non solo bloccare."""
-        client = _FakeClient(documenti=self._vicini())
+        client = self._client(self._vicini())
         res, _ = salva(client, dati=_dati(3))
         assert res["success"] is True, "nessun vicino deve bloccare"
 
-        client2 = _FakeClient(documenti=self._vicini() + [self._documento()])
+        client2 = self._client(self._vicini() + [self._documento()])
         res2, _ = salva(client2, dati=_dati(3))
         assert res2["error"] == "duplicate_document"
         assert res2["duplicate_of"] == "altro_nome.xml"
@@ -535,7 +570,7 @@ class TestGuardiaDuplicati:
         restituisce None su qualunque input, quindi era un guasto che il codice
         reale non puo' produrre.
         """
-        client = _FakeClient(documenti=[self._documento()])
+        client = self._client([self._documento()])
         with patch.object(_FakeQuery, "execute", side_effect=RuntimeError("PostgREST down")):
             res, _ = salva(client, dati=_dati(3))
         # La query di guardia fallisce -> non blocca; il salvataggio prosegue e
