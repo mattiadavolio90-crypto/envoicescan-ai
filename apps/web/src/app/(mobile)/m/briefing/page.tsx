@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { requireTabMobile } from "@/lib/page-guard";
-import { haCatena } from "@/lib/sotto-utente";
+import { catenaSuMobile } from "@/lib/sotto-utente";
 import { fetchBriefing, fetchSalute, fetchKpi } from "@/lib/home";
 import { fetchGruppoOverview } from "@/lib/gruppo";
 import { SaluteCard } from "@/app/(app)/dashboard/salute-card";
@@ -60,7 +60,7 @@ export default async function MobileBriefingPage() {
   // il cookie passa a "pv" e qui torna la Home del singolo locale.
   await requireTabMobile("/m/briefing");
   const [user, cookieStore] = await Promise.all([getCurrentUser(), cookies()]);
-  const inChain = !!user && haCatena(user) && cookieStore.get("oneflux_view")?.value !== "pv";
+  const inChain = !!user && catenaSuMobile(user) && cookieStore.get("oneflux_view")?.value !== "pv";
   if (inChain) {
     const blocco = await CatenaBlock();
     if (blocco) return <div className="space-y-5">{blocco}</div>;

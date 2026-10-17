@@ -101,6 +101,8 @@ type AppSidebarProps = {
   // true (la Catena resta governata dal numero di sedi, come prima).
   mostraHome?: boolean;
   mostraCatena?: boolean;
+  // Dove si scende scegliendo una sede dalla catena (paginaDelPuntoVendita).
+  paginaPuntoVendita?: string;
 };
 
 type Sede = {
@@ -119,6 +121,7 @@ export function AppSidebar({
   pagineAbilitate,
   mostraHome = true,
   mostraCatena = true,
+  paginaPuntoVendita = "/dashboard",
 }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -232,10 +235,11 @@ export function AppSidebar({
       setSedi((prev) => prev.map((s) => ({ ...s, attiva: s.id === ristoranteId })));
       const confermato = await cambiaSedeEAttendi(ristoranteId);
 
-      // Scegliere una sede dalla catena = SCENDERE in quel PV (vai alla sua Home);
-      // cambiare sede mentre sei già in un PV = resta sulla pagina, dati nuovi.
+      // Scegliere una sede dalla catena = SCENDERE in quel PV (la sua Home, o senza
+      // Home la prima pagina di sede); cambiare sede mentre sei già in un PV = resta
+      // sulla pagina, dati nuovi.
       if (inChain) {
-        router.push("/dashboard");
+        router.push(paginaPuntoVendita);
       } else {
         router.refresh();
       }

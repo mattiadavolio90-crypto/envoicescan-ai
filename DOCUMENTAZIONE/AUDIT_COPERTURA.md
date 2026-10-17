@@ -3456,7 +3456,9 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   «Riprova» di entrambi usa `unstable_retry` (rilegge dal server) invece di `reset`, che
 >   rendeva di nuovo lo stesso errore. Con la sessione valida gli esiti sono quelli di prima.
 >   +6 test in `tests/test_guardia_pagina_frontend.py`; **8 mutanti, 8 uccisi**. Presidi sul
->   filesystem (colori, nomi file, troncamenti): 1.747 verdi; `tsc --noEmit` pulito.
+>   filesystem (colori, nomi file, troncamenti): 1.747 verdi; `tsc --noEmit` pulito. Il
+>   «Riprova» di `(app)/error.tsx` e' il `<Button>` condiviso: col bottone a mano era rosso
+>   `test_bottoni_condivisi_frontend`, che non avevo lanciato (corretto nel commit dopo).
 >
 > - **17/10/2026 — Fix n. 29 dell'audit di ottobre (F2b-6, #22): Analisi Fatture non legge piu'
 >   mesi e categorie dalla cache di Next.** `fetchMesiDisponibili` e `fetchCategorie`
@@ -3507,6 +3509,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   corretto in `tests/test_sotto_utente_frontend.py`; **4 mutanti, 4 uccisi** (uno sul lato
 >   worker, una rotta spostata a Strumenti). Scartata l'alternativa di aprire le rotte con
 >   Strumenti: darebbe al sotto-utente piu' di quanto ha.
+>
+> - **17/10/2026 — Fix n. 33 dell'audit di ottobre (K25, #32): Catena senza Home.** Un
+>   sotto-utente con Catena e senza Home (combinazione ammessa dal pannello) che sceglieva una
+>   sede dalla sidebar o «Apri PV» dalla sintesi finiva su /dashboard, che lo rimandava su
+>   /catena: dalla UI non arrivava alle sue pagine di sede. Ora `paginaDelPuntoVendita`
+>   (lib/sotto-utente.ts) da' la Home se c'e', se no la prima pagina di sede (mai /catena),
+>   passata alla sidebar dal layout e a `SintesiCatena` dalla pagina. Su /m la vista catena
+>   e' la Home di gruppo, quindi vuole anche la Home: `catenaSuMobile` decide il menu ⋮
+>   («Vista catena»), il layout (prima scriveva «Tutti i punti vendita» sopra i dati della
+>   sola sede attiva), briefing e chat; il menu non legge piu' `catena` da
+>   `/api/account/sedi`. Resta da decidere (Mattia) la chat di catena desktop con la sola
+>   Catena (F2a-3), che CHAT_ASSISTENTE.md dichiara voluta: non toccata. +3 test in
+>   `tests/test_sotto_utente_frontend.py` (tutte le combinazioni: la destinazione si apre
+>   sempre); **7 mutanti, 7 uccisi**. Test di catena, /m e sidebar: 942 verdi piu' il rosso del
+>   bottone sopra, corretto; `tsc --noEmit` pulito.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

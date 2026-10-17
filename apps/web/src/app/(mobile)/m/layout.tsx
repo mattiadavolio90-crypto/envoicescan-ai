@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { WifiOff } from "lucide-react";
 import { getCurrentSession } from "@/lib/auth";
-import { haCatena, idPersona, tabMobileNascoste } from "@/lib/sotto-utente";
+import { catenaSuMobile, idPersona, tabMobileNascoste } from "@/lib/sotto-utente";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { fetchConfig } from "@/lib/home";
 import { fetchGruppoChatConfig } from "@/lib/gruppo";
@@ -70,7 +70,7 @@ export default async function MobileLayout({ children }: { children: React.React
   // In modalità catena (multi-sede, cookie != pv) l'header parla del gruppo, non
   // della sede attiva.
   const cookieStore = await cookies();
-  const inChain = haCatena(user) && cookieStore.get("oneflux_view")?.value !== "pv";
+  const inChain = catenaSuMobile(user) && cookieStore.get("oneflux_view")?.value !== "pv";
 
   const unread = notifiche?.unread ?? 0;
   // Stessa regola del widget chat desktop: la chat c'e' solo se abilitata e il
@@ -103,7 +103,7 @@ export default async function MobileLayout({ children }: { children: React.React
         </span>
         <div className="ml-auto flex items-center gap-0.5">
           <NotificheBell unread={unread} />
-          <HeaderMenu />
+          <HeaderMenu catena={catenaSuMobile(user)} />
         </div>
       </header>
 

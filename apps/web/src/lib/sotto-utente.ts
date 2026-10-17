@@ -71,11 +71,29 @@ export function primaPaginaAbilitata(utente: UtenteVisibilita, mobile = false): 
   if (utente.is_admin) return "/admin";
   if (haCatena(utente) && !mobile) return "/catena";
   if (haHome(utente)) return null;
+  return primaPaginaDiSede(utente);
+}
+
+function primaPaginaDiSede(utente: UtenteVisibilita): string {
   const pagine = utente.pagine_abilitate ?? [];
   for (const [flag, url] of PAGINE_IN_ORDINE) {
     if (pagine.includes(flag) && sezioneHaTabAttive(pagine, flag)) return url;
   }
   return "/impostazioni";
+}
+
+/**
+ * Dove si scende dalla catena in un punto vendita (sidebar, «Apri PV»): la sua
+ * Home, o senza Home la prima pagina di sede. /dashboard avrebbe rimandato un
+ * sotto-utente con Catena senza Home di nuovo su /catena.
+ */
+export function paginaDelPuntoVendita(utente: UtenteVisibilita): string {
+  return haHome(utente) ? "/dashboard" : primaPaginaDiSede(utente);
+}
+
+/** /m: la vista catena e' la Home di gruppo (briefing e chat), quindi vuole anche la Home. */
+export function catenaSuMobile(utente: UtenteVisibilita): boolean {
+  return haCatena(utente) && haHome(utente);
 }
 
 // ─── /m: la bottom-nav e le sue pagine ──────────────────────────────────────

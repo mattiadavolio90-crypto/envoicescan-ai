@@ -37,16 +37,15 @@ type Sede = {
 // una tab della bottom nav. Sia il cambio sede sia il logout sono POST + refresh
 // (NON navigazioni di pagina), quindi sicuri da dentro il dropdown anche in PWA
 // standalone (router.push di pagina invece si mangiava la navigazione).
-export function HeaderMenu() {
+// catena: catenaSuMobile(utente), deciso dal layout con la stessa regola con cui
+// entra in catena. Senza (titolare mono-sede, sotto-utente senza Catena o senza
+// Home) niente «Vista catena», e il cookie `chain` non vale.
+export function HeaderMenu({ catena }: { catena: boolean }) {
   const router = useRouter();
   const [sedi, setSedi] = useState<Sede[]>([]);
   const [switching, setSwitching] = useState(false);
   const [inChainCookie, setInChain] = useState(false);
-  // Solo un sotto-utente senza Catena riceve `catena: false` da /api/account/sedi:
-  // per lui niente «Vista catena», e il cookie `chain` non vale (layout e Home
-  // non entrano in catena).
-  const [catenaNegata, setCatenaNegata] = useState(false);
-  const inChain = inChainCookie && !catenaNegata;
+  const inChain = inChainCookie && catena;
 
   useEffect(() => {
     let alive = true;
@@ -56,7 +55,6 @@ export function HeaderMenu() {
       .then((d) => {
         if (alive && d?.sedi) {
           setSedi(d.sedi as Sede[]);
-          setCatenaNegata(d.catena === false);
         }
       })
       .catch(() => {});
@@ -120,7 +118,7 @@ export function HeaderMenu() {
       <DropdownMenuContent side="bottom" align="end" className="w-60">
         {multiSede && (
           <>
-            {!catenaNegata && (
+            {catena && (
               <>
               <DropdownMenuItem onClick={vaiAllaCatena} className="flex items-center gap-2 py-2.5">
                 <Building2 className="size-4 shrink-0 text-sky-500" />

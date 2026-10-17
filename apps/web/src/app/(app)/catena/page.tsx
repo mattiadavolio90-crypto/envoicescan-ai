@@ -9,7 +9,7 @@ import { SintesiCatena } from "./sintesi-catena";
 import { BlockRetry } from "../dashboard/block-retry";
 import { linkAnalisiCatena, linkMarginiIncompleti, schedaCatenaAccesa } from "@/lib/catena-schede";
 import { getCurrentUser } from "@/lib/auth";
-import { mostraConfigAssistente } from "@/lib/sotto-utente";
+import { mostraConfigAssistente, paginaDelPuntoVendita } from "@/lib/sotto-utente";
 
 // Home della catena: recap e assistenza (28/9/2026). Le funzioni di lavoro
 // stanno in /catena/fatture (coda, costi di gruppo, scadenze) e le analisi in
@@ -74,6 +74,7 @@ async function SintesiBlock() {
         linkIncompleti={linkMarginiIncompleti(utente?.pagine_abilitate)}
         codaAccesa={schedaCatenaAccesa(utente?.pagine_abilitate, "collocare")}
         configAssistente={mostraConfigAssistente(utente)}
+        paginaPV={utente ? paginaDelPuntoVendita(utente) : "/dashboard"}
       />
       <TriggerHint trigger={boost} className="mt-6" />
     </>

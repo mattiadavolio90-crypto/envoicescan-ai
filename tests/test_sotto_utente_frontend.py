@@ -224,3 +224,68 @@ def test_tab_mobile_visibile_solo_se_il_worker_ne_apre_le_rotte():
                         contate += 1
                         assert set(ammesse) & set(pagine), (pagine, tab, rotta)
     assert contate > 0
+
+
+def test_dalla_catena_si_scende_su_una_pagina_che_si_apre():
+    """Audit di ottobre #32: con Catena senza Home il drill-down andava su
+    /dashboard, che lo rimandava su /catena. Si provano tutte le combinazioni:
+    la destinazione si apre sempre (stesse guardie, via hrefSeConsentito)."""
+    esiti = esegui_ts("lib/guardia-pagina", """
+        const su = await import("@/lib/sotto-utente");
+        const out = [];
+        const extra = [[], ["analisi_fatture"], ["margini"], ["agenda"], ["prezzi", "scadenziario"]];
+        for (const home of [false, true]) for (const e of extra) {
+          const u = { sotto_utente: true, num_sedi: 2,
+                      pagine_abilitate: ["catena", ...(home ? ["home"] : []), ...e] };
+          const dest = su.paginaDelPuntoVendita(u);
+          out.push([home, e, dest, m.hrefSeConsentito(dest, u)]);
+        }
+        emit(out);
+    """, None, richiede=["hrefSeConsentito"])
+    for home, extra, dest, consentita in esiti:
+        assert dest != "/catena" and consentita == dest, (home, extra, dest)
+        assert (dest == "/dashboard") == home, (home, extra, dest)
+    per_extra = {tuple(e): d for h, e, d, _ in esiti if not h}
+    assert per_extra[("analisi_fatture",)] == "/analisi-fatture"
+    assert per_extra[("prezzi", "scadenziario")] == "/prezzi"
+    assert per_extra[()] == "/impostazioni"
+    assert esegui_ts(MODULO, "emit(m.paginaDelPuntoVendita(input));", TITOLARE_CATENA,
+                     richiede=["paginaDelPuntoVendita"]) == "/dashboard"
+
+
+def test_vista_catena_su_mobile_vuole_anche_la_home():
+    casi = [TITOLARE_CATENA, TITOLARE_MONO,
+            {"sotto_utente": True, "num_sedi": 2, "pagine_abilitate": ["catena", "home"]},
+            {"sotto_utente": True, "num_sedi": 2, "pagine_abilitate": ["catena", "analisi_fatture"]},
+            {"sotto_utente": True, "num_sedi": 2, "pagine_abilitate": ["home"]}]
+    assert esegui_ts(MODULO, "emit(input.map((u) => m.catenaSuMobile(u)));", casi,
+                     richiede=["catenaSuMobile"]) == [True, False, True, False, False]
+
+
+def test_catena_senza_home_cablata():
+    import re
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "apps" / "web" / "src"
+
+    def leggi(p):
+        t = (src / p).read_text(encoding="utf-8")
+        t = re.sub(r"\{?/\*.*?\*/\}?", "", t, flags=re.S)
+        return re.sub(r"(?<![:\"'])//[^\n]*", "", t)
+
+    assert "paginaPuntoVendita={paginaDelPuntoVendita(user)}" in leggi("app/(app)/layout.tsx")
+    sidebar = leggi("components/nav/app-sidebar.tsx")
+    assert re.search(r"if \(inChain\) \{\s*router\.push\(paginaPuntoVendita\);", sidebar)
+    assert 'paginaPV={utente ? paginaDelPuntoVendita(utente) : "/dashboard"}' in leggi("app/(app)/catena/page.tsx")
+    assert "async function vaiAlPV(ristoranteId: string, page = paginaPV)" in leggi("app/(app)/catena/sintesi-catena.tsx")
+
+    layout_m = leggi("app/(mobile)/m/layout.tsx")
+    assert 'const inChain = catenaSuMobile(user) && cookieStore.get("oneflux_view")?.value !== "pv";' in layout_m
+    assert "<HeaderMenu catena={catenaSuMobile(user)} />" in layout_m
+    for pagina in ("app/(mobile)/m/briefing/page.tsx", "app/(mobile)/m/chat/page.tsx"):
+        assert re.search(r"const inChain = !!\w+ && catenaSuMobile\(\w+\) && cookieStore", leggi(pagina)), pagina
+    menu = leggi("app/(mobile)/m/header-menu.tsx")
+    assert "const inChain = inChainCookie && catena;" in menu
+    assert "{catena && (" in menu and "catenaNegata" not in menu
+    for f in sorted((src / "app" / "(mobile)").rglob("*.tsx")):
+        assert "haCatena(" not in leggi(f.relative_to(src)), f

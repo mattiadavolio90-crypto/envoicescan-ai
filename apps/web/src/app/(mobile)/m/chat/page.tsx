@@ -5,7 +5,7 @@ import { fetchGruppoChatConfig } from "@/lib/gruppo";
 import { chatCatenaAttiva } from "@/lib/catena-confronti";
 import { quotaDaConfig, quotaDaGruppo, vistaCatena, vistaSede } from "@/lib/home-chat";
 import { getCurrentUser } from "@/lib/auth";
-import { haCatena } from "@/lib/sotto-utente";
+import { catenaSuMobile } from "@/lib/sotto-utente";
 import { requireTabMobile } from "@/lib/page-guard";
 import { MobileChat } from "./mobile-chat";
 
@@ -24,7 +24,7 @@ export default async function MobileChatPage() {
   // l'intestazione che dice «Tutti i punti vendita», e vale la regola della Home
   // di catena: pool AI del gruppo e interruttore di gruppo (`chatCatenaAttiva`).
   // Nel locale, di quel locale, con le domande del briefing di oggi (fase F).
-  const inChain = !!utente && haCatena(utente) && cookieStore.get("oneflux_view")?.value !== "pv";
+  const inChain = !!utente && catenaSuMobile(utente) && cookieStore.get("oneflux_view")?.value !== "pv";
   const gruppo = inChain ? await fetchGruppoChatConfig() : null;
   const chatEnabled = inChain
     ? chatCatenaAttiva(gruppo)

@@ -338,6 +338,7 @@ export function SintesiCatena({
   linkIncompleti = null,
   codaAccesa = true,
   configAssistente = false,
+  paginaPV = "/dashboard",
 }: {
   overview: GruppoOverview;
   /** Quota della chat di catena; null = chat non disponibile (pool a 0). */
@@ -352,13 +353,15 @@ export function SintesiCatena({
   codaAccesa?: boolean;
   /** «Configura assistente» (mostraConfigAssistente): mai al sotto-utente. */
   configAssistente?: boolean;
+  /** Dove porta «Apri PV» (paginaDelPuntoVendita): senza Home la prima pagina di sede. */
+  paginaPV?: string;
 }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
 
   // Deep link catena→PV: cambia la sede attiva e naviga alla pagina giusta del PV
-  // (default Home). Il "fare" è nel PV; la catena indirizza.
-  async function vaiAlPV(ristoranteId: string, page = "/dashboard") {
+  // (default la sua Home). Il "fare" è nel PV; la catena indirizza.
+  async function vaiAlPV(ristoranteId: string, page = paginaPV) {
     if (switching) return;
     setSwitching(true);
     try {
