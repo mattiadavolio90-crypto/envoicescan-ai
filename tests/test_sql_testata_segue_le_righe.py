@@ -1,9 +1,11 @@
 """Ricaricare una fattura cestinata riattiva anche la sua testata, su un Postgres vero.
 
 Il 20/5/2026 cinque fatture di una sede sono state cestinate (righe e testata,
-via `trg_propagate_deleted_at_fatture`) e ricaricate un'ora dopo con lo stesso
-nome: `salva_fattura_processata` riattiva le righe, ma `upsert_fattura_documento`
-non toccava `deleted_at`, e la testata e' rimasta nel cestino. Righe attive con la
+via `trg_propagate_deleted_at_fatture`), le righe cancellate definitivamente
+(la testata no) e il file ricaricato con lo stesso nome: righe nuove, ma
+`upsert_fattura_documento` non toccava `deleted_at`, e la testata e' rimasta nel
+cestino. Dalla migration 20261017154456 la testata se ne va con le righe; questo
+test copre comunque una testata nel cestino che il ricaricamento ritrova. Righe attive con la
 testata archiviata: lo scadenziario le mostrava senza scadenza ne' «pagata», e la
 guardia anti-doppione non le vedeva.
 """

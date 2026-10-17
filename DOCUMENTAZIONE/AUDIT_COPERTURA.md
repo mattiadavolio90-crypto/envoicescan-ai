@@ -3609,16 +3609,36 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >
 > - **17/10/2026 — Fix n. 38 (dal code-reviewer dei n. 36-37): ricaricare una fattura cestinata
 >   riattiva anche la testata.** Il 20/5/2026 cinque fatture di una sede sono finite nel cestino
->   (righe e testata, `trg_propagate_deleted_at_fatture`) e sono state ricaricate un'ora dopo
->   con lo stesso nome: `salva_fattura_processata` riattiva le righe, `upsert_fattura_documento`
->   non toccava `deleted_at` (e i `None` li toglieva dal record), e la testata e' rimasta
->   archiviata. Lo scadenziario legge le testate attive: quelle 5 uscivano senza scadenza ne'
+>   (righe e testata, `trg_propagate_deleted_at_fatture`), le righe sono state poi cancellate
+>   definitivamente (la testata no) e il file e' stato ricaricato con lo stesso nome alle 09:42:
+>   righe nuove, mentre `upsert_fattura_documento` non toccava `deleted_at` (e i `None` li
+>   toglieva dal record), e la testata e' rimasta archiviata (causa ricostruita dal
+>   code-reviewer: le righe attive sono nate alle 09:42, nel cestino non ne resta nessuna). Lo scadenziario legge le testate attive: quelle 5 uscivano senza scadenza ne'
 >   «pagata», e la guardia anti-doppione non le vedeva. Ora l'upsert scrive sempre
 >   `deleted_at = NULL`: i due chiamanti (salvataggio e backfill) scrivono una testata solo per
 >   un file con righe attive. Lo stato «pagata» resta. +1 test `-m sql` in
 >   `tests/test_sql_testata_segue_le_righe.py`; **1 mutante, ucciso**. Test che toccano
 >   `documenti_service` (15 file): 518 verdi; suite `-m "not sql"`: 19.957 verdi, 63 skip. **Dati**: le 5 testate si riattivano con lo
 >   stesso script per l'SQL Editor dei n. 36-37 (conteggio atteso 5, misurato in sola lettura).
+>
+> - **17/10/2026 — Fix n. 39 (dal code-reviewer del n. 38): la testata se ne va con l'ultima
+>   riga.** Le cancellazioni definitive di `services/db_service.py` (elimina definitiva, elimina
+>   tutte, svuota cestino, purge del cestino scaduto, retention) toglievano le righe e lasciavano
+>   la testata: sul live **331 testate archiviate senza nessuna riga**, di 5 clienti, con
+>   fornitore, numero, importo e «pagata» — anche dopo la retention, che non toglieva i dati del
+>   documento. Con il n. 38 un ricaricamento avrebbe ritrovato il vecchio «pagata». Nessuna
+>   funzione SQL cancella righe di `fatture` (misurato su `pg_proc`). Ora un trigger per
+>   istruzione, `trg_elimina_testate_senza_righe` (migration `20261017154456`), cancella la
+>   testata quando del file, in quella sede, non resta nessuna riga, attiva o nel cestino: il
+>   ricaricamento con meno righe e il ripristino dal cestino restano com'erano. La stessa
+>   migration cancella le testate archiviate gia' senza righe; le 20 attive senza righe restano
+>   allo script dei n. 36-38. +5 test `-m sql` in `tests/test_sql_testata_cancellata_con_le_righe.py`
+>   (svuota cestino e ricarica dal codice vero); **4 mutanti, 4 uccisi** (il filtro per sede
+>   sopravviveva, ucciso col caso OVERTIME/OFFSIDE); la pulizia una tantum non e' provabile nei
+>   test e si verifica sul live dopo l'applicazione (0 testate archiviate senza righe). Col
+>   trigger attivo `python -m pytest tests/ -m sql -q -p no:randomly`: 1.281 verdi. **Non
+>   applicata**: la scrittura sul DB e' negata alla sessione, la applica Mattia. Il codice non ne
+>   dipende, quindi l'ordine rispetto al push e' libero.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
