@@ -1806,7 +1806,7 @@ Sei volte due agenti della fase Trova avevano detto cose diverse sullo stesso pu
 
 Totale: **40 difetti confermati** (1 alta, 17 media, 22 bassa), 8 falsi allarmi, 2 incerti.
 
-## Stato delle correzioni (16/10/2026, notte)
+## Stato delle correzioni (17/10/2026)
 
 I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), ognuno con la sua prova per mutazione.
 
@@ -1844,7 +1844,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 30 | fix n. 16 (storno su guasto di OpenAI non fatto, dichiarato) |
 | 31 | fix n. 32 |
 | 32 | fix n. 33 (la chat di catena con la sola Catena, F2a-3, resta da decidere) |
-| 33 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 33 | fix n. 34 |
 | 34 | fix n. 25 |
 | 35 | fix n. 25 |
 | 36 | fix n. 8 |
@@ -1853,7 +1853,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 39 | fix n. 25 |
 | 40 | fix n. 17 |
 
-Aperti: 1 su 40, del filone sotto-utenti (#33). Oggi in produzione non c'e' nessun sotto-utente.
+Aperti: 0 su 40. Il filone sotto-utenti (#19-24, #31-33) e' chiuso dai fix n. 26-34 del 17/10/2026; resta da decidere la chat di catena con la sola Catena (F2a-3, vedi #32).
 
 ## Conferma
 

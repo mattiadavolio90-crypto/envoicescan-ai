@@ -949,6 +949,33 @@ def test_archiviare_una_notifica_di_un_altra_sede_non_ha_effetto(scenario):
     assert mia in archiviate
 
 
+def test_archiviare_una_notifica_che_non_vede_non_ha_effetto(scenario):
+    # Come la lista: senza Home vede solo le notifiche delle sue pagine, e una che
+    # non vede non la toglie dall'inbox dell'account (e' anche del titolare).
+    sc = scenario
+    s1 = sc.a.ids["sede1"]
+    margini = _notifica(sc, s1, "/margini", "AVVISO_MARGINI")
+    fatture = _notifica(sc, s1, "/analisi-fatture?tab=articoli", "AVVISO_FATTURE")
+    senza_pagina = _notifica(sc, s1, None, "AVVISO_SENZA_PAGINA")
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "f@isolamento.test", [s1], {"analisi_fatture": True})
+    token = _login(sc, "f@isolamento.test").json()["token"]
+    for nid in (margini, fatture, senza_pagina):
+        assert _chiama(sc, token, "POST", f"/api/notifiche/{nid}/dismiss").status_code == 200
+    archiviate = {r[0] for r in sc.conn.execute(
+        "SELECT id::text FROM public.notification_inbox WHERE dismissed_at IS NOT NULL AND user_id = %s",
+        (sc.a.ids["user_id"],)).fetchall()}
+    assert archiviate == {fatture}
+    titolare = _chiama(sc, sc.a.token, "GET", "/api/notifiche").text
+    assert "AVVISO_MARGINI" in titolare and "AVVISO_SENZA_PAGINA" in titolare
+
+    # Con la Home le vede tutte, e le archivia tutte.
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "h@isolamento.test", [s1], {"home": True})
+    token_h = _login(sc, "h@isolamento.test").json()["token"]
+    assert _chiama(sc, token_h, "POST", f"/api/notifiche/{margini}/dismiss").status_code == 200
+    assert sc.conn.execute("SELECT dismissed_at IS NOT NULL FROM public.notification_inbox WHERE id = %s",
+                           (margini,)).fetchone()[0]
+
+
 def test_agenda_scrive_sulla_sede_del_sotto_utente(scenario):
     sc = scenario
     _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "ag@isolamento.test", [sc.a.ids["sede2"]], {"agenda": True})

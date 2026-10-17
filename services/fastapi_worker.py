@@ -2934,6 +2934,17 @@ def dismiss_notifica(
     from datetime import datetime, timezone
     supabase_client = get_supabase_client()
 
+    # Sotto-utente senza Home: come la lista (notifica_visibile), una notifica che
+    # non vede non la archivia; l'inbox e' dell'account, sparirebbe al titolare.
+    if _su.e_sotto_utente(user) and not _su.ha_pagina(user, _su.PAGINA_HOME):
+        from services.permessi_rotte import notifica_visibile
+        righe = (
+            supabase_client.table("notification_inbox").select("action_page")
+            .eq("id", notifica_id).eq("user_id", user_id).limit(1).execute().data
+        ) or []
+        if not righe or not notifica_visibile(user, righe[0].get("action_page")):
+            return {"status": "ok"}
+
     query = supabase_client.table("notification_inbox").update(
         {"dismissed_at": datetime.now(timezone.utc).isoformat()}
     ).eq("id", notifica_id).eq("user_id", user_id)

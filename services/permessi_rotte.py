@@ -263,7 +263,8 @@ PAGINE_PER_ROTTA: Dict[Rotta, FrozenSet[str]] = {
 }
 
 # Ogni sotto-utente, qualunque pagina abbia: sessione, sedi, preferenze
-# personali, notifiche (filtrate per sede dall'endpoint), privacy.
+# personali, notifiche (lista e archiviazione filtrate dall'endpoint per sede e,
+# senza Home, con notifica_visibile), privacy.
 ROTTE_COMUNI: Set[Rotta] = {
     ("GET", "/api/auth/me"),
     ("POST", "/api/auth/logout"),

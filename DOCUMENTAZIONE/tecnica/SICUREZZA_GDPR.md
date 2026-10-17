@@ -133,7 +133,9 @@ pagina che gli risponderebbe 403.
 - **Sedi.** La sede attiva si legge solo dalla sessione (`_resolve_ristorante_id`;
   `_get_ristorante_id_for_user` è ammesso solo in `services/routers/admin.py`,
   presidio AST). Le sedi esplicite (cestino, scadenziario, sposta-sede), l'upload
-  smistato per P.IVA, notifiche e inventario verificano `sede_consentita`.
+  smistato per P.IVA, notifiche e inventario verificano `sede_consentita`. Senza
+  Home le notifiche passano anche per `notifica_visibile` (la pagina a cui portano),
+  sia nella lista sia nell'archiviazione: quella che non vede non la archivia.
 - **Catena** solo con tutte le sedi attive, ricalcolata a ogni risoluzione: una
   sede nuova la spegne finché non la si assegna.
 - **Account.** Password, preferenze e consenso privacy della persona stanno

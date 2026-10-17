@@ -3524,6 +3524,26 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `tests/test_sotto_utente_frontend.py` (tutte le combinazioni: la destinazione si apre
 >   sempre); **7 mutanti, 7 uccisi**. Test di catena, /m e sidebar: 942 verdi piu' il rosso del
 >   bottone sopra, corretto; `tsc --noEmit` pulito.
+>
+> - **17/10/2026 — Fix n. 34 dell'audit di ottobre (K27, #33): un sotto-utente non archivia una
+>   notifica che non vede.** La lista (campanella, /m, Home di catena) filtra con
+>   `notifica_visibile`, il dismiss solo per sede: un sotto-utente senza Home che conoscesse
+>   l'id di una notifica della sua sede verso una pagina che non ha la toglieva dall'inbox
+>   dell'account, cioe' anche al titolare. Ora, senza Home, `dismiss_notifica` legge prima
+>   `action_page` e, se la notifica non e' visibile (o non c'e'), risponde 200 senza scrivere,
+>   come gia' per la sede altrui. Con la Home le vede tutte e le archivia tutte. La lettura
+>   preliminare non ripete il filtro per sede: lo fa l'UPDATE, gia' presidiato. +1 test `-m sql`
+>   in `tests/test_sql_sotto_utenti.py`; **4 mutanti, 4 uccisi**. `-m sql` dei sotto-utenti e
+>   dell'isolamento: 488 verdi.
+>
+>   **Filone sotto-utenti dell'audit di ottobre chiuso: 9 difetti su 9 (fix n. 26-34), 40 su 40
+>   in tutto.** Restano aperti, fuori da questo filone: la chat di catena desktop con la sola
+>   Catena (F2a-3, decisione di Mattia); repo GitHub pubblico con nomi di clienti nei
+>   documenti (repo privato o pulizia, decisione di Mattia); le 19 testate di dicembre 2025
+>   senza righe di una sede (perche' esistono; pulirle e' una scrittura sui dati); lo storno
+>   dei crediti quando OpenAI fallisce dopo la RPC (K17); `_fine_mese_coperta` con
+>   `limit(500)` e il filtro sulle categorie in Python; la catena senza lo stato «in attesa
+>   delle fatture di fine mese».
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
