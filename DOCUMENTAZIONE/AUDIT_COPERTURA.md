@@ -3605,7 +3605,20 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   con `fetch_all` (oltre 1000 righe PostgREST troncava e saltava file con righe; non provato
 >   per mutazione: il client SQL dei test non tronca). **Resta
 >   aperto**: `upsert_fattura_documento` non azzera `deleted_at`, e sul live 5 testate
->   archiviate hanno righe attive (precede questi fix).
+>   archiviate hanno righe attive (precede questi fix), chiuso nel fix n. 38.
+>
+> - **17/10/2026 — Fix n. 38 (dal code-reviewer dei n. 36-37): ricaricare una fattura cestinata
+>   riattiva anche la testata.** Il 20/5/2026 cinque fatture di una sede sono finite nel cestino
+>   (righe e testata, `trg_propagate_deleted_at_fatture`) e sono state ricaricate un'ora dopo
+>   con lo stesso nome: `salva_fattura_processata` riattiva le righe, `upsert_fattura_documento`
+>   non toccava `deleted_at` (e i `None` li toglieva dal record), e la testata e' rimasta
+>   archiviata. Lo scadenziario legge le testate attive: quelle 5 uscivano senza scadenza ne'
+>   «pagata», e la guardia anti-doppione non le vedeva. Ora l'upsert scrive sempre
+>   `deleted_at = NULL`: i due chiamanti (salvataggio e backfill) scrivono una testata solo per
+>   un file con righe attive. Lo stato «pagata» resta. +1 test `-m sql` in
+>   `tests/test_sql_testata_segue_le_righe.py`; **1 mutante, ucciso**. Test che toccano
+>   `documenti_service` (15 file): 518 verdi; suite `-m "not sql"`: 19.957 verdi, 63 skip. **Dati**: le 5 testate si riattivano con lo
+>   stesso script per l'SQL Editor dei n. 36-37 (conteggio atteso 5, misurato in sola lettura).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

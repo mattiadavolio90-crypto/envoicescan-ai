@@ -192,6 +192,11 @@ def upsert_fattura_documento(
 
     # Evita upsert con campi sporchi/None ridondanti.
     cleaned_record = {k: v for k, v in record.items() if v is not None}
+    # La testata segue le righe: i due chiamanti la scrivono solo per un file con
+    # righe attive, e il ricaricamento di un file cestinato riattiva le righe
+    # (`salva_fattura_processata`). Senza, la testata restava nel cestino: 5 sul
+    # live dal 20/5/2026, invisibili alla guardia anti-doppione e allo scadenziario.
+    cleaned_record["deleted_at"] = None
 
     resp = (
         sb.table("fatture_documenti")
