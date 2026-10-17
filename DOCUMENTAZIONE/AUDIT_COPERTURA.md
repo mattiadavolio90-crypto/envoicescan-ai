@@ -3423,6 +3423,25 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   OpenAPI Drift, Requirements, Deploy to Vercel), worker `/health` sul commit `1d285125`,
 >   `/login` e `/privacy` (versione 4.6) a 200. Resta aperto il filone sotto-utenti (9
 >   difetti, prompt della prossima sessione in `docs/piani/`).
+>
+> - **17/10/2026 — Fix n. 26 dell'audit di ottobre (F2a-2, #19): `GET /api/home/config` a un
+>   sotto-utente senza Home dice solo «chat spenta».** La rotta resta comune (il layout di /m
+>   chiede se la chat e' accesa), ma senza Home la risposta non porta piu' tetti e crediti AI
+>   dell'account, soglia alert prezzi, giorni di chiusura, topics e nome referente del
+>   titolare: `chat_ai_enabled` false, contatori a 0, soglia di default. Con la Home resta
+>   uguale al titolare (il referente e' il nome della persona, come prima). Nel test la cache
+>   di 120 s di `get_price_alert_threshold` va svuotata: gli id dello scenario sono gli stessi
+>   in ogni test, e un test precedente lasciava in cache il 5.0. +1 test `-m sql` in
+>   `tests/test_sql_sotto_utenti.py`; **2 mutanti, 2 uccisi**. `-m sql` dei sotto-utenti e
+>   dell'isolamento: 487 verdi.
+>
+> - **17/10/2026 — Fix n. 27 dell'audit di ottobre (F2b-3, #20): «Configura assistente» solo al
+>   titolare.** Sulla Home e sulla Home di catena il sotto-utente vedeva il configuratore (con
+>   le preferenze del titolare) e al salvataggio il worker rispondeva 403, letto come
+>   «Riprova». Ora `mostraConfigAssistente` (lib/sotto-utente.ts) lo nasconde al sotto-utente
+>   e senza sessione letta; la Home lo applica nella testata, la catena lo passa a
+>   `SintesiCatena` (default spento). +2 test in `tests/test_sotto_utente_frontend.py` (logica
+>   con node e cablaggio delle due Home); **6 mutanti, 6 uccisi**. `tsc --noEmit` pulito.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

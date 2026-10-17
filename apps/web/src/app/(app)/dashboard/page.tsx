@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 import { getCurrentSession, getCurrentUser } from "@/lib/auth";
 import { requireHome } from "@/lib/page-guard";
+import { mostraConfigAssistente } from "@/lib/sotto-utente";
 import { TestataHome } from "@/components/home/testata-home";
 import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
 import { quotaDaConfig, vistaSede } from "@/lib/home-chat";
@@ -42,7 +43,7 @@ async function TestataBlock() {
     <TestataHome
       vista="pv"
       nome={utente?.sede_attiva_nome ?? utente?.nome_ristorante}
-      azioni={config && <ConfigAssistente config={config} />}
+      azioni={config && mostraConfigAssistente(utente) && <ConfigAssistente config={config} />}
     />
   );
 }

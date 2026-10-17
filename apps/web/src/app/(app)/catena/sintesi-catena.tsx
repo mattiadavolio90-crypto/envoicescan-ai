@@ -337,6 +337,7 @@ export function SintesiCatena({
   linkMargini = null,
   linkIncompleti = null,
   codaAccesa = true,
+  configAssistente = false,
 }: {
   overview: GruppoOverview;
   /** Quota della chat di catena; null = chat non disponibile (pool a 0). */
@@ -349,6 +350,8 @@ export function SintesiCatena({
   linkIncompleti?: string | null;
   /** Scheda «Da collocare» accesa (schedaCatenaAccesa): spenta, niente riga. */
   codaAccesa?: boolean;
+  /** «Configura assistente» (mostraConfigAssistente): mai al sotto-utente. */
+  configAssistente?: boolean;
 }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
@@ -380,7 +383,7 @@ export function SintesiCatena({
         vista="catena"
         nome={`Gruppo ${overview.nome_gruppo}`}
         dettaglio={`${overview.num_pv} punti vendita`}
-        azioni={<ConfigAssistenteCatena />}
+        azioni={configAssistente ? <ConfigAssistenteCatena /> : undefined}
       />
 
       <section className="space-y-5">

@@ -142,3 +142,30 @@ def test_la_conversazione_e_della_persona_non_dell_account():
     # Il titolare tiene la chiave di sempre: la sua conversazione aperta resta.
     assert ids[:2] == ["u-1", "u-1"]
     assert ids[2] == "u-1:sala@x.it" and ids[3] == "u-1:cucina@x.it"
+
+
+def test_configura_assistente_solo_al_titolare():
+    # Il worker vieta al sotto-utente il salvataggio (ROTTE_VIETATE): il pulsante
+    # gli prometteva un'impostazione che finiva in «Riprova».
+    esiti = esegui_ts(MODULO, "emit(input.map((u) => m.mostraConfigAssistente(u)));", [
+        {"pagine_abilitate": None},
+        {"pagine_abilitate": ["margini"], "sotto_utente": False},
+        {"pagine_abilitate": ["home", "catena"], "sotto_utente": True},
+        None,
+    ], richiede=["mostraConfigAssistente"])
+    assert esiti == [True, True, False, False]
+
+
+def test_configura_assistente_cablato_sulle_due_home():
+    from pathlib import Path
+
+    app = Path(__file__).resolve().parents[1] / "apps" / "web" / "src" / "app" / "(app)"
+    home = (app / "dashboard" / "page.tsx").read_text(encoding="utf-8")
+    sintesi = (app / "catena" / "sintesi-catena.tsx").read_text(encoding="utf-8")
+    catena = (app / "catena" / "page.tsx").read_text(encoding="utf-8")
+    assert home.count("<ConfigAssistente ") == 1
+    assert "azioni={config && mostraConfigAssistente(utente) && <ConfigAssistente config={config} />}" in home
+    assert sintesi.count("<ConfigAssistenteCatena />") == 1
+    assert "azioni={configAssistente ? <ConfigAssistenteCatena /> : undefined}" in sintesi
+    assert "configAssistente = false," in sintesi
+    assert "configAssistente={mostraConfigAssistente(utente)}" in catena

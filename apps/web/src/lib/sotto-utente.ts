@@ -43,6 +43,15 @@ export function haCatena(utente: UtenteVisibilita): boolean {
 }
 
 /**
+ * «Configura assistente» (Home e Home di catena): sono impostazioni dell'account
+ * e il worker ne vieta il salvataggio al sotto-utente (ROTTE_VIETATE). Senza
+ * sessione letta, niente pulsante.
+ */
+export function mostraConfigAssistente(utente: { sotto_utente?: boolean } | null | undefined): boolean {
+  return !!utente && !utente.sotto_utente;
+}
+
+/**
  * Dove atterra chi entra, o chi apre una pagina che non ha.
  *
  * `null` = la destinazione di sempre (/dashboard, o /m su telefono): per un
