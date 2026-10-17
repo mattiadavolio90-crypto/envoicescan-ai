@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // Rete di sicurezza per le pagine di (app), gemella di (mobile)/m/error.tsx: la
 // sidebar resta, al posto della pagina un «Riprova». Ci arriva anche la guardia di
@@ -24,14 +25,10 @@ export default function AppError({
       <p className="text-sm text-muted-foreground">
         Questa pagina non si è caricata. Il servizio potrebbe essere in riavvio.
       </p>
-      <button
-        type="button"
-        onClick={() => unstable_retry()}
-        className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent"
-      >
+      <Button variant="outline" onClick={() => unstable_retry()}>
         <RefreshCw className="size-4" />
         Riprova
-      </button>
+      </Button>
     </div>
   );
 }
