@@ -328,8 +328,18 @@ Regole della frase:
   - resta comunque fuori dal confronto, perché il margine è davvero gonfiato;
   - la stessa regola vale per l'indice di Salute di ogni sede e per l'avviso «Mancano
     il costo del personale» della card.
+- **Le fatture di fine mese** (dal 17/10/2026, decisione di Mattia): una sede il cui
+  mese appena chiuso è **in attesa delle fatture di fine mese**, con la stessa regola
+  e gli stessi numeri della Home del PV (`services/completezza_mese.py`, calcolata
+  in `_merce_ok_per_sede`), è nominata: «Centro è in attesa delle fatture di fine
+  settembre: lì i conti possono ancora cambiare.» Con due o tre sedi le nomina tutte,
+  oltre tre dice quante sono. La sede resta fuori dal confronto, perché il suo
+  margine è più alto del reale, e la frase spegne «Tutto in ordine». La data delle
+  fatture si legge solo per le sedi che possono essere in attesa, e se non si legge
+  la sede non è in attesa (niente stato inventato, come nel PV).
 - **«Tutto in ordine»** compare solo se non ci sono avvisi aperti, la Salute non è
-  rossa, nessuna sede è da completare e non ci sono fatture di gruppo da smistare.
+  rossa, nessuna sede è da completare o in attesa delle fatture di fine mese, e non ci
+  sono fatture di gruppo da smistare.
   Dal 9/10/2026 guarda anche gli **avvisi dei singoli locali** (scadenze superate,
   prodotti da controllare, coperti…), gli stessi dell'elenco «Da fare oggi»: se un
   locale ne ha anche uno, o se non si sono potuti leggere, la frase non esce. Una

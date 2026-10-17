@@ -3581,10 +3581,31 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   La lettura nuova su `fatture` e' dichiarata in `tests/test_oscurate_choke_point.py`
 >   (non conta soldi). Suite `python -m pytest tests/ -m "not sql" -q -p no:randomly`:
 >   19.944 verdi + 1 rosso, il presidio delle oscurate, poi dichiarato (3 verdi), 63 skip.
->   **Dati**: archiviare le 19 testate e spostare la 20ª in OFFSIDE e' una scrittura sul DB
->   di produzione, negata dai permessi della sessione: lo script e' consegnato a Mattia per
+>   **Dati**: cancellare le 19 testate (non hanno righe; archiviate, nasconderebbero la
+>   testata di un ricaricamento con lo stesso nome, perche' l'upsert non azzera `deleted_at`)
+>   e spostare la 20ª in OFFSIDE e' una scrittura sul DB di produzione, negata dai permessi della sessione: lo script e' consegnato a Mattia per
 >   l'SQL Editor, con i conteggi attesi in una transazione che si annulla da sola. Verificato
 >   anche: il repo GitHub e' pubblico (API e pagina rispondono 200 senza login).
+>
+> - **17/10/2026 — Fix n. 37 (residuo del filone sotto-utenti, decisione di Mattia): la catena
+>   dice quale punto vendita aspetta le fatture di fine mese.** La Home del PV, dal 16/10, mette
+>   in grigio il mese appena chiuso senza fatture di merce negli ultimi giorni; la catena non
+>   lo sapeva: metteva quella sede nel confronto «va meglio / piu' indietro» con un margine piu'
+>   alto del reale e poteva dire «tutto in ordine». Ora `_merce_ok_per_sede` (catena) riempie,
+>   se richiesto, l'insieme delle sedi in attesa con `in_attesa_fine_mese` sugli stessi netto e
+>   merce che gia' calcola, e legge la data delle fatture (`_fine_mese_coperta`) solo per le sedi
+>   che possono esserlo; `_build_briefing` nomina la sede (oltre tre, il numero), la toglie dal
+>   confronto e spegne «tutto in ordine». La frase e' nella narrativa condivisa: desktop e /m
+>   insieme. +12 test in `tests/test_catena_fatture_fine_mese.py` (frase, confronto, regola per
+>   sede, letture, endpoint `gruppo_overview`); **11 mutanti, 11 uccisi**. Test di catena e
+>   briefing (`tests/test_catena*.py tests/test_gruppo*.py tests/test_completezza_mese.py
+>   tests/test_briefing_niente_ripetizione.py`): 991 verdi. Doc: `LOGICA_BRIEFING.md` §8.
+>   Suite `python -m pytest tests/ -m "not sql" -q -p no:randomly`: 19.957 verdi, 63 skip.
+>   Code-reviewer su n. 36-37: nessun bug; dal suo giro, `_file_con_righe` dello script legge
+>   con `fetch_all` (oltre 1000 righe PostgREST troncava e saltava file con righe; non provato
+>   per mutazione: il client SQL dei test non tronca). **Resta
+>   aperto**: `upsert_fattura_documento` non azzera `deleted_at`, e sul live 5 testate
+>   archiviate hanno righe attive (precede questi fix).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

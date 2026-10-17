@@ -31,6 +31,7 @@ from typing import Dict, List, Optional, Tuple
 from services import get_supabase_client
 from services.documenti_service import upsert_fattura_documento
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m
+from utils.supabase_paging import fetch_all
 
 
 SUPPORTED_EXT = {".xml", ".p7m"}
@@ -117,16 +118,15 @@ def _build_db_file_map_and_tenant(sb, local_files: List[Path]) -> Tuple[Dict[str
 def _file_con_righe(sb, user_id: str, ristorante_id: str, nomi: List[str]) -> set:
     trovati: set = set()
     for chunk in _chunked(sorted(set(nomi)), 200):
-        resp = (
+        righe = fetch_all(
             sb.table("fatture")
             .select("file_origine")
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
             .in_("file_origine", chunk)
             .is_("deleted_at", "null")
-            .execute()
         )
-        trovati.update(str(r.get("file_origine")) for r in (resp.data or []))
+        trovati.update(str(r.get("file_origine")) for r in righe)
     return trovati
 
 

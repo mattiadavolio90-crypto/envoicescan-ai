@@ -26,7 +26,7 @@ from config.logger_setup import get_logger
 from utils.supabase_paging import fetch_all
 from services import sotto_utenti_service as _su
 from services.permessi_rotte import notifica_visibile
-from services.completezza_mese import merce_insufficiente
+from services.completezza_mese import in_attesa_fine_mese, merce_insufficiente
 from utils.voci_prezzo import salto_da_controllare, togli_numero_ordine
 from services.routers.prezzi import (
     _CATEGORIE_SPESE_PREZZI,
@@ -382,6 +382,8 @@ def _build_briefing(
     personale_in_attesa_ids: Optional[set] = None,
     mese_personale: Optional[str] = None,
     avvisi_aperti: Optional[Callable[[], Optional[int]]] = None,
+    fatture_in_attesa_ids: Optional[set] = None,
+    mese_fatture: Optional[str] = None,
 ) -> "GruppoBriefing":
     """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
     overview + segnali → coerente per costruzione, tono sobrio.
@@ -396,6 +398,7 @@ def _build_briefing(
 
     incompleti_ids = incompleti_ids or set()
     personale_in_attesa_ids = personale_in_attesa_ids or set()
+    fatture_in_attesa_ids = (fatture_in_attesa_ids or set()) if mese_fatture else set()
     salute_by_id = {
         s.ristorante_id: s.indice
         for s in (salute_pv or [])
@@ -404,6 +407,9 @@ def _build_briefing(
 
     def _affidabile(r: "RankingPV") -> bool:
         if r.dati_incompleti or r.margine_perc is None:
+            return False
+        # Le fatture di fine mese possono mancare: il margine e' piu' alto del reale.
+        if r.ristorante_id in fatture_in_attesa_ids:
             return False
         if incompleti_ids:
             return r.ristorante_id not in incompleti_ids
@@ -471,6 +477,20 @@ def _build_briefing(
             + f" il costo del personale di {mese_personale} non è ancora inserito:"
             " fino ad allora il margine è più alto del reale."
         )
+    # Il PV in attesa delle fatture di fine mese (Home: «In attesa delle fatture di
+    # fine mese»), per nome: e' il PV che deve controllare, non un conteggio.
+    nomi_attesa = [r.nome for r in ranking if r.ristorante_id in fatture_in_attesa_ids]
+    if nomi_attesa:
+        if len(nomi_attesa) > 3:
+            chi = f"{len(nomi_attesa)} punti vendita sono"
+        elif len(nomi_attesa) == 1:
+            chi = f"{nomi_attesa[0]} è"
+        else:
+            chi = ", ".join(nomi_attesa[:-1]) + f" e {nomi_attesa[-1]} sono"
+        frasi.append(
+            f"{chi} in attesa delle fatture di fine {mese_fatture}:"
+            " lì i conti possono ancora cambiare."
+        )
 
     # Azione concreta del giorno: fatture di gruppo da collocare (arrivano a nome
     # della società, l'app non le ha attribuite a un locale). NON entra nella
@@ -510,6 +530,7 @@ def _build_briefing(
         and salute_colore in ("verde", "giallo")
         and completezza_nota and n_incompleti == 0
         and n_fatture_da_collocare == 0
+        and not nomi_attesa
     )
     # Gli avvisi delle sedi (fase G, 9/10/2026): il «Da fare» sotto li mostra
     # per punto vendita, e la frase non puo' dire «tutto in ordine» sopra un
@@ -843,6 +864,7 @@ def _costi_mese_per_sede(
 def _merce_ok_per_sede(
     sb, user_id: Optional[str], ids: List[str], anno: int, mese: int,
     costi_auto: Optional[Dict[str, Any]] = None,
+    in_attesa_out: Optional[set] = None,
 ) -> Optional[Dict[str, bool]]:
     """Per sede: il mese ha la merce che serve a giudicarne i conti?
 
@@ -856,6 +878,10 @@ def _merce_ok_per_sede(
     Senza incasso basta che la merce ci sia, come la voce della Salute del PV.
     None se le fatture del mese non si leggono; se si leggono le fatture ma non i
     margini si resta sul criterio delle sole fatture, dichiarato nel log.
+
+    `in_attesa_out`, se passato, riceve le sedi il cui mese (chiuso) e' in attesa
+    delle fatture di fine mese, con la regola e i numeri della Home del PV
+    (`_mese_in_attesa`): la catena ne parla invece di confrontarle (17/10/2026).
     """
     auto = _costi_mese_per_sede(user_id, ids, anno, mese, costi_auto=costi_auto)
     if auto is None:
@@ -892,6 +918,14 @@ def _merce_ok_per_sede(
         out[str(rid)] = (
             not merce_insufficiente(netto, merce, in_corso=in_corso) if netto > 0 else merce > 0
         )
+        fatture_merce = float(auto.get(rid) or auto.get(str(rid)) or 0)
+        if (in_attesa_out is not None and not in_corso and fatture_merce > 0
+                and netto > 0 and not merce_insufficiente(netto, merce)):
+            if in_attesa_fine_mese(
+                netto, merce, merce_fatture=fatture_merce,
+                fine_mese_coperta=_fw()._fine_mese_coperta(sb, str(rid), anno, mese),
+            ):
+                in_attesa_out.add(str(rid))
     return out
 
 
@@ -1251,9 +1285,11 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # Voce "fatture" = EURO del mese chiuso (come il PV), non righe caricate di
     # recente. `costi_auto_gruppo` e' gia' in memoria: nessuna query in piu'.
     _mc_anno, _mc_mese = (anno, mese_corr - 1) if mese_corr > 1 else (anno - 1, 12)
+    fatture_in_attesa: set = set()
     costi_mese_map = _merce_ok_per_sede(
         sb, user_id, ids, _mc_anno, _mc_mese,
         costi_auto=costi_auto_gruppo if _mc_anno == anno else None,
+        in_attesa_out=fatture_in_attesa,
     )
     # Un errore qui NON diventa "tutto a posto" (9/9/2026): prima l'except
     # metteva completezza = {}, cioe' "nessun PV da completare", e la cascata
@@ -1427,6 +1463,8 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         personale_in_attesa_ids=personale_in_attesa,
         mese_personale=mese_personale,
         avvisi_aperti=_avvisi_aperti,
+        fatture_in_attesa_ids=fatture_in_attesa,
+        mese_fatture=MESI_ITA[_mc_mese].lower(),
     )
 
     return GruppoOverviewResponse(
