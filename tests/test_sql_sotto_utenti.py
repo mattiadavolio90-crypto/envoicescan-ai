@@ -682,6 +682,40 @@ def test_home_completa_uguale_al_titolare_sulla_stessa_sede(scenario):
     assert _chiama(sc, token, "GET", "/api/home/kpi").json() == _chiama(sc, sc.a.token, "GET", "/api/home/kpi").json()
 
 
+def test_config_della_home_senza_home_dice_solo_chat_spenta(scenario):
+    # Rotta comune (il layout di /m chiede se la chat e' accesa): senza Home non
+    # porta tetti, crediti, soglia alert e referente dell'account.
+    sc = scenario
+    sc.conn.execute("UPDATE public.users SET price_alert_threshold = 12.5, nome_referente = 'REFERENTE_TITOLARE' "
+                    "WHERE id = %s", (sc.a.ids["user_id"],))
+    # Cache di 120 s per user_id, e gli id dello scenario sono gli stessi in ogni test.
+    from services.db_service import get_price_alert_threshold
+    get_price_alert_threshold.clear()
+    sc.conn.execute("SELECT public.chat_crediti_check_and_log(%s, %s, true, 100, 1000, 3)",
+                    (sc.a.ids["user_id"], sc.a.ids["sede1"]))
+    titolare = _chiama(sc, sc.a.token, "GET", "/api/home/config").json()
+    assert titolare["chat_limite_giorno"] > 0 and titolare["chat_crediti_oggi"] >= 3, titolare
+    assert titolare["price_alert_threshold"] == 12.5 and titolare["nome_referente"] == "REFERENTE_TITOLARE"
+
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "f@isolamento.test", [sc.a.ids["sede1"]], {"analisi_fatture": True})
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "h@isolamento.test", [sc.a.ids["sede1"]], {"home": True})
+    senza = _chiama(sc, _login(sc, "f@isolamento.test").json()["token"], "GET", "/api/home/config")
+    assert senza.status_code == 200, senza.text
+    senza = senza.json()
+    assert senza["chat_ai_enabled"] is False and senza["topics"] == []
+    for campo in ("chat_limite_giorno", "chat_limite_mese", "chat_crediti_oggi", "chat_crediti_mese",
+                  "chat_crediti_ricarica", "giorni_chiusura_settimanali"):
+        assert senza[campo] == 0, (campo, senza)
+    assert senza["price_alert_threshold"] == 5.0 and senza["nome_referente"] == ""
+    assert "REFERENTE_TITOLARE" not in str(senza)
+
+    # Con la Home tutto come il titolare; il referente e' la persona (il suo nome).
+    con_home = _chiama(sc, _login(sc, "h@isolamento.test").json()["token"], "GET", "/api/home/config").json()
+    assert con_home.pop("nome_referente") == "Responsabile"
+    titolare.pop("nome_referente")
+    assert con_home == titolare
+
+
 def test_riparto_solo_con_la_catena(scenario):
     sc = scenario
     _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "scad@isolamento.test",

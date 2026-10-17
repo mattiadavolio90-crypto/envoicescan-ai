@@ -10437,6 +10437,15 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     l'override del configuratore, poi quello impostato lato admin su users.
     """
     user = _resolve_user_from_token(authorization)
+    # La rotta e' comune perche' il layout di /m chiede se la chat e' accesa; a un
+    # sotto-utente senza Home (= senza AI) la risposta e' «spenta», senza i tetti
+    # e i crediti dell'account, la soglia alert e il referente del titolare.
+    if not _su.ha_pagina(user, _su.PAGINA_HOME):
+        from config.constants import PRICE_ALERT_THRESHOLD_DEFAULT
+        return ConfigResponse(
+            topics=[], chat_ai_enabled=False, chat_limite_giorno=0,
+            price_alert_threshold=float(PRICE_ALERT_THRESHOLD_DEFAULT),
+        )
     sb = _get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, sb)
     from services.settore_service import settore_utente
