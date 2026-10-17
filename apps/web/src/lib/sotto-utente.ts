@@ -80,17 +80,15 @@ export function primaPaginaAbilitata(utente: UtenteVisibilita, mobile = false): 
 
 // ─── /m: la bottom-nav e le sue pagine ──────────────────────────────────────
 // Home e Assistente sono la Home (accesso all'AI); Agenda e Movimenti leggono
-// diario, spese e personale, che il worker apre con Agenda oppure Strumenti.
+// diario, spese e personale, che il worker apre solo con Agenda
+// (services/permessi_rotte.py): con la sola pagina Strumenti erano tab di 403.
 const TAB_MOBILE_HOME = ["/m/briefing", "/m/chat"];
 const TAB_MOBILE_AGENDA = ["/m/diario", "/m/turni"];
 
 export function vedeTabMobile(utente: UtenteVisibilita, href: string): boolean {
   if (!utente.sotto_utente) return true;
   if (TAB_MOBILE_HOME.includes(href)) return haHome(utente);
-  if (TAB_MOBILE_AGENDA.includes(href)) {
-    const pagine = utente.pagine_abilitate ?? [];
-    return pagine.includes("agenda") || pagine.includes("workspace");
-  }
+  if (TAB_MOBILE_AGENDA.includes(href)) return (utente.pagine_abilitate ?? []).includes("agenda");
   return true;
 }
 

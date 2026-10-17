@@ -92,7 +92,8 @@ def test_titolare_vede_tutte_le_tab_mobile():
 def test_tab_mobile_del_sotto_utente_seguono_le_sue_pagine():
     assert _nascoste(_su(["home", "agenda"])) == []
     assert _nascoste(_su(["home", "margini"])) == ["/m/diario", "/m/turni"]
-    assert _nascoste(_su(["workspace"])) == ["/m/briefing", "/m/chat"]
+    # Strumenti non apre diario, spese e personale (audit di ottobre #31).
+    assert _nascoste(_su(["workspace"])) == ["/m/briefing", "/m/chat", "/m/diario", "/m/turni"]
     assert _nascoste(_su(["margini"])) == ["/m/briefing", "/m/chat", "/m/diario", "/m/turni"]
 
 
@@ -169,3 +170,57 @@ def test_configura_assistente_cablato_sulle_due_home():
     assert "azioni={configAssistente ? <ConfigAssistenteCatena /> : undefined}" in sintesi
     assert "configAssistente = false," in sintesi
     assert "configAssistente={mostraConfigAssistente(utente)}" in catena
+
+
+# Le tab di /m e i file che le rendono: le rotte che chiamano sono quelle del worker
+# (le route di Next le inoltrano con lo stesso percorso).
+_FILE_TAB_MOBILE = {
+    "/m/diario": ["mobile-diario.tsx", "mobile-spese.tsx", "mobile-incassi.tsx"],
+    "/m/turni": ["mobile-turni.tsx"],
+}
+
+
+def _rotte_chiamate(nome_file):
+    import re
+    from pathlib import Path
+
+    base = Path(__file__).resolve().parents[1] / "apps" / "web" / "src" / "app" / "(mobile)" / "m"
+    testo = next(base.rglob(nome_file)).read_text(encoding="utf-8")
+    percorsi = set()
+    for grezzo in re.findall(r"""["'`](/api/[^"'`?]*)""", testo):
+        percorsi.add(re.sub(r"\$\{[^}]*\}", "{}", grezzo).rstrip("/"))
+    return percorsi
+
+
+def _rotte_worker(percorso):
+    import re
+
+    from services import permessi_rotte as pr
+
+    forma = re.compile("^" + re.escape(percorso).replace(r"\{\}", r"[^/]+") + "$")
+    return {r: pagine for r, pagine in pr.PAGINE_PER_ROTTA.items()
+            if forma.match(re.sub(r"\{\w+\}", "x", r[1]))}
+
+
+def test_tab_mobile_visibile_solo_se_il_worker_ne_apre_le_rotte():
+    combinazioni = [[], ["agenda"], ["workspace"], ["margini"], ["home"], ["workspace", "margini"],
+                    ["home", "workspace"], ["agenda", "workspace"], ["home", "agenda"]]
+    visibili = esegui_ts(MODULO, """
+        emit(input.map((p) => Object.fromEntries(["/m/diario", "/m/turni"].map((h) =>
+            [h, m.vedeTabMobile({ sotto_utente: true, num_sedi: 1, pagine_abilitate: p }, h)]))));
+    """, combinazioni, richiede=FUNZIONI_M)
+    contate = 0
+    for pagine, vede in zip(combinazioni, visibili):
+        for tab, nomi in _FILE_TAB_MOBILE.items():
+            if not vede[tab]:
+                continue
+            for nome in nomi:
+                percorsi = _rotte_chiamate(nome)
+                assert percorsi, f"nessuna rotta letta in {nome}: il test non misura"
+                for percorso in percorsi:
+                    rotte = _rotte_worker(percorso)
+                    assert rotte, f"{percorso} ({nome}) non e' in PAGINE_PER_ROTTA"
+                    for rotta, ammesse in rotte.items():
+                        contate += 1
+                        assert set(ammesse) & set(pagine), (pagine, tab, rotta)
+    assert contate > 0

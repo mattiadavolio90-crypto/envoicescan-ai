@@ -1842,7 +1842,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 28 | fix n. 3 |
 | 29 | fix n. 7 |
 | 30 | fix n. 16 (storno su guasto di OpenAI non fatto, dichiarato) |
-| 31 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 31 | fix n. 32 |
 | 32 | **aperto** (filone sotto-utenti, prossimo gruppo) |
 | 33 | **aperto** (filone sotto-utenti, prossimo gruppo) |
 | 34 | fix n. 25 |
@@ -1853,7 +1853,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 39 | fix n. 25 |
 | 40 | fix n. 17 |
 
-Aperti: 3 su 40, tutti del filone sotto-utenti (#31-33). Oggi in produzione non c'e' nessun sotto-utente.
+Aperti: 2 su 40, tutti del filone sotto-utenti (#32, #33). Oggi in produzione non c'e' nessun sotto-utente.
 
 ## Conferma
 

@@ -3495,6 +3495,18 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   senza restrizioni nulla cambia. Cablato su desktop (KPI, Completezza, «Da fare») e sui KPI
 >   di /m. +7 test in `tests/test_home_link_consentiti_frontend.py`; **10 mutanti, 10
 >   uccisi**. Test della Home e presidi del frontend: 2.316 verdi; `tsc --noEmit` pulito.
+>
+> - **17/10/2026 — Fix n. 32 dell'audit di ottobre (K24, #31): le tab Agenda e Movimenti di /m
+>   solo con la pagina Agenda.** `vedeTabMobile` le apriva anche con la sola pagina Strumenti,
+>   sulla premessa (falsa da sempre) che il worker apra diario, spese e personale anche con
+>   Strumenti: un sotto-utente con la sola Strumenti atterrava su /m/diario e vedeva solo 403.
+>   Ora servono con `agenda`; corretto il commento e il test che fissava il comportamento
+>   sbagliato. Nuovo test di coerenza TS ↔ Python: per nove combinazioni di pagine, se una tab
+>   di /m e' visibile, ogni rotta chiamata dai suoi file (`mobile-diario`, `-spese`,
+>   `-incassi`, `-turni`) e' aperta da `PAGINE_PER_ROTTA` a quelle pagine. +1 test e 1
+>   corretto in `tests/test_sotto_utente_frontend.py`; **4 mutanti, 4 uccisi** (uno sul lato
+>   worker, una rotta spostata a Strumenti). Scartata l'alternativa di aprire le rotte con
+>   Strumenti: darebbe al sotto-utente piu' di quanto ha.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
