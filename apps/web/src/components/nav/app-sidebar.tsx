@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { sezioneHaTabAttive } from "@/lib/tab-flags";
 import { schedeAnalisiCatena, schedeFattureCatena } from "@/lib/catena-schede";
+import { svuotaConversazioniDelBrowser } from "@/lib/home-chat";
 
 const navMain = [
   { title: "Home", url: "/dashboard", icon: Home, flag: null },
@@ -139,6 +140,7 @@ export function AppSidebar({
   const catenaAnalisi = schedeAnalisiCatena(pagineAbilitate).length > 0;
 
   async function handleLogout() {
+    svuotaConversazioniDelBrowser();
     try {
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");

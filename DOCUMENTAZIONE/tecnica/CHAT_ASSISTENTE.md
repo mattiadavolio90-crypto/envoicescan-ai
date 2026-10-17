@@ -244,7 +244,9 @@ nemmeno in chat.**
   `user["id"]` è il titolare. Con una sola sede in un account catena il prompt
   nomina la **sua** sede (`_utente_prompt_sede`), non l'account. La
   conversazione in sessionStorage è per persona (`idPersona` in
-  `apps/web/src/lib/sotto-utente.ts`). Modello completo:
+  `apps/web/src/lib/sotto-utente.ts`) e dal 17/10/2026 si toglie al logout e
+  all'arrivo sul login, dove arriva anche la sessione scaduta
+  (`svuotaConversazioni` in `apps/web/src/lib/home-chat.ts`). Modello completo:
   `SICUREZZA_GDPR.md` §5bis.
 
 > Il gate vale **su due fronti**: quali tool offrire al modello (`_CHAT_TOOL_FLAG`

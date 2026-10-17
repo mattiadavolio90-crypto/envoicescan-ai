@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { Logo, Wordmark } from "@/components/brand/logo";
 import { LogoSpinner } from "@/components/brand/logo-spinner";
 import { serviVistaMobile } from "@/lib/device";
 import { primaPaginaAbilitata } from "@/lib/sotto-utente";
+import { svuotaConversazioniDelBrowser } from "@/lib/home-chat";
 
 // Su TELEFONO, in assenza di un next esplicito, il default e' /m (la PWA): cosi'
 // il login fa un full reload direttamente sulla vista mobile, senza il rimbalzo
@@ -224,6 +225,8 @@ function LoginOverlay({ closing = false }: { closing?: boolean }) {
 }
 
 export default function LoginPage() {
+  // Qui arriva anche chi non ha fatto logout (sessione scaduta, account eliminato).
+  useEffect(() => svuotaConversazioniDelBrowser(), []);
   return (
     <Suspense fallback={null}>
       <LoginForm />

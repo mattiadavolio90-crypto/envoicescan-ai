@@ -3468,6 +3468,20 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   (485 file): niente `next.revalidate`, `force-cache`, `unstable_cache`, `"use cache"`.
 >   +2 test in `tests/test_fetch_senza_data_cache_frontend.py`; **3 mutanti, 3 uccisi** (uno
 >   su un altro file, uno con l'oggetto `next` su piu' righe). `tsc --noEmit` pulito.
+>
+> - **17/10/2026 — Fix n. 30 dell'audit di ottobre (F2b-7, #23): uscendo, la conversazione con
+>   l'assistente non resta nella scheda.** La chiave per persona impediva gia' alla UI di chi
+>   entra dopo di mostrarla, ma cifre e card restavano in chiaro in sessionStorage fino alla
+>   chiusura della scheda (tablet di sala condiviso). Ora `svuotaConversazioni`
+>   (lib/home-chat.ts) toglie le chiavi `oneflux:assistente:*` e la vecchia
+>   `oneflux:chat-messages`, lasciando il resto (barre comode, briefing gia' visto). La
+>   chiamano i due logout (sidebar desktop e menu di /m) e la pagina di login al montaggio,
+>   dove arriva anche chi non e' passato dal pulsante (sessione scaduta, account eliminato;
+>   chi ha una sessione valida viene rimandato via dal proxy prima). Scartato
+>   `Clear-Site-Data: "storage"`: toglierebbe anche localStorage e varrebbe per tutte le
+>   schede. +3 test in `tests/test_logout_svuota_conversazione_frontend.py` (uno Storage finto
+>   con node e il cablaggio); **7 mutanti, 7 uccisi** (fra cui la rimozione durante il giro,
+>   che ne lascia una su due). `tsc --noEmit` pulito; test della chat: 167 verdi.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

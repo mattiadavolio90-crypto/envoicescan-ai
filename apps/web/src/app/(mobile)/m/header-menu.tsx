@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MoreVertical, LogOut, MapPin, Check, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { cambiaSedeEAttendi } from "@/lib/cambia-sede";
+import { svuotaConversazioniDelBrowser } from "@/lib/home-chat";
 
 function writeViewCookie(v: "chain" | "pv") {
   if (typeof document === "undefined") return;
@@ -92,6 +93,7 @@ export function HeaderMenu() {
   }
 
   async function logout() {
+    svuotaConversazioniDelBrowser();
     try {
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/login");

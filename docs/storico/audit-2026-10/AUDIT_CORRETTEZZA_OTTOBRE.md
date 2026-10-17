@@ -1834,7 +1834,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 20 | fix n. 27 |
 | 21 | fix n. 28 |
 | 22 | fix n. 29 |
-| 23 | **aperto** (filone sotto-utenti, prossimo gruppo) |
+| 23 | fix n. 30 |
 | 24 | **aperto** (filone sotto-utenti, prossimo gruppo) |
 | 25 | fix n. 4 |
 | 26 | fix n. 5 |
@@ -1853,7 +1853,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 39 | fix n. 25 |
 | 40 | fix n. 17 |
 
-Aperti: 5 su 40, tutti del filone sotto-utenti (#23, #24, #31-33). Oggi in produzione non c'e' nessun sotto-utente.
+Aperti: 4 su 40, tutti del filone sotto-utenti (#24, #31-33). Oggi in produzione non c'e' nessun sotto-utente.
 
 ## Conferma
 

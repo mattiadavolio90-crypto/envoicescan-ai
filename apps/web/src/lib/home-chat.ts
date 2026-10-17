@@ -368,7 +368,8 @@ export function mostraSuggerimenti(voci: VoceChat[], vista: Vista): boolean {
 
 // La chiave di sessionStorage e' per utente: sessionStorage sopravvive al logout
 // nella stessa scheda, e con una chiave fissa chi entra dopo leggeva la
-// conversazione di chi era uscito.
+// conversazione di chi era uscito. Al logout ora si toglie (svuotaConversazioni):
+// la chiave per persona resta per quando la pulizia non gira.
 export function chiaveConversazione(utenteId: string): string {
   return `oneflux:assistente:${utenteId}`;
 }
@@ -376,6 +377,27 @@ export function chiaveConversazione(utenteId: string): string {
 // La chiave del vecchio pulsante flottante, condivisa fra catena e PV: si
 // cancella al primo caricamento.
 export const CHIAVE_VECCHIA = "oneflux:chat-messages";
+
+/** Al logout e sulla pagina di login (ci arriva anche la sessione scaduta): la
+ *  conversazione con l'assistente, con cifre e card, non resta leggibile nella
+ *  scheda di chi e' uscito. Le chiavi si raccolgono prima e si tolgono dopo:
+ *  togliendo durante il giro gli indici scorrono e una su due resterebbe. */
+export function svuotaConversazioni(storage: Pick<Storage, "length" | "key" | "removeItem">): void {
+  const chiavi: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const k = storage.key(i);
+    if (k !== null && (k.startsWith(chiaveConversazione("")) || k === CHIAVE_VECCHIA)) chiavi.push(k);
+  }
+  for (const k of chiavi) storage.removeItem(k);
+}
+
+export function svuotaConversazioniDelBrowser(): void {
+  try {
+    svuotaConversazioni(window.sessionStorage);
+  } catch {
+    /* sessionStorage non disponibile: non c'e' nulla da togliere */
+  }
+}
 
 // La risposta va subito dopo la sua domanda, nella sua vista: se nel frattempo
 // il cliente ha cambiato locale e scritto li', la risposta resta nella
