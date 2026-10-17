@@ -3533,11 +3533,13 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   `action_page` e, se la notifica non e' visibile (o non c'e'), risponde 200 senza scrivere,
 >   come gia' per la sede altrui. Con la Home le vede tutte e le archivia tutte. La lettura
 >   preliminare non ripete il filtro per sede: lo fa l'UPDATE, gia' presidiato. +1 test `-m sql`
->   in `tests/test_sql_sotto_utenti.py`; **4 mutanti, 4 uccisi**. `-m sql` dei sotto-utenti e
->   dell'isolamento: 488 verdi.
+>   in `tests/test_sql_sotto_utenti.py`; **4 mutanti, 4 uccisi**. `python -m pytest -q -m sql
+>   -p no:randomly tests/test_sql_sotto_utenti*.py tests/test_isolamento_per_risorsa.py`: 488
+>   verdi. Suite `python -m pytest tests/ -m "not sql" -q -p no:randomly`: 19.942 verdi, 63
+>   skip. Code-reviewer sul cumulativo `ce232ef4..972ef038`: via libera, nessun blocco.
 >
->   **Filone sotto-utenti dell'audit di ottobre chiuso: 9 difetti su 9 (fix n. 26-34), 40 su 40
->   in tutto.** Restano aperti, fuori da questo filone: la chat di catena desktop con la sola
+>   **Filone sotto-utenti dell'audit di ottobre chiuso: 9 difetti su 9 (fix n. 26-34); dell'audit
+>   nessun difetto aperto, con il #30 chiuso solo in parte (lo storno K17 qui sotto).** Restano aperti, fuori da questo filone: la chat di catena desktop con la sola
 >   Catena (F2a-3, decisione di Mattia); repo GitHub pubblico con nomi di clienti nei
 >   documenti (repo privato o pulizia, decisione di Mattia); le 19 testate di dicembre 2025
 >   senza righe di una sede (perche' esistono; pulirle e' una scrittura sui dati); lo storno
