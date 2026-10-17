@@ -103,6 +103,25 @@ def test_svuota_cestino_e_ricarica_la_fattura_non_torna_pagata(db_sql):
     assert _testate(db_sql) == sorted([(SEDE, False), (ALTRA_SEDE, True)])
 
 
+@pytest.mark.parametrize("tabella", ["users", "ristoranti"])
+def test_elimina_account_o_sede_col_trigger_non_lascia_nulla(db_sql, tabella):
+    """«Elimina account» e «Elimina sede» passano dal CASCADE su `fatture` e
+    `fatture_documenti`: il trigger gira dentro la stessa cancellazione e non
+    deve farla fallire (code-reviewer del n. 39)."""
+    _semina(db_sql, righe=((SEDE, 1, False), (SEDE, 2, True)))
+    with db_sql.cursor() as cur:
+        if tabella == "users":
+            cur.execute("DELETE FROM public.users WHERE id = %s", (U1,))
+        else:
+            cur.execute("DELETE FROM public.ristoranti WHERE id = %s", (SEDE,))
+        cur.execute(
+            "SELECT (SELECT count(*) FROM public.fatture WHERE user_id = %s AND ristorante_id = %s), "
+            "(SELECT count(*) FROM public.fatture_documenti WHERE user_id = %s AND ristorante_id = %s)",
+            (U1, SEDE, U1, SEDE),
+        )
+        assert cur.fetchone() == (0, 0)
+
+
 def test_la_cancellazione_tocca_solo_la_sede_delle_righe(db_sql):
     """Il caso OVERTIME/OFFSIDE: una testata senza righe in un'altra sede, con lo
     stesso nome file, non e' affare di questa cancellazione (la sistema lo script

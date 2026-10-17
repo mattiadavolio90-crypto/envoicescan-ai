@@ -3632,8 +3632,9 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   testata quando del file, in quella sede, non resta nessuna riga, attiva o nel cestino: il
 >   ricaricamento con meno righe e il ripristino dal cestino restano com'erano. La stessa
 >   migration cancella le testate archiviate gia' senza righe; le 20 attive senza righe restano
->   allo script dei n. 36-38. +5 test `-m sql` in `tests/test_sql_testata_cancellata_con_le_righe.py`
->   (svuota cestino e ricarica dal codice vero); **4 mutanti, 4 uccisi** (il filtro per sede
+>   allo script dei n. 36-38. +7 test `-m sql` in `tests/test_sql_testata_cancellata_con_le_righe.py`
+>   (svuota cestino e ricarica dal codice vero; elimina account ed elimina sede col trigger
+>   dentro il CASCADE, aggiunti dopo il code-reviewer, che li aveva provati fuori dal repo); **4 mutanti, 4 uccisi** (il filtro per sede
 >   sopravviveva, ucciso col caso OVERTIME/OFFSIDE); la pulizia una tantum non e' provabile nei
 >   test e si verifica sul live dopo l'applicazione (0 testate archiviate senza righe). Col
 >   trigger attivo `python -m pytest tests/ -m sql -q -p no:randomly`: 1.281 verdi. **Non
