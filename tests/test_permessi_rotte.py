@@ -128,6 +128,16 @@ def test_catena_serve_effettiva_non_basta_il_flag():
     assert pr.rotta_consentita(_sotto_utente({"catena": True}, sedi=("s1", "s2")), rotta) is True
 
 
+def test_chat_solo_con_la_home_anche_in_catena():
+    # Decisione di Mattia (17/10/2026): niente Home, niente AI. Il contesto catena
+    # lo ricontrolla chat_ai con verifica_catena.
+    rotta = ("POST", "/api/chat")
+    tutte = ("s1", "s2")
+    assert pr.rotta_consentita(_sotto_utente({"catena": True}, sedi=tutte), rotta) is False
+    assert pr.rotta_consentita(_sotto_utente({"home": True}, sedi=tutte), rotta) is True
+    assert pr.rotta_consentita(_sotto_utente({"home": True, "catena": True}, sedi=tutte), rotta) is True
+
+
 TUTTE = {p: True for p in su.PAGINE_SOTTO_UTENTE}
 
 

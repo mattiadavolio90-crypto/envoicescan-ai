@@ -3538,9 +3538,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   verdi. Suite `python -m pytest tests/ -m "not sql" -q -p no:randomly`: 19.942 verdi, 63
 >   skip. Code-reviewer sul cumulativo `ce232ef4..972ef038`: via libera, nessun blocco.
 >
+>   **Fix n. 35 (F2a-3, decisione di Mattia del 17/10): la chat di catena vuole anche la Home.**
+>   Un sotto-utente con la Catena e senza Home aveva la chat di catena sul desktop (CHAT_ASSISTENTE.md
+>   la dava per voluta), mentre la regola dei sotto-utenti dice Home = AI e /m, dal fix n. 33, non
+>   gliela mostrava. Ora vale una regola sola: `POST /api/chat` e' solo `_p(H)` in
+>   `permessi_rotte.py`, `chat_ai` rifiuta senza Home in entrambi i contesti (seconda difesa: la
+>   rotta ferma prima, e un mutante sul solo controllo interno sopravvive per questo), e
+>   `/api/gruppo/chat-config` risponde `enabled: false` senza tetti ne' crediti, cosi' la Home di
+>   catena nasconde la chat e il suggerimento Boost. +1 caso parametrico e +1 test `-m sql` in
+>   `tests/test_sql_sotto_utenti.py`, +1 in `tests/test_permessi_rotte.py`; **3 mutanti
+>   uccisi** (regola di rotta, config, crediti dell'account nella config: quest'ultimo
+>   sopravviveva finche' lo scenario aveva 0 crediti spesi), 1 sopravvissuto dichiarato sopra. `-m sql` dei
+>   sotto-utenti e dell'isolamento: 490 verdi; test della chat e delle rotte: 696 verdi.
+>
 >   **Filone sotto-utenti dell'audit di ottobre chiuso: 9 difetti su 9 (fix n. 26-34); dell'audit
->   nessun difetto aperto, con il #30 chiuso solo in parte (lo storno K17 qui sotto).** Restano aperti, fuori da questo filone: la chat di catena desktop con la sola
->   Catena (F2a-3, decisione di Mattia); repo GitHub pubblico con nomi di clienti nei
+>   nessun difetto aperto, con il #30 chiuso solo in parte (lo storno K17 qui sotto).** Restano aperti, fuori da questo filone: repo GitHub pubblico con nomi di clienti nei
 >   documenti (repo privato o pulizia, decisione di Mattia); le 19 testate di dicembre 2025
 >   senza righe di una sede (perche' esistono; pulirle e' una scrittura sui dati); lo storno
 >   dei crediti quando OpenAI fallisce dopo la RPC (K17); `_fine_mese_coperta` con

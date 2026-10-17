@@ -211,8 +211,8 @@ PAGINE_PER_ROTTA: Dict[Rotta, FrozenSet[str]] = {
     ("GET", "/api/home/salute"): _p(H),
     ("GET", "/api/home/alert-prezzi"): _p(H),
     ("GET", "/api/dashboard/stats"): _p(H),
-    # Il contesto (sede/catena) lo ricontrolla chat_ai: sede → home, catena → catena.
-    ("POST", "/api/chat"): _p(H, C),
+    # In catena chat_ai vuole anche la Catena effettiva (verifica_catena).
+    ("POST", "/api/chat"): _p(H),
     # ── Catena (sedi tutte assegnate: lo garantisce la sovrapposizione) ──
     ("GET", "/api/gruppo/overview"): _p(C),
     ("GET", "/api/gruppo/segnali"): _p(C),

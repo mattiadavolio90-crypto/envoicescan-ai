@@ -236,9 +236,12 @@ nemmeno in chat.**
 - **`pagine_abilitate` = `None`** (admin / nessuna restrizione) → **tutti** i tool
   (stessa semantica di `_normalize_pagine`: None = tutto abilitato).
 - Lista presente → resta solo il tool il cui flag è nella lista.
-- **Sotto-utenti (30/9/2026).** La chat di sede richiede la pagina `home`
-  (Home = accesso all'AI), quella di catena la Catena effettiva: il controllo
-  in `chat_ai` scatta **prima** della quota. Per loro `pagine_abilitate` è già il
+- **Sotto-utenti (30/9/2026).** La chat richiede sempre la pagina `home`
+  (Home = accesso all'AI); quella di catena anche la Catena effettiva. Dal
+  17/10/2026 (decisione di Mattia) la Catena da sola non basta piu', ne' sul
+  desktop ne' su /m: `/api/chat` e' solo della Home in `permessi_rotte.py`, e
+  `/api/gruppo/chat-config` risponde `enabled: false` a chi non ha la Home. Il
+  controllo in `chat_ai` scatta **prima** della quota. Per loro `pagine_abilitate` è già il
   dict effettivo (pagine del titolare ∩ sue), quindi questo gate e il prompt
   applicano l'intersezione senza codice in più. La quota è **una per account**:
   `user["id"]` è il titolare. Con una sola sede in un account catena il prompt

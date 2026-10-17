@@ -6286,11 +6286,12 @@ def chat_ai(
     # Contesto: catena (vista gruppo /catena) o sede (singolo PV, default).
     is_catena = body.contesto == "catena"
 
-    # Sotto-utente: la rotta /api/chat vale con la Home o con la Catena; qui il
-    # contesto sceglie quale serve, prima di spendere quota.
+    # Sotto-utente: la chat vuole sempre la Home (= accesso all'AI), in catena anche
+    # la Catena effettiva (decisione di Mattia, 17/10/2026: niente Home, niente AI,
+    # ne' sul desktop ne' su /m). Prima di spendere quota.
     if is_catena:
         _su.verifica_catena(user)
-    elif not _su.ha_pagina(user, _su.PAGINA_HOME):
+    if not _su.ha_pagina(user, _su.PAGINA_HOME):
         raise HTTPException(status_code=403, detail="Assistente non consentito per questo utente")
 
     # Un account single-sede che invii contesto="catena" oggi arrivava fino a

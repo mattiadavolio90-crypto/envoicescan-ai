@@ -1843,7 +1843,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 29 | fix n. 7 |
 | 30 | fix n. 16 (storno su guasto di OpenAI non fatto, dichiarato) |
 | 31 | fix n. 32 |
-| 32 | fix n. 33 (la chat di catena con la sola Catena, F2a-3, resta da decidere) |
+| 32 | fix n. 33 e n. 35 (chat di catena solo con la Home, decisione di Mattia) |
 | 33 | fix n. 34 |
 | 34 | fix n. 25 |
 | 35 | fix n. 25 |
@@ -1853,7 +1853,7 @@ I verbali dei fix sono in `DOCUMENTAZIONE/AUDIT_COPERTURA.md` («Fix n. …»), 
 | 39 | fix n. 25 |
 | 40 | fix n. 17 |
 
-Aperti: 0 su 40, con il #30 corretto solo in parte (storno dei crediti su guasto di OpenAI non fatto, dichiarato). Il filone sotto-utenti (#19-24, #31-33) e' chiuso dai fix n. 26-34 del 17/10/2026; resta da decidere la chat di catena con la sola Catena (F2a-3, vedi #32).
+Aperti: 0 su 40, con il #30 corretto solo in parte (storno dei crediti su guasto di OpenAI non fatto, dichiarato). Il filone sotto-utenti (#19-24, #31-33) e' chiuso dai fix n. 26-34 del 17/10/2026
 
 ## Conferma
 

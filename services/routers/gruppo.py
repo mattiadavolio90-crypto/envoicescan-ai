@@ -3818,6 +3818,10 @@ class GruppoChatConfig(BaseModel):
 def gruppo_chat_config(authorization: Optional[str] = Header(None)) -> GruppoChatConfig:
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     user = _resolve_user_from_token(authorization)
+    # Sotto-utente con la Catena ma senza Home: la chat non c'e' (Home = AI), e
+    # niente tetti e crediti dell'account. La Home di catena la nasconde da qui.
+    if not _su.ha_pagina(user, _su.PAGINA_HOME):
+        return GruppoChatConfig(enabled=False, limite_giorno=0)
     # Sede None: si conta a livello account (catena + ogni PV), coerente col
     # salvadanaio unico.
     c = _chat_crediti_vista(user, sb, None)

@@ -657,6 +657,7 @@ def _domande_registrate(sc):
     ({"home": True, "catena": True}, ["sede1"], "catena"),          # flag senza tutte le sedi
     ({"home": True}, ["sede1", "sede2"], "catena"),                 # tutte le sedi senza flag
     ({"catena": True}, ["sede1", "sede2"], "sede"),                 # catena senza Home
+    ({"catena": True}, ["sede1", "sede2"], "catena"),               # chat di catena senza Home
 ])
 def test_chat_rifiutata_per_contesto_prima_della_quota(scenario, monkeypatch, pagine, sedi, contesto):
     sc = scenario
@@ -669,6 +670,26 @@ def test_chat_rifiutata_per_contesto_prima_della_quota(scenario, monkeypatch, pa
                 json={"messages": [{"role": "user", "content": "ciao"}], "contesto": contesto})
     assert r.status_code == 403, r.text
     assert _domande_registrate(sc) == prima
+
+
+def test_chat_di_catena_senza_home_spenta(scenario):
+    # Niente Home, niente AI anche in catena: la Home di catena nasconde la chat
+    # leggendo `enabled`, e non riceve tetti e crediti dell'account.
+    sc = scenario
+    tutte = [sc.a.ids["sede1"], sc.a.ids["sede2"]]
+    sc.conn.execute("SELECT public.chat_crediti_check_and_log(%s, %s, true, 100, 1000, 3)",
+                    (sc.a.ids["user_id"], sc.a.ids["sede1"]))
+    titolare = _chiama(sc, sc.a.token, "GET", "/api/gruppo/chat-config").json()
+    assert titolare["enabled"] is True and titolare["limite_giorno"] > 0, titolare
+    assert titolare["crediti_oggi"] >= 3, titolare
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "c@isolamento.test", tutte, {"catena": True})
+    _crea_sotto_utente(sc.conn, sc.a.ids["user_id"], "ch@isolamento.test", tutte, {"catena": True, "home": True})
+    senza = _chiama(sc, _login(sc, "c@isolamento.test").json()["token"], "GET", "/api/gruppo/chat-config")
+    assert senza.status_code == 200, senza.text
+    assert senza.json() == {"enabled": False, "limite_giorno": 0, "limite_mese": 0, "crediti_oggi": 0,
+                            "crediti_mese": 0, "crediti_ricarica": 0}
+    con_home = _chiama(sc, _login(sc, "ch@isolamento.test").json()["token"], "GET", "/api/gruppo/chat-config")
+    assert con_home.json() == titolare
 
 
 def test_home_completa_uguale_al_titolare_sulla_stessa_sede(scenario):
