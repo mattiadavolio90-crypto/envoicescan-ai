@@ -476,7 +476,12 @@ def food_cost_alto(monkeypatch):
     monkeypatch.setattr(fw, "_merge_override_mensile", lambda m, *a, **k: m)
     monkeypatch.setattr("services.margine_service.calcola_costi_automatici_per_anno_sql",
                         lambda *a, **k: ({8: 4580.0, 9: 100.0}, {}))
-    monkeypatch.setattr(fw, "_kpi_periodo", lambda *a, **k: {"food_cost_pct": 45.8, "netto": 10000.0})
+    monkeypatch.setattr(fw, "_kpi_periodo",
+                        lambda *a, **k: {"food_cost_pct": 45.8, "netto": 10000.0, "merce": 4580.0})
+    # Il mese e' consolidato (dal 16/10/2026: una fattura di merce dal quinto
+    # giorno prima della fine, `_fine_mese_coperta`): qui si misura il giorno
+    # dell'email, non l'attesa delle fatture di fine mese.
+    monkeypatch.setattr(fw, "_fine_mese_coperta", lambda *a, **k: True)
     monkeypatch.setattr("services.settore_service.settore_sede", lambda rid, sb: "ristorazione")
 
 

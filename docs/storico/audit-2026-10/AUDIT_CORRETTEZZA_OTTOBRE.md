@@ -34,7 +34,7 @@ Per tipo: 28 sono bug veri, 9 sono «stessa parola per due numeri diversi» (si 
 | Trova | 9 finder + 1 critico | Fable 5.1 (6), Opus (3 su codice) | quattro account reali, max 4 agenti sul DB insieme |
 | Verifica | 11 | Opus (10), Fable (contraddizioni) | ogni difetto rivisto da un agente diverso da chi l'ha trovato |
 
-- **Account usati, per ID.** Catena A `51015cc8-078c-4e92-86b4-113e62e16d38` (5 sedi, 2.582 documenti), catena B `2f3f93a1-c1f4-4804-858e-a161e6f36f3f` (3 sedi più una tecnica, alimentata fino al 13/10), sede singola viva `79920814-082f-4d93-bf64-54bafbfbb708`, sede singola ferma da luglio `802967b0-2aed-40f0-8d42-81076f44bb17`.
+- **Account usati, per ID.** Catena A `51015cc8` (5 sedi, 2.582 documenti), catena B `2f3f93a1` (3 sedi più una tecnica, alimentata fino al 13/10), sede singola viva `79920814`, sede singola ferma da luglio `802967b0`.
 - **Sola lettura.** Ogni query è stata eseguita dentro `BEGIN READ ONLY; …; COMMIT;`, provato all'inizio con `transaction_read_only = on`. Le funzioni del DB sono state chiamate solo dopo averne letto il corpo. Nessun endpoint del worker o di Vercel è stato chiamato, nessuna chiamata a OpenAI.
 - **Seconda verifica.** I 5 difetti nati come gravi hanno avuto un agente ciascuno, codice più misura a DB. I medi sono stati verificati a lotti per area. I difetti trovati in modo indipendente da 2-4 finder diversi hanno avuto solo un controllo di stato a HEAD e di gravità: la convergenza vale già come seconda verifica.
 - **Costo.** Fase Trova 2,42 milioni di token, fase Verifica 1,13 milioni. Due avvii precedenti della verifica, a 38 agenti, sono stati fermati prima di lavorare: il primo per un errore nello script, il secondo per la chiusura della sessione.
@@ -74,7 +74,7 @@ La tabella riassuntiva per gravità è in fondo. Ogni scheda riporta la prova di
 
 **Chi lo vede.** Gestione Fatture (sede) e Catena → Fatture (riusa ScadenziarioClient), vista `lista_mensile`: intestazione di ogni mese con «N» documenti e «X €». Tutti gli account con NC o fatture escluse.
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`, `79920814-082f-4d93-bf64-54bafbfbb708`, `802967b0-2aed-40f0-8d42-81076f44bb17`
+**Clienti coinvolti (ID).** `51015cc8`, `79920814`, `802967b0`
 
 **Platea misurata in verifica.** Il difetto delle note di credito tocca 5 account su 6 con dati: 149 note di credito, tutte mostrate con importo positivo (nessuna negativa), per 44.897,89 EUR. Per account: 51015cc8 106 NC, 37.453,54 EUR; 2f3f93a1 27, 4.817,30; 802967b0 12, 2.105,60; 79920814 2, 474,10; 080004f3 2, 47,35; a8094f9a 0. Rispetto al netto lo scarto e' 2 x 44.897,89 = 89.795,78 EUR, su 25 mesi-sede toccati. Per account i mesi toccati sono 7/7, 9/10, 5/7, 2/8 e 2/5. La sovrastima massima di un'intestazione di mese e' 13,4% (79920814), 10,7% (802967b0), 5,1% (2f3f93a1), 2,7% (51015cc8) e 0,9% (080004f3). Il caso «escluse dentro il totale» ha oggi 1 solo documento, 382,83 EUR, sull'account 080004f3. Le pagate sono 564 documenti, ma la loro inclusione e' deliberata.
 
@@ -151,7 +151,7 @@ Il test tests/test_scadenziario_vista_mensile_frontend.py passa (15 passed) ma u
 
 **Chi lo vede.** Catena → finestra «Spesa per PV» (gruppo_spesa_pivot + _righe_quote_gruppo), colonna del PV fd7ac484 e grand total, periodo che include gennaio 2026; Analisi Fatture del PV fd7ac484 (righe reali 456,30 + riga proiettata quota 114,08).
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`, `fd7ac484-b562-498d-a6d1-00c4c6fd09dd`
+**Clienti coinvolti (ID).** `51015cc8`, `fd7ac484`
 
 **Platea misurata in verifica.** 1 account, 2 righe ripartite su un PV non tecnico, 456,30 EUR contati due volte nel pivot di gennaio 2026.
 
@@ -190,7 +190,7 @@ Il test tests/test_scadenziario_vista_mensile_frontend.py passa (15 passed) ma u
 
 **Chi lo vede.** Analisi Fatture → filtro periodo «mese specifico» (filtri-periodo.tsx:131 «{label} ({count} fatture)») del PV fd7ac484; lo scadenziario non li mostra (RPC su fatture).
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`, `fd7ac484-b562-498d-a6d1-00c4c6fd09dd`
+**Clienti coinvolti (ID).** `51015cc8`, `fd7ac484`
 
 **Platea misurata in verifica.** 1 sede, 19 header fatture_documenti senza righe, 59.368,37 EUR (dicembre 2025).
 
@@ -226,9 +226,9 @@ Il test tests/test_scadenziario_vista_mensile_frontend.py passa (15 passed) ma u
 | Gravità | **media** |
 | Verifica | confermato con correzioni |
 
-**Chi lo vede.** Home «I tuoi conti» (desktop e /m/briefing, stesso KpiBlock) della sede 0dca4d1f-0caa-419a-b869-25bd98f424e1, mese mostrato oggi = Settembre 2026 (ultimo mese completo, worker:9926-9935). Anche la tabella Margini della stessa sede: la colonna Set non e' «senza costi» (meseSenzaCosti) e _mesi_senza_costi conta 4 mesi su 10 invece di 5.
+**Chi lo vede.** Home «I tuoi conti» (desktop e /m/briefing, stesso KpiBlock) della sede 0dca4d1f, mese mostrato oggi = Settembre 2026 (ultimo mese completo, worker:9926-9935). Anche la tabella Margini della stessa sede: la colonna Set non e' «senza costi» (meseSenzaCosti) e _mesi_senza_costi conta 4 mesi su 10 invece di 5.
 
-**Clienti coinvolti (ID).** `0dca4d1f-0caa-419a-b869-25bd98f424e1`, `51015cc8-078c-4e92-86b4-113e62e16d38`
+**Clienti coinvolti (ID).** `0dca4d1f`, `51015cc8`
 
 **Platea misurata in verifica.** Un solo caso in tutto il DB. Query mia su margini_mensili, tutti gli account, mesi chiusi prima del 01/10/2026: lordo > 0, F&B automatico ricalcolato dalle fatture = 0 (stessi filtri dell'RPC costi_automatici_mensili: deleted_at NULL, non oscurata, non Da Classificare, non ripartita_su_gruppo, categorie diverse da spese e NOTE) e altri_costi_fb + quote_riparto_fb > 0. Risultato: 1 riga, user 51015cc8, sede 0dca4d1f, 2026/9, lordo 414.392,23, netto 386.299,74, manuale 100,00, quote 0, auto 0, food cost 0,03%. Settembre 2026 è proprio il mese che la Home mostra oggi, 15/10, come ultimo mese completo. Le altre 3 sedi dello stesso account (5444e918, cc016821, fd7ac484), stesso mese, hanno manuale 0, auto 0 e 0 righe di fattura a settembre: per loro costi_mancanti è true. La sede 0dca4d1f ha l'ultima fattura al 30/06/2026 e 0 righe a settembre.
 
@@ -310,9 +310,9 @@ Il test tests/test_scadenziario_vista_mensile_frontend.py passa (15 passed) ma u
 | Gravità | **media** |
 | Verifica | confermato con correzioni |
 
-**Chi lo vede.** Home desktop (card «I tuoi conti», kpi-block.tsx) e /m/briefing (stesso fetchKpi+KpiBlock) dell'account D = user 802967b0-2aed-40f0-8d42-81076f44bb17 / sede 86300227-53c3-4193-9b45-761b3654e889. C non e' toccato (settembre ha incasso).
+**Chi lo vede.** Home desktop (card «I tuoi conti», kpi-block.tsx) e /m/briefing (stesso fetchKpi+KpiBlock) dell'account D = user 802967b0 / sede 86300227. C non e' toccato (settembre ha incasso).
 
-**Clienti coinvolti (ID).** `802967b0-2aed-40f0-8d42-81076f44bb17`, `86300227-53c3-4193-9b45-761b3654e889`
+**Clienti coinvolti (ID).** `802967b0`, `86300227`
 
 **Platea misurata in verifica.** Misurato il 15/10/2026 su tutte le sedi: ricostruito il mese scelto da home_kpi, cioe' il primo mese da settembre all'indietro con fatturato>0 o fb>0 o spese>0 o personale>0. Due sedi mostrano oggi un mese a incasso zero. (1) 86300227 (user 802967b0): Luglio, con fatturato 0, fb 0, spese 89,08 e personale 0; agosto e settembre non hanno righe in margini_mensili ne' costi. (2) 09011cdd (user 080004f3): Agosto, con fatturato 0, fb 234,33, spese 460,43 e MOL circa −694,76. Per questa il confronto non scatta (luglio vuoto); e' una sede che non ha mai inserito incassi tranne 1.050 € in ottobre (mese in corso). Le altre otto sedi mostrano settembre con fatturato > 0. Su quattro sedi di 51015cc8 settembre ha F&B 0, ma lì scatta gia' costi_mancanti: e' un altro ramo.
 
@@ -656,7 +656,7 @@ Il test tests/test_scadenziario_vista_mensile_frontend.py passa (15 passed) ma u
 
 **Chi lo vede.** Chat (sede e catena via ristorante_id): risposta dell'AI su «com'è andato il MOL». Account con un mese a ricavi inseriti e fatture merce non ancora caricate.
 
-**Clienti coinvolti (ID).** `2f3f93a1-c1f4-4804-858e-a161e6f36f3f`, `802967b0-2aed-40f0-8d42-81076f44bb17`, `bdda08d1-9490-486c-adfb-dd05cbddc25c`, `dcf1996e-f430-4549-8505-902b169f6bab`
+**Clienti coinvolti (ID).** `2f3f93a1`, `802967b0`, `bdda08d1`, `dcf1996e`
 
 **Platea misurata in verifica.** Ottobre 2026 è il mese in corso, quindi 'parziale'. 3 sedi hanno fatture di ottobre e zero righe in ricavi_giornalieri: bdda08d1 (6.941,22 EUR), f7bba05f (836,91 EUR) e dcf1996e (4.062,93 EUR). Per loro la chat riceve fatturato 0 e un MOL negativo pari ai soli costi. Altre 5 sedi hanno ricavi di ottobre e nessuna riga fattura di ottobre: fd7ac484, 5444e918, 0dca4d1f, cc016821 e 09011cdd. Per loro il mese ha costi_mancanti, ma la chat riceve un MOL gonfiato senza alcun flag. Totale: 8 sedi su 16 sul mese corrente.
 
@@ -700,7 +700,7 @@ Il test tests/test_scadenziario_vista_mensile_frontend.py passa (15 passed) ma u
 
 **Chi lo vede.** Home card «I tuoi conti» (sede e /m/briefing, stesso KpiBlock): tessera «Fatturato» senza indicazione IVA, periodo in meta = `kpi.periodo_label` («Settembre» o «Ottobre · in corso»); Ricavi e Margini KpiBar: «Fatturato Netto» con sotto «lordo X», chip «Anno in corso»; Catena → Sintesi: «Fatturato (IVA incl.)» con meta `overview.periodo_label`; Catena → Analisi → Margini e coperti: colonna «Fatturato» (netto, dichiarato solo nel tooltip); chat tool query_margini: chiave `fatturato` lorda, descrizione dice solo «fatturato». Tutti gli account; nessun ID misurabile in questo filone (solo codice).
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`, `5444e918-8616-464c-a109-5d8aba226805`, `cc016821-e749-4323-9568-3781c69384d3`, `fd7ac484-b562-498d-a6d1-00c4c6fd09dd`
+**Clienti coinvolti (ID).** `51015cc8`, `5444e918`, `cc016821`, `fd7ac484`
 
 **Platea misurata in verifica.** Tutti gli account con ricavi: la Home (desktop e /m) mostra «Fatturato» lordo IVA accanto a un MOL calcolato sul netto; nessuna dichiarazione della base IVA in kpi-block.tsx.
 
@@ -751,7 +751,7 @@ Il test tests/test_scadenziario_vista_mensile_frontend.py passa (15 passed) ma u
 
 **Chi lo vede.** Catena → «Spesa per PV» (per categoria/fornitore) vs Analisi Fatture KPI «Spesa totale» di ogni PV; tutte e 4 le sedi con fatture dell'account.
 
-**Clienti coinvolti (ID).** `0dca4d1f-0caa-419a-b869-25bd98f424e1`, `51015cc8-078c-4e92-86b4-113e62e16d38`, `5444e918-8616-464c-a109-5d8aba226805`, `cc016821-e749-4323-9568-3781c69384d3`, `fd7ac484-b562-498d-a6d1-00c4c6fd09dd`
+**Clienti coinvolti (ID).** `0dca4d1f`, `51015cc8`, `5444e918`, `cc016821`, `fd7ac484`
 
 **Platea misurata in verifica.** 2 account con piu' sedi e righe negative nel 2026: 51015cc8 (4 sedi, 122.398,82 € di righe negative, quanto dichiarato dal finder) e 2f3f93a1 (3 sedi, 16.968,66 €). Per quest'ultimo, l'effetto dipende dall'uso della vista catena.
 
@@ -1437,7 +1437,7 @@ DB, sola lettura: query sopra, scritte da me.
 
 **Chi lo vede.** Home → Salute voce «Righe classificate» e briefing (esclusi_importo); Analisi Fatture → chip «Solo da verificare» + KPI; sede cc016821 (e le altre 3).
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`, `cc016821-e749-4323-9568-3781c69384d3`
+**Clienti coinvolti (ID).** `51015cc8`, `cc016821`
 
 **Platea misurata in verifica.** Tutte le sedi con righe needs_review (cifre del finder su una sede: 89 prodotti vs 37 Da Classificare).
 
@@ -1475,7 +1475,7 @@ DB, sola lettura: query sopra, scritte da me.
 
 **Chi lo vede.** Analisi e Tag → grafico «Trend prezzi nel periodo» (Media periodo = trend.prezzo_medio_periodo) vs tabella Fornitori (colonna «Prezzo medio», intestazione «Rispetto alla media» = aggregati.prezzo_medio_tag) e KPI «Prezzo medio ponderato»; l'account ha 13 tag custom e 3 di gruppo.
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`
+**Clienti coinvolti (ID).** `51015cc8`
 
 **Platea misurata in verifica.** Tutti gli utenti di Analisi e Tag con acquisti di quantita' diverse nello stesso giorno o periodo.
 
@@ -1512,7 +1512,7 @@ DB, sola lettura: query sopra, scritte da me.
 
 **Chi lo vede.** Gestione Fatture (sede e catena): colonna importo, KPI Scadute/Da pagare, calendario, chat query_scadenze. Quanti documenti cadono nel fallback non è misurabile senza DB.
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`, `79920814-082f-4d93-bf64-54bafbfbb708`
+**Clienti coinvolti (ID).** `51015cc8`, `79920814`
 
 **Platea misurata in verifica.** Totale da righe nette usato come ripiego quando manca fatture_documenti: 13 documenti su 3.645, su 4 account, per 5.594,99 €. Il flag totale_incoerente vale true su 3.580 documenti su 3.645, ma nessun .tsx lo legge.
 
@@ -1554,7 +1554,7 @@ DB, sola lettura: query sopra, scritte da me.
 
 **Chi lo vede.** /scadenziario e /catena/fatture, viste Scadenzario e Calendario (le card sono nascoste solo in Archivio).
 
-**Clienti coinvolti (ID).** `51015cc8-078c-4e92-86b4-113e62e16d38`, `79920814-082f-4d93-bf64-54bafbfbb708`
+**Clienti coinvolti (ID).** `51015cc8`, `79920814`
 
 **Platea misurata in verifica.** Etichetta senza «(filtro)»: tutti gli utenti di Gestione Fatture che applicano un filtro. Fatture RID pagate senza pagata_at (stima mia: join con fornitori_pagamenti_config su modalita 'rid', partita IVA, senza scadenza_override e senza pagata_manuale_at): 57 documenti su 3 account; di questi, 3 sono di ottobre per 205,89 €, cioe' quelli che oggi mancano dalla card del mese.
 
@@ -1629,7 +1629,7 @@ DB, sola lettura: query sopra, scritte da me.
 
 **Chi lo vede.** Analisi Fatture (sede), KpiBar: «Spesa totale» e «Media al mese», chip periodo «Anno in corso», nessuna nota su base IVA, data o righe non classificate; a confronto con Costi F&B/Spese Generali della pagina Margini per lo stesso periodo. Tutti gli account con fatture.
 
-**Clienti coinvolti (ID).** `2f3f93a1-c1f4-4804-858e-a161e6f36f3f`, `79920814-082f-4d93-bf64-54bafbfbb708`, `bdda08d1-9490-486c-adfb-dd05cbddc25c`, `dcf1996e-f430-4549-8505-902b169f6bab`
+**Clienti coinvolti (ID).** `2f3f93a1`, `79920814`, `bdda08d1`, `dcf1996e`
 
 **Platea misurata in verifica.** Data di competenza diversa dal mese del documento: 229 righe di 1 solo account, 3.833,22 € in valore assoluto (misurato a DB). Righe Da Classificare con importo: 142 righe su 3 account. A queste si aggiungono i costi inseriti a mano in Margini, che Analisi Fatture per definizione non mostra.
 

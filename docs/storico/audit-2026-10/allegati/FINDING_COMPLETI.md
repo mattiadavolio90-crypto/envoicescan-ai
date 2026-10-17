@@ -8,7 +8,7 @@ Testo integrale restituito dai nove finder il 15/10/2026, prima della verifica. 
 
 Filone 1 · bug vero · gravità media · confidenza alta
 
-**chi lo vede.** Home desktop (card «I tuoi conti», kpi-block.tsx) e /m/briefing (stesso fetchKpi+KpiBlock) dell'account D = user 802967b0-2aed-40f0-8d42-81076f44bb17 / sede 86300227-53c3-4193-9b45-761b3654e889. C non e' toccato (settembre ha incasso).
+**chi lo vede.** Home desktop (card «I tuoi conti», kpi-block.tsx) e /m/briefing (stesso fetchKpi+KpiBlock) dell'account D = user 802967b0 / sede 86300227. C non e' toccato (settembre ha incasso).
 
 **prova.** Oggi 15/10/2026: home_kpi parte da settembre (nessuna riga margini_mensili, costi 0 → has_data False), agosto idem, luglio: margini_mensili assente, RPC costi 2026-07 = fb 0,00 / spese 89,08 (13 righe, query ricalcolo) → has_data = (lordo>0 or fb>0 or spese>0 or personale>0) = True → mese mostrato «Luglio». _kpi_periodo(7): fatturato 0, netto 0, food_cost None, personale 0, spese 89,08, mol −89,08, costi_mancanti = (0>0 and ...) = False. Confronto: giugno has_data (override 80.655 → netto 73.322,73; fb 13.058,88; spese 4.180,61; pers 20.080; MOL 36.003,24) → confronto_label «vs giugno»; spese_delta = (89,08−4.180,61)/4.180,61 = −97,9% → kpi-block Trend buonoSeSu=false, delta giu' → tinta VERDE (sopprimi solo se spese===0); mol_delta = −100,2% (grigio perche' MOL<0); fatturato/personale soppressi (==0). incasso_fuori_norma(luglio): netto 0 → None → nessun avviso; confronto_escluso: giugno 73.322,73 vs mediana 73.896,91 → non fuori norma → il confronto resta. tintContiPV: costi_mancanti False, fuori_norma non true, mol<0 → ROSSO. Sparkline mol_mensile gen→lug: 31.296,09 / 16.505,43 / 28.438,79 / 37.347,38 / 38.947,67 / 36.003,24 / −89,08 → calcolaSparkline ytdPct = (−89,08−31.296,09)/31.296,09 = −100,3%, linea rossa: esattamente il «falso crollo» che il commento a worker:10024 dice di voler evitare. Il briefing si protegge da questo caso (_mesi_confrontabili, worker:6777: fatturato<=0 → False), la Home e la chat no.
 
@@ -26,7 +26,7 @@ Filone 1 · bug vero · gravità media · confidenza alta
 
 Filone 1 · bug vero · gravità bassa · confidenza alta
 
-**chi lo vede.** Chat (tool query_margini) dell'account D (user 802967b0-2aed-40f0-8d42-81076f44bb17). Per C nessun effetto oggi (nessun mese con costi_mancanti, nessun mese a incasso 0 fra gli ultimi 6).
+**chi lo vede.** Chat (tool query_margini) dell'account D (user 802967b0). Per C nessun effetto oggi (nessun mese con costi_mancanti, nessun mese a incasso 0 fra gli ultimi 6).
 
 **prova.** Lettura worker:5324-5341 + dati: il loop fa 6 iterazioni da ottobre 2026 all'indietro (ott, set, ago: has_data False; lug: has_data True per 89,08 € di spese; giu, mag) → risultati = [luglio {fatturato 0, food_cost_pct None, mol −89,08, parziale False}, giugno {80.655 / 17,8 / 36.003,24}, maggio {88.606 / 19,3 / 38.947,67}]. Il dict non porta ne' costi_mancanti ne' un flag «senza incasso»: solo «parziale» (vero solo per il mese corrente). Per C costi_mancanti e' False su tutti i mesi (fb>0 ovunque), quindi l'omissione del flag non cambia nulla oggi su questi due account.
 
@@ -44,7 +44,7 @@ Filone 1 · bug vero · gravità bassa · confidenza alta
 
 Filone 1 · bug vero · gravità media · confidenza alta
 
-**chi lo vede.** Gestione Fatture → vista «Per mese» (lista_mensile), intestazione di ogni mese (AgendaSection). C = user 79920814-082f-4d93-bf64-54bafbfbb708 / sede f16aebe5-735b-4d1b-a168-81af1547db03 e D = user 802967b0-2aed-40f0-8d42-81076f44bb17 / sede 86300227-53c3-4193-9b45-761b3654e889.
+**chi lo vede.** Gestione Fatture → vista «Per mese» (lista_mensile), intestazione di ogni mese (AgendaSection). C = user 79920814 / sede f16aebe5 e D = user 802967b0 / sede 86300227.
 
 **prova.** raggruppaPerMeseFattura eseguita con node (--experimental-strip-types, TZ Europe/Rome) sui 453 documenti reali (110 C + 343 D, tutti con header fatture_documenti, 0 oscurate) nella forma di get_documenti_scadenziario: totali identici alla ricostruzione SQL (COALESCE(header.totale_documento, SUM(totale_riga))). D: gen 19.778,29 € (39 doc, 1 NC 62,68 sommata positiva; debito aperto 19.715,61; netto NC 19.652,93), feb 42.436,38 (65, 0 NC), mar 28.017,98 (64, 2 NC 46,91 → netto 27.924,16), apr 24.388,39 (64, 4 NC 454,99, 1 pagata 6.270,88 → debito aperto 17.662,52, netto NC 23.478,41), mag 25.889,67 (56, 3 NC 1.387,61, 12 pagate 4.021,68 → debito aperto 20.480,38; acquisti netti NC 23.114,45: scarto +2.775,22 = 2×NC), giu 19.943,38 (54, 2 NC 153,41, 1 pagata 2.133 → debito aperto 17.656,97), lug 108,68 (1). C: mar 10.023,46 (17 doc, tutte pagate via RID), apr 7.127,44 (16), mag 8.017,42 (20), giu 6.980,20 (12, 1 NC 468,10 → netto 6.044,00, scarto +936,20), lug 4.639,00 (13), ago 5.932,14 (12, 1 NC 6,00), set 8.102,34 (16), ott 2.890,23 (4): per C il debito aperto e' 0,00 in OGNI mese (79 header pagata + 43 documenti sotto regola RID senza pagata_manuale_at) mentre l'intestazione mostra la somma piena. totale_documento della NC in fatture_documenti e' positivo (468,10) mentre le righe sono negative (−383,69 netto IVA): sommato come acquisto.
 
@@ -62,7 +62,7 @@ Filone 1 · bug vero · gravità media · confidenza alta
 
 Filone 1 · periodo non dichiarato · gravità bassa · confidenza alta
 
-**chi lo vede.** Analisi Fatture (KPI «Spesa totale», mese specifico) contro Ricavi e Margini (tabella Calcolo, stesso mese) di C = user 79920814-082f-4d93-bf64-54bafbfbb708. D non ha righe con competenza diversa dal mese documento (0,00 € in ogni mese).
+**chi lo vede.** Analisi Fatture (KPI «Spesa totale», mese specifico) contro Ricavi e Margini (tabella Calcolo, stesso mese) di C = user 79920814. D non ha righe con competenza diversa dal mese documento (0,00 € in ogni mese).
 
 **prova.** SQL per mese: C aprile Analisi (data_documento, NOTE escluse, righe ≠0) 6.064,93 € vs Margini auto (COALESCE(data_competenza,data_documento), fb 5.114,66 + spese 3.196,39) 8.311,05 €; righe datate aprile con competenza in altro mese 774,01 €, righe datate maggio con competenza in altro mese 3.020,13 € → 6.064,93 − 774,01 + 3.020,13 = 8.311,05 ✓; maggio Analisi 6.847,60 vs Margini 3.827,47 (= 6.847,60 − 3.020,13) ✓. Su tutto il 2026 (Analisi 1/1→15/10 su data_documento; Margini gen→ott su competenza) la parte automatica e' identica: C 45.498,98 € = 45.498,98 €; D 136.766,11 € = 136.766,11 € (competenza_altro_anno = 0 per entrambi). Margini aggiunge gli «altri costi» manuali: C 1.600 € (300 €/mese mar-lug + 100 ago) → F&B+Spese = 27.783,43 + 19.315,55 = 47.098,98; D 3.764,95 € → 102.454,12 + 38.076,94 = 140.531,06. Da Classificare: 0,00 € per entrambi in ogni mese (nessun effetto oggi). NC: nettizzate in entrambe (somma di totale_riga negativi).
 
@@ -607,7 +607,7 @@ Filone 3 · bug vero · gravità media · confidenza alta
 
 Filone 1 · bug vero · gravità alta · confidenza alta
 
-**chi lo vede.** Home «I tuoi conti» (desktop e /m/briefing, stesso KpiBlock) della sede 0dca4d1f-0caa-419a-b869-25bd98f424e1, mese mostrato oggi = Settembre 2026 (ultimo mese completo, worker:9926-9935). Anche la tabella Margini della stessa sede: la colonna Set non e' «senza costi» (meseSenzaCosti) e _mesi_senza_costi conta 4 mesi su 10 invece di 5.
+**chi lo vede.** Home «I tuoi conti» (desktop e /m/briefing, stesso KpiBlock) della sede 0dca4d1f, mese mostrato oggi = Settembre 2026 (ultimo mese completo, worker:9926-9935). Anche la tabella Margini della stessa sede: la colonna Set non e' «senza costi» (meseSenzaCosti) e _mesi_senza_costi conta 4 mesi su 10 invece di 5.
 
 **prova.** margini_mensili 2026/9 sede 0dca4d1f: fatturato_iva10 309.017,38 + altri 105.374,85 (lordo 414.392,23, netto 386.299,74), costi_fb_auto live (RPC costi_automatici_mensili) = nessuna riga per settembre (ultima fattura 30/06), altri_costi_fb = 100,00 (updated_at 06/10), spese 0, personale 0. _kpi_periodo (worker:9798-9868): fb = 0 + 100 + 0 = 100 → costi_mancanti = (414.392 > 0 and 100 <= 0) = False; has_data True; food_cost_pct = round(100/386.299,74*100,1) = 0,0; mol = 386.199,74 (100,0%). tintContiPV (lib/catena-confronti.ts:371-381): costi_mancanti false, incasso_fuori_norma assente → «verde». Il banner «Mancano le fatture costo» (kpi-block.tsx:101-114) e' condizionato a kpi.costi_mancanti → non appare. Le altre 3 sedi, stesso mese, stessa assenza di fatture ma altri_costi_fb = 0 → costi_mancanti true, giallo + banner. La voce Salute «Fatture caricate» (_costi_automatici_mese, worker:8458) guarda i soli costi AUTO → per la stessa sede e lo stesso mese dice che manca la merce: la stessa pagina si contraddice.
 

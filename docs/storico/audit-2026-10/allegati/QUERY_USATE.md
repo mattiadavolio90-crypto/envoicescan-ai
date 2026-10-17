@@ -18,7 +18,7 @@ BEGIN READ ONLY; SELECT column_name, data_type FROM information_schema.columns W
 BEGIN READ ONLY; SELECT id, user_id, tipo_attivita, nuovi_da FROM ristoranti WHERE user_id IN ('79920814-...','802967b0-...'); COMMIT;
 ```
 
-**Risultato.** C → f16aebe5-735b-4d1b-a168-81af1547db03 (ristorazione, nuovi_da 14/10); D → 86300227-53c3-4193-9b45-761b3654e889 (ristorazione, nuovi_da 15/7)
+**Risultato.** C → f16aebe5 (ristorazione, nuovi_da 14/10); D → 86300227 (ristorazione, nuovi_da 15/7)
 
 ### Corpo delle funzioni SQL prima di ragionarci (nessuna chiamata diretta: sola SELECT in entrambe)
 
@@ -123,7 +123,7 @@ N/A (esecuzione node: computeKpi, bucketizeDocumenti, contaDaPagare, chiaviSelez
 ### Sedi dell'account, settore, flag no IVA, sede tecnica
 
 ```sql
-BEGIN READ ONLY; SELECT id, tipo_attivita, escludi_ricavi_noiva, sede_tecnica, created_at::date FROM ristoranti WHERE user_id = '2f3f93a1-c1f4-4804-858e-a161e6f36f3f' ORDER BY created_at; COMMIT;
+BEGIN READ ONLY; SELECT id, tipo_attivita, escludi_ricavi_noiva, sede_tecnica, created_at::date FROM ristoranti WHERE user_id = '2f3f93a1' ORDER BY created_at; COMMIT;
 ```
 
 **Risultato.** 3 sedi: dcf1996e e bdda08d1 (ristorazione, escludi false, sede_tecnica false), f7bba05f (sede_tecnica true, escludi false)
