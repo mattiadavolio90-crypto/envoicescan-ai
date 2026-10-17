@@ -1,7 +1,21 @@
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/auth";
 import { risolviTab, tabAttive, type SezioneConTab, type TabDef } from "@/lib/tab-flags";
-import { haCatena, haHome, primaPaginaAbilitata, primaTabMobile, vedeTabMobile } from "@/lib/sotto-utente";
+import {
+  guardiaCatena,
+  guardiaHome,
+  guardiaPagina,
+  guardiaTabMobile,
+  type EsitoGuardia,
+} from "@/lib/guardia-pagina";
+
+/** Traduce la decisione (lib/guardia-pagina.ts) nelle eccezioni di Next. */
+function applica(e: EsitoGuardia): void {
+  if (e.esito === "404") notFound();
+  if (e.esito === "redirect") redirect(e.a);
+  // Error boundary di (app) e di /m: «Riprova», non la pagina senza dati.
+  if (e.esito === "non_disponibile") throw new Error("Sessione non verificabile: servizio non raggiungibile");
+}
 
 /**
  * Guard di permesso pagina lato route (server component).
@@ -13,18 +27,13 @@ import { haCatena, haHome, primaPaginaAbilitata, primaTabMobile, vedeTabMobile }
  *   - flag presente nella lista  -> passa
  *   - altrimenti                 -> notFound() (404, non rivela la pagina)
  *
- * Le pagine SENZA flag (Home, ecc.) non chiamano questo guard. Sessione
- * assente/scaduta o worker giù sono già gestiti dal layout (app)/layout.tsx,
- * che gira prima: qui assumiamo una sessione valida e, per sicurezza, in caso
- * contrario lasciamo decidere al layout senza bloccare (fail-open sul guard,
- * il layout fa fail-closed sull'auth).
+ * Le pagine SENZA flag (Home, ecc.) non chiamano questo guard. Sessione non
+ * valida -> /login, worker giu' -> la pagina non si rende: il layout (app) fa lo
+ * stesso controllo, ma solo al caricamento completo (sulla navigazione client i
+ * layout non si rigirano).
  */
 export async function requirePagina(flag: string): Promise<void> {
-  const session = await getCurrentSession();
-  if (session.status !== "ok") return; // l'auth la gestisce il layout
-  const pagine = session.user.pagine_abilitate;
-  if (pagine == null) return; // admin / nessuna restrizione
-  if (!pagine.includes(flag)) notFound();
+  applica(guardiaPagina(await getCurrentSession(), flag));
 }
 
 /**
@@ -37,24 +46,16 @@ export async function requirePagina(flag: string): Promise<void> {
  * pagina che si sta negando, quindi niente ciclo.
  */
 export async function requireHome(): Promise<void> {
-  const session = await getCurrentSession();
-  if (session.status !== "ok" || !session.user.sotto_utente) return;
-  if (!haHome(session.user)) redirect(primaPaginaAbilitata(session.user) ?? "/impostazioni");
+  applica(guardiaHome(await getCurrentSession()));
 }
 
 export async function requireCatena(): Promise<void> {
-  const session = await getCurrentSession();
-  if (session.status !== "ok" || !session.user.sotto_utente) return;
-  if (!haCatena(session.user)) {
-    redirect(haHome(session.user) ? "/dashboard" : (primaPaginaAbilitata(session.user) ?? "/impostazioni"));
-  }
+  applica(guardiaCatena(await getCurrentSession()));
 }
 
 /** Le tab di /m per i sotto-utenti: stessa regola della bottom-nav. */
 export async function requireTabMobile(href: string): Promise<void> {
-  const session = await getCurrentSession();
-  if (session.status !== "ok" || !session.user.sotto_utente) return;
-  if (!vedeTabMobile(session.user, href)) redirect(primaTabMobile(session.user));
+  applica(guardiaTabMobile(await getCurrentSession(), href));
 }
 
 /**

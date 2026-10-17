@@ -3442,6 +3442,21 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   e senza sessione letta; la Home lo applica nella testata, la catena lo passa a
 >   `SintesiCatena` (default spento). +2 test in `tests/test_sotto_utente_frontend.py` (logica
 >   con node e cablaggio delle due Home); **6 mutanti, 6 uccisi**. `tsc --noEmit` pulito.
+>
+> - **17/10/2026 — Fix n. 28 dell'audit di ottobre (F2b-5, #21): le guardie di pagina non
+>   lasciano passare una sessione che non e' `ok`.** `requirePagina`, `requireHome`,
+>   `requireCatena`, `requireTabMobile` (e quindi `requirePaginaConTab`) facevano `return` se
+>   la sessione era revocata o il worker giu', affidandosi al layout, che pero' sulla
+>   navigazione client non si rigira: la pagina si rendeva con `pagine = null`, cioe' con le
+>   tab spente dall'admin di nuovo visibili (vuote: i dati restavano dietro il 401). Ora la
+>   decisione sta in `lib/guardia-pagina.ts` (funzione pura): `invalid` → `/login`,
+>   `unavailable` → la pagina non si rende. Per quest'ultimo caso `(app)` ha ora un
+>   `error.tsx` (gemello di quello di /m: la sidebar resta, al posto della pagina «Riprova»),
+>   che vale anche per gli altri errori di render, prima sulla pagina d'errore di Next; e il
+>   «Riprova» di entrambi usa `unstable_retry` (rilegge dal server) invece di `reset`, che
+>   rendeva di nuovo lo stesso errore. Con la sessione valida gli esiti sono quelli di prima.
+>   +6 test in `tests/test_guardia_pagina_frontend.py`; **8 mutanti, 8 uccisi**. Presidi sul
+>   filesystem (colori, nomi file, troncamenti): 1.747 verdi; `tsc --noEmit` pulito.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

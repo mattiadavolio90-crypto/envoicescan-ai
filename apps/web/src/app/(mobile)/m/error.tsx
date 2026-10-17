@@ -7,12 +7,14 @@ import { RefreshCw } from "lucide-react";
 // lancia durante il render lato client, invece di una schermata bianca o del
 // "this page couldn't load" del WebView mostriamo un fallback gentile con un
 // pulsante per riprovare. Vale per tutte le tab, non solo Impostazioni.
+// `unstable_retry` rilegge la schermata dal server: `reset` la rendeva di nuovo
+// con lo stesso errore (es. la guardia di pagina col worker irraggiungibile).
 export default function MobileError({
   error,
-  reset,
+  unstable_retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
   useEffect(() => {
     // Lasciamo traccia in console: utile se serve diagnosticare da remoto.
@@ -26,7 +28,7 @@ export default function MobileError({
       </p>
       <button
         type="button"
-        onClick={reset}
+        onClick={() => unstable_retry()}
         className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium active:bg-accent"
       >
         <RefreshCw className="size-4" />

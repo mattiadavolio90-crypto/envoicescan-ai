@@ -101,6 +101,10 @@ aggirabile aspettando un redeploy.
 con feature flag chiamano `requirePagina(flag)` in cima. Flag spento →
 `notFound()`. Prima `pagine_abilitate` filtrava **solo la sidebar**, quindi l'URL
 diretto era raggiungibile. Doppia difesa con il gate tool della chat (`_CHAT_TOOL_FLAG`).
+Dal 17/10/2026 le guardie non lasciano passare una sessione che non e' `ok`
+(decisione in `apps/web/src/lib/guardia-pagina.ts`): non valida → `/login`, worker
+irraggiungibile → la pagina non si rende (la prende `error.tsx`). Il layout fa lo
+stesso controllo solo al caricamento completo: sulla navigazione client non si rigira.
 
 > Non sostituisce l'isolamento dati del §1: è controllo di accesso alla
 > **funzionalità**, non al **dato**.
