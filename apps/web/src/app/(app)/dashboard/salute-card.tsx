@@ -3,13 +3,25 @@ import { Check, ArrowRight } from "lucide-react";
 import { type Salute } from "@/lib/home";
 import { vociCompletezza } from "@/lib/home-kpi";
 import { CardHome, RiepilogoCompletezza } from "@/components/home/card-home";
+import { hrefSeConsentito } from "@/lib/guardia-pagina";
+import { type UtenteVisibilita } from "@/lib/sotto-utente";
 
 // Soglie dell'indice decise lato backend (verde >=80, giallo 50-79, rosso <50):
 // qui solo il disegno.
 //
 // hideLinks: su mobile (PWA) niente «Vai» che porterebbe fuori dalla Home verso
 // la vista desktop.
-export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hideLinks?: boolean }) {
+// utente: un «Vai» verso una pagina che non ha non si mostra.
+export function SaluteCard({
+  salute,
+  hideLinks = false,
+  utente,
+}: {
+  salute: Salute;
+  hideLinks?: boolean;
+  utente?: UtenteVisibilita | null;
+}) {
+  const vai = (href: string | null | undefined) => (utente ? hrefSeConsentito(href, utente) : (href ?? null));
   const { daSistemare, aPosto } = vociCompletezza(salute.voci);
   // Con tutte le voci spente dal configuratore non c'e' niente da dire: «tutte a
   // posto» sarebbe vero a vuoto.
@@ -26,27 +38,30 @@ export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hide
 
       {daSistemare.length > 0 && (
         <ul className="divide-y divide-border">
-          {daSistemare.map((v) => (
-            <li key={v.key} className="flex items-start gap-2.5 py-2 text-sm first:pt-0">
-              <span className="mt-1.5 size-2 shrink-0 rounded-full bg-incerto" />
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="font-medium">{v.label}</span>
-                <span className="text-xs text-muted-foreground">{v.dettaglio}</span>
-                {/* L'effetto sui numeri, quando c'e'. Ambra come il pallino. */}
-                {v.conseguenza && <span className="text-xs text-incerto">{v.conseguenza}</span>}
-              </div>
-              {!hideLinks && v.cta_page && (
-                <Link
-                  href={v.cta_page}
-                  title="Vai alla pagina"
-                  className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary-text hover:underline"
-                >
-                  Vai
-                  <ArrowRight className="size-3.5" />
-                </Link>
-              )}
-            </li>
-          ))}
+          {daSistemare.map((v) => {
+            const href = hideLinks ? null : vai(v.cta_page);
+            return (
+              <li key={v.key} className="flex items-start gap-2.5 py-2 text-sm first:pt-0">
+                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-incerto" />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="font-medium">{v.label}</span>
+                  <span className="text-xs text-muted-foreground">{v.dettaglio}</span>
+                  {/* L'effetto sui numeri, quando c'e'. Ambra come il pallino. */}
+                  {v.conseguenza && <span className="text-xs text-incerto">{v.conseguenza}</span>}
+                </div>
+                {href && (
+                  <Link
+                    href={href}
+                    title="Vai alla pagina"
+                    className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary-text hover:underline"
+                  >
+                    Vai
+                    <ArrowRight className="size-3.5" />
+                  </Link>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 

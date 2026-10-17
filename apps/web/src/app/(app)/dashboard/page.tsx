@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 import { getCurrentSession, getCurrentUser } from "@/lib/auth";
 import { requireHome } from "@/lib/page-guard";
-import { mostraConfigAssistente } from "@/lib/sotto-utente";
+import { mostraConfigAssistente, visibilitaDi } from "@/lib/sotto-utente";
 import { TestataHome } from "@/components/home/testata-home";
 import { ConversazioneAssistente } from "@/components/home/conversazione-assistente";
 import { quotaDaConfig, vistaSede } from "@/lib/home-chat";
@@ -73,6 +73,7 @@ async function BriefingBlock() {
   return (
     <HomeBriefing
       briefing={briefing}
+      visibilita={utente && visibilitaDi(utente)}
       conversazione={
         chatVisibile(config) && (
           <ConversazioneAssistente
@@ -143,7 +144,7 @@ async function KpiSaluteBlock() {
   return (
     // Conti a sinistra e completezza a destra, come nella Home di catena.
     <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-      {kpi && !kpiVuoto && <KpiBlock kpi={kpi} settore={user?.tipo_attivita} />}
+      {kpi && !kpiVuoto && <KpiBlock kpi={kpi} settore={user?.tipo_attivita} utente={user} />}
       {kpiVuoto && (
         <Card>
           <CardContent className="flex h-full flex-col items-center justify-center py-8 text-center">
@@ -156,7 +157,7 @@ async function KpiSaluteBlock() {
           </CardContent>
         </Card>
       )}
-      {salute && <SaluteCard salute={salute} />}
+      {salute && <SaluteCard salute={salute} utente={user} />}
     </div>
   );
 }

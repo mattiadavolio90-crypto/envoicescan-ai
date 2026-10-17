@@ -3482,6 +3482,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   schede. +3 test in `tests/test_logout_svuota_conversazione_frontend.py` (uno Storage finto
 >   con node e il cablaggio); **7 mutanti, 7 uccisi** (fra cui la rimozione durante il giro,
 >   che ne lascia una su due). `tsc --noEmit` pulito; test della chat: 167 verdi.
+>
+> - **17/10/2026 — Fix n. 31 dell'audit di ottobre (F2b-8, #24): sulla Home un link si mostra
+>   solo se la pagina d'arrivo si apre.** KPI (MOL, tessere, avvisi di costi e incasso
+>   mancanti), «Vai» di Completezza dati e pulsanti di «Da fare» portavano un sotto-utente con
+>   la Home ma senza Margini, Analisi Fatture o Prezzi su un 404. Ora `hrefSeConsentito`
+>   (lib/guardia-pagina.ts) passa ogni destinazione alle stesse guardie della pagina (e una
+>   pagina con tutte le tab spente e' un 404): se non si apre il dato resta, il link no. La
+>   mappa percorso → pagina e' la stessa di `_PAGINA_DI_PERCORSO` del worker, con un test che
+>   le confronta. Vale per chiunque abbia le pagine ristrette, quindi anche per un titolare a
+>   cui l'admin ne ha spenta una (prima il link portava al 404 anche a lui); per il titolare
+>   senza restrizioni nulla cambia. Cablato su desktop (KPI, Completezza, «Da fare») e sui KPI
+>   di /m. +7 test in `tests/test_home_link_consentiti_frontend.py`; **10 mutanti, 10
+>   uccisi**. Test della Home e presidi del frontend: 2.316 verdi; `tsc --noEmit` pulito.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

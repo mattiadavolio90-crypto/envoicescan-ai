@@ -31,6 +31,16 @@ export const PAGINE_IN_ORDINE: ReadonlyArray<readonly [string, string]> = [
   ["workspace", "/workspace"],
 ];
 
+/** Solo i campi che decidono cosa si vede: cio' che passa a un componente client. */
+export function visibilitaDi(utente: UtenteVisibilita): UtenteVisibilita {
+  return {
+    pagine_abilitate: utente.pagine_abilitate,
+    sotto_utente: utente.sotto_utente,
+    num_sedi: utente.num_sedi,
+    is_admin: utente.is_admin,
+  };
+}
+
 export function haHome(utente: UtenteVisibilita): boolean {
   if (!utente.sotto_utente) return true;
   return (utente.pagine_abilitate ?? []).includes("home");

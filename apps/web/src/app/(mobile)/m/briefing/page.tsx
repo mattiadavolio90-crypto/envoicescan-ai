@@ -29,7 +29,7 @@ async function ContiBlock() {
   // negozio leggerebbe "Food cost" sul telefono e "Costo Merce" sul desktop.
   const [kpi, user] = await Promise.all([fetchKpi(), getCurrentUser()]);
   if (!kpi) return null;
-  return <KpiBlock kpi={kpi} settore={user?.tipo_attivita} />;
+  return <KpiBlock kpi={kpi} settore={user?.tipo_attivita} utente={user} />;
 }
 
 // Salute della gestione: anch'essa in streaming.

@@ -14,6 +14,8 @@ import type { Osservazione, Segnale } from "./gruppo";
 import { chiaveAvviso, destinazioneAvviso, pulisci, type Notifica } from "@/lib/notifiche-shared";
 import { haDestinazione, osservazioniDaMostrare } from "@/lib/catena-osservazioni";
 import { LINK_CODA_GRUPPO } from "@/lib/catena-schede";
+import { hrefSeConsentito } from "@/lib/guardia-pagina";
+import type { UtenteVisibilita } from "@/lib/sotto-utente";
 
 export type SeveritaVoce = "error" | "warning" | "info" | "success";
 
@@ -48,17 +50,25 @@ type AzionePV = {
 };
 
 /** Le azioni del briefing del punto vendita nella forma comune. `ignorabile`
- * lo decide chi rende (puoIgnorare in briefing-shared), come oggi. */
-export function vociDaAzioniPV<A extends AzionePV>(azioni: A[], ignorabile: (a: A) => boolean): VoceDaFare[] {
-  return azioni.map((a) => ({
-    id: a.id,
-    severity: a.severity,
-    testo: a.testo,
-    dettaglio: a.dettaglio ?? null,
-    sede: null,
-    azione: { tipo: "pagina", href: a.cta_page, etichetta: a.cta_label },
-    ignorabile: ignorabile(a),
-  }));
+ * lo decide chi rende (puoIgnorare in briefing-shared), come oggi. Con `utente`,
+ * un'azione verso una pagina che non ha resta senza pulsante. */
+export function vociDaAzioniPV<A extends AzionePV>(
+  azioni: A[],
+  ignorabile: (a: A) => boolean,
+  utente?: UtenteVisibilita | null,
+): VoceDaFare[] {
+  return azioni.map((a) => {
+    const href = utente ? hrefSeConsentito(a.cta_page, utente) : a.cta_page;
+    return {
+      id: a.id,
+      severity: a.severity,
+      testo: a.testo,
+      dettaglio: a.dettaglio ?? null,
+      sede: null,
+      azione: href ? { tipo: "pagina", href, etichetta: a.cta_label } : null,
+      ignorabile: ignorabile(a),
+    };
+  });
 }
 
 const RANGO: Record<SeveritaVoce, number> = { error: 0, warning: 1, info: 2, success: 3 };

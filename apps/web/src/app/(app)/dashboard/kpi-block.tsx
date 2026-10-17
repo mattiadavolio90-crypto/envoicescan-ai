@@ -8,6 +8,28 @@ import { costoMerceLabel, type Settore } from "@/lib/categorie-spesa";
 import { SALUTE_TINT } from "@/lib/salute-tint";
 import { cn } from "@/lib/utils";
 import { AndamentoMargine, CardHome, EtichettaKpi, TesseraVoce } from "@/components/home/card-home";
+import { hrefSeConsentito } from "@/lib/guardia-pagina";
+import { type UtenteVisibilita } from "@/lib/sotto-utente";
+
+// Senza la pagina d'arrivo (sotto-utente, tab spente) il blocco resta, senza link.
+function ForseLink({
+  href,
+  className,
+  hover,
+  children,
+}: {
+  href: string | null;
+  className: string;
+  hover: string;
+  children: React.ReactNode;
+}) {
+  if (!href) return <div className={className}>{children}</div>;
+  return (
+    <Link href={href} className={cn(className, hover)}>
+      {children}
+    </Link>
+  );
+}
 
 function Trend({
   delta,
@@ -51,8 +73,18 @@ function Trend({
 }
 
 
-export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | null }) {
+export function KpiBlock({
+  kpi,
+  settore,
+  utente,
+}: {
+  kpi: HomeKpi;
+  settore?: Settore | null;
+  /** Chi guarda: un link verso una pagina che non ha non si mostra. */
+  utente?: UtenteVisibilita | null;
+}) {
   if (!kpi.has_data) return null;
+  const vai = (href: string) => (utente ? hrefSeConsentito(href, utente) : href);
   const molPos = kpi.mol >= 0;
   /**
    * Con i costi mancanti il MOL non e' un risultato: e' un buco.
@@ -79,7 +111,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
           Accanto, l'andamento nell'anno (nessuna soglia qui: calcolaSparkline
           torna null con meno di 2 punti). */}
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-        <Link href="/margini" className="flex min-w-0 flex-col gap-1 rounded-md hover:opacity-80">
+        <ForseLink href={vai("/margini")} className="flex min-w-0 flex-col gap-1 rounded-md" hover="hover:opacity-80">
           <EtichettaKpi>MOL (margine)</EtichettaKpi>
           <span className={cn("text-2xl font-bold leading-tight tabular-nums", tint.text)}>
             {formatEuro(kpi.mol)}
@@ -91,7 +123,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
                 un margine gonfiato con uno vero. */}
             <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos || !molAttendibile || kpi.in_attesa === true} />
           </span>
-        </Link>
+        </ForseLink>
         <AndamentoMargine punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} affidabile={molAttendibile} />
       </div>
 
@@ -99,9 +131,10 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
           services/completezza_mese.py: meno del 20% del netto). Il MOL e'
           gonfiato — lo diciamo chiaro invece di mostrare un margine finto. */}
       {kpi.costi_mancanti && (
-        <Link
-          href="/analisi-fatture"
-          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors hover:border-incerto/60"
+        <ForseLink
+          href={vai("/analisi-fatture")}
+          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors"
+          hover="hover:border-incerto/60"
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
@@ -109,20 +142,21 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
             {costoMerceLabel(settore).toLowerCase()} è troppo basso per essere vero e questo
             margine non è reale. Si aggiorna da solo appena arrivano.
           </span>
-        </Link>
+        </ForseLink>
       )}
 
       {kpi.incasso_mancante && (
-        <Link
-          href="/margini"
-          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors hover:border-incerto/60"
+        <ForseLink
+          href={vai("/margini")}
+          className="flex items-start gap-2 rounded-lg border border-incerto/30 bg-incerto/10 px-3 py-2 text-xs text-incerto transition-colors"
+          hover="hover:border-incerto/60"
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" />
           <span>
             Manca l&apos;incasso di {kpi.periodo_label.toLowerCase()}: il MOL qui sopra è solo la
             somma dei costi. Si aggiorna da solo appena inserisci i ricavi.
           </span>
-        </Link>
+        </ForseLink>
       )}
 
       {!kpi.costi_mancanti && kpi.in_attesa && (
@@ -149,7 +183,7 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
           label="Fatturato (IVA incl.)"
           valore={formatEuro(kpi.fatturato)}
           extra={<Trend delta={kpi.fatturato_delta_pct} suffix="%" buonoSeSu sopprimi={kpi.fatturato === 0} />}
-          href="/margini"
+          href={vai("/margini") ?? undefined}
         />
         <TesseraVoce
           // La Home scrive "Food cost" con la c minuscola, `costoMerceLabel`
@@ -166,21 +200,21 @@ export function KpiBlock({ kpi, settore }: { kpi: HomeKpi; settore?: Settore | n
               sopprimi={kpi.food_cost_pct == null || kpi.food_cost_pct === 0}
             />
           }
-          href="/prezzi"
+          href={vai("/prezzi") ?? undefined}
         />
         <TesseraVoce
           label="Costo personale"
           segno="−"
           valore={formatEuro(kpi.costo_personale)}
           extra={<Trend delta={kpi.personale_delta_pct} suffix="%" buonoSeSu={false} sopprimi={kpi.costo_personale === 0} />}
-          href="/margini"
+          href={vai("/margini") ?? undefined}
         />
         <TesseraVoce
           label="Spese generali"
           segno="−"
           valore={formatEuro(kpi.spese_generali)}
           extra={<Trend delta={kpi.spese_delta_pct} suffix="%" buonoSeSu={false} sopprimi={kpi.spese_generali === 0} />}
-          href="/margini"
+          href={vai("/margini") ?? undefined}
         />
       </div>
     </CardHome>
