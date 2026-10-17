@@ -3410,6 +3410,19 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   in `tests/test_sql_funzioni_pagina.py`, +1 in `tests/test_gruppo_spesa_pivot_quote.py`,
 >   +7 in `tests/test_catena_confronti_frontend.py`, +8 in `tests/test_completezza_mese.py`;
 >   **8 mutanti, 8 uccisi** (due sul file della migration, eseguita sul Postgres dei test).
+>
+> - **17/10/2026 — Deploy della coda dell'audit di ottobre (52 commit, fino a `1d285125`).**
+>   Prima del push: suite `-m "not sql"` 19.891 verdi (l'unico rosso, la fixture del food cost
+>   dell'email settimanale, allineato), `-m sql` 1.264 verdi, quattro code-reviewer sulla
+>   coda intera (ordine di deploy, dati, sicurezza, frontend) tutti con via libera, critico
+>   finale GO. Migration `20261016213000_gruppo_spesa_pivot_netta_senza_ripartite.sql`
+>   applicata al live prima del push e verificata: gennaio 2026 di una catena da 245.863,81 a
+>   241.810,70 EUR, differenza esattamente 456,30 EUR di ripartite piu' 3.596,81 EUR di note di
+>   credito; permessi invariati (anon no, service_role si'). Tolti dai documenti dell'audit 54
+>   UUID completi di clienti: il repo GitHub e' pubblico. Dopo il push: CI verde (Tests,
+>   OpenAPI Drift, Requirements, Deploy to Vercel), worker `/health` sul commit `1d285125`,
+>   `/login` e `/privacy` (versione 4.6) a 200. Resta aperto il filone sotto-utenti (9
+>   difetti, prompt della prossima sessione in `docs/piani/`).
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
