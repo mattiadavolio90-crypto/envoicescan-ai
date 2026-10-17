@@ -128,18 +128,16 @@ function buildParams(obj: Record<string, string | number | boolean | undefined |
 async function workerGet<T>(
   path: string,
   params: Record<string, string | number | boolean | undefined | null> = {},
-  revalidateSec?: number,
 ): Promise<T | null> {
   const token = await getToken();
   if (!token) return null;
   const qs = buildParams(params);
   const url = `${WORKER_URL}${path}${qs ? `?${qs}` : ""}`;
-  const init: RequestInit & { next?: { revalidate?: number; tags?: string[] } } =
-    revalidateSec
-      ? { headers: workerHeaders(token), next: { revalidate: revalidateSec } }
-      : { headers: workerHeaders(token), cache: "no-store" };
+  // Mai la Data Cache di Next: la sua chiave e' URL + header (il token), non la
+  // sede, che il worker legge dalla sessione. Dopo il cambio sede si vedevano per
+  // 60 s i mesi e le categorie della sede di prima (audit di ottobre #22).
   try {
-    const res = await fetch(url, init);
+    const res = await fetch(url, { headers: workerHeaders(token), cache: "no-store" });
     if (!res.ok) {
       console.error(`[fatture] worker error:`, res.status);
       return null;
@@ -172,12 +170,7 @@ export async function fetchKpi(
 }
 
 export async function fetchMesiDisponibili(): Promise<MeseDisponibile[]> {
-  // Cambia solo dopo upload — cache 60s
-  const data = await workerGet<{ mesi: MeseDisponibile[] }>(
-    "/api/fatture/mesi-disponibili",
-    {},
-    60,
-  );
+  const data = await workerGet<{ mesi: MeseDisponibile[] }>("/api/fatture/mesi-disponibili");
   return data?.mesi ?? [];
 }
 
@@ -202,11 +195,7 @@ export async function fetchPivot(
 }
 
 export async function fetchCategorie(): Promise<{ categorie: string[]; usate: string[] }> {
-  const data = await workerGet<{ categorie: string[]; usate: string[] }>(
-    "/api/fatture/categorie",
-    {},
-    60,
-  );
+  const data = await workerGet<{ categorie: string[]; usate: string[] }>("/api/fatture/categorie");
   return data ?? { categorie: [], usate: [] };
 }
 

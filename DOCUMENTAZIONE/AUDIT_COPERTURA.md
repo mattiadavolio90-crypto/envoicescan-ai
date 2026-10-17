@@ -3457,6 +3457,17 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   rendeva di nuovo lo stesso errore. Con la sessione valida gli esiti sono quelli di prima.
 >   +6 test in `tests/test_guardia_pagina_frontend.py`; **8 mutanti, 8 uccisi**. Presidi sul
 >   filesystem (colori, nomi file, troncamenti): 1.747 verdi; `tsc --noEmit` pulito.
+>
+> - **17/10/2026 — Fix n. 29 dell'audit di ottobre (F2b-6, #22): Analisi Fatture non legge piu'
+>   mesi e categorie dalla cache di Next.** `fetchMesiDisponibili` e `fetchCategorie`
+>   passavano `next: { revalidate: 60 }`: la chiave della Data Cache e' URL + header (il
+>   token), non la sede, che il worker legge dalla sessione; per un minuto dopo il cambio
+>   sede (e dopo un upload) si vedevano i mesi e le categorie di prima, anche quelle di un
+>   altro settore. Tolto il parametro: `workerGet` di `lib/fatture.ts` e' sempre
+>   `cache: "no-store"`, come tutte le altre letture. Presidio su tutto `apps/web/src`
+>   (485 file): niente `next.revalidate`, `force-cache`, `unstable_cache`, `"use cache"`.
+>   +2 test in `tests/test_fetch_senza_data_cache_frontend.py`; **3 mutanti, 3 uccisi** (uno
+>   su un altro file, uno con l'oggetto `next` su piu' righe). `tsc --noEmit` pulito.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine
