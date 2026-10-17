@@ -3583,8 +3583,11 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   19.944 verdi + 1 rosso, il presidio delle oscurate, poi dichiarato (3 verdi), 63 skip.
 >   **Dati**: cancellare le 19 testate (non hanno righe; archiviate, nasconderebbero la
 >   testata di un ricaricamento con lo stesso nome, perche' l'upsert non azzera `deleted_at`)
->   e spostare la 20ª in OFFSIDE e' una scrittura sul DB di produzione, negata dai permessi della sessione: lo script e' consegnato a Mattia per
->   l'SQL Editor, con i conteggi attesi in una transazione che si annulla da sola. Verificato
+>   e spostare la 20ª in OFFSIDE e' una scrittura sul DB di produzione, negata dai permessi della sessione: lo script, con i conteggi attesi in
+>   una transazione che si annulla da sola, e' stato poi eseguito il 17/10 sera fuori dall'auto
+>   mode (19 cancellate, 1 spostata, 5 riattivate; le due verifiche a 0). Deploy la stessa
+>   sera: push di 18 commit (`1d285125..903c5211`), CI verde test compresi, Vercel e Railway
+>   (`/health` sul commit nuovo). Verificato
 >   anche: il repo GitHub e' pubblico (API e pagina rispondono 200 senza login).
 >
 > - **17/10/2026 — Fix n. 37 (residuo del filone sotto-utenti, decisione di Mattia): la catena
@@ -3637,9 +3640,13 @@ la regola ordinaria: *quando tocchi un file, lo copri*.
 >   dentro il CASCADE, aggiunti dopo il code-reviewer, che li aveva provati fuori dal repo); **4 mutanti, 4 uccisi** (il filtro per sede
 >   sopravviveva, ucciso col caso OVERTIME/OFFSIDE); la pulizia una tantum non e' provabile nei
 >   test e si verifica sul live dopo l'applicazione (0 testate archiviate senza righe). Col
->   trigger attivo `python -m pytest tests/ -m sql -q -p no:randomly`: 1.281 verdi. **Non
->   applicata**: la scrittura sul DB e' negata alla sessione, la applica Mattia. Il codice non ne
->   dipende, quindi l'ordine rispetto al push e' libero.
+>   trigger attivo `python -m pytest tests/ -m sql -q -p no:randomly`: 1.281 verdi. **Applicata
+>   sul live il 17/10 sera**, dopo il push: `apply_migration` l'ha rifiutata tre volte per il
+>   `DROP TRIGGER IF EXISTS` (regola gia' nota dal 16/10 e non applicata: ora il file usa
+>   `CREATE OR REPLACE TRIGGER`), poi trigger e funzione sono passati e la pulizia una tantum e'
+>   andata a parte, in un blocco col conteggio atteso (331). Verifica sul live: trigger presente,
+>   `SECURITY DEFINER`, anon/authenticated senza EXECUTE, 0 testate archiviate senza righe e 0
+>   attive senza righe, 3.648 testate totali.
 ---
 
 ## Come si riparte fra un anno — la procedura, in ordine

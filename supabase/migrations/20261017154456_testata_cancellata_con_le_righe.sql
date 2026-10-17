@@ -36,8 +36,9 @@ $$;
 
 REVOKE ALL ON FUNCTION public.fn_elimina_testate_senza_righe() FROM PUBLIC, anon, authenticated;
 
-DROP TRIGGER IF EXISTS trg_elimina_testate_senza_righe ON public.fatture;
-CREATE TRIGGER trg_elimina_testate_senza_righe
+-- OR REPLACE e non DROP+CREATE: il connettore Supabase rifiuta ogni statement con
+-- DROP, anche innocuo (16-17/10/2026). Sul live e' stata applicata senza il DROP.
+CREATE OR REPLACE TRIGGER trg_elimina_testate_senza_righe
     AFTER DELETE ON public.fatture
     REFERENCING OLD TABLE AS righe_cancellate
     FOR EACH STATEMENT
